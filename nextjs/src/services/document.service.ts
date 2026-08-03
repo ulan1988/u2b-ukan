@@ -1,6 +1,7 @@
 // Бизнес-логика документов. Про HTTP не знает.
 import { randomUUID } from 'crypto'
 import type { CreatePurchaseInput, CreateSaleInput } from '../dto/document.dto'
+import type { CreateProductionInput } from '../dto/production.dto'
 import * as docRepo from '../repositories/document.repo'
 import { docNumber, today } from '../lib/num'
 
@@ -120,6 +121,47 @@ export async function createReturn(input: CreateSaleInput, kind: 'return_in' | '
 }
 
 export const listReturns = (orgId: string) => docRepo.listByTypes(orgId, ['return_in', 'return_out'])
+
+// Производство: сырьё (input) списывается со склада, готовый товар (output)
+// приходуется. Готовый товар — размерное ценообразование: (см×см)/10000=м² × ставка × кол-во.
+export async function createProduction(input: CreateProductionInput) {
+  const count = await docRepo.countByType(input.orgId, 'production')
+  const docId = randomUUID()
+  const date = input.date || today()
+  const lines: any[] = []
+  const moves: any[] = []
+
+  // Сырьё → role input, списание склада (−)
+  for (const l of input.inputs) {
+    lines.push({ id: randomUUID(), documentId: docId, productId: l.productId, role: 'input', qty: String(l.qty), price: String(l.price), amount: String(l.qty * l.price) })
+    moves.push({ id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId, productId: l.productId, qty: String(-l.qty), documentId: docId, date })
+  }
+  // Готовый товар → role output, приход склада (+), размерное ценообразование
+  let total = 0
+  for (const l of input.outputs) {
+    const area = (l.lengthCm && l.widthCm) ? (l.lengthCm * l.widthCm) / 10000 : null
+    const amount = (area != null && l.rate) ? area * l.rate * l.qty : l.qty * (l.price || 0)
+    total += amount
+    lines.push({
+      id: randomUUID(), documentId: docId, productId: l.productId, role: 'output',
+      qty: String(l.qty), price: String(l.qty > 0 ? amount / l.qty : 0), amount: String(amount),
+      lengthCm: l.lengthCm != null ? String(l.lengthCm) : null,
+      widthCm: l.widthCm != null ? String(l.widthCm) : null,
+      areaM2: area != null ? String(area) : null,
+      rate: l.rate != null ? String(l.rate) : null,
+    })
+    moves.push({ id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId, productId: l.productId, qty: String(l.qty), documentId: docId, date })
+  }
+
+  const doc = {
+    id: docId, orgId: input.orgId, type: 'production', number: docNumber('production', count),
+    warehouseId: input.warehouseId, date, status: 'posted', total: String(total), comment: input.comment || '',
+  }
+  await docRepo.insertDocumentPosting(doc, lines, moves)
+  return { id: docId, number: doc.number, total }
+}
+
+export const listProduction = (orgId: string) => docRepo.listByType(orgId, 'production')
 
 // Сторно (отмена/удаление) документа — откатывает склад и связи, статус cancelled.
 export async function cancelDocument(docId: string) {
