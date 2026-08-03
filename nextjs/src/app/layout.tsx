@@ -19,6 +19,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <span className="font-bold mr-4">U2B</span>
             <Link href="/documents" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">📥 Приход</Link>
             <Link href="/sales" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">📤 Расход</Link>
+            <Link href="/payments" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">💵 Оплаты</Link>
+            <Link href="/finance" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">💰 Финансы</Link>
           </div>
         </nav>
         {children}

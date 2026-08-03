@@ -1,6 +1,6 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
-import { organizations, contragents, warehouses, products } from '../db/schema'
+import { organizations, contragents, warehouses, products, cashAccounts } from '../db/schema'
 import { and, eq, or } from 'drizzle-orm'
 
 export const listOrganizations = () =>
@@ -23,3 +23,9 @@ export const listWarehouses = () =>
 
 export const listProducts = () =>
   db.select().from(products).where(eq(products.archived, false))
+
+export const listContragents = () =>
+  db.select().from(contragents).where(eq(contragents.archived, false))
+
+export const listCashAccounts = () =>
+  db.select().from(cashAccounts).where(eq(cashAccounts.archived, false))

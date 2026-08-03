@@ -1,7 +1,7 @@
 // Стартовые данные, чтобы форма «Приход» была сразу рабочей. Идемпотентно:
 // сеет только если организаций ещё нет.
 import { db } from '../lib/db'
-import { organizations, contragents, warehouses, products } from '../db/schema'
+import { organizations, contragents, warehouses, products, cashAccounts } from '../db/schema'
 import { sql } from 'drizzle-orm'
 
 export async function seedIfEmpty() {
@@ -10,6 +10,10 @@ export async function seedIfEmpty() {
 
   const [org] = await db.insert(organizations).values({ name: 'U2B головной', kind: 'hq' }).returning()
   await db.insert(warehouses).values({ orgId: org.id, name: 'Центр-Склад', isCentral: true })
+  await db.insert(cashAccounts).values([
+    { orgId: org.id, name: 'Касса', kind: 'cash' },
+    { orgId: org.id, name: 'Банк (осн.)', kind: 'bank' },
+  ])
   await db.insert(contragents).values([
     { orgId: org.id, name: 'Металл Профиль', kind: 'supplier' },
     { orgId: org.id, name: 'Нипа Листагиб', kind: 'supplier' },
