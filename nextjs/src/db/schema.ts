@@ -2,7 +2,7 @@
 // Правила: org_id на каждой бизнес-таблице; деньги/кол-во = numeric (не float);
 // удаления нет (status=cancelled / archived); индексы под агрегаты.
 import {
-  pgTable, uuid, text, numeric, boolean, timestamp, date, index,
+  pgTable, uuid, text, numeric, boolean, timestamp, date, index, uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2 })
@@ -28,7 +28,7 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('manager'),        // admin|bookkeeper|logist|manager
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-}, t => ({ byOrg: index('users_org_idx').on(t.orgId) }))
+}, t => ({ byOrg: index('users_org_idx').on(t.orgId), emailUniq: uniqueIndex('users_email_uniq').on(t.email) }))
 
 export const contragents = pgTable('contragents', {
   id: uuid('id').defaultRandom().primaryKey(),

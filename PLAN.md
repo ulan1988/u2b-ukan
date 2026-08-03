@@ -49,8 +49,19 @@ Drizzle ORM + Zod. Деплой Vercel (Root Directory = `nextjs`). Репо п�
 
 10. ✅ **Производство** (см·м²·сумма) — документ type=production: сырьё (role input, −склад) → готовый товар (role output, +склад). Размерное ценообразование: (см×см)/10000=м² × ставка × кол-во (иначе qty×price). service.createProduction, POST/GET /api/production, страница /production (2 секции сырьё/товар + размеры), номера ПРЗ. Smoke ✅: 2.4м²×5000×10=120000, материал −30, товар +10.
 
+11. ✅ **Вход/пользователи** — JWT-сессия (jose, httpOnly cookie 30д) + bcrypt-пароли.
+    Слои: `lib/auth.ts` (createToken/verifyToken/sessionFromRequest, Edge-safe — только jose),
+    `dto/auth.dto.ts`, `repositories/user.repo.ts`, `services/auth.service.ts` (login+createUser).
+    `middleware.ts` закрывает ВСЁ, кроме `/login`, `/api/auth/*`, `/api/health` (нет сессии →
+    редирект на /login, для /api → 401). Роуты: `POST /api/auth/login|logout`, `GET /api/auth/me`,
+    `GET/POST /api/users` (создание — только admin). Страницы `/login`, `/users` (управление, admin).
+    Шапка: `UserMenu` (имя + Выйти + «👥 Пользователи» для admin). Уникальный индекс `users.email`.
+    `AUTH_SECRET` в `.env.local` (сгенерирован), seed создаёт админа. Smoke ✅: вход/токен/отказ.
+    **Стартовый вход: `admin@u2b` / `admin123`** (сменить пароль после запуска).
+    ⚠️ На Vercel добавить env `AUTH_SECRET` (Production) — иначе fallback dev-секрет (небезопасно).
+
 ## Осталось для «завершения проекта»
-- **Вход/пользователи** (сейчас доступ открыт) ← важно перед реальным запуском.
+- **Смена пароля / деактивация пользователя** (сейчас только создание).
 - **Редактирование справочников** (архив/правка), продажа между орг (филиалам, авто-зеркальные документы).
 - **Начальные остатки** — в самом конце (переход с 1С, Excel).
 - **Начальные остатки** — В КОНЦЕ (день перехода с 1С): импорт из 1С Excel в `opening_balance`. Владелец: пока рано, проект не закончен.

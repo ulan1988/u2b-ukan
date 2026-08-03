@@ -1,7 +1,8 @@
 // Стартовые данные, чтобы форма «Приход» была сразу рабочей. Идемпотентно:
 // сеет только если организаций ещё нет.
+import bcrypt from 'bcryptjs'
 import { db } from '../lib/db'
-import { organizations, contragents, warehouses, products, cashAccounts } from '../db/schema'
+import { organizations, contragents, warehouses, products, cashAccounts, users } from '../db/schema'
 import { sql } from 'drizzle-orm'
 
 export async function seedIfEmpty() {
@@ -30,5 +31,10 @@ export async function seedIfEmpty() {
     { name: 'Труба 7024 3м', unit: 'шт', category: 'goods', priceIn: '1200' },
     { name: 'Лист оцинкованный 0.5', unit: 'м2', category: 'material', priceIn: '900' },
   ])
+  // Стартовый администратор: admin@u2b / admin123 (сменить пароль после входа).
+  await db.insert(users).values({
+    orgId: org.id, name: 'Администратор', email: 'admin@u2b', role: 'admin',
+    password: await bcrypt.hash('admin123', 10),
+  })
   return { seeded: true, orgId: org.id }
 }

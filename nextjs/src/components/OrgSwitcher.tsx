@@ -18,7 +18,7 @@ export default function OrgSwitcher() {
     <select
       value={cur}
       onChange={e => { setOrgId(e.target.value); location.reload() }}
-      className="ml-auto border border-neutral-300 rounded-lg px-2 py-1 text-sm font-semibold bg-white outline-none"
+      className="border border-neutral-300 rounded-lg px-2 py-1 text-sm font-semibold bg-white outline-none"
       title="Организация"
     >
       {orgs.map(o => <option key={o.id} value={o.id}>🏢 {o.name}</option>)}
