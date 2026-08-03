@@ -13,6 +13,46 @@ export async function totals(orgId: string) {
   return r[0] as { sales: number; purchases: number; pay_in: number; pay_out: number; stock_value: number }
 }
 
+// Рентабельность по продажам (как в 1С): выручка − себестоимость.
+// Себестоимость = связанные партии закупа (doc_link × цена закупа) + остаток по priceIn.
+export async function profitReport(orgId: string) {
+  return sqlClient`
+    with pline as (
+      select document_id, product_id, sum(qty) qty, sum(amount) amount
+      from document_lines where role='main' group by document_id, product_id
+    ),
+    linked as (
+      select dl.sale_doc_id, dl.product_id,
+        sum(dl.qty) as lqty,
+        sum(dl.qty * (pl.amount / nullif(pl.qty,0))) as lcost
+      from doc_links dl
+      join pline pl on pl.document_id=dl.purchase_doc_id and pl.product_id=dl.product_id
+      group by dl.sale_doc_id, dl.product_id
+    ),
+    saleline as (
+      select sl.document_id, sl.product_id, sum(sl.qty) as sqty
+      from document_lines sl
+      join documents d on d.id=sl.document_id and d.type='sale'
+      where sl.role='main' group by sl.document_id, sl.product_id
+    ),
+    cost as (
+      select s.document_id as sale_id,
+        coalesce(l.lcost,0) + greatest(s.sqty - coalesce(l.lqty,0),0) * p.price_in as line_cost
+      from saleline s
+      join products p on p.id=s.product_id
+      left join linked l on l.sale_doc_id=s.document_id and l.product_id=s.product_id
+    )
+    select d.id, d.number, d.date::text as date, c.name as client,
+      d.total::float as revenue,
+      coalesce(sum(cost.line_cost),0)::float as cost
+    from documents d
+    left join contragents c on c.id=d.contragent_id
+    left join cost on cost.sale_id=d.id
+    where d.org_id=${orgId} and d.type='sale' and d.status<>'cancelled'
+    group by d.id, d.number, d.date, c.name, d.total
+    order by d.date desc, d.created_at desc` as unknown as Promise<Array<{ id: string; number: string; date: string; client: string | null; revenue: number; cost: number }>>
+}
+
 // Баланс по каждому контрагенту: продажи/закупы и оплаты in/out.
 export async function contragentBalances(orgId: string) {
   return sqlClient`

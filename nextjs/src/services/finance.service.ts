@@ -16,3 +16,23 @@ export async function summary(orgId: string) {
 
   return { receivable, payable, cash, stockValue: t.stock_value, contragents }
 }
+
+// Рентабельность: по каждой продаже выручка − себестоимость = прибыль, маржа %.
+export async function profit(orgId: string) {
+  const rows = await finRepo.profitReport(orgId)
+  const sales = rows.map(r => {
+    const profit = r.revenue - r.cost
+    return {
+      id: r.id, number: r.number, date: r.date, client: r.client || '—',
+      revenue: r.revenue, cost: r.cost, profit,
+      margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0,
+    }
+  })
+  const revenue = sales.reduce((s, x) => s + x.revenue, 0)
+  const cost = sales.reduce((s, x) => s + x.cost, 0)
+  const totalProfit = revenue - cost
+  return {
+    sales,
+    totals: { revenue, cost, profit: totalProfit, margin: revenue > 0 ? (totalProfit / revenue) * 100 : 0 },
+  }
+}

@@ -63,6 +63,22 @@ export async function createSale(input: CreateSaleInput) {
     productId: l.productId, qty: String(-l.qty), documentId: docId, date,
   }))
 
+  // FIFO: связываем продажу с партиями закупа (для себестоимости/маржи и цепочки).
+  const links: { id: string; purchaseDocId: string; saleDocId: string; productId: string; qty: string }[] = []
+  for (const l of input.lines) {
+    let need = l.qty
+    const lots = await docRepo.purchaseLots(input.orgId, l.productId)   // старые первыми
+    for (const lot of lots) {
+      if (need <= 0.0001) break
+      const remaining = lot.line_qty - lot.linked_qty
+      if (remaining <= 0.0001) continue
+      const take = Math.min(remaining, need)
+      links.push({ id: randomUUID(), purchaseDocId: lot.purchase_doc_id, saleDocId: docId, productId: l.productId, qty: String(take) })
+      need -= take
+    }
+    // если need>0 — продали больше, чем закуплено; остаток без связи (в отчёте — по priceIn).
+  }
+
   const doc = {
     id: docId, orgId: input.orgId, type: 'sale',
     number: docNumber('sale', count),
@@ -70,7 +86,7 @@ export async function createSale(input: CreateSaleInput) {
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
 
-  await docRepo.insertDocumentPosting(doc, lines, moves)
+  await docRepo.insertDocumentPosting(doc, lines, moves, links)
   return { id: docId, number: doc.number, total }
 }
 
