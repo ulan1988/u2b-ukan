@@ -16,17 +16,22 @@ Drizzle ORM + Zod. Деплой Vercel (Root Directory = `nextjs`). Репо п�
 `github.com/ulan1988/u2b-ukan` — секреты только в `.env.local` (в .gitignore).
 
 ## Статус
-- ✅ Репо + `nextjs/` (create-next-app), Drizzle/Zod установлены.
-- ✅ Схема БД в `src/db/schema.ts` (13 таблиц: organizations, users, contragents,
-  products, warehouses, cash_accounts, documents, document_lines, doc_links,
-  payments, stock_movements, opening_balances). tsc зелёный.
-- ✅ `src/lib/db.ts` (Neon+Drizzle), `drizzle.config.ts`, `.gitignore` (секреты закрыты).
-- ⏳ **Ждём `DATABASE_URL`** (Neon pooler) → положить в `nextjs/.env.local`.
+- ✅ Репо + `nextjs/`, Drizzle/Zod, схема БД (12 таблиц) в Neon (`db:push`).
+- ✅ `.env.local` с DATABASE_URL (локально, не в гит), `.gitignore` закрывает секреты.
+- ✅ **Документ «Приход» (закуп) — готов и проверен на Neon:**
+  - Слои: `dto/document.dto.ts` (zod) → `services/document.service.ts` (проводка) →
+    `repositories/{document,refs}.repo.ts` → `db`. `lib/num.ts` (номера ЗП/ПР).
+  - Проводка атомарна (`db.batch`): documents + document_lines + stock_movements.
+  - Роуты: `POST/GET /api/documents`, `GET /api/refs`, `POST /api/seed`.
+  - Страница `/documents` (форма + список), главная → редирект на /documents.
+  - Smoke ✅: seed + приход ЗП-0001 на 210000 создан, прочитан. tsc+build зелёные.
+- Старт-данные засеяны (org «U2B головной», Центр-Склад, 2 поставщика, 3 товара).
+  Тестовый приход ЗП-0001 — демо, можно удалить.
 
 ## Следующие шаги
-1. Получить `DATABASE_URL` → `.env.local` → `npm run db:push` (создать таблицы в Neon).
-2. Слои: `dto/`, `services/`, `repositories/`. Первый документ — **Приход (закуп)**:
-   repo → service (проводка: строки + stock_movement + долг поставщику) → route (zod) → страница.
-3. Дальше по одному: Расход (продажа) + doc_link, Оплаты, Финанс/дашборд (долги
-   SQL-агрегатами), Начальные остатки (импорт из 1С Excel).
-После каждого шага: `tsc --noEmit` → `build` → smoke API → commit → push → прод.
+1. **Задеплоить на Vercel** (Root Directory = `nextjs`, env DATABASE_URL) → проверить `/documents` на проде.
+2. Документ **Расход (продажа)**: списание склада (`stock_movement −`) + `doc_link` на приход (себестоимость) + долг заказчика. Аналогично слоями.
+3. **Оплаты** (`payment` in/out) + экран.
+4. **Финанс/дашборд**: долги контрагентов, остатки склада/денег — SQL-агрегатами.
+5. **Начальные остатки**: импорт из 1С (Excel) в `opening_balance`.
+После каждого шага: `tsc --noEmit` → `build` → smoke → commit → push → прод.
