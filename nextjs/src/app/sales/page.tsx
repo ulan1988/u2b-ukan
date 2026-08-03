@@ -64,6 +64,11 @@ export default function SalesPage() {
     finally { setSaving(false) }
   }
 
+  async function cancel(id: string) {
+    if (!confirm('Отменить продажу? Товар вернётся на склад, долг заказчика откатится.')) return
+    await fetch(`/api/documents/${id}/cancel`, { method: 'POST' })
+    loadDocs(orgId); loadStock(orgId, warehouseId)
+  }
   const clientName = (id: string | null) => refs?.clients.find(s => s.id === id)?.name || '—'
   const inp = 'border border-neutral-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500'
 
@@ -128,15 +133,21 @@ export default function SalesPage() {
                 <th className="text-left px-4 py-2">Номер</th><th className="text-left px-4 py-2">Заказчик</th>
                 <th className="text-left px-4 py-2">Дата</th><th className="text-right px-4 py-2">Сумма</th><th className="text-left px-4 py-2">Статус</th>
               </tr></thead>
-              <tbody>{docs.map(d => (
-                <tr key={d.id} className="border-t border-neutral-100">
-                  <td className="px-4 py-2 font-mono text-emerald-600">{d.number}</td>
+              <tbody>{docs.map(d => {
+                const cancelled = d.status === 'cancelled'
+                return (
+                <tr key={d.id} className={`border-t border-neutral-100 ${cancelled ? 'opacity-50' : ''}`}>
+                  <td className={`px-4 py-2 font-mono ${cancelled ? 'line-through text-neutral-400' : 'text-emerald-600'}`}>{d.number}</td>
                   <td className="px-4 py-2">{clientName(d.contragentId)}</td>
                   <td className="px-4 py-2 text-neutral-500">{d.date}</td>
                   <td className="px-4 py-2 text-right font-semibold tabular-nums">{Number(d.total).toLocaleString('ru-RU')} ₸</td>
-                  <td className="px-4 py-2"><span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">{d.status}</span></td>
+                  <td className="px-4 py-2">
+                    {cancelled
+                      ? <span className="text-xs bg-neutral-100 text-neutral-500 rounded-full px-2 py-0.5">Отменён</span>
+                      : <button onClick={() => cancel(d.id)} className="text-xs text-red-600 hover:underline">⊘ Сторно</button>}
+                  </td>
                 </tr>
-              ))}</tbody>
+              )})}</tbody>
             </table>}
       </div>
     </main>

@@ -1,7 +1,7 @@
 // Запросы по документам (только Drizzle). Логика проводки — в service.
 import { db, sqlClient } from '../lib/db'
 import { documents, documentLines, stockMovements, docLinks } from '../db/schema'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 
 type NewDoc = typeof documents.$inferInsert
 type NewLine = typeof documentLines.$inferInsert
@@ -40,6 +40,16 @@ export async function purchaseLots(orgId: string, productId: string) {
     where d.org_id=${orgId} and d.type='purchase' and d.status<>'cancelled'
     group by d.id, lk.qty
     order by d.date asc, d.created_at asc` as unknown as Promise<Array<{ purchase_doc_id: string; line_qty: number; line_amount: number; linked_qty: number }>>
+}
+
+// Сторно документа: удаляем движения склада и связи, ставим статус cancelled.
+// Атомарно (батч) — склад и финансы сразу перестают его учитывать.
+export async function cancelDocument(docId: string) {
+  await db.batch([
+    db.delete(stockMovements).where(eq(stockMovements.documentId, docId)),
+    db.delete(docLinks).where(or(eq(docLinks.saleDocId, docId), eq(docLinks.purchaseDocId, docId))),
+    db.update(documents).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(documents.id, docId)),
+  ])
 }
 
 export function listByType(orgId: string, type: string) {

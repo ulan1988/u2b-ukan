@@ -91,3 +91,9 @@ export async function createSale(input: CreateSaleInput) {
 }
 
 export const listSales = (orgId: string) => docRepo.listByType(orgId, 'sale')
+
+// Сторно (отмена) документа — откатывает склад и связи, статус cancelled.
+export async function cancelDocument(docId: string) {
+  await docRepo.cancelDocument(docId)
+  return { ok: true }
+}
