@@ -1,6 +1,9 @@
 import type { z } from 'zod'
 import * as repo from '../repositories/catalog.repo'
-import type { createProductSchema, createContragentSchema, createWarehouseSchema, createCashAccountSchema } from '../dto/catalog.dto'
+import type {
+  createProductSchema, createContragentSchema, createWarehouseSchema, createCashAccountSchema,
+  updateProductSchema, updateContragentSchema,
+} from '../dto/catalog.dto'
 
 export async function addProduct(i: z.infer<typeof createProductSchema>) {
   const [p] = await repo.createProduct({
@@ -23,4 +26,28 @@ export async function addWarehouse(i: z.infer<typeof createWarehouseSchema>) {
 export async function addCashAccount(i: z.infer<typeof createCashAccountSchema>) {
   const [a] = await repo.createCashAccount({ orgId: i.orgId, name: i.name, kind: i.kind })
   return a
+}
+
+export async function editProduct(id: string, i: z.infer<typeof updateProductSchema>) {
+  const patch: Record<string, unknown> = {}
+  if (i.name !== undefined) patch.name = i.name
+  if (i.unit !== undefined) patch.unit = i.unit
+  if (i.category !== undefined) patch.category = i.category
+  if (i.group !== undefined) patch.group = i.group
+  if (i.subgroup !== undefined) patch.subgroup = i.subgroup
+  if (i.priceIn !== undefined) patch.priceIn = String(i.priceIn)          // numeric → string
+  if (i.priceRetail !== undefined) patch.priceRetail = String(i.priceRetail)
+  if (i.priceOpt !== undefined) patch.priceOpt = String(i.priceOpt)
+  if (i.archived !== undefined) patch.archived = i.archived
+  const [p] = await repo.updateProduct(id, patch)
+  return p
+}
+
+export async function editContragent(id: string, i: z.infer<typeof updateContragentSchema>) {
+  const patch: Record<string, unknown> = {}
+  for (const k of ['name', 'kind', 'priceType', 'phone', 'comment', 'archived'] as const) {
+    if (i[k] !== undefined) patch[k] = i[k]
+  }
+  const [c] = await repo.updateContragent(id, patch)
+  return c
 }
