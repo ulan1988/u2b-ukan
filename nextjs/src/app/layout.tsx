@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
+import OrgSwitcher from "@/components/OrgSwitcher";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/payments" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">💵 Оплаты</Link>
             <Link href="/finance" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">💰 Финансы</Link>
             <Link href="/profit" className="px-3 py-1.5 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100">📈 Рентабельность</Link>
+            <OrgSwitcher />
           </div>
         </nav>
         {children}

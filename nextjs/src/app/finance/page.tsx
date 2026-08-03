@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { pickOrg } from '@/lib/org'
 
 type CB = { id: string; name: string; kind: string; theyOwe: number; weOwe: number }
 type Summary = { receivable: number; payable: number; cash: number; stockValue: number; contragents: CB[] }
@@ -12,7 +13,7 @@ export default function FinancePage() {
   useEffect(() => {
     (async () => {
       const refs = await fetch('/api/refs').then(r => r.json())
-      const org = refs.organizations[0]
+      const org = pickOrg(refs.organizations)
       if (!org) return
       setS(await fetch(`/api/finance?orgId=${org.id}`).then(r => r.json()))
     })()

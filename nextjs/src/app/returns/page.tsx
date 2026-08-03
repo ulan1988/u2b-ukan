@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { pickOrg, forOrg } from '@/lib/org'
 
-type Ref = { id: string; name: string; priceRetail?: string; priceIn?: string; isCentral?: boolean }
+type Ref = { id: string; name: string; orgId?: string; priceRetail?: string; priceIn?: string; isCentral?: boolean }
 type Line = { productId: string; qty: string; price: string }
 type Doc = { id: string; number: string; type: string; contragentId: string | null; total: string; date: string; status: string }
 
@@ -21,14 +22,15 @@ export default function ReturnsPage() {
   async function load() {
     const r = await fetch('/api/refs').then(x => x.json())
     setRefs(r)
-    const org = r.organizations[0]
+    const org = pickOrg<Ref>(r.organizations)
     if (org) { setOrgId(org.id); setDocs(await fetch(`/api/returns?orgId=${org.id}`).then(x => x.json())) }
-    const wh = (r.warehouses as Ref[]).find(w => w.isCentral) || r.warehouses[0]
+    const whs = forOrg<Ref>(r.warehouses, org?.id || '')
+    const wh = whs.find(w => w.isCentral) || whs[0]
     if (wh) setWarehouseId(wh.id)
   }
   useEffect(() => { load() }, [])
 
-  const parties: Ref[] = refs ? (kind === 'in' ? refs.clients : refs.suppliers) : []
+  const parties: Ref[] = refs ? forOrg<Ref>(kind === 'in' ? refs.clients : refs.suppliers, orgId) : []
   useEffect(() => { if (parties[0]) setContragentId(parties[0].id) }, [kind, refs]) // eslint-disable-line
 
   function setLine(i: number, patch: Partial<Line>) { setLines(ls => ls.map((l, idx) => idx === i ? { ...l, ...patch } : l)) }
@@ -75,7 +77,7 @@ export default function ReturnsPage() {
             <select className={inp} value={contragentId} onChange={e => setContragentId(e.target.value)}>{parties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
           </label>
           <label className="flex flex-col gap-1 text-sm">Склад
-            <select className={inp} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>{refs.warehouses.map((w: Ref) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
+            <select className={inp} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>{forOrg<Ref>(refs.warehouses, orgId).map((w: Ref) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
           </label>
         </div>
         <div className="text-xs font-bold text-neutral-500 mb-2">ПОЗИЦИИ</div>

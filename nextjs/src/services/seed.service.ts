@@ -9,6 +9,11 @@ export async function seedIfEmpty() {
   if ((r[0]?.c ?? 0) > 0) return { seeded: false }
 
   const [org] = await db.insert(organizations).values({ name: 'U2B головной', kind: 'hq' }).returning()
+  // 2 филиала
+  await db.insert(organizations).values([
+    { name: 'Филиал-производитель', kind: 'producer_seller' },
+    { name: 'Филиал-продавец', kind: 'seller' },
+  ])
   await db.insert(warehouses).values({ orgId: org.id, name: 'Центр-Склад', isCentral: true })
   await db.insert(cashAccounts).values([
     { orgId: org.id, name: 'Касса', kind: 'cash' },

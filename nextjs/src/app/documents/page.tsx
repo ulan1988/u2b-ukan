@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { pickOrg, forOrg } from '@/lib/org'
 
-type Ref = { id: string; name: string; priceIn?: string; isCentral?: boolean }
+type Ref = { id: string; name: string; orgId?: string; priceIn?: string; isCentral?: boolean }
 type Refs = { organizations: Ref[]; suppliers: Ref[]; warehouses: Ref[]; products: Ref[] }
 type Line = { productId: string; qty: string; price: string }
 type Doc = { id: string; number: string; contragentId: string | null; total: string; date: string; status: string }
@@ -21,11 +22,13 @@ export default function DocumentsPage() {
   async function loadRefs() {
     const r = await fetch('/api/refs').then(r => r.json())
     setRefs(r)
-    const org = r.organizations[0]
+    const org = pickOrg<Ref>(r.organizations)
     if (org) { setOrgId(org.id); loadDocs(org.id) }
-    const wh = (r.warehouses as Ref[]).find(w => w.isCentral) || r.warehouses[0]
+    const whs = forOrg<Ref>(r.warehouses, org?.id || '')
+    const wh = whs.find(w => w.isCentral) || whs[0]
     if (wh) setWarehouseId(wh.id)
-    if (r.suppliers[0]) setContragentId(r.suppliers[0].id)
+    const sups = forOrg<Ref>(r.suppliers, org?.id || '')
+    if (sups[0]) setContragentId(sups[0].id)
   }
   async function loadDocs(id: string) {
     setDocs(await fetch(`/api/documents?orgId=${id}`).then(r => r.json()))
@@ -80,12 +83,12 @@ export default function DocumentsPage() {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <label className="flex flex-col gap-1 text-sm">Поставщик
             <select className={inp} value={contragentId} onChange={e => setContragentId(e.target.value)}>
-              {refs.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {forOrg<Ref>(refs.suppliers, orgId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">Склад
             <select className={inp} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
-              {refs.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {forOrg<Ref>(refs.warehouses, orgId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </label>
         </div>

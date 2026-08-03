@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { pickOrg, forOrg } from '@/lib/org'
 
-type Ref = { id: string; name: string; priceRetail?: string; isCentral?: boolean }
+type Ref = { id: string; name: string; orgId?: string; priceRetail?: string; isCentral?: boolean }
 type Refs = { organizations: Ref[]; clients: Ref[]; warehouses: Ref[]; products: Ref[] }
 type Line = { productId: string; qty: string; price: string }
 type Doc = { id: string; number: string; contragentId: string | null; total: string; date: string; status: string }
@@ -22,11 +23,13 @@ export default function SalesPage() {
   async function loadRefs() {
     const r = await fetch('/api/refs').then(r => r.json())
     setRefs(r)
-    const org = r.organizations[0]
+    const org = pickOrg<Ref>(r.organizations)
     if (org) { setOrgId(org.id); loadDocs(org.id) }
-    const wh = (r.warehouses as Ref[]).find(w => w.isCentral) || r.warehouses[0]
-    if (wh) { setWarehouseId(wh.id); loadStock(org?.id, wh.id) }
-    if (r.clients[0]) setContragentId(r.clients[0].id)
+    const whs = forOrg<Ref>(r.warehouses, org?.id || '')
+    const wh = whs.find(w => w.isCentral) || whs[0]
+    if (wh) { setWarehouseId(wh.id); loadStock(org?.id || '', wh.id) }
+    const cls = forOrg<Ref>(r.clients, org?.id || '')
+    if (cls[0]) setContragentId(cls[0].id)
   }
   async function loadDocs(id: string) { setDocs(await fetch(`/api/sales?orgId=${id}`).then(r => r.json())) }
   async function loadStock(oid: string, wid: string) {
@@ -83,12 +86,12 @@ export default function SalesPage() {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <label className="flex flex-col gap-1 text-sm">Заказчик
             <select className={inp} value={contragentId} onChange={e => setContragentId(e.target.value)}>
-              {refs.clients.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {forOrg<Ref>(refs.clients, orgId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">Склад
             <select className={inp} value={warehouseId} onChange={e => onWarehouse(e.target.value)}>
-              {refs.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {forOrg<Ref>(refs.warehouses, orgId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </label>
         </div>

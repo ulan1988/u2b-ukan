@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { PRODUCT_GROUPS, PRODUCT_CATEGORIES, CONTRAGENT_KINDS } from '@/lib/catalog'
+import { pickOrg, forOrg } from '@/lib/org'
 
 type Tab = 'products' | 'contragents' | 'warehouses' | 'cash'
 const TABS: { k: Tab; l: string }[] = [
@@ -20,7 +21,8 @@ export default function CatalogPage() {
   async function load() {
     const r = await fetch('/api/refs').then(x => x.json())
     setRefs(r)
-    if (r.organizations[0]) setOrgId(r.organizations[0].id)
+    const org = pickOrg<{ id: string }>(r.organizations)
+    if (org) setOrgId(org.id)
   }
   useEffect(() => { load() }, [])
 
@@ -46,9 +48,9 @@ export default function CatalogPage() {
       {msg && <div className="mb-3 text-sm">{msg}</div>}
 
       {tab === 'products' && <Products products={refs.products} onAdd={b => post('/api/products', b)} />}
-      {tab === 'contragents' && <Contragents items={refs.contragents} orgId={orgId} onAdd={b => post('/api/contragents', b)} />}
-      {tab === 'warehouses' && <Warehouses items={refs.warehouses} orgId={orgId} onAdd={b => post('/api/warehouses', b)} />}
-      {tab === 'cash' && <CashAccounts items={refs.cashAccounts} orgId={orgId} onAdd={b => post('/api/cash-accounts', b)} />}
+      {tab === 'contragents' && <Contragents items={forOrg(refs.contragents, orgId)} orgId={orgId} onAdd={b => post('/api/contragents', b)} />}
+      {tab === 'warehouses' && <Warehouses items={forOrg(refs.warehouses, orgId)} orgId={orgId} onAdd={b => post('/api/warehouses', b)} />}
+      {tab === 'cash' && <CashAccounts items={forOrg(refs.cashAccounts, orgId)} orgId={orgId} onAdd={b => post('/api/cash-accounts', b)} />}
     </main>
   )
 }

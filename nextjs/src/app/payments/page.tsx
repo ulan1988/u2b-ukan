@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { pickOrg, forOrg } from '@/lib/org'
 
-type Ref = { id: string; name: string; kind?: string }
+type Ref = { id: string; name: string; kind?: string; orgId?: string }
 type Pay = { id: string; contragentId: string; direction: string; amount: string; date: string; comment: string | null }
 
 export default function PaymentsPage() {
@@ -19,10 +20,12 @@ export default function PaymentsPage() {
   async function load() {
     const r = await fetch('/api/refs').then(r => r.json())
     setRefs(r)
-    const org = r.organizations[0]
+    const org = pickOrg<Ref>(r.organizations)
     if (org) { setOrgId(org.id); setList(await fetch(`/api/payments?orgId=${org.id}`).then(x => x.json())) }
-    if (r.contragents[0]) setContragentId(r.contragents[0].id)
-    if (r.cashAccounts[0]) setCashAccountId(r.cashAccounts[0].id)
+    const cs = forOrg<Ref>(r.contragents, org?.id || '')
+    if (cs[0]) setContragentId(cs[0].id)
+    const ca = forOrg<Ref>(r.cashAccounts, org?.id || '')
+    if (ca[0]) setCashAccountId(ca[0].id)
   }
   useEffect(() => { load() }, [])
 
@@ -59,12 +62,12 @@ export default function PaymentsPage() {
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-sm">Контрагент
             <select className={inp} value={contragentId} onChange={e => setContragentId(e.target.value)}>
-              {refs.contragents.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {forOrg<Ref>(refs.contragents, orgId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">Касса / банк
             <select className={inp} value={cashAccountId} onChange={e => setCashAccountId(e.target.value)}>
-              {refs.cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {forOrg<Ref>(refs.cashAccounts, orgId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">Сумма
