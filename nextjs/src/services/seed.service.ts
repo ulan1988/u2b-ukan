@@ -13,6 +13,8 @@ export async function seedIfEmpty() {
   await db.insert(contragents).values([
     { orgId: org.id, name: 'Металл Профиль', kind: 'supplier' },
     { orgId: org.id, name: 'Нипа Листагиб', kind: 'supplier' },
+    { orgId: org.id, name: 'Кристалл (заказчик)', kind: 'client' },
+    { orgId: org.id, name: 'Астана Строй', kind: 'client' },
   ])
   await db.insert(products).values([
     { name: 'Желоб 9003 3м', unit: 'шт', category: 'goods', priceIn: '1500' },

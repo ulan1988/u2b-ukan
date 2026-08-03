@@ -12,6 +12,12 @@ export const listSuppliers = () =>
     or(eq(contragents.kind, 'supplier'), eq(contragents.kind, 'both')),
   ))
 
+export const listClients = () =>
+  db.select().from(contragents).where(and(
+    eq(contragents.archived, false),
+    or(eq(contragents.kind, 'client'), eq(contragents.kind, 'both')),
+  ))
+
 export const listWarehouses = () =>
   db.select().from(warehouses).where(eq(warehouses.archived, false))
 

@@ -32,3 +32,12 @@ export function listByType(orgId: string, type: string) {
     .orderBy(desc(documents.createdAt))
     .limit(100)
 }
+
+// Остаток склада = Σ движений по (склад, товар). Отдаём по всем товарам склада.
+export function stockByWarehouse(orgId: string, warehouseId: string) {
+  return db
+    .select({ productId: stockMovements.productId, qty: sql<string>`sum(${stockMovements.qty})` })
+    .from(stockMovements)
+    .where(and(eq(stockMovements.orgId, orgId), eq(stockMovements.warehouseId, warehouseId)))
+    .groupBy(stockMovements.productId)
+}

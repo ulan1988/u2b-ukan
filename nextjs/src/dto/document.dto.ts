@@ -17,3 +17,8 @@ export const createPurchaseSchema = z.object({
 })
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>
+
+// Вход для расходной накладной (продажа): заказчик + склад + строки.
+// Форма та же, что у прихода (contragentId = заказчик, цена = продажная).
+export const createSaleSchema = createPurchaseSchema
+export type CreateSaleInput = z.infer<typeof createSaleSchema>
