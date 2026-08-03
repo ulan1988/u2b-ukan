@@ -1,0 +1,17 @@
+# Секреты — НИКОГДА не коммитить (репозиторий публичный!)
+.env
+.env.*
+!.env.example
+
+# Зависимости и сборка
+node_modules/
+.next/
+out/
+build/
+drizzle/
+
+# Прочее
+*.log
+.DS_Store
+.vercel/
+*.tsbuildinfo
