@@ -1,7 +1,7 @@
 // Запросы по документам (только Drizzle). Логика проводки — в service.
 import { db, sqlClient } from '../lib/db'
 import { documents, documentLines, stockMovements, docLinks } from '../db/schema'
-import { and, desc, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 
 type NewDoc = typeof documents.$inferInsert
 type NewLine = typeof documentLines.$inferInsert
@@ -57,6 +57,15 @@ export function listByType(orgId: string, type: string) {
     .select()
     .from(documents)
     .where(and(eq(documents.orgId, orgId), eq(documents.type, type)))
+    .orderBy(desc(documents.createdAt))
+    .limit(100)
+}
+
+export function listByTypes(orgId: string, types: string[]) {
+  return db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.orgId, orgId), inArray(documents.type, types)))
     .orderBy(desc(documents.createdAt))
     .limit(100)
 }

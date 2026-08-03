@@ -136,8 +136,8 @@ export default function DocumentsPage() {
                   <td className="px-4 py-2 text-right font-semibold tabular-nums">{Number(d.total).toLocaleString('ru-RU')} ₸</td>
                   <td className="px-4 py-2">
                     {cancelled
-                      ? <span className="text-xs bg-neutral-100 text-neutral-500 rounded-full px-2 py-0.5">Отменён</span>
-                      : <button onClick={() => cancel(d.id)} className="text-xs text-red-600 hover:underline">⊘ Сторно</button>}
+                      ? <span className="text-xs bg-neutral-100 text-neutral-500 rounded-full px-2 py-0.5">Удалён</span>
+                      : <button onClick={() => cancel(d.id)} className="text-xs text-red-600 hover:underline">🗑 Удалить</button>}
                   </td>
                 </tr>
               )})}</tbody>

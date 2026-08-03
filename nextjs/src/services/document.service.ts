@@ -92,7 +92,36 @@ export async function createSale(input: CreateSaleInput) {
 
 export const listSales = (orgId: string) => docRepo.listByType(orgId, 'sale')
 
-// Сторно (отмена) документа — откатывает склад и связи, статус cancelled.
+// Возврат: return_in = от покупателя (+склад, −долг заказчика);
+// return_out = поставщику (−склад, −наш долг). Проводка = документ + строки + движение.
+export async function createReturn(input: CreateSaleInput, kind: 'return_in' | 'return_out') {
+  const count = await docRepo.countByType(input.orgId, kind)
+  const docId = randomUUID()
+  const date = input.date || today()
+  const sign = kind === 'return_in' ? 1 : -1   // товар возвращается на склад (+) или уходит (−)
+
+  let total = 0
+  const lines = input.lines.map(l => {
+    const amount = l.qty * l.price
+    total += amount
+    return { id: randomUUID(), documentId: docId, productId: l.productId, role: 'main', qty: String(l.qty), price: String(l.price), amount: String(amount) }
+  })
+  const moves = input.lines.map(l => ({
+    id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId,
+    productId: l.productId, qty: String(sign * l.qty), documentId: docId, date,
+  }))
+  const doc = {
+    id: docId, orgId: input.orgId, type: kind, number: docNumber(kind, count),
+    contragentId: input.contragentId, warehouseId: input.warehouseId,
+    date, status: 'posted', total: String(total), comment: input.comment || '',
+  }
+  await docRepo.insertDocumentPosting(doc, lines, moves)
+  return { id: docId, number: doc.number, total }
+}
+
+export const listReturns = (orgId: string) => docRepo.listByTypes(orgId, ['return_in', 'return_out'])
+
+// Сторно (отмена/удаление) документа — откатывает склад и связи, статус cancelled.
 export async function cancelDocument(docId: string) {
   await docRepo.cancelDocument(docId)
   return { ok: true }

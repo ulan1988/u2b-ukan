@@ -2,6 +2,7 @@
 // ПР-0001-DDMMYY (продажа) и т.д. count передаётся снаружи (по своему типу).
 const PREFIX: Record<string, string> = {
   purchase: 'ЗП', sale: 'ПР', production: 'ПРЗ', transfer: 'ПМ', act: 'АКТ', opening: 'НО',
+  return_in: 'ВП', return_out: 'ВС',   // возврат от покупателя / поставщику
 }
 
 export function docNumber(type: string, count: number): string {
