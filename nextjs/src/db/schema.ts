@@ -2,7 +2,7 @@
 // Правила: org_id на каждой бизнес-таблице; деньги/кол-во = numeric (не float);
 // удаления нет (status=cancelled / archived); индексы под агрегаты.
 import {
-  pgTable, uuid, text, numeric, boolean, timestamp, date, index, uniqueIndex,
+  pgTable, uuid, text, numeric, boolean, timestamp, date, integer, index, uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2 })
@@ -168,3 +168,158 @@ export const openingBalances = pgTable('opening_balances', {
   direction: text('direction'),                           // debt: receivable (нам должны) | payable (мы должны)
   asOf: date('as_of').notNull(),
 }, t => ({ byOrg: index('opening_org_idx').on(t.orgId) }))
+
+// ═══ БЛОК «УЛКАН» (оперативка) — карточки/канбан поверх ERP-ядра ══════════════
+// Справочники НЕ дублируем: FK на products/contragents/warehouses/users/documents.
+
+// Заявка-карточка. Закуп ⇔ kind='purchase' (цель = Центр-Склад), продажа ⇔ 'sale'.
+export const orders = pgTable('orders', {
+  id: text('id').primaryKey(),                            // ЗП-0001-DDMMYY / ПР-0001-DDMMYY
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  kind: text('kind').notNull().default('sale'),           // sale | purchase
+  screen: text('screen').notNull().default('incoming'),   // incoming|reception|outgoing|accounting|bookkeeping|archive
+  block: text('block').notNull().default(''),             // '' | waiting | processing
+  status: text('status').notNull().default('В ожидании'),
+  source: text('source').notNull().default('cabinet'),    // cabinet|admin_manual|external|webhook|portal
+  fromName: text('from_name').notNull().default(''),      // отображаемый создатель
+  fromId: uuid('from_id').references(() => users.id),
+  contactId: uuid('contact_id').references(() => contragents.id),   // клиент-заказчик
+  toWarehouseId: uuid('to_warehouse_id').references(() => warehouses.id), // Центр-Склад для закупа
+  projectId: uuid('project_id').references(() => projects.id),
+  comment: text('comment').notNull().default(''),
+  phone: text('phone'),
+  deadline: timestamp('deadline'),
+  delivered: timestamp('delivered'),
+  isDraft: boolean('is_draft').notNull().default(false),
+  isChanged: boolean('is_changed').notNull().default(false),
+  changeText: text('change_text').notNull().default(''),
+  changePhone: text('change_phone').notNull().default(''),
+  isCancelled: boolean('is_cancelled').notNull().default(false),
+  cancelReason: text('cancel_reason').notNull().default(''),
+  toacc: boolean('toacc').notNull().default(false),       // готов к учёту
+  postponed: boolean('postponed').notNull().default(false),
+  invoice: boolean('invoice').notNull().default(false),
+  fact: boolean('fact').notNull().default(false),
+  posted1c: boolean('posted_1c').notNull().default(false),
+  cold: boolean('cold').notNull().default(false),
+  trackingLink: text('tracking_link').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+  leg: integer('leg').notNull().default(2),               // 1 = первое плечо (филиал-поставщик), 2 = обычная
+  linkedDocId: uuid('linked_doc_id').references(() => documents.id), // ERP-документ при закрытии (авто)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, t => ({
+  byOrgScreen: index('orders_org_screen_idx').on(t.orgId, t.screen),
+  byContact: index('orders_contact_idx').on(t.contactId),
+}))
+
+export const orderPositions = pgTable('order_positions', {
+  id: text('id').primaryKey(),                            // {cardId}-P{n}
+  cardId: text('card_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').references(() => products.id),   // null у свободной позиции «со слов»
+  name1c: text('name1c').notNull().default(''),           // снимок имени товара
+  oral: text('oral').notNull().default(''),               // имя со слов / с RAL
+  qty: qtyCol('qty').notNull().default('0'),
+  unit: text('unit').notNull().default('шт'),
+  price: money('price').notNull().default('0'),
+  respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
+  supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
+  status: text('status').notNull().default('В работе'),   // В работе|Готово|В пути|Доставлено
+  leg: integer('leg').notNull().default(2),
+  late: boolean('late').notNull().default(false),
+  payment: text('payment').notNull().default(''),
+  deadline: timestamp('deadline'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, t => ({ byCard: index('order_positions_card_idx').on(t.cardId) }))
+
+// Аудит действий по карточке
+export const orderHistory = pgTable('order_history', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  cardId: text('card_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  action: text('action').notNull(),
+  detail: text('detail').notNull().default(''),
+  userName: text('user_name').notNull().default('Система'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byCard: index('order_history_card_idx').on(t.cardId) }))
+
+// Чат по карточке (FK-каскад есть — чистится с картой)
+export const cardMessages = pgTable('card_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  cardId: text('card_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id),
+  userName: text('user_name').notNull().default(''),
+  role: text('role').notNull().default(''),
+  text: text('text').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byCard: index('card_messages_card_idx').on(t.cardId, t.createdAt) }))
+
+// Связь закуп→продажа (цепочка для автозакупа и отчёта)
+export const procurementLinks = pgTable('procurement_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  purchaseCardId: text('purchase_card_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  saleCardId: text('sale_card_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').references(() => products.id),
+  product: text('product').notNull().default(''),
+  qty: qtyCol('qty').notNull().default('0'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({
+  byPurchase: index('procurement_links_purchase_idx').on(t.purchaseCardId),
+  bySale: index('procurement_links_sale_idx').on(t.saleCardId),
+}))
+
+// Автоподстановка поставщик/логист по группе каталога (4 категории на орг)
+export const categoryRules = pgTable('category_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  category: text('category').notNull(),                   // vodostok|materialy|eurobrus|komplekt
+  supplierId: uuid('supplier_id').references(() => contragents.id),
+  supplierName: text('supplier_name').notNull().default(''),
+  respUserId: uuid('resp_user_id').references(() => users.id),
+  logistName: text('logist_name').notNull().default(''),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, t => ({ byOrgCat: uniqueIndex('category_rules_org_cat_uniq').on(t.orgId, t.category) }))
+
+export const projects = pgTable('projects', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  name: text('name').notNull(),
+  clientId: uuid('client_id').references(() => contragents.id),
+  description: text('description').notNull().default(''),
+  status: text('status').notNull().default('active'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('projects_org_idx').on(t.orgId) }))
+
+export const notifications = pgTable('notifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  text: text('text').notNull().default(''),
+  cardId: text('card_id'),
+  read: boolean('read').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byUser: index('notifications_user_idx').on(t.userId) }))
+
+// Суточный отчёт логиста (смена)
+export const dailyReports = pgTable('daily_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  logistId: uuid('logist_id').notNull().references(() => users.id),
+  date: date('date').notNull(),
+  comment: text('comment').notNull().default(''),
+  status: text('status').notNull().default('processing'), // processing | done
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byLogist: index('daily_reports_logist_idx').on(t.logistId) }))
+
+export const dailyReportRows = pgTable('daily_report_rows', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  reportId: uuid('report_id').notNull().references(() => dailyReports.id, { onDelete: 'cascade' }),
+  posId: text('pos_id'),                                  // id позиции для авто-строк (идемпотентность)
+  fromWho: text('from_who').notNull().default(''),
+  name: text('name').notNull().default(''),
+  qtyIn: qtyCol('qty_in').notNull().default('0'),
+  commentIn: text('comment_in').notNull().default(''),
+  toWho: text('to_who').notNull().default(''),
+  qtyOut: qtyCol('qty_out').notNull().default('0'),
+  commentOut: text('comment_out').notNull().default(''),
+  invoiceNum: text('invoice_num').notNull().default(''),
+}, t => ({ byReport: index('daily_report_rows_report_idx').on(t.reportId) }))
