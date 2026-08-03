@@ -1,33 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: 'Golos Text', system-ui, sans-serif;
+  color: #26231f;
+  background: #f1efec;
+  -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d7d2cb; border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #bdb7ae; background-clip: content-box; }
+
+@keyframes ukfade { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes uktoast { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes ukpop { from { transform: scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ukblink { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+.anim-fade { animation: ukfade .22s ease both; }
+.anim-pop  { animation: ukpop .18s ease both; }
+.uk-blink  { animation: ukblink 1s ease-in-out infinite; }
+
+input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
+
+/* ── Мобильный сайдбар (порталы Улкана) ─────────────────────────────── */
+@media (max-width: 768px) {
+  .hamburger { display: block !important; }
+  .sidebar-close { display: block !important; }
+  .sidebar {
+    position: fixed !important;
+    left: 0; top: 0; bottom: 0;
+    z-index: 200;
+    transform: translateX(-100%);
+    width: 260px !important;
   }
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  .sidebar-open { transform: translateX(0) !important; }
+  .mobile-overlay { display: block !important; z-index: 199; }
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
 }

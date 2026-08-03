@@ -3,6 +3,28 @@
 > Читать вместе с `PLAN.md` (ERP-ядро, блок 2). Оригинал-чертёж — `ulkan/docs/BLUEPRINT.md`.
 > Метод: `route → dto → service → repository → db` (Drizzle). Никакого Prisma.
 
+## ПОДХОД К UI (решение пользователя): точная копия интерфейса Улкана
+Не переизобретаем экраны — **копируем вёрстку компонентов Улкана дословно** (инлайн-стили,
+без Tailwind: палитра `lib/colors`, хелперы `lib/display`), а данные направляем на новый
+бэкенд. Весь контракт фронта — в одном модуле `lib/api.ts` (+ прямые fetch в некоторых
+компонентах). Потом «включаем» новые ERP-страницы (финансы/рентабельность/производство…)
+в шелл Улкана. `tsconfig` → `strict:false` (UI Улкана слабо-типизирован).
+Инвентарь для переноса: lib client-safe (colors/display/dates/types/ral/nomCatalog/procurement/
+ids/orderStatus/orderMetrics/positionState/nomTree/reportDay/live/api/dto), ~40 API-роутов
+(auth/orders/client/branch/logist/track/nomenclature/procurement/reports/settings/users/
+projects/spec-projects/stock/finance/dashboard/notifications/chat/history). Каналы realtime:
+orders/settings/reports. Роли: super_admin/bookkeeper/logist/branch/client/supplier_client/
+warehouse_manager. Порталы: /admin, /rsp/[slug], /branch/[slug], /client/[slug], /warehouse/[slug], /track.
+
+### Шаги копии интерфейса
+- ✅ **Фундамент + логин 1:1**: tsconfig strict:false; globals с Golos Text + база/keyframes Улкана
+  (Tailwind сохранён); `AppNav` (ERP-навигация прячется на экранах Улкана /login,/admin,/rsp,…);
+  экран `/login` скопирован дословно (email→наш `/api/auth/login`; телефон — вид, беспарольный
+  вход НЕ подключён = дыра v1); иконки/лого в public; `/admin`→временно на `/board`. Build ✅.
+- ⏭ **AdminApp + порталы**: копировать client-lib + компоненты; поднять `lib/api.ts` на новый
+  бэкенд (compat-слой к нашим orders/positions Ф1 + недостающие эндпоинты); getSession/slug в auth;
+  расширить роли. Затем «включить» ERP-страницы как разделы.
+
 ## Решение по интеграции — Вариант A (общие данные + авто-документы)
 Улкан использует ТЕ ЖЕ таблицы ERP-ядра: `products` (=номенклатура), `contragents`
 (=клиенты/поставщики), `warehouses` (=Центр-Склад), `users` (роли). Оперативные карточки —

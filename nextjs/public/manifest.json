@@ -1,0 +1,17 @@
+{
+  "name": "U2B ERP — UKan",
+  "short_name": "U2B ERP",
+  "description": "UKan — часть экосистемы U2B (ERP-автоматизация бизнеса)",
+  "start_url": ".",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1efec",
+  "theme_color": "#211f1c",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
