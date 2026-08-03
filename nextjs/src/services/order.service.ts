@@ -30,6 +30,16 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
 
 export const listByScreen = (orgId: string, screen: string) => repo.listByScreen(orgId, screen)
 
+// Заявки (все экраны или один) с прикреплёнными позициями — для карточек доски/админки.
+export async function listOrders(orgId: string, screen?: string) {
+  const rows = screen ? await repo.listByScreen(orgId, screen) : await repo.listByOrg(orgId)
+  if (!rows.length) return []
+  const pos = await repo.positionsByCards(rows.map(r => r.id))
+  const byCard: Record<string, any[]> = {}
+  for (const p of pos) (byCard[p.cardId] ||= []).push(p)
+  return rows.map(o => ({ ...o, positions: byCard[o.id] || [] }))
+}
+
 export async function getCard(id: string) {
   const [order] = await repo.getOrder(id)
   if (!order) return null

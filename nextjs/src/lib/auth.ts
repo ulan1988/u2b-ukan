@@ -21,3 +21,12 @@ export async function sessionFromRequest(req: NextRequest): Promise<Session | nu
   const t = req.cookies.get(COOKIE)?.value
   return t ? verifyToken(t) : null
 }
+
+// Для серверных компонентов (страниц). next/headers импортируем динамически,
+// чтобы этот модуль оставался Edge-safe (middleware тянет только verifyToken/COOKIE).
+export async function getSession(): Promise<Session | null> {
+  const { cookies } = await import('next/headers')
+  const store = await cookies()
+  const t = store.get(COOKIE)?.value
+  return t ? verifyToken(t) : null
+}

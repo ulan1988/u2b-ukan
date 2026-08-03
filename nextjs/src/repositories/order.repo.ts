@@ -1,7 +1,7 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
 import { orders, orderPositions, orderHistory } from '../db/schema'
-import { and, eq, desc, sql } from 'drizzle-orm'
+import { and, eq, desc, inArray, sql } from 'drizzle-orm'
 
 export async function countByKind(orgId: string, kind: string) {
   const r = await db.select({ c: sql<number>`count(*)::int` }).from(orders)
@@ -24,6 +24,14 @@ export function insertOrderPosting(
 export const listByScreen = (orgId: string, screen: string) =>
   db.select().from(orders).where(and(eq(orders.orgId, orgId), eq(orders.screen, screen)))
     .orderBy(desc(orders.createdAt))
+
+export const listByOrg = (orgId: string) =>
+  db.select().from(orders).where(eq(orders.orgId, orgId)).orderBy(desc(orders.createdAt))
+
+export const positionsByCards = (cardIds: string[]) =>
+  cardIds.length
+    ? db.select().from(orderPositions).where(inArray(orderPositions.cardId, cardIds)).orderBy(orderPositions.id)
+    : Promise.resolve([] as any[])
 
 export const getOrder = (id: string) =>
   db.select().from(orders).where(eq(orders.id, id)).limit(1)
