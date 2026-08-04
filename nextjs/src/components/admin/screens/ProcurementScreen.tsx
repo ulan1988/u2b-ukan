@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
+import { profit } from '@/lib/api/finance'
 
 // Закуп-отчёт = Рентабельность (наша ERP) + цепочка закуп→продажа (Ф4, позже).
 export default function ProcurementScreen({ orgId }: { orgId: string }) {
@@ -9,7 +10,7 @@ export default function ProcurementScreen({ orgId }: { orgId: string }) {
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
-    if (tab === 'profit' && !data) fetch(`/api/profit?orgId=${orgId}`).then(r => r.json()).then(setData).catch(() => {})
+    if (tab === 'profit' && !data) profit(orgId).then(setData)
   }, [tab, data, orgId])
 
   return (

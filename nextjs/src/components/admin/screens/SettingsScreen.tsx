@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
+import { listUsers, createUser } from '@/lib/api/auth'
 
 const ROLES = [
   { v: 'logist', l: 'Логист' }, { v: 'branch', l: 'Филиал' }, { v: 'client', l: 'Клиент' },
@@ -15,14 +16,13 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'logist' })
   const [msg, setMsg] = useState('')
 
-  const load = () => fetch('/api/users').then(r => r.json()).then(u => setUsers(Array.isArray(u) ? u : [])).catch(() => {})
+  const load = () => listUsers().then(setUsers)
   useEffect(() => { load() }, [])
 
   async function create() {
     setMsg('')
-    const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...f, orgId }) })
-    const d = await res.json().catch(() => ({}))
-    if (!res.ok) { setMsg('⚠ ' + (d.error || 'Ошибка')); return }
+    const r = await createUser({ ...f, orgId })
+    if (!r.ok) { setMsg('⚠ ' + (r.error || 'Ошибка')); return }
     setMsg('✅ Создан'); setF({ name: '', email: '', password: '', role: 'logist' }); load()
   }
 

@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { pickOrg, forOrg } from '@/lib/org'
+import { fetchRefs } from '@/lib/api/refs'
+import { listPurchases, createPurchase, cancelDocument } from '@/lib/api/docs'
 
 type Ref = { id: string; name: string; orgId?: string; priceIn?: string; isCentral?: boolean }
 type Refs = { organizations: Ref[]; suppliers: Ref[]; warehouses: Ref[]; products: Ref[] }
@@ -20,7 +22,7 @@ export default function DocumentsPage() {
   const [saving, setSaving] = useState(false)
 
   async function loadRefs() {
-    const r = await fetch('/api/refs').then(r => r.json())
+    const r: any = await fetchRefs()
     setRefs(r)
     const org = pickOrg<Ref>(r.organizations)
     if (org) { setOrgId(org.id); loadDocs(org.id) }
@@ -31,7 +33,7 @@ export default function DocumentsPage() {
     if (sups[0]) setContragentId(sups[0].id)
   }
   async function loadDocs(id: string) {
-    setDocs(await fetch(`/api/documents?orgId=${id}`).then(r => r.json()))
+    setDocs(await listPurchases(id) as any)
   }
   useEffect(() => { loadRefs() }, [])
 
@@ -53,10 +55,9 @@ export default function DocumentsPage() {
         lines: lines.filter(l => l.productId && Number(l.qty) > 0).map(l => ({ productId: l.productId, qty: Number(l.qty), price: Number(l.price) || 0 })),
       }
       if (body.lines.length === 0) { setMsg('Добавьте хотя бы одну позицию'); setSaving(false); return }
-      const res = await fetch('/api/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      const data = await res.json()
-      if (!res.ok) { setMsg(data.error || 'Ошибка'); setSaving(false); return }
-      setMsg(`✅ Приход ${data.number} создан на ${data.total.toLocaleString('ru-RU')} ₸`)
+      const r = await createPurchase(body)
+      if (!r.ok) { setMsg(r.error || 'Ошибка'); setSaving(false); return }
+      setMsg(`✅ Приход ${r.data.number} создан на ${r.data.total.toLocaleString('ru-RU')} ₸`)
       setLines([emptyLine()])
       loadDocs(orgId)
     } catch (e: any) { setMsg(e.message) }
@@ -65,7 +66,7 @@ export default function DocumentsPage() {
 
   async function cancel(id: string) {
     if (!confirm('Отменить приход? Склад и долг поставщику откатятся.')) return
-    await fetch(`/api/documents/${id}/cancel`, { method: 'POST' })
+    await cancelDocument(id)
     loadDocs(orgId)
   }
   const supName = (id: string | null) => refs?.suppliers.find(s => s.id === id)?.name || '—'

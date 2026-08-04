@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { pickOrg, forOrg } from '@/lib/org'
+import { listByScreen, orderAction, createOrder } from '@/lib/api/orders'
+import { fetchRefs } from '@/lib/api/refs'
 
 const SCREENS = [
   { k: 'incoming', l: 'Входящие' }, { k: 'reception', l: 'Приёмка' }, { k: 'outgoing', l: 'Исходящие' },
@@ -25,13 +27,13 @@ export default function BoardPage() {
 
   async function loadBoard(org: string) {
     const entries = await Promise.all(SCREENS.map(async s => {
-      const list = await fetch(`/api/orders?orgId=${org}&screen=${s.k}`).then(r => r.json()).catch(() => [])
-      return [s.k, Array.isArray(list) ? list : []] as const
+      const list = await listByScreen(org, s.k)
+      return [s.k, list] as const
     }))
     setBoard(Object.fromEntries(entries))
   }
   async function init() {
-    const r = await fetch('/api/refs').then(x => x.json())
+    const r: any = await fetchRefs()
     setRefs(r)
     const org = pickOrg<{ id: string }>(r.organizations)
     if (org) { setOrgId(org.id); await loadBoard(org.id) }
@@ -41,9 +43,8 @@ export default function BoardPage() {
   async function act(id: string, action: string) {
     setMsg('')
     const reason = action === 'cancel' ? (prompt('Причина отмены?') ?? '') : undefined
-    const res = await fetch(`/api/orders/${id}/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, payload: reason !== undefined ? { reason } : {} }) })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) { setMsg('⚠ ' + (data.error || 'Ошибка')); return }
+    const r = await orderAction(id, action, reason !== undefined ? { reason } : {})
+    if (!r.ok) { setMsg('⚠ ' + (r.error || 'Ошибка')); return }
     await loadBoard(orgId)
   }
 
@@ -117,9 +118,9 @@ function NewOrder({ orgId, products, clients, onDone }: { orgId: string; product
       const p = products.find(x => x.id === r.productId)
       return { productId: r.productId, name1c: p?.name || '', oral: p?.name || '', qty: Number(r.qty) || 0, unit: p?.unit || 'шт', price: Number(r.price) || 0 }
     })
-    const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId, kind, contactId: contactId || undefined, fromName: client?.name || '', comment, positions }) })
+    const r = await createOrder({ orgId, kind, contactId: contactId || undefined, fromName: client?.name || '', comment, positions })
     setBusy(false)
-    if (res.ok) onDone()
+    if (r.ok) onDone()
   }
 
   return (

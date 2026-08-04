@@ -1,5 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { fetchRefs } from '@/lib/api/refs'
+import { listUsers, createUser } from '@/lib/api/auth'
 
 const inp = 'border border-neutral-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-500'
 const ROLES = [
@@ -15,11 +17,8 @@ export default function UsersPage() {
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'manager', orgId: '' })
 
   async function load() {
-    const [refs, list] = await Promise.all([
-      fetch('/api/refs').then(x => x.json()),
-      fetch('/api/users').then(x => x.json()),
-    ])
-    const os = refs.organizations || []
+    const [refs, list] = await Promise.all([fetchRefs(), listUsers()])
+    const os = (refs as any).organizations || []
     setOrgs(os)
     setUsers(Array.isArray(list) ? list : [])
     setF(v => ({ ...v, orgId: v.orgId || os[0]?.id || '' }))
@@ -30,9 +29,8 @@ export default function UsersPage() {
 
   async function add() {
     setMsg('')
-    const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) { setMsg(data.error || 'Ошибка'); return }
+    const r = await createUser(f)
+    if (!r.ok) { setMsg(r.error || 'Ошибка'); return }
     setMsg('✅ Пользователь создан')
     setF({ name: '', email: '', password: '', role: 'manager', orgId: orgs[0]?.id || '' })
     await load()

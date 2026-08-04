@@ -2,6 +2,8 @@
 import { useEffect, useState, Fragment } from 'react'
 import { PRODUCT_GROUPS, PRODUCT_CATEGORIES, CONTRAGENT_KINDS } from '@/lib/catalog'
 import { pickOrg, forOrg } from '@/lib/org'
+import { fetchRefs, listProducts, listContragents } from '@/lib/api/refs'
+import { send as httpSend } from '@/lib/api/http'
 
 type Tab = 'products' | 'contragents' | 'warehouses' | 'cash'
 const TABS: { k: Tab; l: string }[] = [
@@ -24,22 +26,17 @@ export default function CatalogPage() {
   const [msg, setMsg] = useState('')
 
   async function load() {
-    const [r, prods, cons] = await Promise.all([
-      fetch('/api/refs').then(x => x.json()),
-      fetch('/api/products?all=1').then(x => x.json()),
-      fetch('/api/contragents?all=1').then(x => x.json()),
-    ])
+    const [r, prods, cons] = await Promise.all([fetchRefs(), listProducts(true), listContragents(true)])
     setRefs(r); setProducts(prods); setContragents(cons)
-    const org = pickOrg<{ id: string }>(r.organizations)
+    const org = pickOrg<{ id: string }>((r as any).organizations)
     if (org) setOrgId(org.id)
   }
   useEffect(() => { load() }, [])
 
   async function send(url: string, method: 'POST' | 'PATCH', body: any) {
     setMsg('')
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) { setMsg(data.error || 'Ошибка'); return false }
+    const r = await httpSend(url, method, body)
+    if (!r.ok) { setMsg(r.error || 'Ошибка'); return false }
     setMsg('✅ Сохранено'); await load(); return true
   }
   const post = (url: string, body: any) => send(url, 'POST', body)

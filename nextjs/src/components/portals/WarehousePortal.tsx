@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
-import { logout } from '@/lib/adminApi'
+import { fetchRefs, stock as fetchStock } from '@/lib/api/refs'
+import { logout } from '@/lib/api/auth'
 
 export default function WarehousePortal({ user }: { user: { name: string; orgId: string } }) {
   const [warehouses, setWarehouses] = useState<any[]>([])
@@ -12,7 +13,7 @@ export default function WarehousePortal({ user }: { user: { name: string; orgId:
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/refs').then(r => r.json()).then(r => {
+    fetchRefs().then((r: any) => {
       const whs = (r.warehouses || []).filter((w: any) => w.orgId === user.orgId)
       setWarehouses(whs)
       const map: Record<string, any> = {}; for (const p of (r.products || [])) map[p.id] = p
@@ -24,8 +25,7 @@ export default function WarehousePortal({ user }: { user: { name: string; orgId:
   useEffect(() => {
     if (!whId) { setLoading(false); return }
     setLoading(true)
-    fetch(`/api/stock?orgId=${user.orgId}&warehouseId=${whId}`).then(r => r.json())
-      .then(s => setStock(Array.isArray(s) ? s : [])).catch(() => setStock([])).finally(() => setLoading(false))
+    fetchStock(user.orgId, whId).then(setStock).finally(() => setLoading(false))
   }, [whId, user.orgId])
 
   const rows = stock.map(s => ({ ...s, product: products[s.productId] })).filter(r => Number(r.qty) !== 0)

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
+import { listProducts } from '@/lib/api/refs'
 
 // Номенклатура Улкана усилена ERP-справочником товаров. Полное управление
 // (правка/архив) — на странице /catalog (общий справочник блока 2).
@@ -11,7 +12,7 @@ export default function NomenclatureScreen() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/products').then(r => r.json()).then(p => setProducts(Array.isArray(p) ? p : [])).catch(() => {}).finally(() => setLoading(false))
+    listProducts().then(setProducts).finally(() => setLoading(false))
   }, [])
 
   const list = q.trim() ? products.filter(p => `${p.name} ${p.group}`.toLowerCase().includes(q.toLowerCase())) : products

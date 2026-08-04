@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { pickOrg, forOrg } from '@/lib/org'
+import { fetchRefs } from '@/lib/api/refs'
+import { listPayments, createPayment } from '@/lib/api/docs'
 
 type Ref = { id: string; name: string; kind?: string; orgId?: string }
 type Pay = { id: string; contragentId: string; direction: string; amount: string; date: string; comment: string | null }
@@ -18,10 +20,10 @@ export default function PaymentsPage() {
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const r = await fetch('/api/refs').then(r => r.json())
+    const r: any = await fetchRefs()
     setRefs(r)
     const org = pickOrg<Ref>(r.organizations)
-    if (org) { setOrgId(org.id); setList(await fetch(`/api/payments?orgId=${org.id}`).then(x => x.json())) }
+    if (org) { setOrgId(org.id); setList(await listPayments(org.id) as any) }
     const cs = forOrg<Ref>(r.contragents, org?.id || '')
     if (cs[0]) setContragentId(cs[0].id)
     const ca = forOrg<Ref>(r.cashAccounts, org?.id || '')
@@ -32,15 +34,11 @@ export default function PaymentsPage() {
   async function submit() {
     setMsg(''); setSaving(true)
     try {
-      const res = await fetch('/api/payments', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId, contragentId, direction, amount: Number(amount) || 0, cashAccountId, comment }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setMsg(data.error || 'Ошибка'); setSaving(false); return }
+      const r = await createPayment({ orgId, contragentId, direction, amount: Number(amount) || 0, cashAccountId, comment })
+      if (!r.ok) { setMsg(r.error || 'Ошибка'); setSaving(false); return }
       setMsg('✅ Оплата проведена')
       setAmount(''); setComment('')
-      setList(await fetch(`/api/payments?orgId=${orgId}`).then(x => x.json()))
+      setList(await listPayments(orgId) as any)
     } catch (e: any) { setMsg(e.message) }
     finally { setSaving(false) }
   }

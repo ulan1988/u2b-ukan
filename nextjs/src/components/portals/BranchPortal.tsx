@@ -2,7 +2,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { statusStyle, cardSum, isPurchase, fmtMoney, fmtDate } from '@/lib/adminFmt'
-import { logout } from '@/lib/adminApi'
+import { listOrders, createClientOrder } from '@/lib/api/orders'
+import { listProducts } from '@/lib/api/refs'
+import { logout } from '@/lib/api/auth'
 
 const inp: React.CSSProperties = { padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 14, outline: 'none', width: '100%' }
 
@@ -14,10 +16,8 @@ export default function BranchPortal({ user }: { user: { name: string; orgId: st
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = useCallback(() => {
-    fetch(`/api/orders?orgId=${user.orgId}`).then(r => r.json()).then(o => setOrders(Array.isArray(o) ? o : [])).catch(() => {})
-  }, [user.orgId])
-  useEffect(() => { load(); fetch('/api/products').then(r => r.json()).then(p => setProducts(Array.isArray(p) ? p : [])).catch(() => {}) }, [load])
+  const load = useCallback(() => { listOrders(user.orgId).then(setOrders) }, [user.orgId])
+  useEffect(() => { load(); listProducts().then(setProducts) }, [load])
 
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   async function submit() {
@@ -26,9 +26,9 @@ export default function BranchPortal({ user }: { user: { name: string; orgId: st
       const p = products.find(x => x.id === r.productId)
       return { productId: r.productId, name1c: p?.name || '', oral: p?.name || '', qty: Number(r.qty) || 0, unit: p?.unit || 'шт', price: Number(p?.priceRetail) || 0 }
     })
-    const res = await fetch('/api/client/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comment, positions }) })
+    const r = await createClientOrder({ comment, positions })
     setBusy(false)
-    if (res.ok) { setRows([{ productId: '', qty: '1' }]); setComment(''); setTab('incoming'); load() }
+    if (r.ok) { setRows([{ productId: '', qty: '1' }]); setComment(''); setTab('incoming'); load() }
   }
 
   const list = tab === 'incoming' ? orders.filter(o => o.screen === 'incoming' && !o.isCancelled)

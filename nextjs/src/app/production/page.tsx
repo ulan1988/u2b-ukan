@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { pickOrg, forOrg } from '@/lib/org'
+import { fetchRefs } from '@/lib/api/refs'
+import { listProduction, createProduction, cancelDocument } from '@/lib/api/docs'
 
 type Ref = { id: string; name: string; orgId?: string; priceIn?: string; isCentral?: boolean }
 type In = { productId: string; qty: string; price: string }
@@ -25,9 +27,9 @@ export default function ProductionPage() {
   const [msg, setMsg] = useState(''); const [saving, setSaving] = useState(false)
 
   async function load() {
-    const r = await fetch('/api/refs').then(x => x.json()); setRefs(r)
+    const r: any = await fetchRefs(); setRefs(r)
     const org = pickOrg<Ref>(r.organizations)
-    if (org) { setOrgId(org.id); setDocs(await fetch(`/api/production?orgId=${org.id}`).then(x => x.json())) }
+    if (org) { setOrgId(org.id); setDocs(await listProduction(org.id) as any) }
     const whs = forOrg<Ref>(r.warehouses, org?.id || '')
     const wh = whs.find(w => w.isCentral) || whs[0]; if (wh) setWarehouseId(wh.id)
   }
@@ -45,17 +47,16 @@ export default function ProductionPage() {
         outputs: outputs.filter(o => o.productId && num(o.qty) > 0).map(o => ({ productId: o.productId, qty: num(o.qty), lengthCm: num(o.lengthCm) || undefined, widthCm: num(o.widthCm) || undefined, rate: num(o.rate) || undefined, price: num(o.price) || undefined })),
       }
       if (body.outputs.length === 0) { setMsg('Добавьте хотя бы один готовый товар'); setSaving(false); return }
-      const res = await fetch('/api/production', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      const data = await res.json()
-      if (!res.ok) { setMsg(data.error || 'Ошибка'); setSaving(false); return }
-      setMsg(`✅ Производство ${data.number} на ${data.total.toLocaleString('ru-RU')} ₸`)
-      setInputs([emptyIn()]); setOutputs([emptyOut()]); setDocs(await fetch(`/api/production?orgId=${orgId}`).then(x => x.json()))
+      const r = await createProduction(body)
+      if (!r.ok) { setMsg(r.error || 'Ошибка'); setSaving(false); return }
+      setMsg(`✅ Производство ${r.data.number} на ${r.data.total.toLocaleString('ru-RU')} ₸`)
+      setInputs([emptyIn()]); setOutputs([emptyOut()]); setDocs(await listProduction(orgId) as any)
     } catch (e: any) { setMsg(e.message) } finally { setSaving(false) }
   }
   async function cancel(id: string) {
     if (!confirm('Удалить производство? Склад откатится.')) return
-    await fetch(`/api/documents/${id}/cancel`, { method: 'POST' })
-    setDocs(await fetch(`/api/production?orgId=${orgId}`).then(x => x.json()))
+    await cancelDocument(id)
+    setDocs(await listProduction(orgId) as any)
   }
 
   if (!refs) return <div className="p-8 text-neutral-500">Загрузка…</div>

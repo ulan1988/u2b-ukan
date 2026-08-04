@@ -1,16 +1,17 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { getOrgId, setOrgId } from '@/lib/org'
+import { fetchRefs } from '@/lib/api/refs'
 
 export default function OrgSwitcher() {
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([])
   const [cur, setCur] = useState('')
 
   useEffect(() => {
-    fetch('/api/refs').then(r => r.json()).then(r => {
+    fetchRefs().then((r: any) => {
       setOrgs(r.organizations || [])
       setCur(getOrgId() || r.organizations?.[0]?.id || '')
-    }).catch(() => {})
+    })
   }, [])
 
   if (orgs.length <= 1) return null

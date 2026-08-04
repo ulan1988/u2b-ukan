@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { me as fetchMe, logout as apiLogout } from '@/lib/api/auth'
 
 interface Me { id: string; name: string; role: string; orgId: string }
 
@@ -10,11 +11,11 @@ export default function UserMenu() {
   const [me, setMe] = useState<Me | null>(null)
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : { user: null }).then(r => setMe(r.user)).catch(() => {})
+    fetchMe().then((r: any) => setMe(r?.user || null))
   }, [])
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    await apiLogout()
     location.href = '/login'
   }
 

@@ -1,13 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
+import { listHistory } from '@/lib/api/orders'
 
 export default function HistoryScreen({ orgId, onOpen }: { orgId: string; onOpen?: (o: any) => void }) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/history?orgId=${orgId}`).then(r => r.json()).then(h => setRows(Array.isArray(h) ? h : [])).catch(() => {}).finally(() => setLoading(false))
+    listHistory(orgId).then(setRows).finally(() => setLoading(false))
   }, [orgId])
 
   return (

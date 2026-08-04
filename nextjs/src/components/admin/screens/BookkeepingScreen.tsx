@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
+import { finance } from '@/lib/api/finance'
 
 // Бухгалтерия = проведённые заявки + встроенная ERP-Финансы (по решению пользователя).
 export default function BookkeepingScreen({ orders, orgId, onAction, onOpen }: {
@@ -12,7 +13,7 @@ export default function BookkeepingScreen({ orders, orgId, onAction, onOpen }: {
   const [fin, setFin] = useState<any>(null)
 
   useEffect(() => {
-    if (tab === 'finance' && !fin) fetch(`/api/finance?orgId=${orgId}`).then(r => r.json()).then(setFin).catch(() => {})
+    if (tab === 'finance' && !fin) finance(orgId).then(setFin)
   }, [tab, fin, orgId])
 
   const cards = orders.filter(o => o.screen === 'bookkeeping')

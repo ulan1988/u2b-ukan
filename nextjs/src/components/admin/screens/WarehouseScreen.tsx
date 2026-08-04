@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
+import { fetchRefs, stock as fetchStock } from '@/lib/api/refs'
 
 // Склад Улкана усилен ERP-остатками (stock_movements → остаток по складу).
 export default function WarehouseScreen({ orgId }: { orgId: string }) {
@@ -12,7 +13,7 @@ export default function WarehouseScreen({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/refs').then(r => r.json()).then(r => {
+    fetchRefs().then((r: any) => {
       const whs = (r.warehouses || []).filter((w: any) => w.orgId === orgId)
       setWarehouses(whs)
       const map: Record<string, any> = {}; for (const p of (r.products || [])) map[p.id] = p
@@ -24,8 +25,7 @@ export default function WarehouseScreen({ orgId }: { orgId: string }) {
   useEffect(() => {
     if (!whId) { setLoading(false); return }
     setLoading(true)
-    fetch(`/api/stock?orgId=${orgId}&warehouseId=${whId}`).then(r => r.json())
-      .then(s => setStock(Array.isArray(s) ? s : [])).catch(() => setStock([])).finally(() => setLoading(false))
+    fetchStock(orgId, whId).then(setStock).finally(() => setLoading(false))
   }, [whId, orgId])
 
   const rows = stock.map(s => ({ ...s, product: products[s.productId] })).filter(r => Number(r.qty) !== 0)

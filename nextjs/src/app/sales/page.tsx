@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { pickOrg, forOrg } from '@/lib/org'
+import { fetchRefs, stock as fetchStock } from '@/lib/api/refs'
+import { listSales, createSale, cancelDocument } from '@/lib/api/docs'
 
 type Ref = { id: string; name: string; orgId?: string; priceRetail?: string; isCentral?: boolean }
 type Refs = { organizations: Ref[]; clients: Ref[]; warehouses: Ref[]; products: Ref[] }
@@ -21,7 +23,7 @@ export default function SalesPage() {
   const [saving, setSaving] = useState(false)
 
   async function loadRefs() {
-    const r = await fetch('/api/refs').then(r => r.json())
+    const r: any = await fetchRefs()
     setRefs(r)
     const org = pickOrg<Ref>(r.organizations)
     if (org) { setOrgId(org.id); loadDocs(org.id) }
@@ -31,10 +33,10 @@ export default function SalesPage() {
     const cls = forOrg<Ref>(r.clients, org?.id || '')
     if (cls[0]) setContragentId(cls[0].id)
   }
-  async function loadDocs(id: string) { setDocs(await fetch(`/api/sales?orgId=${id}`).then(r => r.json())) }
+  async function loadDocs(id: string) { setDocs(await listSales(id) as any) }
   async function loadStock(oid: string, wid: string) {
     if (!oid || !wid) return
-    const rows = await fetch(`/api/stock?orgId=${oid}&warehouseId=${wid}`).then(r => r.json())
+    const rows = await fetchStock(oid, wid)
     const m: Record<string, number> = {}
     for (const x of rows) m[x.productId] = Number(x.qty)
     setStock(m)
@@ -58,10 +60,9 @@ export default function SalesPage() {
         lines: lines.filter(l => l.productId && Number(l.qty) > 0).map(l => ({ productId: l.productId, qty: Number(l.qty), price: Number(l.price) || 0 })),
       }
       if (body.lines.length === 0) { setMsg('Добавьте хотя бы одну позицию'); setSaving(false); return }
-      const res = await fetch('/api/sales', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      const data = await res.json()
-      if (!res.ok) { setMsg(data.error || 'Ошибка'); setSaving(false); return }
-      setMsg(`✅ Продажа ${data.number} на ${data.total.toLocaleString('ru-RU')} ₸`)
+      const r = await createSale(body)
+      if (!r.ok) { setMsg(r.error || 'Ошибка'); setSaving(false); return }
+      setMsg(`✅ Продажа ${r.data.number} на ${r.data.total.toLocaleString('ru-RU')} ₸`)
       setLines([emptyLine()]); loadDocs(orgId); loadStock(orgId, warehouseId)
     } catch (e: any) { setMsg(e.message) }
     finally { setSaving(false) }
@@ -69,7 +70,7 @@ export default function SalesPage() {
 
   async function cancel(id: string) {
     if (!confirm('Отменить продажу? Товар вернётся на склад, долг заказчика откатится.')) return
-    await fetch(`/api/documents/${id}/cancel`, { method: 'POST' })
+    await cancelDocument(id)
     loadDocs(orgId); loadStock(orgId, warehouseId)
   }
   const clientName = (id: string | null) => refs?.clients.find(s => s.id === id)?.name || '—'

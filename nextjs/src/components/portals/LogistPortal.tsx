@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { isPurchase, fmtMoney } from '@/lib/adminFmt'
-import { setPosStatus, logout } from '@/lib/adminApi'
+import { logistOrders, setPosStatus } from '@/lib/api/orders'
+import { logout } from '@/lib/api/auth'
 
 const STEPS = ['В работе', 'В пути', 'Доставлено']
 const STEP_STYLE: Record<string, { bg: string; color: string }> = {
@@ -15,7 +16,7 @@ export default function LogistPortal({ user }: { user: { name: string } }) {
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
-    fetch('/api/logist/orders').then(r => r.json()).then(o => setOrders(Array.isArray(o) ? o : [])).catch(() => {}).finally(() => setLoading(false))
+    logistOrders().then(setOrders).finally(() => setLoading(false))
   }, [])
   useEffect(() => { load() }, [load])
 

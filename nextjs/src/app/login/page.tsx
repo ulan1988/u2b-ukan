@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { login as apiLogin } from '@/lib/api/auth'
 
 function LoginForm() {
   const [mode, setMode] = useState<'email' | 'phone'>('email')
@@ -26,14 +27,10 @@ function LoginForm() {
     e.preventDefault()
     setError(''); setLoading(true)
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Ошибка входа'); return }
+      const r = await apiLogin({ email, password })
+      if (!r.ok) { setError(r.error || 'Ошибка входа'); return }
       try { localStorage.setItem('ukan_last_email', email); localStorage.setItem('ukan_last_mode', 'email') } catch {}
-      redirect(data.user)
+      redirect(r.data.user)
     } catch { setError('Ошибка сети') }
     finally { setLoading(false) }
   }

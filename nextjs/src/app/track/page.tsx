@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { COLORS } from '@/lib/colors'
 import { statusStyle } from '@/lib/adminFmt'
+import { track as apiTrack } from '@/lib/api/orders'
 
 const STAGES = [
   { k: 'incoming', l: 'Принята' }, { k: 'reception', l: 'Приёмка' }, { k: 'outgoing', l: 'Доставка' },
@@ -24,10 +25,9 @@ function Track() {
   async function lookup(q: string) {
     if (!q.trim()) return
     setLoading(true); setErr(''); setData(null)
-    const res = await fetch(`/api/track?id=${encodeURIComponent(q.trim())}`)
-    const d = await res.json().catch(() => ({}))
+    const d = await apiTrack(q.trim())
     setLoading(false)
-    if (!res.ok) { setErr(d.error || 'Не найдено'); return }
+    if (!d) { setErr('Заявка не найдена'); return }
     setData(d)
   }
   useEffect(() => { if (sp.get('id')) lookup(sp.get('id')!) }, [])
