@@ -9,6 +9,7 @@ import ListScreen from '@/components/admin/screens/ListScreen'
 import DashboardScreen from '@/components/admin/screens/DashboardScreen'
 import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
+import InvoicesScreen from '@/components/admin/screens/InvoicesScreen'
 import WarehouseScreen from '@/components/admin/screens/WarehouseScreen'
 import NomenclatureScreen from '@/components/admin/screens/NomenclatureScreen'
 import HistoryScreen from '@/components/admin/screens/HistoryScreen'
@@ -29,6 +30,8 @@ const NAV: NavItem[] = [
   { key: 'accounting', label: 'К учёту', icon: '📋' },
   { key: 'warehouse', label: 'Склад', icon: '🏭' },
   { key: 'bookkeeping', label: 'Бухгалтерия', icon: '📒' },
+  { key: 'invoice_in', label: 'Приходные накладные', icon: '🧾' },
+  { key: 'invoice_out', label: 'Расходные накладные', icon: '📄' },
   { key: 'archive', label: 'Архив', icon: '🗂' },
   { key: 'nomenclature', label: 'Номенклатура', icon: '📦' },
   { key: 'settings', label: 'Настройки', icon: '⚙️' },
@@ -111,6 +114,10 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
                         actions={[{ action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' }, { action: 'returnToIncoming', label: 'Вернуть' }]} />
                     : screen === 'bookkeeping'
                       ? <BookkeepingScreen orders={visible} orgId={user.orgId} onAction={act} onOpen={openCard} />
+                      : screen === 'invoice_in'
+                        ? <InvoicesScreen kind="in" orders={orders} orgId={user.orgId} onReload={load} onOpen={openCard} />
+                      : screen === 'invoice_out'
+                        ? <InvoicesScreen kind="out" orders={orders} orgId={user.orgId} onReload={load} onOpen={openCard} />
                       : screen === 'archive'
                         ? <ListScreen title="Архив" screen="archive" orders={visible} onAction={act} onOpen={openCard} empty="Архив пуст"
                             actions={[{ action: 'unarchive', label: 'Из архива' }]} />

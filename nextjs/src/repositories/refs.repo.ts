@@ -21,6 +21,12 @@ export const listClients = () =>
 export const listWarehouses = () =>
   db.select().from(warehouses).where(eq(warehouses.archived, false))
 
+// Центральный склад организации (Центр-Склад) — куда приходует закуп, откуда списывает продажа.
+export const centralWarehouse = async (orgId: string) => {
+  const rows = await db.select().from(warehouses).where(and(eq(warehouses.orgId, orgId), eq(warehouses.archived, false)))
+  return rows.find(w => w.isCentral) || rows[0] || null
+}
+
 export const listProducts = () =>
   db.select().from(products).where(eq(products.archived, false))
 

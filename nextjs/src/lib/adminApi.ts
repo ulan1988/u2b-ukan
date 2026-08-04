@@ -37,4 +37,10 @@ export async function setPosStatus(cardId: string, status: string, posId?: strin
   return { ok: res.ok }
 }
 
+export async function postInvoice(cardId: string) {
+  const res = await fetch(`/api/orders/${cardId}/invoice`, { method: 'POST' })
+  const d = await res.json().catch(() => ({}))
+  return { ok: res.ok, error: d.error as string | undefined, number: d.number as string | undefined }
+}
+
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' })
