@@ -28,6 +28,9 @@ export const listByScreen = (orgId: string, screen: string) =>
 export const listByOrg = (orgId: string) =>
   db.select().from(orders).where(eq(orders.orgId, orgId)).orderBy(desc(orders.createdAt))
 
+export const ordersForClient = (orgId: string, userId: string) =>
+  db.select().from(orders).where(and(eq(orders.orgId, orgId), eq(orders.fromId, userId))).orderBy(desc(orders.createdAt))
+
 export const positionsByCards = (cardIds: string[]) =>
   cardIds.length
     ? db.select().from(orderPositions).where(inArray(orderPositions.cardId, cardIds)).orderBy(orderPositions.id)

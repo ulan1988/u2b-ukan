@@ -15,6 +15,7 @@ export const orderPositionInput = z.object({
 export const createOrderSchema = z.object({
   orgId: z.string().uuid(),
   kind: z.enum(['sale', 'purchase']).default('sale'),
+  fromId: z.string().uuid().optional(),
   contactId: z.string().uuid().optional(),
   toWarehouseId: z.string().uuid().optional(),
   fromName: z.string().optional().default(''),

@@ -1,0 +1,22 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createOrderSchema } from '@/dto/order.dto'
+import { createOrder, listForClient } from '@/services/order.service'
+import { sessionFromRequest } from '@/lib/auth'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET(req: NextRequest) {
+  const s = await sessionFromRequest(req)
+  if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+  return NextResponse.json(await listForClient(s.orgId, s.id))
+}
+
+export async function POST(req: NextRequest) {
+  const s = await sessionFromRequest(req)
+  if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+  const body = await req.json().catch(() => ({}))
+  // Кабинет: заявка всегда от имени клиента, продажа, во Входящие.
+  const parsed = createOrderSchema.safeParse({ ...body, orgId: s.orgId, kind: 'sale', source: 'cabinet', fromId: s.id, fromName: s.name })
+  if (!parsed.success) return NextResponse.json({ error: 'Проверьте позиции' }, { status: 400 })
+  return NextResponse.json(await createOrder(parsed.data, s), { status: 201 })
+}

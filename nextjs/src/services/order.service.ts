@@ -12,7 +12,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const order = {
     id, orgId: i.orgId, kind: i.kind,
     screen, block: i.block || '', status: screen === 'reception' ? 'В обработке' : 'В ожидании', source: i.source,
-    fromName: i.fromName, contactId: i.contactId ?? null,
+    fromName: i.fromName, fromId: i.fromId ?? null, contactId: i.contactId ?? null,
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
@@ -47,14 +47,23 @@ export async function listForLogist(orgId: string, userId: string) {
   return Array.from(byCard.values())
 }
 
-// Заявки (все экраны или один) с прикреплёнными позициями — для карточек доски/админки.
-export async function listOrders(orgId: string, screen?: string) {
-  const rows = screen ? await repo.listByScreen(orgId, screen) : await repo.listByOrg(orgId)
+// Прикрепить позиции к списку карточек.
+async function withPositions(rows: any[]) {
   if (!rows.length) return []
   const pos = await repo.positionsByCards(rows.map(r => r.id))
   const byCard: Record<string, any[]> = {}
   for (const p of pos) (byCard[p.cardId] ||= []).push(p)
   return rows.map(o => ({ ...o, positions: byCard[o.id] || [] }))
+}
+
+// Заявки (все экраны или один) с позициями — для доски/админки.
+export async function listOrders(orgId: string, screen?: string) {
+  return withPositions(screen ? await repo.listByScreen(orgId, screen) : await repo.listByOrg(orgId))
+}
+
+// Заявки клиента (кабинет): созданные им (fromId).
+export async function listForClient(orgId: string, userId: string) {
+  return withPositions(await repo.ordersForClient(orgId, userId))
 }
 
 // Назначить логиста (resp) всем позициям карточки — Стол приёмки.
