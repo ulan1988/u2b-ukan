@@ -8,6 +8,7 @@ import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ListScreen from '@/components/admin/screens/ListScreen'
 import DashboardScreen from '@/components/admin/screens/DashboardScreen'
 import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
+import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
@@ -92,6 +93,8 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
             ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : screen === 'dashboard'
               ? <DashboardScreen orders={orders} />
+              : screen === 'procurement'
+                ? <ProcurementScreen orgId={user.orgId} />
               : screen === 'incoming'
                 ? <IncomingScreen orders={visible} onAction={act} onOpen={openCard} />
               : screen === 'reception'
