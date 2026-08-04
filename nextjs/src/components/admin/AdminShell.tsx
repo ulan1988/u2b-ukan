@@ -11,6 +11,9 @@ import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
 import WarehouseScreen from '@/components/admin/screens/WarehouseScreen'
 import NomenclatureScreen from '@/components/admin/screens/NomenclatureScreen'
+import HistoryScreen from '@/components/admin/screens/HistoryScreen'
+import FilterScreen from '@/components/admin/screens/FilterScreen'
+import SettingsScreen from '@/components/admin/screens/SettingsScreen'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
@@ -115,7 +118,13 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
                           ? <WarehouseScreen orgId={user.orgId} />
                           : screen === 'nomenclature'
                             ? <NomenclatureScreen />
-                            : <Placeholder title={title} />}
+                            : screen === 'history'
+                              ? <HistoryScreen orgId={user.orgId} onOpen={openCard} />
+                              : screen === 'filter'
+                                ? <FilterScreen orders={orders} onAction={act} onOpen={openCard} />
+                                : screen === 'settings'
+                                  ? <SettingsScreen orgId={user.orgId} />
+                                  : <Placeholder title={title} />}
         </div>
       </div>
 

@@ -42,6 +42,14 @@ export const positionsByCard = (cardId: string) =>
 export const historyByCard = (cardId: string) =>
   db.select().from(orderHistory).where(eq(orderHistory.cardId, cardId)).orderBy(desc(orderHistory.createdAt))
 
+// Журнал действий по всей организации (join c orders для скоупа по org).
+export const historyByOrg = (orgId: string, limit = 200) =>
+  db.select({
+    id: orderHistory.id, cardId: orderHistory.cardId, action: orderHistory.action,
+    detail: orderHistory.detail, userName: orderHistory.userName, createdAt: orderHistory.createdAt,
+  }).from(orderHistory).innerJoin(orders, eq(orderHistory.cardId, orders.id))
+    .where(eq(orders.orgId, orgId)).orderBy(desc(orderHistory.createdAt)).limit(limit)
+
 export const updateOrder = (id: string, patch: Partial<typeof orders.$inferInsert>) =>
   db.update(orders).set({ ...patch, updatedAt: sql`now()` }).where(eq(orders.id, id)).returning()
 

@@ -34,6 +34,8 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
 
 export const listByScreen = (orgId: string, screen: string) => repo.listByScreen(orgId, screen)
 
+export const listHistory = (orgId: string) => repo.historyByOrg(orgId)
+
 // Заявки (все экраны или один) с прикреплёнными позициями — для карточек доски/админки.
 export async function listOrders(orgId: string, screen?: string) {
   const rows = screen ? await repo.listByScreen(orgId, screen) : await repo.listByOrg(orgId)
