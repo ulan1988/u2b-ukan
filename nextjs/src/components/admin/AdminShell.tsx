@@ -63,8 +63,9 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const openCard = (o: any) => setSelectedId(o.id)
 
+  // Тихое обновление: «Загрузка…» показываем только при первом входе, иначе
+  // данные подменяются без мигания (иначе после каждого действия экран «зависает»).
   const load = useCallback(async () => {
-    setLoading(true)
     setOrders(await fetchOrders(user.orgId))
     setLoading(false)
   }, [user.orgId])
