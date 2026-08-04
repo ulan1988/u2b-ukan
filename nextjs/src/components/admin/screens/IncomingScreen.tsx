@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import OrderCard, { type CardAction } from '@/components/admin/OrderCard'
+import KanbanColumns from '@/components/admin/KanbanColumns'
 import { isPurchase } from '@/lib/adminFmt'
 import { COLORS } from '@/lib/colors'
 
@@ -45,9 +46,12 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
           )
         })}
       </div>
-      {list.length === 0
-        ? <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted, fontSize: 14 }}>Нет карточек</div>
-        : <div style={{ maxWidth: 640 }}>{list.map(o => <OrderCard key={o.id} order={o} actions={actionsFor(tab)} onAction={onAction} onOpen={onOpen} />)}</div>}
+      {(tab === 'new' || tab === 'toacc')
+        // Авто-канбан по заказчику (как в Улкане)
+        ? <KanbanColumns cards={list} groupBy={o => o.fromName} renderCard={o => <OrderCard key={o.id} order={o} actions={actionsFor(tab)} onAction={onAction} onOpen={onOpen} />} />
+        : list.length === 0
+          ? <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted, fontSize: 14 }}>Нет карточек</div>
+          : <div style={{ maxWidth: 640 }}>{list.map(o => <OrderCard key={o.id} order={o} actions={actionsFor(tab)} onAction={onAction} onOpen={onOpen} />)}</div>}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
+import KanbanColumns from '@/components/admin/KanbanColumns'
 import { COLORS } from '@/lib/colors'
 
 const SCREENS = [
@@ -24,16 +25,15 @@ export default function FilterScreen({ orders, onAction, onOpen }: {
   })
 
   return (
-    <div style={{ maxWidth: 680 }}>
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 16 }}>Фильтр</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+    <div>
+      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 16 }}>Фильтр · канбан</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', maxWidth: 680 }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Номер / клиент / коммент" style={{ ...sel, flex: 1, minWidth: 200 }} />
         <select value={kind} onChange={e => setKind(e.target.value)} style={sel}><option value="">Все типы</option><option value="sale">Продажа</option><option value="purchase">Закуп</option></select>
         <select value={screen} onChange={e => setScreen(e.target.value)} style={sel}>{SCREENS.map(s => <option key={s.k} value={s.k}>{s.l}</option>)}</select>
       </div>
-      <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>Найдено: {list.length}</div>
-      {list.length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14, padding: 20 }}>Ничего не найдено</div>
-        : list.map(o => <OrderCard key={o.id} order={o} actions={[]} onAction={onAction} onOpen={onOpen} />)}
+      <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>Найдено: {list.length} · колонки по заказчику</div>
+      <KanbanColumns cards={list} groupBy={o => o.fromName} renderCard={o => <OrderCard key={o.id} order={o} actions={[]} onAction={onAction} onOpen={onOpen} />} />
     </div>
   )
 }
