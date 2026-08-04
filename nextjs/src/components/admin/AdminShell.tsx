@@ -6,6 +6,7 @@ import IncomingScreen from '@/components/admin/screens/IncomingScreen'
 import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ListScreen from '@/components/admin/screens/ListScreen'
+import DashboardScreen from '@/components/admin/screens/DashboardScreen'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
@@ -88,8 +89,10 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading
             ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
-            : screen === 'incoming'
-              ? <IncomingScreen orders={visible} onAction={act} onOpen={openCard} />
+            : screen === 'dashboard'
+              ? <DashboardScreen orders={orders} />
+              : screen === 'incoming'
+                ? <IncomingScreen orders={visible} onAction={act} onOpen={openCard} />
               : screen === 'reception'
                 ? <ReceptionScreen orders={visible} orgId={user.orgId} onAction={act} onReload={load} onOpen={openCard} />
                 : screen === 'outgoing'
