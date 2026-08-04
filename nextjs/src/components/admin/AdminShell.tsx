@@ -7,6 +7,7 @@ import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ListScreen from '@/components/admin/screens/ListScreen'
 import DashboardScreen from '@/components/admin/screens/DashboardScreen'
+import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
@@ -101,8 +102,7 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
                     ? <ListScreen title="К учёту" screen="accounting" orders={visible} onAction={act} onOpen={openCard} empty="Нет карточек к учёту"
                         actions={[{ action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' }, { action: 'returnToIncoming', label: 'Вернуть' }]} />
                     : screen === 'bookkeeping'
-                      ? <ListScreen title="Бухгалтерия" screen="bookkeeping" orders={visible} onAction={act} onOpen={openCard} empty="Нет проведённых карточек"
-                          actions={[{ action: 'sendArchive', label: 'В архив', variant: 'primary' }]} />
+                      ? <BookkeepingScreen orders={visible} orgId={user.orgId} onAction={act} onOpen={openCard} />
                       : screen === 'archive'
                         ? <ListScreen title="Архив" screen="archive" orders={visible} onAction={act} onOpen={openCard} empty="Архив пуст"
                             actions={[{ action: 'unarchive', label: 'Из архива' }]} />
