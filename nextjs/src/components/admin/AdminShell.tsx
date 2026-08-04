@@ -5,6 +5,7 @@ import Topbar from '@/components/admin/Topbar'
 import IncomingScreen from '@/components/admin/screens/IncomingScreen'
 import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
+import ListScreen from '@/components/admin/screens/ListScreen'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 
@@ -90,7 +91,16 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
                 ? <ReceptionScreen orders={visible} orgId={user.orgId} onAction={act} onReload={load} />
                 : screen === 'outgoing'
                   ? <OutgoingScreen orders={visible} onAction={act} onReload={load} />
-                  : <Placeholder title={title} />}
+                  : screen === 'accounting'
+                    ? <ListScreen title="К учёту" screen="accounting" orders={visible} onAction={act} empty="Нет карточек к учёту"
+                        actions={[{ action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' }, { action: 'returnToIncoming', label: 'Вернуть' }]} />
+                    : screen === 'bookkeeping'
+                      ? <ListScreen title="Бухгалтерия" screen="bookkeeping" orders={visible} onAction={act} empty="Нет проведённых карточек"
+                          actions={[{ action: 'sendArchive', label: 'В архив', variant: 'primary' }]} />
+                      : screen === 'archive'
+                        ? <ListScreen title="Архив" screen="archive" orders={visible} onAction={act} empty="Архив пуст"
+                            actions={[{ action: 'unarchive', label: 'Из архива' }]} />
+                        : <Placeholder title={title} />}
         </div>
       </div>
     </div>
