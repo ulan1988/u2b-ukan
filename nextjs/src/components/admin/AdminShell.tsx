@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Sidebar, { type NavItem } from '@/components/admin/Sidebar'
 import Topbar from '@/components/admin/Topbar'
 import IncomingScreen from '@/components/admin/screens/IncomingScreen'
+import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 
@@ -84,7 +85,9 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
             ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : screen === 'incoming'
               ? <IncomingScreen orders={visible} onAction={act} onOpen={() => setToast('Детали карточки — скоро')} />
-              : <Placeholder title={title} />}
+              : screen === 'reception'
+                ? <ReceptionScreen orders={visible} orgId={user.orgId} onAction={act} onReload={load} />
+                : <Placeholder title={title} />}
         </div>
       </div>
     </div>

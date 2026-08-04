@@ -7,6 +7,9 @@ export const orderPositionInput = z.object({
   qty: z.coerce.number().min(0).default(0),
   unit: z.string().optional().default('шт'),
   price: z.coerce.number().min(0).default(0),
+  respUserId: z.string().uuid().optional(),
+  supplierId: z.string().uuid().optional(),
+  deadline: z.string().optional(),
 })
 
 export const createOrderSchema = z.object({
@@ -16,9 +19,16 @@ export const createOrderSchema = z.object({
   toWarehouseId: z.string().uuid().optional(),
   fromName: z.string().optional().default(''),
   source: z.string().optional().default('admin_manual'),
+  screen: z.string().optional(),
+  block: z.string().optional(),
   comment: z.string().optional().default(''),
   phone: z.string().optional(),
+  deadline: z.string().optional(),
   positions: z.array(orderPositionInput).default([]),
+})
+
+export const assignSchema = z.object({
+  respUserId: z.string().uuid(),
 })
 
 export const actionSchema = z.object({

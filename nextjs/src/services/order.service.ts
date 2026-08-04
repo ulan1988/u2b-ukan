@@ -8,16 +8,20 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const count = await repo.countByKind(i.orgId, i.kind)
   const id = docNumber(i.kind, count)                     // ЗП-/ПР-0001-DDMMYY
 
+  const screen = i.screen || 'incoming'
   const order = {
     id, orgId: i.orgId, kind: i.kind,
-    screen: 'incoming', status: 'В ожидании', source: i.source,
+    screen, block: i.block || '', status: screen === 'reception' ? 'В обработке' : 'В ожидании', source: i.source,
     fromName: i.fromName, contactId: i.contactId ?? null,
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
+    deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
   }
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
+    respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null,
+    deadline: p.deadline ? new Date(p.deadline) : null,
   }))
   const history = {
     cardId: id, action: 'create',
@@ -38,6 +42,13 @@ export async function listOrders(orgId: string, screen?: string) {
   const byCard: Record<string, any[]> = {}
   for (const p of pos) (byCard[p.cardId] ||= []).push(p)
   return rows.map(o => ({ ...o, positions: byCard[o.id] || [] }))
+}
+
+// Назначить логиста (resp) всем позициям карточки — Стол приёмки.
+export async function assignLogist(cardId: string, respUserId: string, actor?: Session | null) {
+  await repo.updatePositionsByCard(cardId, { respUserId })
+  await repo.insertHistory({ cardId, action: 'assignLogist', detail: 'Логист назначен всем позициям', userName: actor?.name || 'Система' })
+  return { ok: true }
 }
 
 export async function getCard(id: string) {

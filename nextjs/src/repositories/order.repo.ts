@@ -48,5 +48,8 @@ export const updateOrder = (id: string, patch: Partial<typeof orders.$inferInser
 export const updatePosition = (id: string, patch: Partial<typeof orderPositions.$inferInsert>) =>
   db.update(orderPositions).set({ ...patch, updatedAt: sql`now()` }).where(eq(orderPositions.id, id)).returning()
 
+export const updatePositionsByCard = (cardId: string, patch: Partial<typeof orderPositions.$inferInsert>) =>
+  db.update(orderPositions).set({ ...patch, updatedAt: sql`now()` }).where(eq(orderPositions.cardId, cardId)).returning()
+
 export const insertHistory = (row: typeof orderHistory.$inferInsert) =>
   db.insert(orderHistory).values(row)

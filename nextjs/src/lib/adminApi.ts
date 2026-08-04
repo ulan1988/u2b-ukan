@@ -19,4 +19,15 @@ export async function createOrder(body: any) {
   return { ok: res.ok, data: await res.json().catch(() => ({})) }
 }
 
+export const fetchRefs = () => fetch('/api/refs').then(r => r.json()).catch(() => ({}))
+export const fetchUsers = (): Promise<any[]> =>
+  fetch('/api/users').then(r => r.json()).then(r => (Array.isArray(r) ? r : [])).catch(() => [])
+
+export async function assignLogist(id: string, respUserId: string) {
+  const res = await fetch(`/api/orders/${id}/assign`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ respUserId }),
+  })
+  return { ok: res.ok }
+}
+
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' })
