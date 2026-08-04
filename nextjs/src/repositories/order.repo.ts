@@ -50,6 +50,15 @@ export const historyByOrg = (orgId: string, limit = 200) =>
   }).from(orderHistory).innerJoin(orders, eq(orderHistory.cardId, orders.id))
     .where(eq(orders.orgId, orgId)).orderBy(desc(orderHistory.createdAt)).limit(limit)
 
+// Позиции, назначенные логисту, на активных стадиях (для портала логиста).
+export const positionsForLogist = (orgId: string, userId: string) =>
+  db.select({ o: orders, p: orderPositions })
+    .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
+    .where(and(
+      eq(orders.orgId, orgId), eq(orderPositions.respUserId, userId),
+      inArray(orders.screen, ['outgoing', 'reception']), eq(orders.isCancelled, false),
+    )).orderBy(desc(orders.createdAt))
+
 export const updateOrder = (id: string, patch: Partial<typeof orders.$inferInsert>) =>
   db.update(orders).set({ ...patch, updatedAt: sql`now()` }).where(eq(orders.id, id)).returning()
 

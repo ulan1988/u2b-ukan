@@ -14,6 +14,18 @@ export function docNumber(type: string, count: number): string {
   return `${p}-${String(count + 1).padStart(4, '0')}-${dd}${mm}${yy}`
 }
 
+// Транслит кириллицы → адрес личного портала (/rsp/{slug} и т.п.).
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y',
+  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
+  х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+}
+export function slugify(name: string, salt: string): string {
+  const base = (name || 'user').toLowerCase().split('').map(c => TRANSLIT[c] ?? c).join('')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'user'
+  return `${base}-${salt.slice(0, 4)}`
+}
+
 export function today(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

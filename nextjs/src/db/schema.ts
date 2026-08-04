@@ -25,10 +25,11 @@ export const users = pgTable('users', {
   phone: text('phone'),
   email: text('email'),
   password: text('password'),                             // bcrypt
-  role: text('role').notNull().default('manager'),        // admin|bookkeeper|logist|manager
+  role: text('role').notNull().default('manager'),        // admin|bookkeeper|logist|branch|client|supplier_client|warehouse_manager|manager
+  slug: text('slug'),                                     // адрес личного портала (/rsp/{slug} и т.п.)
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-}, t => ({ byOrg: index('users_org_idx').on(t.orgId), emailUniq: uniqueIndex('users_email_uniq').on(t.email) }))
+}, t => ({ byOrg: index('users_org_idx').on(t.orgId), emailUniq: uniqueIndex('users_email_uniq').on(t.email), slugUniq: uniqueIndex('users_slug_uniq').on(t.slug) }))
 
 export const contragents = pgTable('contragents', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -36,6 +36,17 @@ export const listByScreen = (orgId: string, screen: string) => repo.listByScreen
 
 export const listHistory = (orgId: string) => repo.historyByOrg(orgId)
 
+// Портал логиста: его карточки, в каждой — только его позиции.
+export async function listForLogist(orgId: string, userId: string) {
+  const rows = await repo.positionsForLogist(orgId, userId)
+  const byCard = new Map<string, any>()
+  for (const r of rows) {
+    if (!byCard.has(r.o.id)) byCard.set(r.o.id, { ...r.o, positions: [] })
+    byCard.get(r.o.id).positions.push(r.p)
+  }
+  return Array.from(byCard.values())
+}
+
 // Заявки (все экраны или один) с прикреплёнными позициями — для карточек доски/админки.
 export async function listOrders(orgId: string, screen?: string) {
   const rows = screen ? await repo.listByScreen(orgId, screen) : await repo.listByOrg(orgId)

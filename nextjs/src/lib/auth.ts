@@ -6,7 +6,7 @@ import type { NextRequest } from 'next/server'
 const secret = new TextEncoder().encode(process.env.AUTH_SECRET || 'dev-secret-change-me-min-32-characters!!')
 export const COOKIE = 'u2b_session'
 
-export interface Session { id: string; name: string; role: string; orgId: string }
+export interface Session { id: string; name: string; role: string; orgId: string; slug?: string }
 
 export async function createToken(s: Session): Promise<string> {
   return new SignJWT({ ...s }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('30d').sign(secret)
