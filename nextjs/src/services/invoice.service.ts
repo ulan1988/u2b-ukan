@@ -22,7 +22,8 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   const contragentId = isPurchase ? (positions.find(p => p.supplierId)?.supplierId || o.contactId) : o.contactId
   if (!contragentId) return { ok: false as const, error: isPurchase ? 'В заявке не указан поставщик' : 'В заявке не указан клиент' }
 
-  const input = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, comment: `Из заявки ${o.id}` }
+  // 1 карточка = 1 накладная: номер накладной = номер карточки (для сквозного поиска).
+  const input = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, number: o.id, comment: `Из заявки ${o.id}` }
   const doc = isPurchase ? await docSvc.createPurchase(input) : await docSvc.createSale(input)
 
   await orderRepo.updateOrder(cardId, { linkedDocId: doc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })

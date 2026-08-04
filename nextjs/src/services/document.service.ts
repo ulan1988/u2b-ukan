@@ -7,7 +7,7 @@ import { docNumber, today } from '../lib/num'
 
 // Создать приходную накладную (закуп): проводка = документ + строки + приход склада.
 // Долг перед поставщиком не храним — он считается из документов и оплат.
-export async function createPurchase(input: CreatePurchaseInput) {
+export async function createPurchase(input: CreatePurchaseInput & { number?: string }) {
   const count = await docRepo.countByType(input.orgId, 'purchase')
   const docId = randomUUID()
   const date = input.date || today()
@@ -30,7 +30,7 @@ export async function createPurchase(input: CreatePurchaseInput) {
 
   const doc = {
     id: docId, orgId: input.orgId, type: 'purchase',
-    number: docNumber('purchase', count),
+    number: input.number || docNumber('purchase', count),   // номер карточки, если передан (1 карточка = 1 накладная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
@@ -43,7 +43,7 @@ export const listPurchases = (orgId: string) => docRepo.listByType(orgId, 'purch
 
 // Создать расходную накладную (продажа): проводка = документ + строки +
 // РАСХОД склада (stock_movement −). Долг заказчика считается из документов и оплат.
-export async function createSale(input: CreateSaleInput) {
+export async function createSale(input: CreateSaleInput & { number?: string }) {
   const count = await docRepo.countByType(input.orgId, 'sale')
   const docId = randomUUID()
   const date = input.date || today()
@@ -82,7 +82,7 @@ export async function createSale(input: CreateSaleInput) {
 
   const doc = {
     id: docId, orgId: input.orgId, type: 'sale',
-    number: docNumber('sale', count),
+    number: input.number || docNumber('sale', count),      // номер карточки, если передан (1 карточка = 1 накладная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
