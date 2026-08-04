@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { verifyToken, COOKIE } from '@/lib/auth'
 
 // Пускаем без сессии: логин и его API. Всё остальное — только авторизованным.
-const PUBLIC = ['/login', '/api/auth', '/api/health']
+const PUBLIC = ['/login', '/api/auth', '/api/health', '/track', '/api/track']
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl

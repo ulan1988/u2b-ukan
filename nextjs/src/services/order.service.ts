@@ -92,6 +92,22 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   return { ok: true, allDelivered }
 }
 
+// Публичный трекинг: минимальный статус заявки по номеру.
+export async function track(id: string) {
+  const card = await getCard(id)
+  if (!card) return null
+  const o = card.order
+  const positions = card.positions.map((p: any) => ({ name: p.name1c || p.oral || '—', qty: Number(p.qty), unit: p.unit, status: p.status }))
+  const done = positions.filter((p: any) => p.status === 'Доставлено').length
+  return {
+    id: o.id, fromName: o.fromName, kind: o.kind, status: o.status, screen: o.screen,
+    isCancelled: o.isCancelled, cancelReason: o.cancelReason,
+    createdAt: o.createdAt, delivered: o.delivered,
+    progress: positions.length ? Math.round((done / positions.length) * 100) : 0,
+    positions,
+  }
+}
+
 export async function getCard(id: string) {
   const [order] = await repo.getOrder(id)
   if (!order) return null
