@@ -9,6 +9,8 @@ import ListScreen from '@/components/admin/screens/ListScreen'
 import DashboardScreen from '@/components/admin/screens/DashboardScreen'
 import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
+import WarehouseScreen from '@/components/admin/screens/WarehouseScreen'
+import NomenclatureScreen from '@/components/admin/screens/NomenclatureScreen'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
@@ -109,7 +111,11 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
                       : screen === 'archive'
                         ? <ListScreen title="Архив" screen="archive" orders={visible} onAction={act} onOpen={openCard} empty="Архив пуст"
                             actions={[{ action: 'unarchive', label: 'Из архива' }]} />
-                        : <Placeholder title={title} />}
+                        : screen === 'warehouse'
+                          ? <WarehouseScreen orgId={user.orgId} />
+                          : screen === 'nomenclature'
+                            ? <NomenclatureScreen />
+                            : <Placeholder title={title} />}
         </div>
       </div>
 
