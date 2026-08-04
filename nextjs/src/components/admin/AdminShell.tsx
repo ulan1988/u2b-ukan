@@ -4,6 +4,7 @@ import Sidebar, { type NavItem } from '@/components/admin/Sidebar'
 import Topbar from '@/components/admin/Topbar'
 import IncomingScreen from '@/components/admin/screens/IncomingScreen'
 import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
+import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 
@@ -87,7 +88,9 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
               ? <IncomingScreen orders={visible} onAction={act} onOpen={() => setToast('Детали карточки — скоро')} />
               : screen === 'reception'
                 ? <ReceptionScreen orders={visible} orgId={user.orgId} onAction={act} onReload={load} />
-                : <Placeholder title={title} />}
+                : screen === 'outgoing'
+                  ? <OutgoingScreen orders={visible} onAction={act} onReload={load} />
+                  : <Placeholder title={title} />}
         </div>
       </div>
     </div>

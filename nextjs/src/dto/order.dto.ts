@@ -31,6 +31,11 @@ export const assignSchema = z.object({
   respUserId: z.string().uuid(),
 })
 
+export const posStatusSchema = z.object({
+  posId: z.string().optional(),                          // нет posId → применить ко всем позициям
+  status: z.enum(['В работе', 'В пути', 'Доставлено']),
+})
+
 export const actionSchema = z.object({
   action: z.string().min(1),
   payload: z.record(z.string(), z.any()).optional().default({}),

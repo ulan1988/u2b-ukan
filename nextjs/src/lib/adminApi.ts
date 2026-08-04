@@ -30,4 +30,11 @@ export async function assignLogist(id: string, respUserId: string) {
   return { ok: res.ok }
 }
 
+export async function setPosStatus(cardId: string, status: string, posId?: string) {
+  const res = await fetch(`/api/orders/${cardId}/pos`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ posId, status }),
+  })
+  return { ok: res.ok }
+}
+
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' })

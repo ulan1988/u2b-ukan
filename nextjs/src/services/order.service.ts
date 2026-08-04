@@ -51,6 +51,25 @@ export async function assignLogist(cardId: string, respUserId: string, actor?: S
   return { ok: true }
 }
 
+// Обновить статус позиции (или всех). Логист возит: В работе→В пути→Доставлено.
+// Когда все позиции доставлены — карточка готова к учёту (toacc), иначе — «В работе».
+export async function setPositions(cardId: string, posId: string | undefined, status: string, actor?: Session | null) {
+  if (posId) await repo.updatePosition(posId, { status })
+  else await repo.updatePositionsByCard(cardId, { status })
+
+  const positions = await repo.positionsByCard(cardId)
+  const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
+  await repo.updateOrder(cardId, allDelivered
+    ? { delivered: new Date(), toacc: true, status: 'Доставлено' }
+    : { delivered: null, toacc: false, status: 'В работе' })
+  await repo.insertHistory({
+    cardId, action: 'updatePos',
+    detail: posId ? `Позиция → ${status}` : `Все позиции → ${status}`,
+    userName: actor?.name || 'Система',
+  })
+  return { ok: true, allDelivered }
+}
+
 export async function getCard(id: string) {
   const [order] = await repo.getOrder(id)
   if (!order) return null
