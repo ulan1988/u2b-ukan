@@ -9,8 +9,8 @@ const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f595
 const CENTER = '🏬 Центр-Склад'
 const emptyPos = () => ({ productId: '', name1c: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '' })
 
-export default function ReceptionScreen({ orders, orgId, onAction, onReload }: {
-  orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload: () => void
+export default function ReceptionScreen({ orders, orgId, onAction, onReload, onOpen }: {
+  orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void
 }) {
   const [products, setProducts] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
@@ -160,7 +160,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload }: {
                       </select>
                     </div>
                   )}
-                  <OrderCard order={o} actions={[{ action: 'process', label: 'В работу', variant: 'primary' }, { action: 'cancel', label: 'Отмена', variant: 'danger' }]} onAction={onAction} />
+                  <OrderCard order={o} actions={[{ action: 'process', label: 'В работу', variant: 'primary' }, { action: 'cancel', label: 'Отмена', variant: 'danger' }]} onAction={onAction} onOpen={onOpen} />
                 </div>
               )
             })}
@@ -168,7 +168,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload }: {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', marginBottom: 8 }}>ОЖИДАНИЕ ({waiting.length})</div>
           {waiting.length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14, padding: 20 }}>Пусто</div>
-            : waiting.map(o => <OrderCard key={o.id} order={o} actions={[{ action: 'take', label: 'Взять в обработку', variant: 'primary' }]} onAction={onAction} />)}
+            : waiting.map(o => <OrderCard key={o.id} order={o} actions={[{ action: 'take', label: 'Взять в обработку', variant: 'primary' }]} onAction={onAction} onOpen={onOpen} />)}
         </div>
       </div>
     </div>

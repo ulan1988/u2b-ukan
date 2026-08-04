@@ -27,7 +27,7 @@ function Stepper({ status, onSet }: { status: string; onSet: (s: string) => void
   )
 }
 
-function OutgoingCard({ order, onAction, onReload }: { order: any; onAction: (id: string, a: string) => void; onReload: () => void }) {
+function OutgoingCard({ order, onAction, onReload, onOpen }: { order: any; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void }) {
   const pct = cardProgress(order)
   const sum = cardSum(order)
   const ps = order.positions || []
@@ -36,7 +36,7 @@ function OutgoingCard({ order, onAction, onReload }: { order: any; onAction: (id
   return (
     <div className="anim-fade" style={{ background: '#fff', borderRadius: 12, padding: 14, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,.05)', border: '1px solid #efece8' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>{order.id}</span>
+        <span onClick={() => onOpen?.(order)} style={{ fontWeight: 700, fontSize: 14, cursor: onOpen ? 'pointer' : 'default' }}>{order.id}</span>
         <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isPurchase(order) ? '#f3eeff' : '#e8f5ee', color: isPurchase(order) ? '#7a3aaa' : '#2e8a5e' }}>{isPurchase(order) ? '🛒 ЗАКУП' : 'ПРОДАЖА'}</span>
         <span style={{ marginLeft: 'auto', fontSize: 13, color: COLORS.textMuted }}>{order.fromName}</span>
       </div>
@@ -69,14 +69,14 @@ function OutgoingCard({ order, onAction, onReload }: { order: any; onAction: (id
   )
 }
 
-export default function OutgoingScreen({ orders, onAction, onReload }: { orders: any[]; onAction: (id: string, a: string) => void; onReload: () => void }) {
+export default function OutgoingScreen({ orders, onAction, onReload, onOpen }: { orders: any[]; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void }) {
   const list = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled)
   return (
     <div>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Исходящие</div>
       {list.length === 0
         ? <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted, fontSize: 14 }}>Нет карточек в работе</div>
-        : <div style={{ maxWidth: 680 }}>{list.map(o => <OutgoingCard key={o.id} order={o} onAction={onAction} onReload={onReload} />)}</div>}
+        : <div style={{ maxWidth: 680 }}>{list.map(o => <OutgoingCard key={o.id} order={o} onAction={onAction} onReload={onReload} onOpen={onOpen} />)}</div>}
     </div>
   )
 }

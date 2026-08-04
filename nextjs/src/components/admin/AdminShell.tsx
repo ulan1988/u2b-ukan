@@ -6,6 +6,7 @@ import IncomingScreen from '@/components/admin/screens/IncomingScreen'
 import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ListScreen from '@/components/admin/screens/ListScreen'
+import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 
@@ -48,6 +49,8 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
   const [search, setSearch] = useState('')
   const [sideOpen, setSideOpen] = useState(false)
   const [toast, setToast] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const openCard = (o: any) => setSelectedId(o.id)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -86,23 +89,25 @@ export default function AdminShell({ user }: { user: { id: string; name: string;
           {loading
             ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : screen === 'incoming'
-              ? <IncomingScreen orders={visible} onAction={act} onOpen={() => setToast('Детали карточки — скоро')} />
+              ? <IncomingScreen orders={visible} onAction={act} onOpen={openCard} />
               : screen === 'reception'
-                ? <ReceptionScreen orders={visible} orgId={user.orgId} onAction={act} onReload={load} />
+                ? <ReceptionScreen orders={visible} orgId={user.orgId} onAction={act} onReload={load} onOpen={openCard} />
                 : screen === 'outgoing'
-                  ? <OutgoingScreen orders={visible} onAction={act} onReload={load} />
+                  ? <OutgoingScreen orders={visible} onAction={act} onReload={load} onOpen={openCard} />
                   : screen === 'accounting'
-                    ? <ListScreen title="К учёту" screen="accounting" orders={visible} onAction={act} empty="Нет карточек к учёту"
+                    ? <ListScreen title="К учёту" screen="accounting" orders={visible} onAction={act} onOpen={openCard} empty="Нет карточек к учёту"
                         actions={[{ action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' }, { action: 'returnToIncoming', label: 'Вернуть' }]} />
                     : screen === 'bookkeeping'
-                      ? <ListScreen title="Бухгалтерия" screen="bookkeeping" orders={visible} onAction={act} empty="Нет проведённых карточек"
+                      ? <ListScreen title="Бухгалтерия" screen="bookkeeping" orders={visible} onAction={act} onOpen={openCard} empty="Нет проведённых карточек"
                           actions={[{ action: 'sendArchive', label: 'В архив', variant: 'primary' }]} />
                       : screen === 'archive'
-                        ? <ListScreen title="Архив" screen="archive" orders={visible} onAction={act} empty="Архив пуст"
+                        ? <ListScreen title="Архив" screen="archive" orders={visible} onAction={act} onOpen={openCard} empty="Архив пуст"
                             actions={[{ action: 'unarchive', label: 'Из архива' }]} />
                         : <Placeholder title={title} />}
         </div>
       </div>
+
+      {selectedId && <CardModal id={selectedId} onClose={() => setSelectedId(null)} onAction={act} />}
     </div>
   )
 }
