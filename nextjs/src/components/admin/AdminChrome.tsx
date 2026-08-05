@@ -6,6 +6,7 @@ import Topbar from '@/components/admin/Topbar'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
+import { useLiveData } from '@/lib/live'
 
 export const NAV: NavItem[] = [
   { key: 'dashboard', label: 'Дашборд', icon: '📊' },
@@ -49,7 +50,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const screen = pathname.split('/')[2] || 'incoming'
 
   const load = useCallback(async () => { setOrders(await fetchOrders(user.orgId)); setLoading(false) }, [user.orgId])
-  useEffect(() => { load() }, [load])
+  // Живое обновление: поллинг-страховка + при возврате на вкладку (из Улкана).
+  useLiveData(load, [user.orgId])
 
   async function act(id: string, action: string) {
     const payload = action === 'cancel' ? { reason: (typeof window !== 'undefined' && window.prompt('Причина отмены?')) || '' } : {}

@@ -5,6 +5,7 @@ import { isPurchase, fmtMoney } from '@/lib/adminFmt'
 import { logistOrders, setPosStatus } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
 import { getDraft, addRow, deleteRow, closeShift } from '@/lib/api/reports'
+import { useLiveData } from '@/lib/live'
 
 const STEPS = ['В работе', 'В пути', 'Доставлено']
 const STEP_STYLE: Record<string, { bg: string; color: string }> = {
@@ -19,7 +20,7 @@ export default function LogistPortal({ user }: { user: { name: string } }) {
   const load = useCallback(() => {
     logistOrders().then(setOrders).finally(() => setLoading(false))
   }, [])
-  useEffect(() => { load() }, [load])
+  useLiveData(load, [])
 
   async function setPos(cardId: string, posId: string, status: string) { await setPosStatus(cardId, status, posId); load() }
 
