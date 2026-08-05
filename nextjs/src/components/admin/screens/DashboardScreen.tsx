@@ -2,20 +2,26 @@
 import { COLORS } from '@/lib/colors'
 import { cardSum, isOverdue, fmtMoney } from '@/lib/adminFmt'
 
-const SCREENS = [
-  { k: 'incoming', l: 'Входящие' }, { k: 'reception', l: 'Приёмка' }, { k: 'outgoing', l: 'Исходящие' },
-  { k: 'accounting', l: 'К учёту' }, { k: 'bookkeeping', l: 'Бухгалтерия' }, { k: 'archive', l: 'Архив' },
+// Счёт по стадиям = как показывают экраны (toacc-карточки идут в «К учёту», не во «Входящие»).
+const STAGES: { l: string; match: (o: any) => boolean }[] = [
+  { l: 'Входящие', match: o => o.screen === 'incoming' && !o.toacc },
+  { l: 'Приёмка', match: o => o.screen === 'reception' },
+  { l: 'Исходящие', match: o => o.screen === 'outgoing' },
+  { l: 'К учёту', match: o => (o.screen === 'incoming' && o.toacc) || o.screen === 'accounting' },
+  { l: 'Бухгалтерия', match: o => o.screen === 'bookkeeping' },
+  { l: 'Архив', match: o => o.screen === 'archive' },
 ]
 
 export default function DashboardScreen({ orders }: { orders: any[] }) {
   const live = orders.filter(o => !o.isCancelled)
+  const toAccount = live.filter(o => (o.screen === 'incoming' && o.toacc) || o.screen === 'accounting').length
   const kpi = [
     { l: 'Активных', v: live.filter(o => !o.isDraft && o.screen !== 'archive').length, bg: '#fff0ea', color: '#c0532a' },
     { l: 'В работе', v: live.filter(o => o.screen === 'outgoing').length, bg: '#fdf8e1', color: '#8a6f00' },
-    { l: 'К учёту', v: live.filter(o => o.screen === 'accounting').length, bg: '#e8f5ee', color: '#2e8a5e' },
+    { l: 'К учёту', v: toAccount, bg: '#e8f5ee', color: '#2e8a5e' },
     { l: 'Просрочено', v: orders.filter(isOverdue).length, bg: '#faeaea', color: '#b03020' },
   ]
-  const flow = SCREENS.map(s => ({ ...s, n: live.filter(o => o.screen === s.k).length }))
+  const flow = STAGES.map(s => ({ l: s.l, n: live.filter(s.match).length }))
   const maxFlow = Math.max(1, ...flow.map(f => f.n))
 
   const byClient: Record<string, number> = {}
@@ -39,7 +45,7 @@ export default function DashboardScreen({ orders }: { orders: any[] }) {
         <div style={{ background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', marginBottom: 12 }}>ПОТОК ПО СТАДИЯМ</div>
           {flow.map(f => (
-            <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div key={f.l} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <div style={{ width: 90, fontSize: 13, color: COLORS.text }}>{f.l}</div>
               <div style={{ flex: 1, height: 10, background: '#f1efec', borderRadius: 5, overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${(f.n / maxFlow) * 100}%`, background: COLORS.primary, borderRadius: 5 }} />
