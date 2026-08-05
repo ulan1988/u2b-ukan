@@ -152,6 +152,8 @@ export const stockMovements = pgTable('stock_movements', {
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
   productId: uuid('product_id').notNull().references(() => products.id),
   qty: qtyCol('qty').notNull().default('0'),              // + приход / − расход
+  kind: text('kind').notNull().default('move'),           // move (влияет на остаток) | reserve (бронь под заявку)
+  cardId: text('card_id'),                                // заявка-источник резерва
   documentId: uuid('document_id').references(() => documents.id),
   date: date('date').notNull(),
 }, t => ({ byWhProduct: index('stock_wh_product_idx').on(t.warehouseId, t.productId) }))

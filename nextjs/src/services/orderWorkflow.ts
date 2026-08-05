@@ -100,6 +100,15 @@ export async function dispatchAction(id: string, action: string, actor: Session 
 
   await repo.updateOrder(id, def.patch(ctx))
 
+  // Эффект process: продажа уходит в работу → резервируем товар на Центр-Складе.
+  if (action === 'process' && order.kind === 'sale') {
+    try { const { reserveForCard } = await import('./reserve.service'); await reserveForCard(order.orgId, id, positions) } catch {}
+  }
+  // Снятие резерва: карточка ушла в учёт (реальный расход) или отменена.
+  if (action === 'sendAcc' || action === 'cancel') {
+    try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
+  }
+
   // Эффект take: автоподстановка поставщик/логист по группе товара (CategoryRule).
   if (action === 'take') {
     const meta = await repo.productMeta(positions.filter(p => p.productId).map(p => p.productId))
