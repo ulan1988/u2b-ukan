@@ -20,3 +20,6 @@ export const settings = (orgId: string) => getObj(`/api/settings?orgId=${orgId}`
 
 export const categoryRules = (orgId: string) => getArray(`/api/settings/category-rules?orgId=${orgId}`)
 export const saveCategoryRule = (b: any) => send('/api/settings/category-rules', 'PUT', b)
+
+export const createProject = (b: any) => post('/api/projects', b)
+export const createSpecProject = (b: any) => post('/api/spec-projects', b)

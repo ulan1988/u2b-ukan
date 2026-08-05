@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listUsers, createUser } from '@/lib/api/auth'
-import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule } from '@/lib/api/refs'
+import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, createProject, createSpecProject } from '@/lib/api/refs'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
 const ROLES = [
@@ -14,7 +14,7 @@ const roleLabel = (v: string) => ROLES.find(r => r.v === v)?.l || v
 const inp: React.CSSProperties = { padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 14, outline: 'none', width: '100%' }
 
 export default function SettingsScreen({ orgId }: { orgId: string }) {
-  const [tab, setTab] = useState<'users' | 'autofill'>('users')
+  const [tab, setTab] = useState<'users' | 'autofill' | 'projects'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'logist', orgId })
@@ -40,12 +40,12 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
     <div style={{ maxWidth: 760 }}>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['users', 'Пользователи'], ['autofill', 'Автоподстановка']] as const).map(([k, l]) => (
+        {([['users', 'Пользователи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
 
-      {tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : (
+      {tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : (
       <div>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Пользователи</div>
 
@@ -151,6 +151,60 @@ function AutofillPanel({ orgId }: { orgId: string }) {
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Проекты и Спецпроекты (создание) ─────────────────────────────────────────
+function ProjectsPanel({ orgId }: { orgId: string }) {
+  const [data, setData] = useState<any>({ projects: [], specProjects: [] })
+  const [pName, setPName] = useState('')
+  const [spName, setSpName] = useState('')
+  const [spItems, setSpItems] = useState<any[]>([{ name: '', qty: '1', unit: 'шт' }])
+  const [msg, setMsg] = useState('')
+
+  const load = () => fetchSettings(orgId).then(setData)
+  useEffect(() => { load() }, [orgId])
+
+  async function addProject() {
+    if (!pName.trim()) return
+    const r = await createProject({ name: pName }); if (r.ok) { setPName(''); setMsg('✅ Проект создан'); load() }
+  }
+  async function addSpec() {
+    if (!spName.trim()) return
+    const items = spItems.filter(i => i.name.trim()).map(i => ({ name: i.name, qty: Number(i.qty) || 0, unit: i.unit }))
+    const r = await createSpecProject({ name: spName, items }); if (r.ok) { setSpName(''); setSpItems([{ name: '', qty: '1', unit: 'шт' }]); setMsg('✅ Спецпроект создан'); load() }
+  }
+  const setItem = (i: number, patch: any) => setSpItems(s => s.map((x, j) => j === i ? { ...x, ...patch } : x))
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }}>Проекты и спецпроекты видны как колонки в Фильтре. {msg}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ background: '#fff', borderRadius: 14, padding: 16, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>ПРОЕКТЫ ({(data.projects || []).length})</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input style={{ ...inp, flex: 1 }} placeholder="Название проекта" value={pName} onChange={e => setPName(e.target.value)} />
+            <button onClick={addProject} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>＋</button>
+          </div>
+          {(data.projects || []).map((p: any) => <div key={p.id} style={{ padding: '7px 0', borderTop: '1px solid #f6f3f0', fontSize: 14 }}>{p.name}</div>)}
+        </div>
+        <div style={{ background: '#fff', borderRadius: 14, padding: 16, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>СПЕЦПРОЕКТЫ ({(data.specProjects || []).length})</div>
+          <input style={{ ...inp, marginBottom: 8 }} placeholder="Название спецпроекта" value={spName} onChange={e => setSpName(e.target.value)} />
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#837c72', marginBottom: 6 }}>СМЕТА</div>
+          {spItems.map((it, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 28px', gap: 6, marginBottom: 6 }}>
+              <input style={inp} placeholder="Товар" value={it.name} onChange={e => setItem(i, { name: e.target.value })} />
+              <input style={inp} type="number" placeholder="кол" value={it.qty} onChange={e => setItem(i, { qty: e.target.value })} />
+              <button onClick={() => setSpItems(s => s.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#b0a99f', cursor: 'pointer', fontSize: 16 }}>×</button>
+            </div>
+          ))}
+          <button onClick={() => setSpItems(s => [...s, { name: '', qty: '1', unit: 'шт' }])} style={{ background: 'none', border: 'none', color: COLORS.primary, fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>＋ позиция сметы</button>
+          <div><button onClick={addSpec} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Создать спецпроект</button></div>
+          <div style={{ marginTop: 10 }}>{(data.specProjects || []).map((s: any) => <div key={s.id} style={{ padding: '5px 0', borderTop: '1px solid #f6f3f0', fontSize: 14 }}>{s.name} <span style={{ color: COLORS.textMuted, fontSize: 12 }}>({(s.items || []).length} поз.)</span></div>)}</div>
+        </div>
       </div>
     </div>
   )

@@ -18,3 +18,7 @@ export const specProjectsByOrg = (orgId: string) =>
 
 export const specItemsByProjects = (ids: string[]) =>
   ids.length ? db.select().from(specProjectItems).where(inArray(specProjectItems.specProjectId, ids)) : Promise.resolve([] as any[])
+
+export const insertProject = (v: typeof projects.$inferInsert) => db.insert(projects).values(v).returning()
+export const insertSpecProject = (v: typeof specProjects.$inferInsert) => db.insert(specProjects).values(v).returning()
+export const insertSpecItems = (v: (typeof specProjectItems.$inferInsert)[]) => v.length ? db.insert(specProjectItems).values(v) : Promise.resolve()

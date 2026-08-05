@@ -1,4 +1,17 @@
+import { randomUUID } from 'crypto'
 import * as repo from '../repositories/settings.repo'
+
+export async function createProject(orgId: string, name: string, clientId?: string) {
+  const [p] = await repo.insertProject({ orgId, name, clientId: clientId ?? null })
+  return p
+}
+
+export async function createSpecProject(orgId: string, name: string, items: { name: string; qty: number; unit?: string }[]) {
+  const id = randomUUID()
+  await repo.insertSpecProject({ id, orgId, name })
+  await repo.insertSpecItems(items.filter(i => i.name).map(i => ({ specProjectId: id, name: i.name, qty: String(i.qty || 0), unit: i.unit || 'шт' })))
+  return { id, name }
+}
 
 // Сводка для панели Фильтр (канбан-колонки): поставщики, проекты, спецпроекты (с items).
 export async function settingsBundle(orgId: string) {
