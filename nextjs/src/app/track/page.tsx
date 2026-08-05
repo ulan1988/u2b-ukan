@@ -51,6 +51,8 @@ function Track() {
         {loading && <div style={{ textAlign: 'center', color: COLORS.textMuted, padding: 20 }}>Поиск…</div>}
         {err && <div style={{ background: '#faeaea', color: '#b03020', borderRadius: 10, padding: '12px 16px', fontSize: 14 }}>{err}</div>}
 
+        <LeadForm />
+
         {data && (
           <div style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 1px 6px rgba(0,0,0,.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -81,6 +83,36 @@ function Track() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function LeadForm() {
+  const [f, setF] = useState({ name: '', phone: '+7', text: '' })
+  const [res, setRes] = useState<any>(null)
+  const [open, setOpen] = useState(false)
+  async function submit() {
+    if (!f.name.trim() || !f.phone.trim()) return
+    const r = await fetch('/api/track/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) })
+    const d = await r.json().catch(() => ({}))
+    if (r.ok) setRes(d)
+  }
+  const inp: React.CSSProperties = { width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontFamily: 'inherit', fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }
+  return (
+    <div style={{ marginTop: 20 }}>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1.5px dashed #d4613a', background: '#fff', color: '#d4613a', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>＋ Оставить заявку</button>
+      ) : res ? (
+        <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 12, padding: 16, fontSize: 14 }}>✅ Заявка принята! Номер: <b>{res.cardId}</b>. Отслеживайте по нему выше.</div>
+      ) : (
+        <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 6px rgba(0,0,0,.06)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>Новая заявка</div>
+          <input style={inp} placeholder="Ваше имя" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
+          <input style={inp} placeholder="Телефон" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} />
+          <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} placeholder="Что нужно?" value={f.text} onChange={e => setF({ ...f, text: e.target.value })} />
+          <button onClick={submit} style={{ width: '100%', padding: 11, borderRadius: 8, border: 'none', background: '#d4613a', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>Отправить</button>
+        </div>
+      )}
     </div>
   )
 }
