@@ -1,7 +1,38 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { isOverdue } from '@/lib/adminFmt'
+import { COLORS } from '@/lib/colors'
+import { listNotifications, markRead } from '@/lib/api/notifications'
 
 const INP: React.CSSProperties = { width: '100%', padding: '9px 13px', borderRadius: 7, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', color: '#26231f' }
+
+function Bell() {
+  const [items, setItems] = useState<any[]>([])
+  const [open, setOpen] = useState(false)
+  const load = () => listNotifications().then(setItems)
+  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t) }, [])
+  const unread = items.filter(n => !n.read).length
+  async function read(n: any) { if (!n.read) { await markRead(n.id); load() } }
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)} style={{ padding: '7px 10px', background: '#fff', border: '1.5px solid #e6e2dc', borderRadius: 8, cursor: 'pointer', fontSize: 16, position: 'relative' }}>
+        🔔{unread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 8, height: 8, borderRadius: '50%', background: COLORS.primary }} />}
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 40, right: 0, background: '#fff', borderRadius: 12, boxShadow: '0 4px 24px rgba(0,0,0,.12)', width: 320, maxHeight: 400, overflowY: 'auto', zIndex: 500, border: '1.5px solid #e6e2dc' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1efec', fontWeight: 700, fontSize: 14 }}>Уведомления</div>
+          {items.length === 0 ? <div style={{ padding: 16, color: '#5f5952', fontSize: 14 }}>Нет уведомлений</div>
+            : items.map(n => (
+              <div key={n.id} onClick={() => read(n)} style={{ padding: '10px 16px', borderBottom: '1px solid #f6f3f0', cursor: 'pointer', background: n.read ? '#fff' : '#fff8f5', fontSize: 13 }}>
+                <div style={{ color: '#26231f' }}>{n.text}</div>
+                <div style={{ color: '#837c72', fontSize: 11, marginTop: 2 }}>{new Date(n.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Topbar({ title, orders, search, onSearch, onBurger }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
@@ -31,6 +62,7 @@ export default function Topbar({ title, orders, search, onSearch, onBurger }: {
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
         <input style={{ ...INP, width: 220 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />
+        <Bell />
       </div>
     </div>
   )

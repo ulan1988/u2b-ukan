@@ -29,6 +29,10 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     userName: actor?.name || 'Система',
   }
   await repo.insertOrderPosting(order, positions, history)
+  // Новая заявка из кабинета/сайта → уведомить админов.
+  if (i.source === 'cabinet' || i.source === 'external') {
+    try { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(i.orgId, `🆕 Новая заявка ${id} от ${i.fromName || 'клиента'}`, id) } catch {}
+  }
   return { id }
 }
 
