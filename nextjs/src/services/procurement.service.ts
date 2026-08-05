@@ -27,6 +27,35 @@ export async function demandSummary(orgId: string) {
   return Object.values(byProduct).sort((a, b) => b.total - a.total)
 }
 
+// Отчёт-цепочка ЗАКУП→СКЛАД→ПРОДАЖА из ProcurementLink.
+export async function chainReport(orgId: string) {
+  const { cards, positions } = await repo.purchaseCards(orgId)
+  if (!cards.length) return []
+  const links = await repo.linksByPurchases(cards.map(c => c.id))
+  const saleIds = Array.from(new Set(links.map(l => l.saleCardId)))
+  const sales = await repo.ordersByIds(saleIds)
+  const saleMap: Record<string, { client: string; comment: string }> = {}
+  for (const s of sales) saleMap[s.id] = { client: s.fromName || '—', comment: s.comment || '' }
+
+  const posByCard: Record<string, any[]> = {}
+  for (const p of positions) (posByCard[p.cardId] ||= []).push(p)
+
+  return cards.map(c => {
+    const cardLinks = links.filter(l => l.purchaseCardId === c.id)
+    return {
+      id: c.id, status: c.status, createdAt: c.createdAt, delivered: c.delivered, isDraft: c.isDraft,
+      positions: (posByCard[c.id] || []).map(pos => {
+        const name = pos.name1c || pos.oral
+        const posLinks = cardLinks.filter(l => (l.product || '').toLowerCase() === (name || '').toLowerCase())
+        return {
+          name, qty: Number(pos.qty), unit: pos.unit, status: pos.status,
+          breakdown: posLinks.map(l => ({ client: saleMap[l.saleCardId]?.client || l.saleCardId, comment: saleMap[l.saleCardId]?.comment || '', qty: Number(l.qty) })),
+        }
+      }),
+    }
+  })
+}
+
 // «В закуп»: складываем товары в черновик-накопитель (find-or-create), пишем
 // связи, автоцену priceIn, автоподстановку поставщик/логист по группе.
 export async function stage(orgId: string, items: { name: string; unit: string; total: number; rows: { cardId: string; qty: number }[] }[], actor?: Session | null) {

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
 import { profit } from '@/lib/api/finance'
+import { chainReport } from '@/lib/api/procurement'
 
 // Закуп-отчёт = Рентабельность (наша ERP) + цепочка закуп→продажа (Ф4, позже).
 export default function ProcurementScreen({ orgId }: { orgId: string }) {
@@ -22,13 +23,51 @@ export default function ProcurementScreen({ orgId }: { orgId: string }) {
         ))}
       </div>
 
-      {tab === 'chain' ? (
-        <div style={{ background: '#fff', borderRadius: 14, padding: 28, boxShadow: '0 0 0 1.5px #e6e2dc', color: COLORS.textMuted, fontSize: 14, maxWidth: 640 }}>
-          Цепочка закуп→продажа появится вместе с «Автозакупом» (следующий этап Ф4).
+      {tab === 'chain' ? <ChainReport orgId={orgId} />
+        : !data ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
+          : <ProfitReport data={data} />}
+    </div>
+  )
+}
+
+function ChainReport({ orgId }: { orgId: string }) {
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { chainReport(orgId).then((r: any) => setRows(r)).finally(() => setLoading(false)) }, [orgId])
+
+  if (loading) return <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
+  if (!rows.length) return <div style={{ background: '#fff', borderRadius: 14, padding: 28, boxShadow: '0 0 0 1.5px #e6e2dc', color: COLORS.textMuted, fontSize: 14, maxWidth: 640 }}>Закупов пока нет. Соберите закуп в Приёмке (Автозакуп).</div>
+
+  return (
+    <div style={{ maxWidth: 980 }}>
+      {rows.map(c => (
+        <div key={c.id} style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', marginBottom: 14 }}>
+          <div style={{ padding: '10px 16px', background: '#faf7ff', borderBottom: '1px solid #f0eaf7', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontWeight: 700, color: '#7a3aaa' }}>🛒 {c.id}</span>
+            <span style={{ fontSize: 12, color: COLORS.textMuted }}>{c.isDraft ? 'черновик' : c.status}</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={{ background: '#f8f6f3', color: COLORS.textMuted, fontSize: 11 }}>
+                <th style={{ textAlign: 'left', padding: '8px 16px' }}>ЗАКУП · товар</th>
+                <th style={{ textAlign: 'right', padding: '8px 16px' }}>куплено</th>
+                <th style={{ textAlign: 'left', padding: '8px 16px' }}>ПРОДАЖА · заказчики (кол-во)</th>
+              </tr></thead>
+              <tbody>
+                {c.positions.map((p: any, i: number) => (
+                  <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
+                    <td style={{ padding: '8px 16px', fontWeight: 600 }}>{p.name}</td>
+                    <td style={{ padding: '8px 16px', textAlign: 'right' }}>{p.qty} {p.unit}</td>
+                    <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>
+                      {p.breakdown.length ? p.breakdown.map((b: any, j: number) => <span key={j}>{b.client} ({b.qty}){j < p.breakdown.length - 1 ? ', ' : ''}</span>) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      ) : !data ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div> : (
-        <ProfitReport data={data} />
-      )}
+      ))}
     </div>
   )
 }

@@ -38,5 +38,21 @@ export const insertDraft = (v: typeof orders.$inferInsert) => db.insert(orders).
 export const insertPositions = (v: (typeof orderPositions.$inferInsert)[]) => db.insert(orderPositions).values(v).returning()
 export const insertLinks = (v: (typeof procurementLinks.$inferInsert)[]) => db.insert(procurementLinks).values(v)
 
+// Закупы (kind purchase) с позициями — для отчёта-цепочки.
+export async function purchaseCards(orgId: string) {
+  const cards = await db.select().from(orders).where(and(
+    eq(orders.orgId, orgId), eq(orders.kind, 'purchase'), eq(orders.isCancelled, false),
+  )).orderBy(desc(orders.createdAt)).limit(200)
+  if (!cards.length) return { cards: [], positions: [] as any[] }
+  const positions = await db.select().from(orderPositions).where(inArray(orderPositions.cardId, cards.map(c => c.id)))
+  return { cards, positions }
+}
+
+export const linksByPurchases = (ids: string[]) =>
+  ids.length ? db.select().from(procurementLinks).where(inArray(procurementLinks.purchaseCardId, ids)) : Promise.resolve([] as any[])
+
+export const ordersByIds = (ids: string[]) =>
+  ids.length ? db.select({ id: orders.id, fromName: orders.fromName, comment: orders.comment }).from(orders).where(inArray(orders.id, ids)) : Promise.resolve([] as any[])
+
 export const productsByNames = (names: string[]) =>
   names.length ? db.select({ id: products.id, name: products.name, group: products.group, cat: products.category, priceIn: products.priceIn }).from(products).where(inArray(products.name, names)) : Promise.resolve([] as any[])
