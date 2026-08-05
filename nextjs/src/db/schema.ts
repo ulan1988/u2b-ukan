@@ -187,6 +187,7 @@ export const orders = pgTable('orders', {
   contactId: uuid('contact_id').references(() => contragents.id),   // клиент-заказчик
   toWarehouseId: uuid('to_warehouse_id').references(() => warehouses.id), // Центр-Склад для закупа
   projectId: uuid('project_id').references(() => projects.id),
+  specProjectId: uuid('spec_project_id'),                 // → spec_projects.id (ленивая ссылка)
   comment: text('comment').notNull().default(''),
   phone: text('phone'),
   deadline: timestamp('deadline'),
@@ -290,6 +291,25 @@ export const projects = pgTable('projects', {
   status: text('status').notNull().default('active'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('projects_org_idx').on(t.orgId) }))
+
+export const specProjects = pgTable('spec_projects', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  name: text('name').notNull(),
+  clientId: uuid('client_id').references(() => contragents.id),
+  description: text('description').notNull().default(''),
+  status: text('status').notNull().default('active'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('spec_projects_org_idx').on(t.orgId) }))
+
+export const specProjectItems = pgTable('spec_project_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  specProjectId: uuid('spec_project_id').notNull().references(() => specProjects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  qty: qtyCol('qty').notNull().default('0'),
+  unit: text('unit').notNull().default('шт'),
+  productId: uuid('product_id').references(() => products.id),
+}, t => ({ bySpec: index('spec_project_items_spec_idx').on(t.specProjectId) }))
 
 export const notifications = pgTable('notifications', {
   id: uuid('id').defaultRandom().primaryKey(),

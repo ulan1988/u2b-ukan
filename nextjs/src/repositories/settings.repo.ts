@@ -1,7 +1,7 @@
 // Данные для панели Фильтр/Настройки (только запросы Drizzle).
 import { db } from '../lib/db'
-import { contragents, projects } from '../db/schema'
-import { and, eq, or } from 'drizzle-orm'
+import { contragents, projects, specProjects, specProjectItems } from '../db/schema'
+import { and, eq, or, inArray } from 'drizzle-orm'
 
 // Поставщики = контрагенты kind supplier|both (не архивные) организации.
 export const suppliers = (orgId: string) =>
@@ -12,3 +12,9 @@ export const suppliers = (orgId: string) =>
 
 export const projectsByOrg = (orgId: string) =>
   db.select().from(projects).where(eq(projects.orgId, orgId))
+
+export const specProjectsByOrg = (orgId: string) =>
+  db.select().from(specProjects).where(eq(specProjects.orgId, orgId))
+
+export const specItemsByProjects = (ids: string[]) =>
+  ids.length ? db.select().from(specProjectItems).where(inArray(specProjectItems.specProjectId, ids)) : Promise.resolve([] as any[])
