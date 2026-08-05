@@ -4,6 +4,7 @@ import { COLORS } from '@/lib/colors'
 import { isPurchase, fmtMoney } from '@/lib/adminFmt'
 import { logistOrders, setPosStatus } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
+import { getDraft, addRow, deleteRow, closeShift } from '@/lib/api/reports'
 
 const STEPS = ['В работе', 'В пути', 'Доставлено']
 const STEP_STYLE: Record<string, { bg: string; color: string }> = {
@@ -12,7 +13,7 @@ const STEP_STYLE: Record<string, { bg: string; color: string }> = {
 
 export default function LogistPortal({ user }: { user: { name: string } }) {
   const [orders, setOrders] = useState<any[]>([])
-  const [tab, setTab] = useState<'active' | 'done'>('active')
+  const [tab, setTab] = useState<'active' | 'done' | 'shift'>('active')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
@@ -40,12 +41,12 @@ export default function LogistPortal({ user }: { user: { name: string } }) {
 
       <div style={{ maxWidth: 560, margin: '0 auto', padding: 16 }}>
         <div style={{ display: 'flex', background: '#fff', borderRadius: 10, padding: 4, marginBottom: 16, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
-          {([['active', 'Активные'], ['done', 'Выполнено']] as const).map(([k, l]) => (
+          {([['active', 'Активные'], ['done', 'Выполнено'], ['shift', '📊 Смена']] as const).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: '9px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, background: tab === k ? COLORS.primary : 'transparent', color: tab === k ? '#fff' : COLORS.textMuted }}>{l}</button>
           ))}
         </div>
 
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div>
+        {tab === 'shift' ? <ShiftReport /> : loading ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div>
           : list.length === 0 ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, fontSize: 14 }}>{tab === 'done' ? 'Пока ничего не выполнено' : 'Нет активных доставок'}</div>
             : list.map(o => (
               <div key={o.id} style={{ background: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
@@ -70,6 +71,65 @@ export default function LogistPortal({ user }: { user: { name: string } }) {
                 ))}
               </div>
             ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Смена логиста: суточный отчёт приход/расход ──────────────────────────────
+function ShiftReport() {
+  const [rows, setRows] = useState<any[]>([])
+  const [f, setF] = useState({ fromWho: '', name: '', qtyIn: '', commentIn: '', toWho: '', qtyOut: '', invoiceNum: '' })
+  const [closed, setClosed] = useState(false)
+
+  async function load() { const d: any = await getDraft(); setRows(d.rows || []); setClosed(d.report?.status === 'done') }
+  useEffect(() => { load() }, [])
+
+  async function add() {
+    if (!f.name.trim()) return
+    await addRow(f)
+    setF({ fromWho: '', name: '', qtyIn: '', commentIn: '', toWho: '', qtyOut: '', invoiceNum: '' })
+    load()
+  }
+  async function del(id: string) { await deleteRow(id); load() }
+  async function close() { await closeShift(); load() }
+
+  const inp: React.CSSProperties = { padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontFamily: 'inherit', fontSize: 13, outline: 'none', width: '100%' }
+  return (
+    <div>
+      <div style={{ background: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>ДОБАВИТЬ СТРОКУ</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <input style={inp} placeholder="Товар" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
+          <input style={inp} placeholder="№ накладной" value={f.invoiceNum} onChange={e => setF({ ...f, invoiceNum: e.target.value })} />
+          <input style={inp} placeholder="От кого (приход)" value={f.fromWho} onChange={e => setF({ ...f, fromWho: e.target.value })} />
+          <input style={inp} type="number" placeholder="Кол-во приход" value={f.qtyIn} onChange={e => setF({ ...f, qtyIn: e.target.value })} />
+          <input style={inp} placeholder="Кому (расход)" value={f.toWho} onChange={e => setF({ ...f, toWho: e.target.value })} />
+          <input style={inp} type="number" placeholder="Кол-во расход" value={f.qtyOut} onChange={e => setF({ ...f, qtyOut: e.target.value })} />
+        </div>
+        <button onClick={add} disabled={!f.name.trim()} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', opacity: f.name.trim() ? 1 : 0.5 }}>＋ Добавить</button>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+        <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1efec' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#5f5952' }}>СТРОКИ СМЕНЫ ({rows.length})</span>
+          {!closed && rows.length > 0 && <button onClick={close} style={{ marginLeft: 'auto', padding: '6px 14px', borderRadius: 7, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Закрыть смену</button>}
+          {closed && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2e8a5e', fontWeight: 700 }}>✅ Смена закрыта</span>}
+        </div>
+        {rows.length === 0 ? <div style={{ padding: 20, color: COLORS.textMuted, fontSize: 14 }}>Пусто</div>
+          : rows.map((r: any) => (
+            <div key={r.id} style={{ padding: '10px 14px', borderTop: '1px solid #f6f3f0', fontSize: 13 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 600, flex: 1 }}>{r.name}</span>
+                {!closed && <button onClick={() => del(r.id)} style={{ background: 'none', border: 'none', color: '#b0a99f', cursor: 'pointer', fontSize: 16 }}>×</button>}
+              </div>
+              <div style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                {Number(r.qtyIn) > 0 && `↓ ${r.qtyIn} от ${r.fromWho || '—'}  `}
+                {Number(r.qtyOut) > 0 && `↑ ${r.qtyOut} кому ${r.toWho || '—'}  `}
+                {r.invoiceNum && `№${r.invoiceNum}`}
+              </div>
+            </div>
+          ))}
       </div>
     </div>
   )
