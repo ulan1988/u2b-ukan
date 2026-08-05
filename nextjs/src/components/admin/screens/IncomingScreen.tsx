@@ -5,7 +5,8 @@ import KanbanColumns from '@/components/admin/KanbanColumns'
 import { isPurchase } from '@/lib/adminFmt'
 import { COLORS } from '@/lib/colors'
 
-type Tab = 'new' | 'changed' | 'toacc' | 'drafts' | 'cancelled'
+// Вкладка «К учёту» вынесена в отдельный экран /admin/accounting (единый, без дубля).
+type Tab = 'new' | 'changed' | 'drafts' | 'cancelled'
 
 export default function IncomingScreen({ orders, onAction, onOpen }: {
   orders: any[]; onAction: (id: string, a: string) => void; onOpen: (o: any) => void
@@ -16,17 +17,15 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
   const groups: Record<Tab, any[]> = {
     new: inc.filter(o => !o.isDraft && !o.isCancelled && !o.toacc && !o.isChanged),
     changed: inc.filter(o => o.isChanged && !o.isCancelled),
-    toacc: inc.filter(o => o.toacc && !o.isCancelled),
     drafts: inc.filter(o => o.isDraft && isPurchase(o)),
     cancelled: inc.filter(o => o.isCancelled),
   }
   const TABS: { k: Tab; l: string }[] = [
-    { k: 'new', l: 'Новые' }, { k: 'changed', l: 'Изменения' }, { k: 'toacc', l: 'К учёту' },
+    { k: 'new', l: 'Новые' }, { k: 'changed', l: 'Изменения' },
     { k: 'drafts', l: 'Черновики' }, { k: 'cancelled', l: 'Отменённые' },
   ]
   const actionsFor = (t: Tab): CardAction[] => {
     if (t === 'cancelled') return [{ action: 'restore', label: 'Восстановить' }]
-    if (t === 'toacc') return [{ action: 'sendAcc', label: 'В учёт', variant: 'primary' }, { action: 'cancel', label: 'Отмена', variant: 'danger' }]
     return [{ action: 'accept', label: 'Принять', variant: 'primary' }, { action: 'cancel', label: 'Отмена', variant: 'danger' }]
   }
 
@@ -46,7 +45,7 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
           )
         })}
       </div>
-      {(tab === 'new' || tab === 'toacc')
+      {tab === 'new'
         // Авто-канбан по заказчику (как в Улкане)
         ? <KanbanColumns cards={list} groupBy={o => o.fromName} renderCard={o => <OrderCard key={o.id} order={o} actions={actionsFor(tab)} onAction={onAction} onOpen={onOpen} />} />
         : list.length === 0
