@@ -1,16 +1,29 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { getCard } from '@/lib/adminApi'
+import { listMessages, sendMessage } from '@/lib/api/orders'
 import { isPurchase, statusStyle, fmtMoney, cardSum } from '@/lib/adminFmt'
 
 export default function CardModal({ id, onClose, onAction }: {
   id: string; onClose: () => void; onAction: (id: string, a: string) => void
 }) {
   const [card, setCard] = useState<any>(null)
-  const [tab, setTab] = useState<'positions' | 'history'>('positions')
+  const [tab, setTab] = useState<'positions' | 'history' | 'chat'>('positions')
+  const [messages, setMessages] = useState<any[]>([])
+  const [text, setText] = useState('')
+  const chatEnd = useRef<HTMLDivElement>(null)
 
   useEffect(() => { getCard(id).then(setCard) }, [id])
+  useEffect(() => { if (tab === 'chat') listMessages(id).then(setMessages) }, [tab, id])
+  useEffect(() => { chatEnd.current?.scrollIntoView() }, [messages])
+
+  async function send() {
+    const t = text.trim(); if (!t) return
+    setText('')
+    await sendMessage(id, t)
+    setMessages(await listMessages(id))
+  }
 
   const o = card?.order
   const positions = card?.positions || []
@@ -39,11 +52,31 @@ export default function CardModal({ id, onClose, onAction }: {
 
             {/* Табы */}
             <div style={{ display: 'flex', gap: 6, padding: '10px 20px 0' }}>
-              {([['positions', `Позиции · ${positions.length}`], ['history', `История · ${history.length}`]] as const).map(([k, l]) => (
+              {([['positions', `Позиции · ${positions.length}`], ['history', `История · ${history.length}`], ['chat', '💬 Чат']] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? '#f1efec' : 'transparent', color: tab === k ? COLORS.text : COLORS.textMuted }}>{l}</button>
               ))}
             </div>
 
+            {tab === 'chat' ? (
+              <div style={{ background: '#faf8f6' }}>
+                <div style={{ padding: 20, maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {messages.length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Сообщений нет</div> : messages.map((m: any) => (
+                    <div key={m.id} style={{ background: '#fff', borderRadius: 10, padding: '8px 12px', boxShadow: '0 0 0 1px #efece8' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 2 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary }}>{m.userName || '—'}</span>
+                        <span style={{ fontSize: 11, color: COLORS.textLight }}>{new Date(m.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div style={{ fontSize: 14, color: COLORS.text }}>{m.text}</div>
+                    </div>
+                  ))}
+                  <div ref={chatEnd} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, padding: '12px 20px', borderTop: '1px solid #f1efec', background: '#fff' }}>
+                  <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Сообщение…" style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontFamily: 'inherit', fontSize: 14, outline: 'none' }} />
+                  <button onClick={send} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>▶</button>
+                </div>
+              </div>
+            ) : (
             <div style={{ padding: 20, background: '#faf8f6', maxHeight: 380, overflowY: 'auto' }}>
               {tab === 'positions' ? (
                 positions.length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Позиций нет</div> : (
@@ -78,6 +111,7 @@ export default function CardModal({ id, onClose, onAction }: {
                 )
               )}
             </div>
+            )}
 
             {/* Действия */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

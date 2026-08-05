@@ -25,6 +25,9 @@ export async function postInvoice(cardId: string) {
 
 export const listHistory = (orgId: string) => getArray(`/api/history?orgId=${orgId}`)
 
+export const listMessages = (cardId: string) => getArray(`/api/orders/${cardId}/messages`)
+export const sendMessage = (cardId: string, text: string) => post(`/api/orders/${cardId}/messages`, { text })
+
 // Порталы
 export const logistOrders = () => getArray('/api/logist/orders')
 export const clientOrders = () => getArray('/api/client/orders')
