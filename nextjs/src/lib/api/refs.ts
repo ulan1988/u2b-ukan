@@ -23,3 +23,6 @@ export const saveCategoryRule = (b: any) => send('/api/settings/category-rules',
 
 export const createProject = (b: any) => post('/api/projects', b)
 export const createSpecProject = (b: any) => post('/api/spec-projects', b)
+
+export const autoPrices = (productIds: string[], contragentId?: string) =>
+  getObj(`/api/pricing?productIds=${productIds.join(',')}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})

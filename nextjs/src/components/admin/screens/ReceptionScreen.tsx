@@ -5,6 +5,7 @@ import NomPicker from '@/components/NomPicker'
 import { COLORS } from '@/lib/colors'
 import { fetchRefs, fetchUsers, createOrder, assignLogist } from '@/lib/adminApi'
 import { demandSummary, stage } from '@/lib/api/procurement'
+import { autoPrices } from '@/lib/api/refs'
 
 const INP: React.CSSProperties = { width: '100%', padding: '9px 13px', borderRadius: 7, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', color: '#26231f' }
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
@@ -45,6 +46,14 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     setRow(i, { productId: pid, name1c: p?.name || '', unit: p?.unit || 'шт', price: p ? String(p.priceRetail) : '' })
   }
   const assignAllLogist = (uid: string) => uid && setRows(rs => rs.map(r => ({ ...r, respUserId: uid })))
+
+  // Автоцены по типу клиента (retail/opt).
+  async function pullPrices() {
+    const ids = rows.map(r => r.productId).filter(Boolean)
+    if (!ids.length) return
+    const prices: any = await autoPrices(ids, kind === 'sale' ? (contactId || undefined) : undefined)
+    setRows(rs => rs.map(r => (r.productId && prices[r.productId] != null ? { ...r, price: String(prices[r.productId]) } : r)))
+  }
 
   async function submit() {
     setBusy(true)
@@ -111,6 +120,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em' }}>ПОЗИЦИИ</div>
+              <button onClick={pullPrices} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#fdf8e1', color: '#8a6f00', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>💰 Подтянуть цены</button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', background: '#f8f6f3', borderRadius: 8, padding: '5px 8px' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КО ВСЕМ:</span>
                 <select style={{ ...INP, width: 160, padding: '6px 10px', fontSize: 13 }} value="" onChange={e => assignAllLogist(e.target.value)}>
