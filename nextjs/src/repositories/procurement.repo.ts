@@ -1,0 +1,42 @@
+// Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
+import { db } from '../lib/db'
+import { orders, orderPositions, procurementLinks, products } from '../db/schema'
+import { and, eq, inArray, desc } from 'drizzle-orm'
+
+// Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
+export async function saleDemand(orgId: string) {
+  const cards = await db.select().from(orders).where(and(
+    eq(orders.orgId, orgId), eq(orders.kind, 'sale'),
+    inArray(orders.screen, ['incoming', 'reception']),
+    eq(orders.isDraft, false), eq(orders.isCancelled, false),
+  ))
+  if (!cards.length) return { cards: [], positions: [] as any[] }
+  const positions = await db.select().from(orderPositions).where(inArray(orderPositions.cardId, cards.map(c => c.id)))
+  return { cards, positions }
+}
+
+// Уже связанные пары (saleCardId + товар) — исключить из сводки.
+export const procuredPairs = (orgId: string) =>
+  db.select({ saleCardId: procurementLinks.saleCardId, product: procurementLinks.product })
+    .from(procurementLinks)
+    .innerJoin(orders, eq(procurementLinks.purchaseCardId, orders.id))
+    .where(eq(orders.orgId, orgId))
+
+// Открытый черновик-накопитель закупа.
+export const openDraft = (orgId: string) =>
+  db.select().from(orders).where(and(
+    eq(orders.orgId, orgId), eq(orders.kind, 'purchase'),
+    eq(orders.isDraft, true), eq(orders.isCancelled, false),
+  )).orderBy(desc(orders.createdAt)).limit(1)
+
+export const countPurchases = async (orgId: string) => {
+  const r = await db.select({ c: orders.id }).from(orders).where(and(eq(orders.orgId, orgId), eq(orders.kind, 'purchase')))
+  return r.length
+}
+
+export const insertDraft = (v: typeof orders.$inferInsert) => db.insert(orders).values(v).returning()
+export const insertPositions = (v: (typeof orderPositions.$inferInsert)[]) => db.insert(orderPositions).values(v).returning()
+export const insertLinks = (v: (typeof procurementLinks.$inferInsert)[]) => db.insert(procurementLinks).values(v)
+
+export const productsByNames = (names: string[]) =>
+  names.length ? db.select({ id: products.id, name: products.name, group: products.group, cat: products.category, priceIn: products.priceIn }).from(products).where(inArray(products.name, names)) : Promise.resolve([] as any[])

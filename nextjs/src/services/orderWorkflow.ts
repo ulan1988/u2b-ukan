@@ -67,6 +67,12 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: c => ({ postponed: !c.order.postponed }),
     history: c => (c.order.postponed ? 'Снят с отложенных' : 'Отложен'),
   },
+  finalizePurchase: {
+    roles: ADMIN,
+    guard: c => (c.positions.length && c.positions.every(p => p.respUserId && p.supplierId) ? null : 'У всех позиций закупа должен быть логист и поставщик'),
+    patch: () => ({ isDraft: false, screen: 'outgoing', block: '', status: 'В работе' }),
+    history: () => 'Закуп оформлен → в работу',
+  },
   cancel: {
     roles: ADMIN,
     patch: c => ({ isCancelled: true, cancelReason: c.payload.reason || '', status: 'Отменён' }),

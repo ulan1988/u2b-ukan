@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
 import { COLORS } from '@/lib/colors'
 import { fetchRefs, fetchUsers, createOrder, assignLogist } from '@/lib/adminApi'
+import { demandSummary, stage } from '@/lib/api/procurement'
 
 const INP: React.CSSProperties = { width: '100%', padding: '9px 13px', borderRadius: 7, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', color: '#26231f' }
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
@@ -73,6 +74,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
           ))}
         </div>
       </div>
+
+      {/* Блок 0 — Автозакуп (сводка потребности) */}
+      <AutoProcure orgId={orgId} onReload={onReload} />
 
       {/* Блок 1 — форма создания */}
       <div style={{ background: '#fff', borderRadius: 14, marginBottom: 20, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
@@ -170,6 +174,56 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
           {waiting.length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14, padding: 20 }}>Пусто</div>
             : waiting.map(o => <OrderCard key={o.id} order={o} actions={[{ action: 'take', label: 'Взять в обработку', variant: 'primary' }]} onAction={onAction} onOpen={onOpen} />)}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Автозакуп: сводка потребности новых продаж по товару ──────────────────────
+function AutoProcure({ orgId, onReload }: { orgId: string; onReload: () => void }) {
+  const [rows, setRows] = useState<any[]>([])
+  const [checked, setChecked] = useState<Record<string, boolean>>({})
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function load() { if (orgId) setRows(await demandSummary(orgId) as any) }
+  useEffect(() => { load() }, [orgId]) // eslint-disable-line
+
+  const chosen = rows.filter(r => checked[r.name])
+  async function toBuy() {
+    if (!chosen.length) return
+    setBusy(true); setMsg('')
+    const r = await stage(chosen)
+    setBusy(false)
+    if (r.ok) { setMsg(`✅ В закуп: ${r.data.added} тов. (черновик ${r.data.draftId})`); setChecked({}); load(); onReload() }
+    else setMsg('⚠ ' + (r.error || 'Ошибка'))
+  }
+
+  if (rows.length === 0) return null
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, marginBottom: 20, boxShadow: '0 0 0 1.5px #e3d4f0', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, background: '#faf7ff', borderBottom: '1px solid #f0eaf7' }}>
+        <span style={{ fontWeight: 700, fontSize: 15, color: '#7a3aaa' }}>🛒 Автозакуп — потребность ({rows.length})</span>
+        <button onClick={toBuy} disabled={busy || chosen.length === 0} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 8, border: 'none', background: chosen.length ? '#7a3aaa' : '#e9e0f2', color: chosen.length ? '#fff' : '#b09fc4', fontWeight: 700, fontSize: 13, cursor: chosen.length ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+          {busy ? '…' : `В закуп (${chosen.length})`}
+        </button>
+        {msg && <span style={{ fontSize: 12, color: '#5f5952' }}>{msg}</span>}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f8f6f3', color: '#5f5952', fontSize: 11 }}>{['', 'Товар', 'Нужно', 'Ед.', 'Заявки'].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.name} style={{ borderTop: '1px solid #f1efec' }}>
+                <td style={{ padding: '8px 12px' }}><input type="checkbox" checked={!!checked[r.name]} onChange={e => setChecked(c => ({ ...c, [r.name]: e.target.checked }))} /></td>
+                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{r.name}</td>
+                <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.total}</td>
+                <td style={{ padding: '8px 12px', color: '#5f5952' }}>{r.unit}</td>
+                <td style={{ padding: '8px 12px', color: '#5f5952', fontSize: 12 }}>{r.rows.map((x: any) => `${x.from} (${x.qty})`).join(', ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
