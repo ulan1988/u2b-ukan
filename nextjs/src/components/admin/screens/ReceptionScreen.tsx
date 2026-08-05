@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
+import NomPicker from '@/components/NomPicker'
 import { COLORS } from '@/lib/colors'
 import { fetchRefs, fetchUsers, createOrder, assignLogist } from '@/lib/adminApi'
 import { demandSummary, stage } from '@/lib/api/procurement'
@@ -123,7 +124,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec' }}>
-                      <td style={{ padding: '6px 4px', minWidth: 200 }}><select style={INP} value={r.productId} onChange={e => pickProduct(i, e.target.value)}><option value="">— товар —</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
+                      <td style={{ padding: '6px 4px', minWidth: 220 }}><NomPicker products={products} value={r.productId} onPick={p => pickProduct(i, p.id)} /></td>
                       <td style={{ padding: '6px 4px', width: 80 }}><input style={INP} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 60 }}><input style={INP} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 100 }}><input style={INP} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} /></td>
