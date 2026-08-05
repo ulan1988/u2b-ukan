@@ -1,7 +1,11 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
-import { orders, orderPositions, orderHistory } from '../db/schema'
+import { orders, orderPositions, orderHistory, products } from '../db/schema'
 import { and, eq, desc, inArray, sql } from 'drizzle-orm'
+
+// Метаданные товаров (группа/подгруппа) для автоподстановки по группе.
+export const productMeta = (ids: string[]) =>
+  ids.length ? db.select({ id: products.id, group: products.group, cat: products.category }).from(products).where(inArray(products.id, ids)) : Promise.resolve([] as any[])
 
 export async function countByKind(orgId: string, kind: string) {
   const r = await db.select({ c: sql<number>`count(*)::int` }).from(orders)

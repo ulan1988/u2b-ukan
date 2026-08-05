@@ -1,6 +1,7 @@
 // Жизненный цикл карточки — декларативная карта переходов (как orderWorkflow.ts в UKan,
 // но чисто по слоям). Диспетчер: getOrder → roles → guard → patch → history.
 import * as repo from '../repositories/order.repo'
+import { applyDefaults } from './categoryRule.service'
 import type { Session } from '../lib/auth'
 
 interface Ctx {
@@ -92,6 +93,18 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (g) return { ok: false as const, error: g }
 
   await repo.updateOrder(id, def.patch(ctx))
+
+  // Эффект take: автоподстановка поставщик/логист по группе товара (CategoryRule).
+  if (action === 'take') {
+    const meta = await repo.productMeta(positions.filter(p => p.productId).map(p => p.productId))
+    const metaMap = new Map(meta.map((m: any) => [m.id, { group: m.group || '', cat: m.cat || '' }]))
+    const patches = await applyDefaults(order.orgId, positions, metaMap)
+    for (const patch of patches) {
+      const { id: pid, ...set } = patch
+      await repo.updatePosition(pid, set)
+    }
+  }
+
   await repo.insertHistory({ cardId: id, action, detail: def.history(ctx), userName: actor?.name || 'Система' })
   return { ok: true as const }
 }

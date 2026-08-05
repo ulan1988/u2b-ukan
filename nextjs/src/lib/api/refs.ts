@@ -1,5 +1,5 @@
 // Домен: справочники (организации, товары, контрагенты, склады, кассы, остаток).
-import { getArray, getObj, post, patch } from './http'
+import { getArray, getObj, post, patch, send } from './http'
 
 export const fetchRefs = () => getObj('/api/refs')       // { organizations, products, contragents, warehouses, cashAccounts }
 
@@ -17,3 +17,6 @@ export const addCashAccount = (b: any) => post('/api/cash-accounts', b)
 export const stock = (orgId: string, warehouseId: string) => getArray(`/api/stock?orgId=${orgId}&warehouseId=${warehouseId}`)
 
 export const settings = (orgId: string) => getObj(`/api/settings?orgId=${orgId}`, { suppliers: [], projects: [], specProjects: [] })
+
+export const categoryRules = (orgId: string) => getArray(`/api/settings/category-rules?orgId=${orgId}`)
+export const saveCategoryRule = (b: any) => send('/api/settings/category-rules', 'PUT', b)
