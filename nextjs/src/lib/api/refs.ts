@@ -15,3 +15,5 @@ export const addWarehouse = (b: any) => post('/api/warehouses', b)
 export const addCashAccount = (b: any) => post('/api/cash-accounts', b)
 
 export const stock = (orgId: string, warehouseId: string) => getArray(`/api/stock?orgId=${orgId}&warehouseId=${warehouseId}`)
+
+export const settings = (orgId: string) => getObj(`/api/settings?orgId=${orgId}`, { suppliers: [], projects: [], specProjects: [] })

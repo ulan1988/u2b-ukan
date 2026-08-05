@@ -27,7 +27,7 @@ export default function AdminScreenPage() {
     case 'reception': return <ReceptionScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
     case 'outgoing': return <OutgoingScreen orders={a.visible} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
     case 'procurement': return <ProcurementScreen orgId={a.orgId} />
-    case 'filter': return <FilterScreen orders={a.orders} onAction={a.act} onOpen={a.openCard} />
+    case 'filter': return <FilterScreen orders={a.orders} orgId={a.orgId} onOpen={a.openCard} />
     case 'accounting': return <ListScreen title="К учёту" screen="accounting" orders={a.visible} onAction={a.act} onOpen={a.openCard} empty="Нет карточек к учёту"
       actions={[{ action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' }, { action: 'returnToIncoming', label: 'Вернуть' }]} />
     case 'bookkeeping': return <BookkeepingScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
