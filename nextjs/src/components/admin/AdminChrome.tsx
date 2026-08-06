@@ -5,6 +5,7 @@ import Sidebar, { type NavItem } from '@/components/admin/Sidebar'
 import Topbar from '@/components/admin/Topbar'
 import CardModal from '@/components/admin/CardModal'
 import ChatWidget from '@/components/ChatWidget'
+import AppBadge from '@/components/AppBadge'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 import { fetchRefs } from '@/lib/api/refs'
@@ -77,6 +78,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
 
   const counts: Record<string, number> = {}
   for (const o of orders) if (!o.isCancelled) counts[o.screen] = (counts[o.screen] || 0) + 1
+  // Новые карточки (как «Входящие» в дашборде) → бейдж на иконке PWA.
+  const newCount = orders.filter(o => o.screen === 'incoming' && !o.toacc && !o.isDraft && !o.isCancelled).length
   const q = search.trim().toLowerCase()
   const visible = q ? orders.filter(o => `${o.id} ${o.fromName} ${o.comment}`.toLowerCase().includes(q)) : orders
   const title = NAV.find(n => n.key === screen)?.label || ''
@@ -103,6 +106,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
 
       {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} />}
       <ChatWidget myId={user.id} orgId={orgId} />
+      <AppBadge count={newCount} baseTitle="U2B ERP" />
     </div>
   )
 }
