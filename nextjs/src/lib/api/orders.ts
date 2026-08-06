@@ -23,7 +23,10 @@ export async function postInvoice(cardId: string) {
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined }
 }
 
-export const listHistory = (orgId: string) => getArray(`/api/history?orgId=${orgId}`)
+export const listHistory = (orgId: string, f: { user?: string; from?: string; to?: string } = {}) => {
+  const p = new URLSearchParams({ orgId }); if (f.user) p.set('user', f.user); if (f.from) p.set('from', f.from); if (f.to) p.set('to', f.to)
+  return getArray(`/api/history?${p}`)
+}
 
 export const listMessages = (cardId: string) => getArray(`/api/orders/${cardId}/messages`)
 export const sendMessage = (cardId: string, text: string) => post(`/api/orders/${cardId}/messages`, { text })

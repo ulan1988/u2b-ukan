@@ -49,13 +49,18 @@ export const positionsByCard = (cardId: string) =>
 export const historyByCard = (cardId: string) =>
   db.select().from(orderHistory).where(eq(orderHistory.cardId, cardId)).orderBy(desc(orderHistory.createdAt))
 
-// Журнал действий по всей организации (join c orders для скоупа по org).
-export const historyByOrg = (orgId: string, limit = 200) =>
-  db.select({
+// Журнал действий по организации с фильтрами (пользователь, даты).
+export const historyByOrg = (orgId: string, f: { user?: string; from?: string; to?: string } = {}, limit = 300) => {
+  const conds: any[] = [eq(orders.orgId, orgId)]
+  if (f.user) conds.push(eq(orderHistory.userName, f.user))
+  if (f.from) conds.push(sql`${orderHistory.createdAt} >= ${f.from}`)
+  if (f.to) conds.push(sql`${orderHistory.createdAt} < ${f.to} :: date + interval '1 day'`)
+  return db.select({
     id: orderHistory.id, cardId: orderHistory.cardId, action: orderHistory.action,
     detail: orderHistory.detail, userName: orderHistory.userName, createdAt: orderHistory.createdAt,
   }).from(orderHistory).innerJoin(orders, eq(orderHistory.cardId, orders.id))
-    .where(eq(orders.orgId, orgId)).orderBy(desc(orderHistory.createdAt)).limit(limit)
+    .where(and(...conds)).orderBy(desc(orderHistory.createdAt)).limit(limit)
+}
 
 // Позиции, назначенные логисту, на активных стадиях (для портала логиста).
 export const positionsForLogist = (orgId: string, userId: string) =>

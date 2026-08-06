@@ -38,7 +38,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
 
 export const listByScreen = (orgId: string, screen: string) => repo.listByScreen(orgId, screen)
 
-export const listHistory = (orgId: string) => repo.historyByOrg(orgId)
+export const listHistory = (orgId: string, f: { user?: string; from?: string; to?: string } = {}) => repo.historyByOrg(orgId, f)
 
 // Портал логиста: его карточки, в каждой — только его позиции.
 export async function listForLogist(orgId: string, userId: string) {
@@ -96,20 +96,38 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   return { ok: true, allDelivered }
 }
 
-// Публичный трекинг: минимальный статус заявки по номеру.
+// Публичный трекинг: статус заявки по номеру (этап, позиции, детали, история).
+const STAGE_BY_SCREEN: Record<string, number> = { incoming: 1, reception: 2, outgoing: 3, accounting: 4, bookkeeping: 5, archive: 5 }
 export async function track(id: string) {
   const card = await getCard(id)
   if (!card) return null
   const o = card.order
-  const positions = card.positions.map((p: any) => ({ name: p.name1c || p.oral || '—', qty: Number(p.qty), unit: p.unit, status: p.status }))
+  const positions = card.positions.map((p: any) => ({ id: p.id, name: p.name1c || p.oral || '—', qty: Number(p.qty), unit: p.unit, status: p.status }))
   const done = positions.filter((p: any) => p.status === 'Доставлено').length
+  const progress = positions.length ? Math.round((done / positions.length) * 100) : (o.screen === 'archive' || o.screen === 'bookkeeping' ? 100 : 0)
+  const stage = o.toacc && o.screen === 'incoming' ? 4 : (STAGE_BY_SCREEN[o.screen] || 1)
+  const details = [
+    { k: 'Заказчик', v: o.fromName || '—' },
+    { k: 'Тип', v: o.kind === 'purchase' ? 'Закуп' : 'Продажа' },
+    { k: 'Создан', v: o.createdAt ? new Date(o.createdAt).toLocaleDateString('ru-RU') : '—' },
+    ...(o.deadline ? [{ k: 'Срок', v: new Date(o.deadline).toLocaleDateString('ru-RU') }] : []),
+  ]
+  const history = card.history.map((h: any) => ({ action: h.detail || h.action, time: h.createdAt }))
   return {
-    id: o.id, fromName: o.fromName, kind: o.kind, status: o.status, screen: o.screen,
-    isCancelled: o.isCancelled, cancelReason: o.cancelReason,
-    createdAt: o.createdAt, delivered: o.delivered,
-    progress: positions.length ? Math.round((done / positions.length) * 100) : 0,
-    positions,
+    id: o.id, status: o.status, stage, progress,
+    cancelled: o.isCancelled, cancelReason: o.cancelReason, legStage: null,
+    positions, details, history,
   }
+}
+
+// Публичный запрос изменения по заявке (лид/клиент с трекинга).
+export async function requestChange(cardId: string, text: string, phone?: string) {
+  const [o] = await repo.getOrder(cardId)
+  if (!o) return { ok: false as const, error: 'Заявка не найдена' }
+  await repo.updateOrder(cardId, { isChanged: true, changeText: text || '', changePhone: phone || '' })
+  await repo.insertHistory({ cardId, action: 'changeRequest', detail: `Запрос изменения: ${text}`, userName: 'Клиент (трекинг)' })
+  try { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(o.orgId, `⚡ Запрос изменения по ${cardId}: ${text.slice(0, 60)}`, cardId) } catch {}
+  return { ok: true as const }
 }
 
 // Частичное обновление позиции (логист меняет поставщика/кол-во/имя). Непереданное не трогаем.
