@@ -14,14 +14,17 @@ const sel: React.CSSProperties = { padding: '7px 10px', borderRadius: 8, border:
 // Действия по состоянию карточки (все связки экрана «К учёту»).
 function actionsFor(o: any): CardAction[] {
   if (o.isCancelled) return [{ action: 'restore', label: 'Восстановить' }]
+  const postponeBtn: CardAction = { action: 'postpone', label: o.postponed ? 'Снять откл.' : 'Отложить' }
   if (o.screen === 'accounting') return [
     { action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' },
     { action: 'returnToIncoming', label: 'Вернуть' },
+    postponeBtn,
     { action: 'cancel', label: 'Отмена', variant: 'danger' },
   ]
   // готова к учёту (incoming + toacc)
   return [
     { action: 'sendAcc', label: 'В учёт', variant: 'primary' },
+    postponeBtn,
     { action: 'cancel', label: 'Отмена', variant: 'danger' },
   ]
 }

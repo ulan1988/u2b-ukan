@@ -88,6 +88,11 @@ export const resetPositionsForReturn = (cardId: string) =>
 export const insertHistory = (row: typeof orderHistory.$inferInsert) =>
   db.insert(orderHistory).values(row)
 
+// «Провести все»: все карточки К учёту (кроме отложенных) → в бухгалтерию.
+export const postAllAccounting = (orgId: string) =>
+  db.update(orders).set({ screen: 'bookkeeping', status: 'В бухгалтерии', toacc: false, updatedAt: sql`now()` })
+    .where(and(eq(orders.orgId, orgId), eq(orders.screen, 'accounting'), eq(orders.postponed, false))).returning({ id: orders.id })
+
 export const insertPosition = (v: typeof orderPositions.$inferInsert) =>
   db.insert(orderPositions).values(v).returning()
 

@@ -1,7 +1,7 @@
 // Суточные отчёты логиста (смены). Только запросы Drizzle.
 import { db } from '../lib/db'
-import { dailyReports, dailyReportRows } from '../db/schema'
-import { and, eq, desc, lt, sql } from 'drizzle-orm'
+import { dailyReports, dailyReportRows, users } from '../db/schema'
+import { and, eq, desc, lt, ne, inArray, sql } from 'drizzle-orm'
 
 export const draftForDay = (orgId: string, logistId: string, date: string) =>
   db.select().from(dailyReports).where(and(
@@ -33,3 +33,17 @@ export const setStatus = (id: string, status: string) =>
 // Закрытые отчёты организации (для админа).
 export const closedReports = (orgId: string) =>
   db.select().from(dailyReports).where(and(eq(dailyReports.orgId, orgId), eq(dailyReports.status, 'done'))).orderBy(desc(dailyReports.date))
+
+// Все отчёты организации, кроме незакрытых черновиков логистов (для бухгалтерии),
+// с именем логиста. Строки подтягиваются отдельно (rowsByReports).
+export const reportsForBook = (orgId: string) =>
+  db.select({
+    id: dailyReports.id, logistId: dailyReports.logistId, date: dailyReports.date,
+    comment: dailyReports.comment, status: dailyReports.status, createdAt: dailyReports.createdAt,
+    logistName: users.name,
+  }).from(dailyReports).innerJoin(users, eq(dailyReports.logistId, users.id))
+    .where(and(eq(dailyReports.orgId, orgId), ne(dailyReports.status, 'draft')))
+    .orderBy(desc(dailyReports.date))
+
+export const rowsByReports = (ids: string[]) =>
+  ids.length ? db.select().from(dailyReportRows).where(inArray(dailyReportRows.reportId, ids)) : Promise.resolve([] as any[])

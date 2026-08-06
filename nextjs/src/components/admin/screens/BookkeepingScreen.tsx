@@ -1,38 +1,227 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
 import { COLORS } from '@/lib/colors'
-import { fmtMoney } from '@/lib/adminFmt'
+import { fmtMoney, fmtDate, statusStyle } from '@/lib/adminFmt'
 import { finance } from '@/lib/api/finance'
+import { fetchDailyReports, updateDailyReport, postAllToBook } from '@/lib/api/reports'
 
-// Бухгалтерия = проведённые заявки + встроенная ERP-Финансы (по решению пользователя).
+// Бухгалтерия 1:1: Карточки + Отчёты логистов + Смены. Плюс вкладка Финансы (ERP, по решению владельца).
+type Tab = 'cards' | 'reports' | 'shifts' | 'finance'
+
+function Btn({ onClick, children, variant, disabled }: { onClick: () => void; children: React.ReactNode; variant?: 'primary'; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: '6px 12px', borderRadius: 7, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 12,
+        background: variant === 'primary' ? (disabled ? '#e9e5e0' : COLORS.primary) : COLORS.white, color: variant === 'primary' ? (disabled ? '#a89f95' : '#fff') : COLORS.text,
+        boxShadow: variant === 'primary' ? 'none' : '0 0 0 1.5px #d8d3cc' }}>{children}</button>
+  )
+}
+
 export default function BookkeepingScreen({ orders, orgId, onAction, onOpen }: {
   orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onOpen?: (o: any) => void
 }) {
-  const [tab, setTab] = useState<'cards' | 'finance'>('cards')
+  const [tab, setTab] = useState<Tab>('cards')
   const [fin, setFin] = useState<any>(null)
+  const [reports, setReports] = useState<any[]>([])
+  const [reportsErr, setReportsErr] = useState(false)
+  const [flash, setFlash] = useState('')
+  const toast = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 2000) }
 
-  useEffect(() => {
-    if (tab === 'finance' && !fin) finance(orgId).then(setFin)
-  }, [tab, fin, orgId])
+  const loadReports = useCallback(async () => {
+    try { setReports(await fetchDailyReports(orgId)); setReportsErr(false) } catch { setReportsErr(true) }
+  }, [orgId])
+
+  useEffect(() => { if (tab === 'finance' && !fin) finance(orgId).then(setFin) }, [tab, fin, orgId])
+  useEffect(() => { if (tab === 'reports' || tab === 'shifts') loadReports() }, [tab, loadReports])
 
   const cards = orders.filter(o => o.screen === 'bookkeeping')
+  const tabs: Array<[Tab, string]> = [
+    ['cards', `Карточки (${cards.length})`], ['reports', 'Отчёты логистов'], ['shifts', 'Смены'], ['finance', 'Финансы'],
+  ]
+
+  async function postAll() { const r: any = await postAllToBook(orgId); toast(`Проведено: ${r.count}`) }
 
   return (
-    <div>
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Бухгалтерия</div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['cards', `Проведённые · ${cards.length}`], ['finance', 'Финансы']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
+    <div className="anim-fade">
+      {flash && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{flash}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 20 }}>Бухгалтерия</div>
+        {tab === 'cards' && <Btn variant="primary" onClick={postAll}>Провести все</Btn>}
+      </div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
+        {tabs.map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ padding: '6px 14px', borderRadius: 20, border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : '#5f5952', boxShadow: '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
 
-      {tab === 'cards' ? (
-        cards.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted, fontSize: 14 }}>Нет проведённых карточек</div>
-          : <div style={{ maxWidth: 640 }}>{cards.map(o => <OrderCard key={o.id} order={o} actions={o.isCancelled ? [] : [{ action: 'sendArchive', label: 'В архив', variant: 'primary' }]} onAction={onAction} onOpen={onOpen} />)}</div>
-      ) : (
-        <FinancePanel fin={fin} />
+      {/* ── КАРТОЧКИ ── */}
+      {tab === 'cards' && (
+        cards.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952', fontSize: 14 }}>Нет карточек</div>
+          : <div style={{ maxWidth: 680 }}>{cards.map(o => (
+              <div key={o.id}>
+                <OrderCard order={o} actions={[]} onAction={onAction} onOpen={onOpen} />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: -4, marginBottom: 12, paddingRight: 4, flexWrap: 'wrap' }}>
+                  <Btn onClick={() => onAction(o.id, 'returnToAcc')}>← К учёту</Btn>
+                  {!o.invoice && <Btn onClick={() => onAction(o.id, 'createDoc')}>↓ Счёт</Btn>}
+                  {!o.fact && <Btn onClick={() => onAction(o.id, 'createDocFact')}>↓ Счёт-фактура</Btn>}
+                  {!o.posted1c && <Btn onClick={() => onAction(o.id, 'post1c')}>Провести 1С</Btn>}
+                  <Btn variant="primary" disabled={!o.posted1c} onClick={() => o.posted1c && onAction(o.id, 'sendArchive')}>→ Архив</Btn>
+                </div>
+              </div>
+            ))}</div>
       )}
+
+      {/* ── ОТЧЁТЫ ЛОГИСТОВ ── */}
+      {tab === 'reports' && <ReportsTab reports={reports} reportsErr={reportsErr} reload={loadReports} toast={toast} />}
+
+      {/* ── СМЕНЫ ── */}
+      {tab === 'shifts' && <ShiftsTab reports={reports} reload={loadReports} toast={toast} />}
+
+      {/* ── ФИНАНСЫ (ERP) ── */}
+      {tab === 'finance' && <FinancePanel fin={fin} />}
+    </div>
+  )
+}
+
+function ReportRows({ rows }: { rows: any[] }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 600 }}>
+        <thead><tr style={{ background: '#f8f6f3' }}>
+          {['ОТ КОГО', 'НАИМ.', 'ПРИХОД', 'КОММ.', 'КОМУ', 'РАСХОД', 'КОММ.', '№ НАКЛ.'].map(h => (
+            <th key={h} style={{ padding: '6px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {rows.map((row: any) => (
+            <tr key={row.id} style={{ borderTop: '1px solid #f1efec' }}>
+              {[row.fromWho, row.name, Number(row.qtyIn) || '', row.commentIn, row.toWho, Number(row.qtyOut) || '', row.commentOut, row.invoiceNum].map((v: any, j: number) => (
+                <td key={j} style={{ padding: '6px 10px', color: v ? '#26231f' : '#837c72' }}>{v || '—'}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ReportsTab({ reports, reportsErr, reload, toast }: { reports: any[]; reportsErr: boolean; reload: () => void; toast: (m: string) => void }) {
+  const [filter, setFilter] = useState<'active' | 'done' | 'archive'>('active')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+
+  const filtered = reports.filter(r => {
+    if (filter === 'active' && r.status !== 'processing' && r.status !== 'draft') return false
+    if (filter === 'done' && r.status !== 'done') return false
+    if (filter === 'archive' && r.status !== 'archive') return false
+    if (from && new Date(r.date) < new Date(from)) return false
+    if (to && new Date(r.date) > new Date(to + 'T23:59:59')) return false
+    return true
+  })
+  const count = (k: string) => reports.filter(r => k === 'active' ? (r.status === 'processing' || r.status === 'draft') : r.status === k).length
+  const inp: React.CSSProperties = { padding: '4px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit' }
+  async function setStatus(id: string, status: string, msg: string) { await updateDailyReport(id, status); reload(); toast(msg) }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {([['active', 'Новые'], ['done', 'Принятые'], ['archive', 'Архив']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ padding: '5px 14px', borderRadius: 20, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: filter === k ? COLORS.primary : '#fff', color: filter === k ? '#fff' : '#5f5952', boxShadow: '0 0 0 1.5px #e6e2dc' }}>{l} ({count(k)})</button>
+        ))}
+        <div style={{ width: 1, height: 20, background: '#e6e2dc' }} />
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={inp} />
+        <span style={{ fontSize: 13, color: '#5f5952' }}>—</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={inp} />
+        {(from || to) && <button onClick={() => { setFrom(''); setTo('') }} style={{ padding: '4px 8px', borderRadius: 7, border: 'none', background: '#faeaea', color: '#b03020', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>✕ Даты</button>}
+        <button onClick={reload} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 14, cursor: 'pointer' }}>⟳</button>
+      </div>
+
+      {reportsErr
+        ? <div style={{ color: '#b03020', fontSize: 14, padding: '20px 0', fontWeight: 600 }}>⚠️ Ошибка загрузки отчётов. Нажмите ⟳ или обновите страницу.</div>
+        : filtered.length === 0
+          ? <div style={{ color: '#5f5952', fontSize: 14, padding: '20px 0' }}>Нет отчётов</div>
+          : filtered.map(r => {
+              const label = r.status === 'draft' ? 'Не закрыта' : r.status === 'processing' ? 'Новый' : r.status === 'done' ? 'Принят' : 'Архив'
+              return (
+                <div key={r.id} style={{ background: '#fff', borderRadius: 12, padding: 18, marginBottom: 12, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{r.logist?.name} · {fmtDate(r.date)}</div>
+                      {r.comment && <div style={{ fontSize: 13, color: '#5f5952', marginTop: 2 }}>{r.comment}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={statusStyle(label)}>{label}</span>
+                      {r.status === 'processing' && <Btn variant="primary" onClick={() => setStatus(r.id, 'done', '✓ Отчёт принят')}>✓ Принять</Btn>}
+                      {r.status === 'done' && <Btn onClick={() => setStatus(r.id, 'archive', '✓ Отправлен в архив')}>→ Архив</Btn>}
+                    </div>
+                  </div>
+                  <ReportRows rows={r.rows} />
+                </div>
+              )
+            })}
+    </div>
+  )
+}
+
+function ShiftsTab({ reports, reload, toast }: { reports: any[]; reload: () => void; toast: (m: string) => void }) {
+  const archived = reports.filter(r => r.status === 'archive')
+  const byDate: Record<string, any[]> = {}
+  archived.forEach(r => { const d = r.date ? String(r.date).slice(0, 10) : 'unknown'; (byDate[d] = byDate[d] || []).push(r) })
+  const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
+  const doneCount = reports.filter(r => r.status === 'done').length
+
+  async function closeShift() {
+    const toClose = reports.filter(r => r.status === 'done')
+    if (toClose.length === 0) { toast('Нет принятых отчётов для закрытия'); return }
+    await Promise.all(toClose.map(r => updateDailyReport(r.id, 'archive')))
+    reload(); toast(`✓ Смена закрыта — ${toClose.length} отчётов`)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 14, color: '#5f5952' }}>Принятых отчётов: <strong style={{ color: '#26231f' }}>{doneCount}</strong></div>
+        <button onClick={closeShift} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>✓ Закрыть смену</button>
+      </div>
+
+      {dates.length === 0
+        ? <div style={{ color: '#5f5952', fontSize: 14, padding: '20px 0' }}>Нет закрытых смен</div>
+        : dates.map(date => {
+            const reps = byDate[date]
+            const totalRows = reps.reduce((s, r) => s + r.rows.length, 0)
+            return (
+              <div key={date} style={{ background: '#fff', borderRadius: 12, padding: 20, marginBottom: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>📅 {new Date(date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                    <div style={{ fontSize: 13, color: '#5f5952', marginTop: 2 }}>{reps.length} логистов · {totalRows} позиций</div>
+                  </div>
+                  <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#e8f5ee', color: '#2e8a5e', fontWeight: 600 }}>✓ Закрыта</span>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 600 }}>
+                    <thead><tr style={{ background: '#f8f6f3' }}>
+                      {['ЛОГИСТ', 'ОТ КОГО', 'НАИМ.', 'ПРИХОД', 'КОМУ', 'РАСХОД'].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left' }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {reps.map(r => r.rows.map((row: any, i: number) => (
+                        <tr key={row.id} style={{ borderTop: '1px solid #f1efec' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600, color: COLORS.primary }}>{i === 0 ? r.logist?.name : ''}</td>
+                          <td style={{ padding: '6px 10px' }}>{row.fromWho || '—'}</td>
+                          <td style={{ padding: '6px 10px', fontWeight: 500 }}>{row.name || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{Number(row.qtyIn) || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{row.toWho || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{Number(row.qtyOut) || '—'}</td>
+                        </tr>
+                      )))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })}
     </div>
   )
 }

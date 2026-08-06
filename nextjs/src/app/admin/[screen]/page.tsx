@@ -8,7 +8,7 @@ import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
 import FilterScreen from '@/components/admin/screens/FilterScreen'
-import ListScreen from '@/components/admin/screens/ListScreen'
+import ArchiveScreen from '@/components/admin/screens/ArchiveScreen'
 import AccountingScreen from '@/components/admin/screens/AccountingScreen'
 import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import InvoicesScreen from '@/components/admin/screens/InvoicesScreen'
@@ -33,8 +33,7 @@ export default function AdminScreenPage() {
     case 'bookkeeping': return <BookkeepingScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
     case 'invoice_in': return <InvoicesScreen kind="in" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'invoice_out': return <InvoicesScreen kind="out" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
-    case 'archive': return <ListScreen title="Архив" screen="archive" orders={a.visible} onAction={a.act} onOpen={a.openCard} empty="Архив пуст"
-      actions={[{ action: 'unarchive', label: 'Из архива' }]} />
+    case 'archive': return <ArchiveScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
     case 'warehouse': return <WarehouseScreen orgId={a.orgId} onOpenCard={id => a.openCard({ id })} />
     case 'nomenclature': return <NomenclatureScreen />
     case 'settings': return <SettingsScreen orgId={a.orgId} />

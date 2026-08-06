@@ -46,3 +46,14 @@ export async function closeShift(actor: Session, date?: string) {
 }
 
 export const closedReports = (orgId: string) => repo.closedReports(orgId)
+
+// Отчёты для бухгалтерии (все, кроме draft) с именем логиста и строками.
+export async function bookReports(orgId: string) {
+  const reps = await repo.reportsForBook(orgId)
+  const rows = await repo.rowsByReports(reps.map((r: any) => r.id))
+  const byRep: Record<string, any[]> = {}
+  for (const row of rows) (byRep[row.reportId] ||= []).push(row)
+  return reps.map((r: any) => ({ ...r, logist: { id: r.logistId, name: r.logistName }, rows: byRep[r.id] || [] }))
+}
+
+export const setReportStatus = (id: string, status: string) => repo.setStatus(id, status)

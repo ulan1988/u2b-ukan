@@ -92,6 +92,12 @@ export async function listForClient(orgId: string, userId: string) {
   return withPositions(await repo.ordersForClient(orgId, userId))
 }
 
+// «Провести все»: карточки К учёту (кроме отложенных) → в бухгалтерию.
+export async function postAllToBook(orgId: string) {
+  const r = await repo.postAllAccounting(orgId)
+  return { ok: true, count: r.length }
+}
+
 // Назначить логиста (resp) всем позициям карточки — Стол приёмки.
 export async function assignLogist(cardId: string, respUserId: string, actor?: Session | null) {
   await repo.updatePositionsByCard(cardId, { respUserId })
@@ -107,9 +113,13 @@ export async function setPositions(cardId: string, posId: string | undefined, st
 
   const positions = await repo.positionsByCard(cardId)
   const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
+  const [order] = await repo.getOrder(cardId)
+  // Все доставлены → карточка едет к учёту (incoming+toacc). Откат авто-доставленной
+  // карточки возвращает её в Исходящие (как updatePos в Улкане).
   await repo.updateOrder(cardId, allDelivered
-    ? { delivered: new Date(), toacc: true, status: 'Доставлено' }
-    : { delivered: null, toacc: false, status: 'В работе' })
+    ? { screen: 'incoming', delivered: new Date(), toacc: true, status: 'Доставлено' }
+    : { delivered: null, toacc: false, status: 'В работе',
+        ...(order && order.screen === 'incoming' && order.toacc ? { screen: 'outgoing' } : {}) })
   await repo.insertHistory({
     cardId, action: 'updatePos',
     detail: posId ? `Позиция → ${status}` : `Все позиции → ${status}`,

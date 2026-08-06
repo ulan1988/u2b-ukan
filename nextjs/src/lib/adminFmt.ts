@@ -9,11 +9,16 @@ export const kindLabel = (o: any) => (isPurchase(o) ? 'ЗАКУП' : 'ПРОДА
 export const cardSum = (o: any) =>
   (o.positions || []).reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
 
+// Процент готовности позиции по статусу (как PCT в Улкане 1:1).
+export const PCT: Record<string, number> = {
+  'В работе': 10, 'Готово к отгрузке': 60, 'В пути': 80, 'Доставлено': 100, 'Принято филиалом': 40, '': 0,
+}
+export const posPct = (p: any) => PCT[p.status] ?? 0
+
 export const cardProgress = (o: any) => {
   const ps = o.positions || []
-  if (!ps.length) return 0
-  const done = ps.filter((p: any) => p.status === 'Доставлено').length
-  return Math.round((done / ps.length) * 100)
+  if (!ps.length) return o.status === 'Доставлено' ? 100 : 0
+  return Math.round(ps.reduce((s: number, p: any) => s + posPct(p), 0) / ps.length)
 }
 
 export const barColor = (pct: number) => (pct >= 100 ? COLORS.progress.high : pct >= 50 ? COLORS.progress.mid : COLORS.progress.low)

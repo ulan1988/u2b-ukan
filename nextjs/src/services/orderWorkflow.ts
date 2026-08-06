@@ -103,12 +103,16 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: () => ({ isChanged: false, changeText: '', changePhone: '' }),
     history: () => 'Изменение подтверждено',
   },
-  // Сформировать документ (счёт / счёт-фактура) — выставляем флаг карточки.
+  // Сформировать счёт / счёт-фактуру — выставляем флаг карточки.
   createDoc: {
     roles: ADMIN,
-    guard: c => (c.payload.type === 'invoice' || c.payload.type === 'fact' ? null : 'Неизвестный тип документа'),
-    patch: c => (c.payload.type === 'invoice' ? { invoice: true } : { fact: true }),
-    history: c => (c.payload.type === 'invoice' ? 'Счёт сформирован' : 'Счёт-фактура сформирована'),
+    patch: () => ({ invoice: true }),
+    history: () => 'Счёт сформирован',
+  },
+  createDocFact: {
+    roles: ADMIN,
+    patch: () => ({ fact: true }),
+    history: () => 'Счёт-фактура сформирована',
   },
   // Провести в 1С.
   post1c: {

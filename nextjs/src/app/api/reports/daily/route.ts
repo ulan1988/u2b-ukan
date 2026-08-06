@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { closeShift, closedReports } from '@/services/report.service'
+import { closeShift, bookReports } from '@/services/report.service'
 import { sessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
+// Все отчёты (кроме черновиков) для бухгалтерии: вкладки «Отчёты логистов» и «Смены».
 export async function GET(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
-  return NextResponse.json(await closedReports(s.orgId))
+  const orgId = new URL(req.url).searchParams.get('orgId') || s.orgId
+  return NextResponse.json(await bookReports(orgId))
 }
 
 // Логист закрывает смену.
