@@ -8,3 +8,7 @@ export const addRow = (row: any, date?: string) => post('/api/reports/draft', { 
 export const updateRow = (id: string, row: any) => post('/api/reports/draft', { op: 'update', id, row })
 export const deleteRow = (id: string) => post('/api/reports/draft', { op: 'delete', id })
 export const closeShift = (date?: string) => post('/api/reports/daily', { date })
+
+// Сводка дашборда (скоуп по организации/филиалу).
+const EMPTY_DASH = { kpi: { active: 0, deliveredToday: 0, overdue: 0, inwork: 0, turnoverToday: 0 }, flow: { incoming: 0, reception: 0, outgoing: 0, accounting: 0, bookkeeping: 0, archive: 0 }, progress: { overallPct: 0, inwork: 0, delivered: 0, overdue: 0 }, attention: [], activity: [], topClients: [], specProjects: [] }
+export const fetchDashboard = (orgId?: string) => getObj(`/api/dashboard${orgId ? `?orgId=${orgId}` : ''}`, EMPTY_DASH)

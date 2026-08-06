@@ -22,7 +22,7 @@ export default function AdminScreenPage() {
   if (!a) return null
 
   switch (screen) {
-    case 'dashboard': return <DashboardScreen orders={a.orders} />
+    case 'dashboard': return <DashboardScreen orgId={a.orgId} />
     case 'history': return <HistoryScreen orgId={a.orgId} onOpen={a.openCard} />
     case 'incoming': return <IncomingScreen orders={a.visible} onAction={a.act} onOpen={a.openCard} />
     case 'reception': return <ReceptionScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
