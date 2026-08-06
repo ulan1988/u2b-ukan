@@ -45,7 +45,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div style={{ maxWidth: 1200 }}>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         {([['users', 'Пользователи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
@@ -57,7 +57,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
       <div>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Пользователи</div>
 
-      <div style={{ background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 0 0 1.5px #e6e2dc', marginBottom: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 0 0 1.5px #e6e2dc', marginBottom: 20, maxWidth: 720 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 12 }}>НОВЫЙ ПОЛЬЗОВАТЕЛЬ</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
           <input style={inp} placeholder="Имя" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
