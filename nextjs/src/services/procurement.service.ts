@@ -33,9 +33,14 @@ export async function chainReport(orgId: string) {
   if (!cards.length) return []
   const links = await repo.linksByPurchases(cards.map(c => c.id))
   const saleIds = Array.from(new Set(links.map(l => l.saleCardId)))
-  const sales = await repo.ordersByIds(saleIds)
+  const [sales, cags] = await Promise.all([
+    repo.ordersByIds(saleIds),
+    (await import('../repositories/refs.repo')).listContragents(),
+  ])
   const saleMap: Record<string, { client: string; comment: string }> = {}
   for (const s of sales) saleMap[s.id] = { client: s.fromName || '—', comment: s.comment || '' }
+  const cagName: Record<string, string> = {}
+  for (const c of cags as any[]) cagName[c.id] = c.name
 
   const posByCard: Record<string, any[]> = {}
   for (const p of positions) (posByCard[p.cardId] ||= []).push(p)
@@ -49,6 +54,7 @@ export async function chainReport(orgId: string) {
         const posLinks = cardLinks.filter(l => (l.product || '').toLowerCase() === (name || '').toLowerCase())
         return {
           name, qty: Number(pos.qty), unit: pos.unit, status: pos.status,
+          supplier: pos.supplierId ? (cagName[pos.supplierId] || '—') : (c.toWarehouseId ? 'Центр-Склад' : '—'),
           breakdown: posLinks.map(l => ({ client: saleMap[l.saleCardId]?.client || l.saleCardId, comment: saleMap[l.saleCardId]?.comment || '', qty: Number(l.qty) })),
         }
       }),

@@ -123,7 +123,7 @@ function KanbanCard({ order, onOpen, isDragging = false }: { order: any; onOpen:
         {order.postponed && <span style={{ fontSize: 11, background: '#eef2ff', color: '#4a5aaa', padding: '1px 5px', borderRadius: 10, fontWeight: 700 }}>откл.</span>}
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952' }}>{fmtDate(order.createdAt)}</span>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.fromName || '—'}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.fromName || '—'}{order.toName ? ` → ${order.toName}` : ''}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <div style={{ flex: 1 }}><ProgressBar pct={pct} /></div>
         <span style={{ fontSize: 12, fontWeight: 700, color: barColor(pct), flexShrink: 0 }}>{pct}%</span>
@@ -172,6 +172,20 @@ function SortableColumn({ column, onOpen, onHide }: { column: Column; onOpen: (o
               </div>
             </div>
           ))}
+          {column.specItems.length > 1 && (() => {
+            const totalNeeded = column.specItems!.reduce((s, i) => s + i.needed, 0)
+            const totalCollected = column.specItems!.reduce((s, i) => s + i.collected, 0)
+            const totalPct = totalNeeded > 0 ? Math.round(Math.min(totalCollected / totalNeeded * 100, 100)) : 0
+            return (
+              <div style={{ paddingTop: 6, borderTop: '1px solid #e6e2dc' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <span style={{ fontSize: 12, color: '#5f5952', fontWeight: 600 }}>Итого</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: barColor(totalPct) }}>{totalPct}%</span>
+                </div>
+                <ProgressBar pct={totalPct} height={5} />
+              </div>
+            )
+          })()}
         </div>
       )}
       <div style={{ flex: 1, overflowY: 'auto', background: '#f8f6f3', border: '1px solid #e6e2dc', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '10px 8px', minHeight: 80 }}>
