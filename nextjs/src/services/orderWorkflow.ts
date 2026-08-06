@@ -44,23 +44,77 @@ export const TRANSITIONS: Record<string, Transition> = {
   },
   postAcc: {
     roles: ADMIN,
-    patch: () => ({ screen: 'bookkeeping', status: 'В бухгалтерии', posted1c: true }),
+    patch: () => ({ screen: 'bookkeeping', status: 'В бухгалтерии', toacc: false }),
     history: () => 'Проведён в бухгалтерию',
   },
+  // Бухгалтерия → архив: только после проведения в 1С (как в Улкане).
   sendArchive: {
     roles: ADMIN,
+    guard: c => (c.order.posted1c ? null : 'Сначала проведите в 1С'),
     patch: () => ({ screen: 'archive', status: 'Архив' }),
     history: () => 'Отправлен в архив',
   },
   unarchive: {
     roles: ADMIN,
-    patch: () => ({ screen: 'bookkeeping', status: 'В бухгалтерии' }),
+    patch: () => ({ screen: 'bookkeeping', status: 'В бухгалтерии', cold: false }),
     history: () => 'Возврат из архива',
   },
   returnToIncoming: {
     roles: ADMIN,
-    patch: () => ({ screen: 'incoming', block: '', status: 'В ожидании' }),
+    patch: () => ({ screen: 'incoming', block: '', status: 'В ожидании', toacc: false }),
     history: () => 'Возврат во Входящие',
+  },
+  // Массово: все позиции доставлены → карточка едет к учёту (toacc, экран incoming).
+  markAll: {
+    roles: ADMIN,
+    patch: () => ({ screen: 'incoming', status: 'Доставлено', toacc: true, delivered: new Date() }),
+    history: () => 'Все позиции доставлены',
+  },
+  // Исходящие → Входящие (позиции сброшены, кроме плеча филиала).
+  returnOut: {
+    roles: ADMIN,
+    guard: c => (c.order.screen === 'outgoing' ? null : 'Карточка не в Исходящих'),
+    patch: () => ({ screen: 'incoming', block: '', status: 'В ожидании', toacc: false, delivered: null }),
+    history: () => 'Возвращён из исходящих, позиции сброшены',
+  },
+  // Исходящие → стол приёмки (позиции сброшены, кроме плеча филиала).
+  returnToReception: {
+    roles: ADMIN,
+    guard: c => (c.order.screen === 'outgoing' ? null : 'Карточка не в Исходящих'),
+    patch: () => ({ screen: 'reception', block: 'processing', status: 'В обработке', toacc: false, delivered: null }),
+    history: () => 'Возвращён на стол приёмки',
+  },
+  // Бухгалтерия → К учёту.
+  returnToAcc: {
+    roles: ADMIN,
+    guard: c => (c.order.screen === 'bookkeeping' ? null : 'Карточка не в бухгалтерии'),
+    patch: () => ({ screen: 'accounting', status: 'К учёту', toacc: true }),
+    history: () => 'Возвращён к учёту',
+  },
+  // Входящие(доставлено) → Исходящие (переоткрыть доставку).
+  reopenOutgoing: {
+    roles: ADMIN,
+    patch: () => ({ screen: 'outgoing', status: 'В работе', toacc: false, delivered: null }),
+    history: () => 'Возвращён в Исходящие',
+  },
+  // Принять изменение клиента.
+  confirmChg: {
+    roles: ADMIN,
+    patch: () => ({ isChanged: false, changeText: '', changePhone: '' }),
+    history: () => 'Изменение подтверждено',
+  },
+  // Сформировать документ (счёт / счёт-фактура) — выставляем флаг карточки.
+  createDoc: {
+    roles: ADMIN,
+    guard: c => (c.payload.type === 'invoice' || c.payload.type === 'fact' ? null : 'Неизвестный тип документа'),
+    patch: c => (c.payload.type === 'invoice' ? { invoice: true } : { fact: true }),
+    history: c => (c.payload.type === 'invoice' ? 'Счёт сформирован' : 'Счёт-фактура сформирована'),
+  },
+  // Провести в 1С.
+  post1c: {
+    roles: ADMIN,
+    patch: () => ({ posted1c: true }),
+    history: () => 'Проведён в 1С',
   },
   postpone: {
     roles: ADMIN,
@@ -119,6 +173,15 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   // Снятие резерва: карточка ушла в учёт (реальный расход) или отменена.
   if (action === 'sendAcc' || action === 'cancel') {
     try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
+  }
+  // Массовая доставка: все позиции → «Доставлено», резерв снят.
+  if (action === 'markAll') {
+    await repo.updatePositionsByCard(id, { status: 'Доставлено' })
+    try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
+  }
+  // Возврат из Исходящих: сброс позиций (кроме плеча филиала).
+  if (action === 'returnOut' || action === 'returnToReception') {
+    await repo.resetPositionsForReturn(id)
   }
 
   // Эффект take: автоподстановка поставщик/логист по группе товара (CategoryRule).

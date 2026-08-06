@@ -1,6 +1,8 @@
 import type { z } from 'zod'
 import { docNumber } from '../lib/num'
 import * as repo from '../repositories/order.repo'
+import * as userRepo from '../repositories/user.repo'
+import * as refsRepo from '../repositories/refs.repo'
 import type { createOrderSchema } from '../dto/order.dto'
 import type { Session } from '../lib/auth'
 
@@ -51,13 +53,33 @@ export async function listForLogist(orgId: string, userId: string) {
   return Array.from(byCard.values())
 }
 
-// Прикрепить позиции к списку карточек.
+// Прикрепить позиции к списку карточек + резолв имён (логист/поставщик/получатель),
+// чтобы карточки Улкана рисовались 1:1 (маршрут from→to, «resp · supplier» в позиции).
 async function withPositions(rows: any[]) {
   if (!rows.length) return []
-  const pos = await repo.positionsByCards(rows.map(r => r.id))
+  const [pos, users, cags] = await Promise.all([
+    repo.positionsByCards(rows.map(r => r.id)),
+    userRepo.listUsers(),
+    refsRepo.listContragents(),
+  ])
+  const userName: Record<string, string> = {}
+  for (const u of users as any[]) userName[u.id] = u.name
+  const cagName: Record<string, string> = {}
+  for (const c of cags as any[]) cagName[c.id] = c.name
   const byCard: Record<string, any[]> = {}
-  for (const p of pos) (byCard[p.cardId] ||= []).push(p)
-  return rows.map(o => ({ ...o, positions: byCard[o.id] || [] }))
+  for (const p of pos) {
+    (byCard[p.cardId] ||= []).push({
+      ...p,
+      resp: p.respUserId ? (userName[p.respUserId] || '') : '',
+      supplier: p.supplierId ? (cagName[p.supplierId] || '') : '',
+    })
+  }
+  return rows.map(o => ({
+    ...o,
+    positions: byCard[o.id] || [],
+    // Пункт назначения: закуп → Центр-Склад, продажа → клиент-получатель.
+    toName: o.kind === 'purchase' ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || '') : ''),
+  }))
 }
 
 // Заявки (все экраны или один) с позициями — для доски/админки.

@@ -1,7 +1,7 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
 import { orders, orderPositions, orderHistory, products } from '../db/schema'
-import { and, eq, desc, inArray, sql } from 'drizzle-orm'
+import { and, eq, ne, desc, inArray, sql } from 'drizzle-orm'
 
 // Метаданные товаров (группа/подгруппа) для автоподстановки по группе.
 export const productMeta = (ids: string[]) =>
@@ -79,6 +79,11 @@ export const updatePosition = (id: string, patch: Partial<typeof orderPositions.
 
 export const updatePositionsByCard = (cardId: string, patch: Partial<typeof orderPositions.$inferInsert>) =>
   db.update(orderPositions).set({ ...patch, updatedAt: sql`now()` }).where(eq(orderPositions.cardId, cardId)).returning()
+
+// Возврат карточки: сбросить статус всех позиций в «В работе», кроме плеча филиала (leg=1).
+export const resetPositionsForReturn = (cardId: string) =>
+  db.update(orderPositions).set({ status: 'В работе', updatedAt: sql`now()` })
+    .where(and(eq(orderPositions.cardId, cardId), ne(orderPositions.leg, 1))).returning()
 
 export const insertHistory = (row: typeof orderHistory.$inferInsert) =>
   db.insert(orderHistory).values(row)

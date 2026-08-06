@@ -32,3 +32,10 @@ export function statusStyle(status: string): CSSProperties {
 
 export const isOverdue = (o: any) =>
   o.deadline && !o.delivered && new Date(o.deadline) < new Date() && o.screen !== 'archive' && !o.isCancelled
+
+export function sourceStyle(source: string): CSSProperties {
+  const s = (COLORS as any).source[source] || (COLORS as any).source.cabinet
+  return { fontSize: 10, padding: '1px 8px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }
+}
+export const sourceLabel = (s: string) =>
+  ({ cabinet: 'Кабинет', external: 'Внешняя', webhook: 'Вебхук', admin_manual: 'Админ', responsible_portal: 'Портал', portal: 'Портал' } as Record<string, string>)[s] || s
