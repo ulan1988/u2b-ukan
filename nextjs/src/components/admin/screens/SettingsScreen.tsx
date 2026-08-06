@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listUsers, createUser } from '@/lib/api/auth'
+import { listUsers, createUser, editUser, deleteUser } from '@/lib/api/auth'
 import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, createProject, createSpecProject } from '@/lib/api/refs'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
@@ -19,8 +19,16 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'logist', orgId })
   const [msg, setMsg] = useState('')
+  const [editing, setEditing] = useState<any>(null)
+  const [copied, setCopied] = useState('')
+  const base = typeof window !== 'undefined' ? window.location.origin : ''
+  const accessUrl = (u: any) => u.role === 'branch' ? `${base}/branch/${u.slug}` : (u.role === 'client' || u.role === 'supplier_client') ? `${base}/client/${u.slug}` : u.role === 'logist' ? `${base}/rsp/${u.slug}` : u.role === 'warehouse_manager' ? `${base}/warehouse/${u.slug}` : ''
 
   const load = () => listUsers().then(setUsers)
+  async function setPriceType(u: any, priceType: string) { await editUser(u.id, { priceType }); load(); setMsg('✓ Тип цены обновлён') }
+  async function saveEdit() { if (!editing) return; const r = await editUser(editing.id, editing); if (r.ok) { setEditing(null); load(); setMsg('✓ Сохранено') } }
+  async function removeUser(u: any) { if (!confirm(`Отключить пользователя «${u.name}»?`)) return; await deleteUser(u.id); load(); setMsg('✓ Отключён') }
+  function copy(url: string, key: string) { navigator.clipboard.writeText(url); setCopied(key); setTimeout(() => setCopied(''), 2000) }
   useEffect(() => {
     load()
     fetchRefs().then((r: any) => setOrgs(r.organizations || []))
@@ -70,26 +78,68 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
 
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
         <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#5f5952', borderBottom: '1px solid #f1efec' }}>ПОЛЬЗОВАТЕЛИ ({users.length})</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Имя', 'Email', 'Роль', 'Организация', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
+        <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
+          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['ИМЯ', 'РОЛЬ', 'ОРГАНИЗАЦИЯ', 'ДОСТУП', 'СТАТУС', 'ТИП ЦЕНЫ', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '10px 14px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
-            {users.map(u => (
-              <tr key={u.id} style={{ borderTop: '1px solid #f1efec' }}>
-                <td style={{ padding: '8px 16px', fontWeight: 600 }}>{u.name}</td>
-                <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{u.email}</td>
-                <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{roleLabel(u.role)}</td>
-                <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{orgName(u.orgId)}</td>
-                <td style={{ padding: '8px 16px' }}>{u.active ? '🟢' : '⚪️'}</td>
-              </tr>
-            ))}
+            {users.map(u => {
+              const url = accessUrl(u)
+              return (
+                <tr key={u.id} style={{ borderTop: '1px solid #f1efec' }}>
+                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>{u.name}</td>
+                  <td style={{ padding: '10px 14px', color: COLORS.textMuted }}>{roleLabel(u.role)}</td>
+                  <td style={{ padding: '10px 14px', color: COLORS.textMuted }}>{orgName(u.orgId)}</td>
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                    {url && <><a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: COLORS.primary, textDecoration: 'none', fontWeight: 600 }}>Открыть</a><button onClick={() => copy(url, u.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', marginLeft: 6, fontSize: 13 }} title="Скопировать ссылку">{copied === u.id ? '✓' : '📋'}</button></>}
+                    {(u.phone || u.email) && <span style={{ fontSize: 13, color: '#837c72', marginLeft: 8 }}>{u.phone || u.email}</span>}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: u.active ? '#e8f5ee' : '#faeaea', color: u.active ? '#2e8a5e' : '#b03020' }}>{u.active ? 'Активен' : 'Отключён'}</span></td>
+                  <td style={{ padding: '10px 14px' }}>
+                    {['client', 'supplier_client', 'branch'].includes(u.role)
+                      ? <select value={u.priceType || 'retail'} onChange={e => setPriceType(u, e.target.value)} style={{ fontSize: 13, padding: '4px 6px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontFamily: 'inherit', background: '#fff' }}><option value="retail">Розничная</option><option value="opt">Оптовая</option></select>
+                      : <span style={{ fontSize: 13, color: '#837c72' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => setEditing({ ...u })} style={{ padding: '5px 12px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>Изменить</button>
+                      {u.active && <button onClick={() => removeUser(u)} style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid #f3d5c6', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#b03020' }}>Отключить</button>}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
+        </div>
       </div>
       </div>
+      )}
+
+      {editing && (
+        <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} className="anim-pop" style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 480 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Изменить пользователя</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div><label style={LBL}>ИМЯ</label><input style={inp} value={editing.name || ''} onChange={e => setEditing((p: any) => ({ ...p, name: e.target.value }))} /></div>
+              <div><label style={LBL}>РОЛЬ</label><select style={inp} value={editing.role} onChange={e => setEditing((p: any) => ({ ...p, role: e.target.value }))}>{ROLES.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}</select></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={LBL}>EMAIL</label><input style={inp} value={editing.email || ''} onChange={e => setEditing((p: any) => ({ ...p, email: e.target.value }))} /></div>
+                <div><label style={LBL}>ТЕЛЕФОН</label><input style={inp} value={editing.phone || ''} onChange={e => setEditing((p: any) => ({ ...p, phone: e.target.value }))} /></div>
+              </div>
+              <div><label style={LBL}>SLUG (адрес кабинета)</label><input style={inp} value={editing.slug || ''} onChange={e => setEditing((p: any) => ({ ...p, slug: e.target.value }))} /></div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={!!editing.active} onChange={e => setEditing((p: any) => ({ ...p, active: e.target.checked }))} /><span style={{ fontSize: 14 }}>Активен</span></label>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setEditing(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
+                <button onClick={saveEdit} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>Сохранить →</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
 }
+const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
 
 // ─── Автоподстановка: поставщик + логист по 4 категориям каталога ──────────────
 function AutofillPanel({ orgId }: { orgId: string }) {

@@ -10,5 +10,8 @@ export const insertUser = (v: typeof users.$inferInsert) =>
 
 // Без пароля — список для управления.
 export const listUsers = () =>
-  db.select({ id: users.id, name: users.name, email: users.email, role: users.role, orgId: users.orgId, active: users.active })
+  db.select({ id: users.id, name: users.name, email: users.email, phone: users.phone, role: users.role, orgId: users.orgId, slug: users.slug, priceType: users.priceType, active: users.active })
     .from(users).orderBy(desc(users.createdAt))
+
+export const updateUser = (id: string, patch: Partial<typeof users.$inferInsert>) =>
+  db.update(users).set(patch).where(eq(users.id, id)).returning()

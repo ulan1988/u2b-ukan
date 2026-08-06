@@ -23,3 +23,20 @@ export async function createUser(i: z.infer<typeof createUserSchema>) {
 }
 
 export const listUsers = () => userRepo.listUsers()
+
+// Правка пользователя (имя/роль/email/телефон/slug/тип цены/активность).
+export async function editUser(id: string, patch: any) {
+  const set: Record<string, any> = {}
+  for (const k of ['name', 'role', 'email', 'phone', 'slug', 'priceType', 'active'] as const) {
+    if (patch[k] !== undefined) set[k] = patch[k]
+  }
+  if (set.email) set.email = String(set.email).trim() || null
+  const [u] = await userRepo.updateUser(id, set)
+  return { id: u.id, name: u.name, role: u.role, email: u.email, active: u.active }
+}
+
+// «Удаление» = деактивация (hard-delete ломает FK на историю/заявки).
+export async function deactivateUser(id: string) {
+  await userRepo.updateUser(id, { active: false })
+  return { ok: true }
+}
