@@ -112,6 +112,35 @@ export async function track(id: string) {
   }
 }
 
+// Частичное обновление позиции (логист меняет поставщика/кол-во/имя). Непереданное не трогаем.
+export async function updatePositionDetail(cardId: string, posId: string, patch: any, actor?: Session | null) {
+  const set: Record<string, any> = {}
+  if (patch.name1c !== undefined) set.name1c = patch.name1c
+  if (patch.oral !== undefined) set.oral = patch.oral
+  if (patch.qty !== undefined) set.qty = String(patch.qty)
+  if (patch.unit !== undefined) set.unit = patch.unit
+  if (patch.price !== undefined) set.price = String(patch.price)
+  if (patch.supplierId !== undefined) set.supplierId = patch.supplierId || null
+  if (patch.respUserId !== undefined) set.respUserId = patch.respUserId || null
+  if (Object.keys(set).length) await repo.updatePosition(posId, set)
+  await repo.insertHistory({ cardId, action: 'updatePosDetail', detail: 'Позиция изменена', userName: actor?.name || 'Система' })
+  return { ok: true }
+}
+
+// Добавить позицию к карточке (логист/филиал).
+export async function addPosition(cardId: string, i: any, actor?: Session | null) {
+  const n = await repo.countPositions(cardId)
+  const [p] = await repo.insertPosition({
+    id: `${cardId}-P${n + 1}`, cardId, productId: i.productId ?? null,
+    name1c: i.name1c || '', oral: i.oral || i.name1c || '', qty: String(i.qty || 0), unit: i.unit || 'шт',
+    price: String(i.price || 0), supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null, status: 'В работе',
+  })
+  await repo.insertHistory({ cardId, action: 'addPos', detail: `Добавлена позиция: ${i.name1c || ''}`, userName: actor?.name || 'Система' })
+  // Уведомить админов об изменении состава.
+  try { const { notifyAdmins } = await import('./notifyHelpers'); const [o] = await repo.getOrder(cardId); if (o) await notifyAdmins(o.orgId, `⚡ ${actor?.name || 'Логист'} добавил позицию в ${cardId}`, cardId, actor?.id) } catch {}
+  return { ok: true, position: p }
+}
+
 export async function getCard(id: string) {
   const [order] = await repo.getOrder(id)
   if (!order) return null

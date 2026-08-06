@@ -31,6 +31,14 @@ export async function addRow(actor: Session, row: any, date?: string) {
 
 export const deleteRow = (id: string) => repo.deleteRow(id)
 
+export const updateRow = (id: string, row: any) => repo.updateRow(id, {
+  posId: row.posId || null, fromWho: row.fromWho || '', name: row.name || '',
+  qtyIn: String(row.qtyIn || 0), commentIn: row.commentIn || '',
+  toWho: row.toWho || '', qtyOut: String(row.qtyOut || 0), commentOut: row.commentOut || '', invoiceNum: row.invoiceNum || '',
+})
+
+export const pastDrafts = (actor: Session) => repo.pastDrafts(actor.orgId, actor.id, today())
+
 export async function closeShift(actor: Session, date?: string) {
   const draft = await ensureDraft(actor.orgId, actor.id, date || today())
   const [r] = await repo.setStatus(draft.id, 'done')

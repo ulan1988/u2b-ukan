@@ -77,3 +77,11 @@ export const updatePositionsByCard = (cardId: string, patch: Partial<typeof orde
 
 export const insertHistory = (row: typeof orderHistory.$inferInsert) =>
   db.insert(orderHistory).values(row)
+
+export const insertPosition = (v: typeof orderPositions.$inferInsert) =>
+  db.insert(orderPositions).values(v).returning()
+
+export const countPositions = async (cardId: string) => {
+  const r = await db.select({ id: orderPositions.id }).from(orderPositions).where(eq(orderPositions.cardId, cardId))
+  return r.length
+}
