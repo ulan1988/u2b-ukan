@@ -8,6 +8,7 @@ import { isPurchase } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import ChatWidget from '@/components/ChatWidget'
+import AppBadge from '@/components/AppBadge'
 import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
@@ -68,6 +69,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const posIn = posInAll.filter(x => !isPurchase(x.order))
   const posBuy = posInAll.filter(x => isPurchase(x.order))
   const posOut = visOrders.flatMap(o => (o.positions || []).filter((p: any) => p.status === 'Доставлено').map((p: any) => ({ pos: p, order: o })))
+  // Бейдж PWA: открытые назначенные карточки логиста (не доставленные), без фильтра по дате.
+  const badgeCount = orders.filter(o => !o.isCancelled && !isPurchase(o) && (o.positions || []).some((p: any) => p.leg === 2 && p.status !== 'Доставлено')).length
 
   const changedIds = new Set(notifications.filter(n => !n.read && n.cardId).map(n => n.cardId))
   const posChanged = orders.flatMap(o => changedIds.has(o.id) ? (o.positions || []).map((p: any) => ({ pos: p, order: o })) : [])
@@ -323,6 +326,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         })}
       </div>
       <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
+      <AppBadge count={badgeCount} baseTitle="Логист · U2B" />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
+import AppBadge from '@/components/AppBadge'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -51,6 +52,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const inDate = (o: any) => inPeriod(o.createdAt, period, day)
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && inDate(o))
   const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
+  // Бейдж PWA: входящие филиала (без фильтра по дате).
+  const badgeCount = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled).length
 
   async function openOrder(id: string) {
     if (selected === id) { setSelected(null); return }
@@ -184,6 +187,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         })}
       </div>
       <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
+      <AppBadge count={badgeCount} baseTitle="Филиал · U2B" />
     </div>
   )
 }
