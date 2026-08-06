@@ -34,8 +34,9 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger }: {
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
+  orgs?: { id: string; name: string; kind?: string }[]; orgId?: string; onOrg?: (id: string) => void
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -61,7 +62,13 @@ export default function Topbar({ title, orders, search, onSearch, onBurger }: {
         ))}
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input style={{ ...INP, width: 220 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />
+        {orgs.length > 1 && onOrg && (
+          <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
+            style={{ ...INP, width: 'auto', fontWeight: 700, cursor: 'pointer' }}>
+            {orgs.map(o => <option key={o.id} value={o.id}>🏢 {o.name}</option>)}
+          </select>
+        )}
+        <input style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />
         <Bell />
       </div>
     </div>

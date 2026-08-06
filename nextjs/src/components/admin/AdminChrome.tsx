@@ -6,6 +6,8 @@ import Topbar from '@/components/admin/Topbar'
 import CardModal from '@/components/admin/CardModal'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
+import { fetchRefs } from '@/lib/api/refs'
+import { getOrgId, setOrgId as persistOrg } from '@/lib/org'
 import { useLiveData } from '@/lib/live'
 
 export const NAV: NavItem[] = [
@@ -49,9 +51,20 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const router = useRouter()
   const screen = pathname.split('/')[2] || 'incoming'
 
-  const load = useCallback(async () => { setOrders(await fetchOrders(user.orgId)); setLoading(false) }, [user.orgId])
+  // Организация: админ может переключаться между головной и филиалами (localStorage).
+  const [orgId, setOrg] = useState<string>(user.orgId)
+  const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
+  useEffect(() => {
+    fetchRefs().then((r: any) => {
+      const os = r.organizations || []; setOrgs(os)
+      const saved = getOrgId(); if (saved && os.some((o: any) => o.id === saved)) setOrg(saved)
+    })
+  }, [])
+  function switchOrg(id: string) { persistOrg(id); setOrg(id) }
+
+  const load = useCallback(async () => { setOrders(await fetchOrders(orgId)); setLoading(false) }, [orgId])
   // Живое обновление: поллинг-страховка + при возврате на вкладку (из Улкана).
-  useLiveData(load, [user.orgId])
+  useLiveData(load, [orgId])
 
   async function act(id: string, action: string) {
     const payload = action === 'cancel' ? { reason: (typeof window !== 'undefined' && window.prompt('Причина отмены?')) || '' } : {}
@@ -67,7 +80,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const visible = q ? orders.filter(o => `${o.id} ${o.fromName} ${o.comment}`.toLowerCase().includes(q)) : orders
   const title = NAV.find(n => n.key === screen)?.label || ''
 
-  const ctx: Ctx = { user, orders, visible, loading, orgId: user.orgId, act, reload: load, openCard }
+  const ctx: Ctx = { user, orders, visible, loading, orgId, act, reload: load, openCard }
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: COLORS.bg, fontFamily: "'Golos Text', system-ui, sans-serif", overflow: 'hidden' }}>
@@ -80,7 +93,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         open={sideOpen} onClose={() => setSideOpen(false)} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} />
+        <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} />
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
