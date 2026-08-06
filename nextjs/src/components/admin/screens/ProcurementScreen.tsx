@@ -22,7 +22,7 @@ export default function ProcurementScreen({ orgId }: { orgId: string }) {
 
   return (
     <div>
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Закуп-отчёт</div>
+      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>🛒 Закуп-отчёт</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         {([['profit', 'Рентабельность'], ['chain', 'Цепочка закуп→продажа']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>

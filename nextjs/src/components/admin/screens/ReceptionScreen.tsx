@@ -356,9 +356,12 @@ function ProcessingCard({ order, clients, logists, products, onAction, onReload,
     onReload(); toast('Цены подтянуты')
   }
   async function send() {
-    if (ps.some((p: any) => !(p.name1c || '').trim())) { toast('⚠️ Заполните НАИМ. 1С у всех позиций'); return }
+    // Сначала сохраняем все открытые правки позиций (как в Улкане), потом валидация.
+    for (const pos of ps) { if (editing[pos.id]) await saveEdit(pos) }
+    const eff = (p: any) => editing[p.id] || {}
+    if (ps.some((p: any) => !((eff(p).name1c ?? p.name1c) || '').trim())) { toast('⚠️ Заполните НАИМ. 1С у всех позиций'); return }
     if (!order.contactId && order.kind === 'sale') { toast('Укажите получателя (Кому)'); return }
-    if (ps.some((p: any) => !p.respUserId)) { toast('Назначьте логиста всем позициям'); return }
+    if (ps.some((p: any) => !(eff(p).respUserId ?? p.respUserId))) { toast('Назначьте логиста всем позициям'); return }
     onAction(order.id, 'process')
   }
 
@@ -433,6 +436,7 @@ function AutoProcure({ orgId, onReload, toast }: { orgId: string; onReload: () =
   useEffect(() => { load() }, [orgId]) // eslint-disable-line
 
   const chosen = rows.filter(r => checked[r.name])
+  const needCards = new Set(rows.flatMap((r: any) => (r.rows || []).map((x: any) => x.cardId ?? x.from))).size
   async function toBuy() {
     const src = chosen.length ? chosen : rows
     if (!src.length) { toast('Нет товаров для закупа'); return }
@@ -449,7 +453,7 @@ function AutoProcure({ orgId, onReload, toast }: { orgId: string; onReload: () =
       <div onClick={() => setOpenBlk(v => !v)} style={{ padding: '13px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, background: '#faf7fd', borderBottom: openBlk ? '1px solid #f0eaf6' : 'none' }}>
         <span style={{ fontSize: 16 }}>🛒</span>
         <span style={{ fontWeight: 700, fontSize: 15, color: '#7a3aaa' }}>Автозакуп</span>
-        <span style={{ fontSize: 12, background: '#f3eeff', color: '#7a3aaa', padding: '2px 9px', borderRadius: 20, fontWeight: 700 }}>{rows.length} товаров</span>
+        <span style={{ fontSize: 12, background: '#f3eeff', color: '#7a3aaa', padding: '2px 9px', borderRadius: 20, fontWeight: 700 }}>{rows.length} товаров · из {needCards} заявок</span>
         <span style={{ marginLeft: 'auto', fontSize: 16, color: '#7a3aaa', transform: openBlk ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }}>▸</span>
       </div>
       {openBlk && (

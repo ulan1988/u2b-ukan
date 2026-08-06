@@ -18,8 +18,8 @@ function Btn({ onClick, children, variant, disabled }: { onClick: () => void; ch
   )
 }
 
-export default function BookkeepingScreen({ orders, orgId, onAction, onOpen }: {
-  orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onOpen?: (o: any) => void
+export default function BookkeepingScreen({ orders, orgId, onAction, onReload, onOpen }: {
+  orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload?: () => void; onOpen?: (o: any) => void
 }) {
   const [tab, setTab] = useState<Tab>('cards')
   const [fin, setFin] = useState<any>(null)
@@ -40,7 +40,7 @@ export default function BookkeepingScreen({ orders, orgId, onAction, onOpen }: {
     ['cards', `Карточки (${cards.length})`], ['reports', 'Отчёты логистов'], ['shifts', 'Смены'], ['finance', 'Финансы'],
   ]
 
-  async function postAll() { const r: any = await postAllToBook(orgId); toast(`Проведено: ${r.count}`) }
+  async function postAll() { const r: any = await postAllToBook(orgId); toast(`Проведено: ${r.count}`); onReload?.() }
 
   return (
     <div className="anim-fade">

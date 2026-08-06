@@ -30,7 +30,7 @@ export default function AdminScreenPage() {
     case 'procurement': return <ProcurementScreen orgId={a.orgId} />
     case 'filter': return <FilterScreen orders={a.orders} orgId={a.orgId} onOpen={a.openCard} />
     case 'accounting': return <AccountingScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
-    case 'bookkeeping': return <BookkeepingScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
+    case 'bookkeeping': return <BookkeepingScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
     case 'invoice_in': return <InvoicesScreen kind="in" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'invoice_out': return <InvoicesScreen kind="out" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'archive': return <ArchiveScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
