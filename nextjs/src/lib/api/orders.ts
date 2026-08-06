@@ -38,8 +38,8 @@ export async function updatePosition(cardId: string, posId: string, patch: any) 
 export const addPosition = (cardId: string, body: any) => post(`/api/orders/${cardId}/position`, body)
 
 // Порталы
-export const logistOrders = () => getArray('/api/logist/orders')
-export const clientOrders = () => getArray('/api/client/orders')
+export const logistOrders = (uid?: string) => getArray(`/api/logist/orders${uid ? `?uid=${uid}` : ''}`)
+export const clientOrders = (uid?: string) => getArray(`/api/client/orders${uid ? `?uid=${uid}` : ''}`)
 export const branchOrders = () => getArray('/api/branch/orders')
 export const createClientOrder = (body: any) => post('/api/client/orders', body)
 export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(id)}`)

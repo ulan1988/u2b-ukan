@@ -32,7 +32,7 @@ const barColor = (pct: number) => pct >= 100 ? '#3a9d6e' : pct >= 60 ? '#c4a832'
 const fmtDate = (d?: string | null) => !d ? '—' : new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
 const fmtDateTime = (d?: string) => { if (!d) return '—'; const dt = new Date(d), diff = Math.floor((Date.now() - dt.getTime()) / 60000); if (diff < 1) return 'только что'; if (diff < 60) return `${diff} мин`; if (diff < 1440) return `${Math.floor(diff / 60)} ч`; return fmtDate(d) }
 
-export default function ClientApp({ user }: { user: { id: string; name: string; orgId: string; slug?: string } }) {
+export default function ClientApp({ user, viewAs }: { user: { id: string; name: string; orgId: string; slug?: string }; viewAs?: boolean }) {
   const [orders, setOrders] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,9 +49,9 @@ export default function ClientApp({ user }: { user: { id: string; name: string; 
   const didInit = useRef(false)
   const load = useCallback(async () => {
     if (!didInit.current) setLoading(true)
-    const [ord, notifs] = await Promise.all([clientOrders(), listNotifications()])
-    setOrders(ord); setNotifications(notifs); didInit.current = true; setLoading(false)
-  }, [])
+    const [ord, notifs] = await Promise.all([clientOrders(viewAs ? user.id : undefined), viewAs ? Promise.resolve([]) : listNotifications()])
+    setOrders(ord); setNotifications(notifs as any); didInit.current = true; setLoading(false)
+  }, [viewAs, user.id])
   const pausedRef = useRef(false); pausedRef.current = (tab === 'new' && !newResult) || addCatalogFor !== null || Object.keys(editQty).length > 0
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { if (tab === 'new') setNewDeadline(d => d || todayLocal()) }, [tab])
@@ -92,7 +92,7 @@ export default function ClientApp({ user }: { user: { id: string; name: string; 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/icon-192.png" alt="U2B" style={{ width: 42, height: 42, borderRadius: 10, display: 'block' }} />
-            <div><div style={{ fontWeight: 700, fontSize: 15 }}>{user.name}</div><div style={{ fontSize: 12, color: '#5f5952' }}>Кабинет заказчика</div></div>
+            <div><div style={{ fontWeight: 700, fontSize: 15 }}>{user.name}</div><div style={{ fontSize: 12, color: '#5f5952' }}>Кабинет заказчика{viewAs ? ' · просмотр (админ)' : ''}</div></div>
           </div>
           <button onClick={async () => { await logout(); location.href = '/login' }} style={{ marginLeft: 'auto', padding: '6px 14px', border: '1.5px solid #e6e2dc', borderRadius: 7, background: '#fff', cursor: 'pointer', fontSize: 14, color: '#5f5952', fontFamily: 'inherit' }}>Выйти</button>
         </div>

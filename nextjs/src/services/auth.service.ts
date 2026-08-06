@@ -24,6 +24,21 @@ export async function createUser(i: z.infer<typeof createUserSchema>) {
 
 export const listUsers = () => userRepo.listUsers()
 
+export async function userBySlug(slug: string) {
+  const [u] = await userRepo.findBySlug(slug)
+  return u ? { id: u.id, name: u.name, orgId: u.orgId, role: u.role, slug: u.slug } : null
+}
+
+// Цель запроса портала: обычно сам пользователь; админ может смотреть чужой (uid).
+export async function resolveTarget(session: any, uid?: string | null) {
+  const isAdmin = ['admin', 'super_admin', 'bookkeeper'].includes(session.role)
+  if (uid && isAdmin) {
+    const [u] = await userRepo.findById(uid)
+    if (u) return { id: u.id, orgId: u.orgId }
+  }
+  return { id: session.id, orgId: session.orgId }
+}
+
 // Правка пользователя (имя/роль/email/телефон/slug/тип цены/активность).
 export async function editUser(id: string, patch: any) {
   const set: Record<string, any> = {}

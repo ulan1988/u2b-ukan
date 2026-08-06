@@ -23,7 +23,7 @@ function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
   return <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: DARK, color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{msg}</div>
 }
 
-export default function LogistPortal({ user }: { user: { id: string; name: string; orgId: string } }) {
+export default function LogistPortal({ user, viewAs }: { user: { id: string; name: string; orgId: string }; viewAs?: boolean }) {
   const [tab, setTab] = useState<Tab>('in')
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,9 +50,9 @@ export default function LogistPortal({ user }: { user: { id: string; name: strin
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [o, n] = await Promise.all([logistOrders(), listNotifications()])
-    setOrders(o); setNotifications(n); setLoading(false)
-  }, [])
+    const [o, n] = await Promise.all([logistOrders(viewAs ? user.id : undefined), viewAs ? Promise.resolve([]) : listNotifications()])
+    setOrders(o); setNotifications(n as any); setLoading(false)
+  }, [viewAs, user.id])
   const pausedRef = useRef(false); pausedRef.current = supEditPos !== null || addingCardId !== null || chatOpenPos !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { fetchRefs().then((r: any) => setSuppliers((r.contragents || []).filter((c: any) => c.kind !== 'client').map((c: any) => ({ id: c.id, name: c.name })))) }, [])
@@ -187,7 +187,7 @@ export default function LogistPortal({ user }: { user: { id: string; name: strin
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/icon-192.png" alt="U2B" style={{ width: 42, height: 42, borderRadius: 10, display: 'block' }} />
-            <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>U2B · Портал</div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
+            <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>U2B · Портал{viewAs ? ' · просмотр' : ''}</div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={load} style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 10px', color: loading ? PRIMARY : '#cfc9c0', cursor: 'pointer', fontSize: 14 }}>⟳</button>

@@ -5,6 +5,12 @@ import { desc, eq } from 'drizzle-orm'
 export const findByEmail = (email: string) =>
   db.select().from(users).where(eq(users.email, email)).limit(1)
 
+export const findBySlug = (slug: string) =>
+  db.select().from(users).where(eq(users.slug, slug)).limit(1)
+
+export const findById = (id: string) =>
+  db.select().from(users).where(eq(users.id, id)).limit(1)
+
 export const insertUser = (v: typeof users.$inferInsert) =>
   db.insert(users).values(v).returning()
 
