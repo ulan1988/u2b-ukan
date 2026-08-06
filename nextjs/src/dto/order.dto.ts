@@ -10,6 +10,7 @@ export const orderPositionInput = z.object({
   respUserId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
   deadline: z.string().optional(),
+  payment: z.string().optional().default(''),
 })
 
 export const createOrderSchema = z.object({
@@ -22,6 +23,9 @@ export const createOrderSchema = z.object({
   source: z.string().optional().default('admin_manual'),
   screen: z.string().optional(),
   block: z.string().optional(),
+  isDraft: z.boolean().optional(),
+  projectId: z.string().uuid().optional(),
+  specProjectId: z.string().uuid().optional(),
   comment: z.string().optional().default(''),
   phone: z.string().optional(),
   deadline: z.string().optional(),

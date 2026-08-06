@@ -96,6 +96,9 @@ export const postAllAccounting = (orgId: string) =>
 export const insertPosition = (v: typeof orderPositions.$inferInsert) =>
   db.insert(orderPositions).values(v).returning()
 
+export const deletePosition = (posId: string) =>
+  db.delete(orderPositions).where(eq(orderPositions.id, posId))
+
 export const countPositions = async (cardId: string) => {
   const r = await db.select({ id: orderPositions.id }).from(orderPositions).where(eq(orderPositions.cardId, cardId))
   return r.length

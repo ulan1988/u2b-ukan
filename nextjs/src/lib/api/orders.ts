@@ -1,5 +1,5 @@
 // Домен: заявки/карточки (админка, доска, порталы).
-import { getArray, getOne, post, patch as patch2 } from './http'
+import { getArray, getOne, post, patch as patch2, send } from './http'
 
 export const listOrders = (orgId: string) => getArray(`/api/orders?orgId=${orgId}`)
 export const listByScreen = (orgId: string, screen: string) => getArray(`/api/orders?orgId=${orgId}&screen=${screen}`)
@@ -36,6 +36,12 @@ export async function updatePosition(cardId: string, posId: string, patch: any) 
   const r = await patch2(`/api/orders/${cardId}/position`, { posId, ...patch }); return { ok: r.ok }
 }
 export const addPosition = (cardId: string, body: any) => post(`/api/orders/${cardId}/position`, body)
+export async function deletePosition(cardId: string, posId: string) {
+  const r = await send(`/api/orders/${cardId}/position?posId=${posId}`, 'DELETE'); return { ok: r.ok }
+}
+export async function updateCard(cardId: string, patch: any) {
+  const r = await patch2(`/api/orders/${cardId}`, patch); return { ok: r.ok }
+}
 
 // Порталы
 export const logistOrders = (uid?: string) => getArray(`/api/logist/orders${uid ? `?uid=${uid}` : ''}`)

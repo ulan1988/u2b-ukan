@@ -13,8 +13,11 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const screen = i.screen || 'incoming'
   const order = {
     id, orgId: i.orgId, kind: i.kind,
-    screen, block: i.block || '', status: screen === 'reception' ? 'В обработке' : 'В ожидании', source: i.source,
+    screen, block: i.block || '',
+    status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
+    source: i.source, isDraft: i.isDraft ?? false,
     fromName: i.fromName, fromId: i.fromId ?? null, contactId: i.contactId ?? null,
+    projectId: i.projectId ?? null, specProjectId: i.specProjectId ?? null,
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
@@ -22,7 +25,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
-    respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null,
+    respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     deadline: p.deadline ? new Date(p.deadline) : null,
   }))
   const history = {
@@ -172,8 +175,32 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.price !== undefined) set.price = String(patch.price)
   if (patch.supplierId !== undefined) set.supplierId = patch.supplierId || null
   if (patch.respUserId !== undefined) set.respUserId = patch.respUserId || null
+  if (patch.status !== undefined) set.status = patch.status
+  if (patch.payment !== undefined) set.payment = patch.payment
+  if (patch.deadline !== undefined) set.deadline = patch.deadline ? new Date(patch.deadline) : null
   if (Object.keys(set).length) await repo.updatePosition(posId, set)
   await repo.insertHistory({ cardId, action: 'updatePosDetail', detail: 'Позиция изменена', userName: actor?.name || 'Система' })
+  return { ok: true }
+}
+
+// Удалить позицию карточки (стол приёмки).
+export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
+  await repo.deletePosition(posId)
+  await repo.insertHistory({ cardId, action: 'deletePos', detail: 'Позиция удалена', userName: actor?.name || 'Система' })
+  return { ok: true }
+}
+
+// Обновить карточку (получатель/срок/коммент/проект) — стол приёмки.
+export async function updateCard(cardId: string, patch: any, actor?: Session | null) {
+  const set: Record<string, any> = {}
+  if (patch.contactId !== undefined) set.contactId = patch.contactId || null
+  if (patch.deadline !== undefined) set.deadline = patch.deadline ? new Date(patch.deadline) : null
+  if (patch.comment !== undefined) set.comment = patch.comment
+  if (patch.phone !== undefined) set.phone = patch.phone
+  if (patch.projectId !== undefined) set.projectId = patch.projectId || null
+  if (patch.specProjectId !== undefined) set.specProjectId = patch.specProjectId || null
+  if (Object.keys(set).length) await repo.updateOrder(cardId, set)
+  await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })
   return { ok: true }
 }
 
