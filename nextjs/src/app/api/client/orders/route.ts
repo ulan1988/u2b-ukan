@@ -3,6 +3,7 @@ import { createOrderSchema } from '@/dto/order.dto'
 import { createOrder, listForClient } from '@/services/order.service'
 import { resolveTarget } from '@/services/auth.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,5 +21,7 @@ export async function POST(req: NextRequest) {
   // Кабинет: заявка всегда от имени клиента, продажа, во Входящие.
   const parsed = createOrderSchema.safeParse({ ...body, orgId: s.orgId, kind: 'sale', source: 'cabinet', fromId: s.id, fromName: s.name })
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте позиции' }, { status: 400 })
-  return NextResponse.json(await createOrder(parsed.data, s), { status: 201 })
+  const res = await createOrder(parsed.data, s)
+  await pushSignal()
+  return NextResponse.json(res, { status: 201 })
 }

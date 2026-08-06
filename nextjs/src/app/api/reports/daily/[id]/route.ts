@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { setReportStatus } from '@/services/report.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,5 +12,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const { status } = await req.json().catch(() => ({}))
   if (!status) return NextResponse.json({ error: 'Статус не задан' }, { status: 400 })
   const [r] = await setReportStatus(params.id, status)
+  await pushSignal()
   return NextResponse.json(r)
 }

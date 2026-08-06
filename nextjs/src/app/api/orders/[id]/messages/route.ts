@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listMessages, sendMessage } from '@/services/message.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,5 +15,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const b = await req.json().catch(() => null)
   const r = await sendMessage(params.id, b?.text || '', s)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+  await pushSignal()
   return NextResponse.json(r.message, { status: 201 })
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDraft, addRow, deleteRow, updateRow, pastDrafts } from '@/services/report.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,8 +17,9 @@ export async function POST(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
-  if (b?.op === 'delete' && b.id) { await deleteRow(b.id); return NextResponse.json({ ok: true }) }
-  if (b?.op === 'update' && b.id) { const r = await updateRow(b.id, b.row || {}); return NextResponse.json(r) }
+  if (b?.op === 'delete' && b.id) { await deleteRow(b.id); await pushSignal(); return NextResponse.json({ ok: true }) }
+  if (b?.op === 'update' && b.id) { const r = await updateRow(b.id, b.row || {}); await pushSignal(); return NextResponse.json(r) }
   const row = await addRow(s, b?.row || {}, b?.date)
+  await pushSignal()
   return NextResponse.json(row, { status: 201 })
 }

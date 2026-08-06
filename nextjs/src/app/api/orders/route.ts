@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createOrderSchema } from '@/dto/order.dto'
 import { createOrder, listOrders } from '@/services/order.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,5 +18,7 @@ export async function POST(req: NextRequest) {
   const s = await sessionFromRequest(req)
   const parsed = createOrderSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля', issues: parsed.error.flatten() }, { status: 400 })
-  return NextResponse.json(await createOrder(parsed.data, s), { status: 201 })
+  const res = await createOrder(parsed.data, s)
+  await pushSignal()
+  return NextResponse.json(res, { status: 201 })
 }

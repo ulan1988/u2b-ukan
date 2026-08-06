@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { actionSchema } from '@/dto/order.dto'
 import { dispatchAction } from '@/services/orderWorkflow'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,5 +13,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const r = await dispatchAction(params.id, parsed.data.action, s, parsed.data.payload)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+  await pushSignal()
   return NextResponse.json({ ok: true })
 }
