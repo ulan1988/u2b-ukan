@@ -8,6 +8,7 @@ import { RalDot, extractRal } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
+import ChatWidget from '@/components/ChatWidget'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -182,6 +183,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}
       </div>
+      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
     </div>
   )
 }

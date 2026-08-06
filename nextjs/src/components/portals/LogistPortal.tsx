@@ -7,6 +7,7 @@ import { COLORS } from '@/lib/colors'
 import { isPurchase } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
+import ChatWidget from '@/components/ChatWidget'
 import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
@@ -321,6 +322,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           )
         })}
       </div>
+      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
     </div>
   )
 }

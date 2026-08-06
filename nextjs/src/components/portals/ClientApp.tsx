@@ -7,6 +7,7 @@ import { cardProgress } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import ChatWidget from '@/components/ChatWidget'
 import FinanceView from '@/components/portals/FinanceView'
 import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { listNotifications, markRead } from '@/lib/api/notifications'
@@ -209,6 +210,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
           </div>
         )}
       </div>
+      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
     </div>
   )
 }

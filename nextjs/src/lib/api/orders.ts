@@ -30,6 +30,7 @@ export const listHistory = (orgId: string, f: { user?: string; from?: string; to
 
 export const listMessages = (cardId: string) => getArray(`/api/orders/${cardId}/messages`)
 export const sendMessage = (cardId: string, text: string) => post(`/api/orders/${cardId}/messages`, { text })
+export const chatThreads = (orgId?: string) => getArray(`/api/chat/threads${orgId ? `?orgId=${orgId}` : ''}`)
 
 // Позиции карточки (правка/добавление) — логист/филиал.
 export async function updatePosition(cardId: string, posId: string, patch: any) {

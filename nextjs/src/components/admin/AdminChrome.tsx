@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Sidebar, { type NavItem } from '@/components/admin/Sidebar'
 import Topbar from '@/components/admin/Topbar'
 import CardModal from '@/components/admin/CardModal'
+import ChatWidget from '@/components/ChatWidget'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 import { fetchRefs } from '@/lib/api/refs'
@@ -100,7 +101,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         </div>
       </div>
 
-      {selectedId && <CardModal id={selectedId} onClose={() => setSelectedId(null)} onAction={act} />}
+      {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} />}
+      <ChatWidget myId={user.id} orgId={orgId} />
     </div>
   )
 }
