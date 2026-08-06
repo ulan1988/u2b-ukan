@@ -48,9 +48,10 @@ export const products = pgTable('products', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
   unit: text('unit').notNull().default('шт'),
-  category: text('category').notNull().default('goods'),  // material | goods | service
-  group: text('group').default(''),
-  subgroup: text('subgroup').default(''),
+  category: text('category').notNull().default('goods'),  // material | goods | service (тип)
+  group: text('group').default(''),                       // дерево каталога: корень
+  cat: text('cat').default(''),                           // дерево каталога: категория (Евро брус/Комплектующие)
+  subgroup: text('subgroup').default(''),                 // дерево каталога: подгруппа (лист)
   priceIn: money('price_in').notNull().default('0'),      // приходная (закуп)
   priceRetail: money('price_retail').notNull().default('0'),
   priceOpt: money('price_opt').notNull().default('0'),

@@ -35,7 +35,7 @@ export default function AdminScreenPage() {
     case 'invoice_out': return <InvoicesScreen kind="out" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'archive': return <ListScreen title="Архив" screen="archive" orders={a.visible} onAction={a.act} onOpen={a.openCard} empty="Архив пуст"
       actions={[{ action: 'unarchive', label: 'Из архива' }]} />
-    case 'warehouse': return <WarehouseScreen orgId={a.orgId} />
+    case 'warehouse': return <WarehouseScreen orgId={a.orgId} onOpenCard={id => a.openCard({ id })} />
     case 'nomenclature': return <NomenclatureScreen />
     case 'settings': return <SettingsScreen orgId={a.orgId} />
     default: return <div style={{ color: '#5f5952', padding: 20 }}>Раздел не найден</div>

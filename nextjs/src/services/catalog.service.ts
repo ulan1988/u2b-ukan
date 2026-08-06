@@ -7,7 +7,7 @@ import type {
 
 export async function addProduct(i: z.infer<typeof createProductSchema>) {
   const [p] = await repo.createProduct({
-    name: i.name, unit: i.unit, category: i.category, group: i.group || '', subgroup: i.subgroup || '',
+    name: i.name, unit: i.unit, category: i.category, group: i.group || '', cat: i.cat || '', subgroup: i.subgroup || '',
     priceIn: String(i.priceIn), priceRetail: String(i.priceRetail), priceOpt: String(i.priceOpt),
   })
   return p
@@ -34,6 +34,7 @@ export async function editProduct(id: string, i: z.infer<typeof updateProductSch
   if (i.unit !== undefined) patch.unit = i.unit
   if (i.category !== undefined) patch.category = i.category
   if (i.group !== undefined) patch.group = i.group
+  if (i.cat !== undefined) patch.cat = i.cat
   if (i.subgroup !== undefined) patch.subgroup = i.subgroup
   if (i.priceIn !== undefined) patch.priceIn = String(i.priceIn)          // numeric → string
   if (i.priceRetail !== undefined) patch.priceRetail = String(i.priceRetail)
