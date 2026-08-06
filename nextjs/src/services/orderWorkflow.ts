@@ -67,6 +67,18 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: c => ({ postponed: !c.order.postponed }),
     history: c => (c.order.postponed ? 'Снят с отложенных' : 'Отложен'),
   },
+  branchAccept: {
+    patch: () => ({ status: 'Принято филиалом' }),
+    history: () => 'Принято филиалом',
+  },
+  branchForward: {
+    patch: () => ({ screen: 'outgoing', block: '', status: 'В работе' }),
+    history: () => 'Филиал передал логисту',
+  },
+  branchRecall: {
+    patch: () => ({ screen: 'reception', block: 'processing', status: 'В обработке' }),
+    history: () => 'Филиал вернул заявку',
+  },
   finalizePurchase: {
     roles: ADMIN,
     guard: c => (c.positions.length && c.positions.every(p => p.respUserId && p.supplierId) ? null : 'У всех позиций закупа должен быть логист и поставщик'),
