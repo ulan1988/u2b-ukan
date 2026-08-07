@@ -76,8 +76,14 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   }
   const openCard = (o: any) => setSelectedId(o.id)
 
+  // Счётчики сайдбара = как показывают экраны: toacc-карточки идут в «К учёту»,
+  // а не «Входящие» (иначе счётчик Входящих врёт, а вкладки пустые).
   const counts: Record<string, number> = {}
-  for (const o of orders) if (!o.isCancelled) counts[o.screen] = (counts[o.screen] || 0) + 1
+  for (const o of orders) {
+    if (o.isCancelled) continue
+    const key = (o.screen === 'incoming' && o.toacc) ? 'accounting' : o.screen
+    counts[key] = (counts[key] || 0) + 1
+  }
   // Новые карточки (как «Входящие» в дашборде) → бейдж на иконке PWA.
   const newCount = orders.filter(o => o.screen === 'incoming' && !o.toacc && !o.isDraft && !o.isCancelled).length
   const q = search.trim().toLowerCase()
