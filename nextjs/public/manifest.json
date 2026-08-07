@@ -2,10 +2,11 @@
   "name": "U2B ERP — UKan",
   "short_name": "U2B ERP",
   "description": "UKan — часть экосистемы U2B (ERP-автоматизация бизнеса)",
-  "start_url": ".",
+  "start_url": "/",
+  "id": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f1efec",
+  "background_color": "#211f1c",
   "theme_color": "#211f1c",
   "orientation": "portrait-primary",
   "icons": [
