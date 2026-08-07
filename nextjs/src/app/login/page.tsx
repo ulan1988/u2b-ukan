@@ -67,40 +67,19 @@ function LoginForm() {
           </div>
         </div>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Вход в систему</div>
-        <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 20 }}>Выберите способ входа</div>
-        <div style={{ display: 'flex', background: '#f1efec', borderRadius: 10, padding: 4, marginBottom: 20 }}>
-          {[['email', '📧 Email + пароль'], ['phone', '📱 По телефону']].map(([m, l]) => (
-            <button key={m} onClick={() => { setMode(m as any); setError('') }} style={{ flex: 1, padding: '8px', borderRadius: 7, border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: mode === m ? '#fff' : 'transparent', color: mode === m ? '#26231f' : '#5f5952', boxShadow: mode === m ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
-              {l}
-            </button>
-          ))}
-        </div>
+        <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 20 }}>Введите логин и пароль</div>
         {error && <div style={{ background: '#faeaea', color: '#b03020', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 14 }}>{error}</div>}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer', fontSize: 14, color: '#4a4640', userSelect: 'none' }}>
           <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#d4613a', cursor: 'pointer' }} />
           Запомнить меня на этом устройстве
         </label>
-        {mode === 'email' && (
-          <form onSubmit={handleEmail} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div><label style={lbl}>EMAIL</label><input style={inp} type="text" value={email} onChange={e => setEmail(e.target.value)} placeholder="Ваш email" required /></div>
-            <div><label style={lbl}>ПАРОЛЬ</label><input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
-            <button type="submit" disabled={loading} style={{ marginTop: 8, padding: '12px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {loading ? 'Вход...' : 'ВОЙТИ →'}
-            </button>
-          </form>
-        )}
-        {mode === 'phone' && (
-          <form onSubmit={handlePhone} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <label style={lbl}>ТЕЛЕФОН</label>
-              <input style={inp} type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 700 000 00 00" required />
-              <div style={{ fontSize: 12, color: '#5f5952', marginTop: 4 }}>Для клиентов и логистов — телефон является паролем</div>
-            </div>
-            <button type="submit" disabled={loading} style={{ marginTop: 8, padding: '12px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {loading ? 'Вход...' : 'ВОЙТИ ПО ТЕЛЕФОНУ →'}
-            </button>
-          </form>
-        )}
+        <form onSubmit={handleEmail} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div><label style={lbl}>ЛОГИН</label><input style={inp} type="text" value={email} onChange={e => setEmail(e.target.value)} placeholder="Ваш логин" required /></div>
+          <div><label style={lbl}>ПАРОЛЬ</label><input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
+          <button type="submit" disabled={loading} style={{ marginTop: 8, padding: '12px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {loading ? 'Вход...' : 'ВОЙТИ →'}
+          </button>
+        </form>
         <div style={{ textAlign: 'center', marginTop: 20 }}>
           <a href="/register" style={{ color: '#5f5952', fontSize: 14 }}>Новый клиент? Зарегистрироваться →</a>
         </div>

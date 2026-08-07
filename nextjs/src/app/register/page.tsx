@@ -32,7 +32,7 @@ export default function RegisterPage() {
         ) : (
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div><label style={lbl}>ИМЯ / КОМПАНИЯ</label><input style={inp} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} required /></div>
-            <div><label style={lbl}>EMAIL</label><input style={inp} type="text" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} required /></div>
+            <div><label style={lbl}>ЛОГИН</label><input style={inp} type="text" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} required /></div>
             <div><label style={lbl}>ТЕЛЕФОН</label><input style={inp} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} placeholder="+7 700 000 00 00" /></div>
             <div><label style={lbl}>ПАРОЛЬ</label><input style={inp} type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} required /></div>
             {err && <div style={{ background: '#faeaea', color: '#b03020', borderRadius: 8, padding: '10px 14px', fontSize: 14 }}>{err}</div>}

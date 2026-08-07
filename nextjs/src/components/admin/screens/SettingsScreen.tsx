@@ -61,7 +61,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
         <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 12 }}>НОВЫЙ ПОЛЬЗОВАТЕЛЬ</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
           <input style={inp} placeholder="Имя" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
-          <input style={inp} placeholder="Email (логин)" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
+          <input style={inp} placeholder="Логин" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
           <input style={inp} type="password" placeholder="Пароль (мин. 4)" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
           <select style={inp} value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>{ROLES.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}</select>
           <select style={{ ...inp, gridColumn: '1 / -1' }} value={f.orgId} onChange={e => setF({ ...f, orgId: e.target.value })} title="Организация / филиал">
@@ -123,7 +123,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
               <div><label style={LBL}>ИМЯ</label><input style={inp} value={editing.name || ''} onChange={e => setEditing((p: any) => ({ ...p, name: e.target.value }))} /></div>
               <div><label style={LBL}>РОЛЬ</label><select style={inp} value={editing.role} onChange={e => setEditing((p: any) => ({ ...p, role: e.target.value }))}>{ROLES.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}</select></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><label style={LBL}>EMAIL</label><input style={inp} value={editing.email || ''} onChange={e => setEditing((p: any) => ({ ...p, email: e.target.value }))} /></div>
+                <div><label style={LBL}>ЛОГИН</label><input style={inp} value={editing.email || ''} onChange={e => setEditing((p: any) => ({ ...p, email: e.target.value }))} /></div>
                 <div><label style={LBL}>ТЕЛЕФОН</label><input style={inp} value={editing.phone || ''} onChange={e => setEditing((p: any) => ({ ...p, phone: e.target.value }))} /></div>
               </div>
               <div><label style={LBL}>SLUG (адрес кабинета)</label><input style={inp} value={editing.slug || ''} onChange={e => setEditing((p: any) => ({ ...p, slug: e.target.value }))} /></div>
