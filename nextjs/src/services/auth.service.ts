@@ -46,6 +46,12 @@ export async function editUser(id: string, patch: any) {
     if (patch[k] !== undefined) set[k] = patch[k]
   }
   if (set.email) set.email = String(set.email).trim() || null
+  // Новый пароль — только если введён (мин. 4 символа), хешируем.
+  if (patch.password && String(patch.password).length >= 4) set.password = await bcrypt.hash(String(patch.password), 10)
+  if (Object.keys(set).length === 0) {           // нечего менять — не дёргаем БД
+    const [u0] = await userRepo.findById(id)
+    return u0 ? { id: u0.id, name: u0.name, role: u0.role, email: u0.email, active: u0.active } : { id }
+  }
   const [u] = await userRepo.updateUser(id, set)
   return { id: u.id, name: u.name, role: u.role, email: u.email, active: u.active }
 }

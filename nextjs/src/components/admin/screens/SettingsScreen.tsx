@@ -127,6 +127,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
                 <div><label style={LBL}>ТЕЛЕФОН</label><input style={inp} value={editing.phone || ''} onChange={e => setEditing((p: any) => ({ ...p, phone: e.target.value }))} /></div>
               </div>
               <div><label style={LBL}>SLUG (адрес кабинета)</label><input style={inp} value={editing.slug || ''} onChange={e => setEditing((p: any) => ({ ...p, slug: e.target.value }))} /></div>
+              <div><label style={LBL}>НОВЫЙ ПАРОЛЬ</label><input style={inp} type="password" autoComplete="new-password" placeholder="оставьте пустым — не менять (мин. 4)" value={editing.password || ''} onChange={e => setEditing((p: any) => ({ ...p, password: e.target.value }))} /></div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={!!editing.active} onChange={e => setEditing((p: any) => ({ ...p, active: e.target.checked }))} /><span style={{ fontSize: 14 }}>Активен</span></label>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button onClick={() => setEditing(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
