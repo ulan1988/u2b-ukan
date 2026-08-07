@@ -4,10 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { login as apiLogin } from '@/lib/api/auth'
 
 function LoginForm() {
-  const [mode, setMode] = useState<'email' | 'phone'>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [phone, setPhone] = useState('+7')
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,11 +14,7 @@ function LoginForm() {
   const from = searchParams.get('from') || ''
 
   useEffect(() => {
-    try {
-      const p = localStorage.getItem('ukan_last_phone'); if (p) setPhone(p)
-      const em = localStorage.getItem('ukan_last_email'); if (em) setEmail(em)
-      const m = localStorage.getItem('ukan_last_mode'); if (m === 'phone' || m === 'email') setMode(m)
-    } catch {}
+    try { const em = localStorage.getItem('ukan_last_login'); if (em) setEmail(em) } catch {}
   }, [])
 
   async function handleEmail(e: React.FormEvent) {
@@ -29,16 +23,10 @@ function LoginForm() {
     try {
       const r = await apiLogin({ email, password })
       if (!r.ok) { setError(r.error || 'Ошибка входа'); return }
-      try { localStorage.setItem('ukan_last_email', email); localStorage.setItem('ukan_last_mode', 'email') } catch {}
+      try { localStorage.setItem('ukan_last_login', email) } catch {}
       redirect(r.data.user)
     } catch { setError('Ошибка сети') }
     finally { setLoading(false) }
-  }
-
-  async function handlePhone(e: React.FormEvent) {
-    e.preventDefault()
-    // Беспарольный вход по телефону намеренно не подключён (дыра безопасности v1).
-    setError('Вход по телефону скоро — используйте email и пароль')
   }
 
   function redirect(user: any) {
