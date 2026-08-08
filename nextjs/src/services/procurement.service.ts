@@ -1,6 +1,6 @@
 // Автозакуп: сводка потребности → черновик-накопитель закупа + связи.
-import { randomUUID } from 'crypto'
 import * as repo from '../repositories/procurement.repo'
+import { countPositions } from '../repositories/order.repo'
 import { docNumber } from '../lib/num'
 import { matchCategoryKey } from '../lib/nomCatalog'
 import { listRules } from '../repositories/categoryRule.repo'
@@ -85,7 +85,10 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   const rules = await listRules(orgId)
   const ruleByCat: Record<string, any> = {}; for (const r of rules) ruleByCat[r.category] = r
 
-  const posValues = items.map(it => {
+  // Под-id позиций как в системе Улкана: {cardId}-P{n}, сквозной (продолжаем нумерацию
+  // от уже накопленных в черновике позиций — черновик закупа накапливается).
+  const base = await countPositions(draft!.id)
+  const posValues = items.map((it, idx) => {
     const prod = byName.get(it.name.trim().toLowerCase())
     let supplierId: string | null = null, respUserId: string | null = null
     if (prod) {
@@ -94,7 +97,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
       if (rule) { supplierId = rule.supplierId || null; respUserId = rule.respUserId || null }
     }
     return {
-      id: `${draft!.id}-P${randomUUID().slice(0, 8)}`, cardId: draft!.id,
+      id: `${draft!.id}-P${base + idx + 1}`, cardId: draft!.id,
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,
       qty: String(it.total), unit: it.unit || 'шт', price: String(prod?.priceIn ?? 0),
       supplierId, respUserId, status: 'В работе',

@@ -11,8 +11,12 @@ export function docNumber(type: string, count: number): string {
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yy = String(d.getFullYear()).slice(-2)
-  // Минимум 2 знака: 01, 02 … 99, дальше растёт естественно (100, 101 …).
-  return `${p}-${String(count + 1).padStart(2, '0')}-${dd}${mm}${yy}`
+  // Оригинальная система Улкана: 4-значный номер + дата. До 9999, дальше круг
+  // с меткой [1], [2]… — «под-id» карточки: ЗП-0001-290726 [1]. Старые C-… не трогаем.
+  const cycle = Math.floor(count / 9999)
+  const pos = (count % 9999) + 1
+  const seq = String(pos).padStart(4, '0')
+  return `${p}-${seq}-${dd}${mm}${yy}${cycle > 0 ? ` [${cycle}]` : ''}`
 }
 
 // Транслит кириллицы → адрес личного портала (/rsp/{slug} и т.п.).
