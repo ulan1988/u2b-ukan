@@ -1,10 +1,29 @@
 import type { z } from 'zod'
-import { docNumber } from '../lib/num'
+import { docNumber, today } from '../lib/num'
 import * as repo from '../repositories/order.repo'
 import * as userRepo from '../repositories/user.repo'
 import * as refsRepo from '../repositories/refs.repo'
+import * as reportRepo from '../repositories/report.repo'
 import type { createOrderSchema } from '../dto/order.dto'
 import type { Session } from '../lib/auth'
+
+// Авто-строка смены логиста при доставке позиции (как updatePos в Улкане):
+// upsert по posId в СЕГОДНЯШНИЙ черновик смены логиста-ответственного.
+async function addDeliveryToShift(orgId: string, pos: any, order: any) {
+  if (!pos.respUserId) return
+  const day = today()
+  let [draft] = await reportRepo.draftForDay(orgId, pos.respUserId, day)
+  if (!draft) [draft] = await reportRepo.createReport({ orgId, logistId: pos.respUserId, date: day, status: 'processing' })
+  const rowData = {
+    posId: pos.id, name: pos.name1c || pos.oral || '', fromWho: order.fromName || '',
+    qtyIn: String(pos.qty), commentIn: '',
+    toWho: order.kind === 'purchase' ? 'Центр-Склад' : '', qtyOut: String(pos.qty), commentOut: '', invoiceNum: '',
+  }
+  const rows = await reportRepo.rowsByReport(draft.id)
+  const existing = rows.find((r: any) => r.posId === pos.id)
+  if (existing) await reportRepo.updateRow(existing.id, rowData)
+  else await reportRepo.addRow({ ...rowData, reportId: draft.id })
+}
 
 export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: Session | null) {
   const count = await repo.countByKind(i.orgId, i.kind)
@@ -123,6 +142,11 @@ export async function setPositions(cardId: string, posId: string | undefined, st
     ? { screen: 'incoming', delivered: new Date(), toacc: true, status: 'Доставлено' }
     : { delivered: null, toacc: false, status: 'В работе',
         ...(order && order.screen === 'incoming' && order.toacc ? { screen: 'outgoing' } : {}) })
+  // При доставке — авто-строка в смену логиста (собирается «Доставлено» → отчёт).
+  if (status === 'Доставлено' && order) {
+    const delivered = posId ? positions.filter(p => p.id === posId) : positions
+    for (const p of delivered) { try { await addDeliveryToShift(order.orgId, p, order) } catch {} }
+  }
   await repo.insertHistory({
     cardId, action: 'updatePos',
     detail: posId ? `Позиция → ${status}` : `Все позиции → ${status}`,

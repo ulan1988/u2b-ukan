@@ -62,16 +62,17 @@ export const historyByOrg = (orgId: string, f: { user?: string; from?: string; t
     .where(and(...conds)).orderBy(desc(orderHistory.createdAt)).limit(limit)
 }
 
-// Позиции для портала логиста: назначенные ему (outgoing/reception) + неназначенные
-// в Исходящих (пул «на разбор» — напр. пересланные филиалом без логиста), чтобы
-// связь филиал→логист не рвалась и любой логист мог взять карточку.
+// Позиции для портала логиста: назначенные ему на outgoing/reception/incoming
+// (incoming — доставленные карточки уходят туда с toacc, но должны оставаться в
+// его вкладке «Доставлено», как в Улкане) + неназначенные в Исходящих (пул «на
+// разбор» — пересланные филиалом без логиста).
 export const positionsForLogist = (orgId: string, userId: string) =>
   db.select({ o: orders, p: orderPositions })
     .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
     .where(and(
       eq(orders.orgId, orgId), eq(orders.isCancelled, false),
       or(
-        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception'])),
+        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming'])),
         and(isNull(orderPositions.respUserId), eq(orders.screen, 'outgoing')),
       ),
     )).orderBy(desc(orders.createdAt))
