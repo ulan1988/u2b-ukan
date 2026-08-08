@@ -14,10 +14,17 @@ async function addDeliveryToShift(orgId: string, pos: any, order: any) {
   const day = today()
   let [draft] = await reportRepo.draftForDay(orgId, pos.respUserId, day)
   if (!draft) [draft] = await reportRepo.createReport({ orgId, logistId: pos.respUserId, date: day, status: 'draft' })
+  // Строка как в Улкане (updatePos): fromWho = поставщик || отправитель,
+  // toWho = назначение (закуп → Центр-Склад, продажа → клиент-получатель).
+  const cags = await refsRepo.listContragents()
+  const cagName: Record<string, string> = {}
+  for (const c of cags as any[]) cagName[c.id] = c.name
+  const supplier = pos.supplierId ? (cagName[pos.supplierId] || '') : ''
+  const toWho = order.kind === 'purchase' ? 'Центр-Склад' : (order.contactId ? (cagName[order.contactId] || '') : '')
   const rowData = {
-    posId: pos.id, name: pos.name1c || pos.oral || '', fromWho: order.fromName || '',
+    posId: pos.id, name: pos.name1c || pos.oral || '', fromWho: supplier || order.fromName || '',
     qtyIn: String(pos.qty), commentIn: '',
-    toWho: order.kind === 'purchase' ? 'Центр-Склад' : '', qtyOut: String(pos.qty), commentOut: '', invoiceNum: '',
+    toWho, qtyOut: String(pos.qty), commentOut: '', invoiceNum: '',
   }
   const rows = await reportRepo.rowsByReport(draft.id)
   const existing = rows.find((r: any) => r.posId === pos.id)
@@ -134,17 +141,6 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   else await repo.updatePositionsByCard(cardId, { status })
 
   const positions = await repo.positionsByCard(cardId)
-  // Пул-позиция без логиста (напр. закуп из Автозакупа без правила категории):
-  // логист, который её ведёт, становится ответственным. Иначе после доставки
-  // карточка уходит на incoming и пропадает из его «Выполнено» (positionsForLogist
-  // требует respUserId), а строка смены не создаётся (addDeliveryToShift требует
-  // respUserId). Так закупки собираются в отчёт логиста, как в Улкане.
-  if (actor?.role === 'logist') {
-    const touched = posId ? positions.filter(p => p.id === posId) : positions
-    for (const p of touched) if (!p.respUserId) {
-      await repo.updatePosition(p.id, { respUserId: actor.id }); p.respUserId = actor.id
-    }
-  }
   const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
   const [order] = await repo.getOrder(cardId)
   // Все доставлены → карточка едет к учёту (incoming+toacc). Откат авто-доставленной
