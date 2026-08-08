@@ -11,9 +11,10 @@ const PURPLE = '#7a3aaa'
 const cth: React.CSSProperties = { padding: '7px 10px', fontSize: 12, fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap' }
 const ctd: React.CSSProperties = { padding: '8px 10px', fontSize: 13, verticalAlign: 'top', borderTop: '1px solid #f1efec' }
 
-// Закуп-отчёт = Рентабельность (наша ERP) + цепочка закуп→продажа (Ф4, позже).
+// Закуп-отчёт = цепочка закуп→продажа (как в оригинале, вкладка по умолчанию)
+// + Рентабельность (наша ERP-надстройка, вторая вкладка).
 export default function ProcurementScreen({ orgId }: { orgId: string }) {
-  const [tab, setTab] = useState<'profit' | 'chain'>('profit')
+  const [tab, setTab] = useState<'chain' | 'profit'>('chain')
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function ProcurementScreen({ orgId }: { orgId: string }) {
     <div>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>🛒 Закуп-отчёт</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['profit', 'Рентабельность'], ['chain', 'Цепочка закуп→продажа']] as const).map(([k, l]) => (
+        {([['chain', 'Цепочка закуп→продажа'], ['profit', 'Рентабельность']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
