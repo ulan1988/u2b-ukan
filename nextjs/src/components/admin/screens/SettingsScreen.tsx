@@ -28,6 +28,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   async function setPriceType(u: any, priceType: string) { await editUser(u.id, { priceType }); load(); setMsg('✓ Тип цены обновлён') }
   async function saveEdit() { if (!editing) return; const r = await editUser(editing.id, editing); if (r.ok) { setEditing(null); load(); setMsg('✓ Сохранено') } }
   async function removeUser(u: any) { if (!confirm(`Отключить пользователя «${u.name}»?`)) return; await deleteUser(u.id); load(); setMsg('✓ Отключён') }
+  async function activateUser(u: any) { await editUser(u.id, { active: true }); load(); setMsg(`✓ ${u.name} включён`) }
   function copy(url: string, key: string) { navigator.clipboard.writeText(url); setCopied(key); setTimeout(() => setCopied(''), 2000) }
   useEffect(() => {
     load()
@@ -102,7 +103,9 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => setEditing({ ...u })} style={{ padding: '5px 12px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>Изменить</button>
-                      {u.active && <button onClick={() => removeUser(u)} style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid #f3d5c6', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#b03020' }}>Отключить</button>}
+                      {u.active
+                        ? <button onClick={() => removeUser(u)} style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid #f3d5c6', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#b03020' }}>Отключить</button>
+                        : <button onClick={() => activateUser(u)} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>Включить</button>}
                     </div>
                   </td>
                 </tr>
