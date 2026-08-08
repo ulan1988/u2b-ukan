@@ -103,17 +103,20 @@ export async function updateDocument(id: string, patch: any) {
 // Создать расходную накладную (продажа): проводка = документ + строки +
 // РАСХОД склада (stock_movement −). Долг заказчика считается из документов и оплат.
 export async function createSale(input: CreateSaleInput & { number?: string }) {
-  const count = await docRepo.countByType(input.orgId, 'sale')
   const docId = randomUUID()
   const date = input.date || today()
+  // Номер расходной: порядковый за день + дата (01-080826), как у приходной.
+  // Отдельный счётчик от приходных. Дата = день отгрузки/доставки. Карточка (ПР-…) — основание.
+  const seq = (await docRepo.countByTypeAndDate(input.orgId, 'sale', date)) + 1
+  const autoNumber = invoiceNumber(seq, date)
 
   let total = 0
-  const lines = input.lines.map(l => {
+  const lines = input.lines.map((l: any) => {
     const amount = l.qty * l.price
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
-      qty: String(l.qty), price: String(l.price), amount: String(amount),
+      qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
     }
   })
 
@@ -140,9 +143,9 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   }
 
   const doc = {
-    id: docId, orgId: input.orgId, type: 'sale',
-    number: input.number || docNumber('sale', count),      // номер карточки, если передан (1 карточка = 1 накладная)
-    sourceOrderId: (input as any).sourceOrderId || null,
+    id: docId, orgId: input.orgId, type: 'sale', operation: 'shipment',
+    number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
+    sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }

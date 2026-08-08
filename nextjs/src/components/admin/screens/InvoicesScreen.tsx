@@ -55,11 +55,11 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         : (
           <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Номер', 'Дата', 'Поставщик', 'Сумма', 'Статус'].map((h, i) => <th key={h} style={{ textAlign: i >= 3 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Номер', 'Дата', kind === 'in' ? 'Поставщик' : 'Покупатель', 'Сумма', 'Статус'].map((h, i) => <th key={h} style={{ textAlign: i >= 3 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {docs.map(d => (
-                  <tr key={d.id} onClick={() => kind === 'in' && setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: kind === 'in' ? 'pointer' : 'default' }}>
-                    <td style={{ padding: '8px 16px', fontWeight: 600, color: kind === 'in' ? COLORS.primary : COLORS.text }}>{d.number}</td>
+                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer' }}>
+                    <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{fmtDate(d.date)}</td>
                     <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(Number(d.total))} ₸</td>

@@ -4,12 +4,14 @@ import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument } from '@/lib/api/docs'
 
-// Форма приходной накладной (1С УНФ). Открывается из списка «Приходные накладные».
-// Правим «бумажные» поля: вх.номер/дата, операция, скидка, оплата, коммент + цена/ед./коммент строк.
+// Форма накладной (1С УНФ), зеркальная: приходная (закуп) и расходная (продажа).
+// Тип определяется по doc.type. Правим «бумажные» поля: вх.номер/дата (только приходная),
+// операция, скидка, оплата, коммент + цена/ед./коммент строк.
 // Кол-во/склад менять нельзя (это движение склада — отдельный шаг).
 const inp: React.CSSProperties = { padding: '7px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', width: '100%' }
 const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#5f5952', marginBottom: 3, display: 'block', letterSpacing: '.03em' }
-const OPS = [{ v: 'receipt', l: 'Поступление от поставщика' }, { v: 'return', l: 'Возврат поставщику' }]
+const OPS_IN = [{ v: 'receipt', l: 'Поступление от поставщика' }, { v: 'return', l: 'Возврат поставщику' }]
+const OPS_OUT = [{ v: 'shipment', l: 'Продажа покупателю' }, { v: 'return', l: 'Возврат от покупателя' }]
 
 export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onClose: () => void; onSaved?: () => void }) {
   const [data, setData] = useState<any>(null)
@@ -23,7 +25,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   useEffect(() => { getDocument(id).then((d: any) => {
     if (!d) return
     setData(d)
-    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || 'receipt', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0 })
+    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0 })
     setLines((d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) })))
   }) }, [id])
 
@@ -47,6 +49,8 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   }
 
   const o = data?.doc
+  const isSale = o?.type === 'sale'
+  const OPS = isSale ? OPS_OUT : OPS_IN
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 16px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} className="anim-pop" style={{ width: 820, maxWidth: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)', overflow: 'hidden' }}>
@@ -54,7 +58,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
           <>
             {/* Шапка */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontWeight: 800, fontSize: 17 }}>Приходная накладная</span>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>{isSale ? 'Расходная накладная' : 'Приходная накладная'}</span>
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{o.number}</span>
               <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>
               <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
@@ -62,11 +66,11 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
 
             <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <div><label style={lbl}>НОМЕР (авто, можно менять)</label><input style={inp} value={f.number} onChange={e => setF({ ...f, number: e.target.value })} /></div>
-              <div><label style={lbl}>ДАТА (день приёмки)</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
-              <div><label style={lbl}>ПОСТАВЩИК</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.contragent?.name || '—'} disabled /></div>
+              <div><label style={lbl}>{isSale ? 'ДАТА (день отгрузки)' : 'ДАТА (день приёмки)'}</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
+              <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.contragent?.name || '—'} disabled /></div>
               <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
-              <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>
-              <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>
+              {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}
+              {!isSale && <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>}
               <div><label style={lbl}>ОПЕРАЦИЯ</label><select style={inp} value={f.operation} onChange={e => setF({ ...f, operation: e.target.value })}>{OPS.map(op => <option key={op.v} value={op.v}>{op.l}</option>)}</select></div>
               <div><label style={lbl}>ОСНОВАНИЕ (ЗАЯВКА)</label><input style={{ ...inp, background: '#f6f3f0', fontFamily: "'JetBrains Mono', monospace", color: COLORS.primary }} value={o.sourceOrderId || '—'} disabled title="id карточки-основания" /></div>
               <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>КОММЕНТАРИЙ</label><input style={inp} value={f.comment} onChange={e => setF({ ...f, comment: e.target.value })} /></div>
@@ -106,7 +110,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
                   <div><label style={lbl}>ОПЛАЧЕНО</label><input style={inp} type="number" value={f.paidSum} onChange={e => setF({ ...f, paidSum: e.target.value })} /></div>
                   <div><label style={lbl}>ОСТАТОК</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700, color: remain > 0.001 ? '#b03020' : '#2e8a5e' }} value={fmtMoney(remain) + ' ₸'} disabled /></div>
                 </div>
-                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>Свяжется с финмодулем (долг перед поставщиком) на следующем этапе.</div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>Свяжется с финмодулем ({isSale ? 'долг заказчика' : 'долг перед поставщиком'}) на следующем этапе.</div>
               </div>
             )}
 

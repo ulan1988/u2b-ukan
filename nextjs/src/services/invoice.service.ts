@@ -25,10 +25,9 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
 
   // Дата документа = день, когда логист принял/довёз (delivered), иначе сегодня.
   const acceptDate = o.delivered ? toYMD(o.delivered as any) : today()
-  // Приходная: номер авто (порядковый-дата, 01-060826), карточка-основание — в комментарии.
-  // Расходная: пока прежняя схема (номер карточки).
+  // И приходная, и расходная: номер авто (порядковый-дата, 01-080826), карточка-основание
+  // хранится в sourceOrderId. Оба типа нумеруются одинаково (отдельные счётчики по типу).
   const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, date: acceptDate, sourceOrderId: o.id, comment: `Из заявки ${o.id}` }
-  if (!isPurchase) input.number = o.id
   const doc = isPurchase ? await docSvc.createPurchase(input) : await docSvc.createSale(input)
 
   await orderRepo.updateOrder(cardId, { linkedDocId: doc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
