@@ -16,6 +16,15 @@ export async function countByType(orgId: string, type: string): Promise<number> 
   return r[0]?.c ?? 0
 }
 
+// Счётчик документов типа за конкретный день (для порядкового номера приходной).
+export async function countByTypeAndDate(orgId: string, type: string, ymd: string): Promise<number> {
+  const r = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(documents)
+    .where(and(eq(documents.orgId, orgId), eq(documents.type, type), eq(documents.date, ymd)))
+  return r[0]?.c ?? 0
+}
+
 // Проводка атомарно: документ + строки + движения склада (+ связи закуп↔продажа) одним батчем.
 export async function insertDocumentPosting(doc: NewDoc, lines: NewLine[], moves: NewMove[], links?: NewDocLink[]) {
   const q: any[] = [

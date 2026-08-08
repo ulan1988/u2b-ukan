@@ -23,7 +23,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   useEffect(() => { getDocument(id).then((d: any) => {
     if (!d) return
     setData(d)
-    setF({ inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || 'receipt', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0 })
+    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || 'receipt', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0 })
     setLines((d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) })))
   }) }, [id])
 
@@ -35,7 +35,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   async function save() {
     setBusy(true)
     const patch: any = {
-      inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
+      number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
       lines: lines.map(l => ({ id: l.id, price: Number(l.price) || 0, unit: l.unit, comment: l.comment })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
@@ -61,13 +61,14 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
             </div>
 
             <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              <div><label style={lbl}>НОМЕР (авто, можно менять)</label><input style={inp} value={f.number} onChange={e => setF({ ...f, number: e.target.value })} /></div>
+              <div><label style={lbl}>ДАТА (день приёмки)</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
               <div><label style={lbl}>ПОСТАВЩИК</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.contragent?.name || '—'} disabled /></div>
               <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
-              <div><label style={lbl}>ДАТА</label><input style={{ ...inp, background: '#f6f3f0' }} value={fmtDate(o.date)} disabled /></div>
               <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>
               <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>
               <div><label style={lbl}>ОПЕРАЦИЯ</label><select style={inp} value={f.operation} onChange={e => setF({ ...f, operation: e.target.value })}>{OPS.map(op => <option key={op.v} value={op.v}>{op.l}</option>)}</select></div>
-              <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>КОММЕНТАРИЙ</label><input style={inp} value={f.comment} onChange={e => setF({ ...f, comment: e.target.value })} /></div>
+              <div style={{ gridColumn: '2 / -1' }}><label style={lbl}>КОММЕНТАРИЙ</label><input style={inp} value={f.comment} onChange={e => setF({ ...f, comment: e.target.value })} /></div>
             </div>
 
             {/* Вкладки */}

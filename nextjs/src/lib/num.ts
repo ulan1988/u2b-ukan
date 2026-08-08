@@ -30,3 +30,21 @@ export function today(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+// Дата → YYYY-MM-DD (для поля date; из timestamp приёмки логистом).
+export function toYMD(d: Date | string): string {
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10)
+  const dt = new Date(d)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+// YYYY-MM-DD → ДДММГГ (для номера накладной 01-060826).
+export function ddmmyy(ymd: string): string {
+  const [y, m, d] = toYMD(ymd).split('-')
+  return `${d}${m}${y.slice(-2)}`
+}
+
+// Номер приходной: порядковый за день + дата. seq — счётчик за этот день (1,2,…).
+export function invoiceNumber(seq: number, ymd: string): string {
+  return `${String(seq).padStart(2, '0')}-${ddmmyy(ymd)}`
+}

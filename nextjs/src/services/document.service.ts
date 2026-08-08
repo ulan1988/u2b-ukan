@@ -3,14 +3,16 @@ import { randomUUID } from 'crypto'
 import type { CreatePurchaseInput, CreateSaleInput } from '../dto/document.dto'
 import type { CreateProductionInput } from '../dto/production.dto'
 import * as docRepo from '../repositories/document.repo'
-import { docNumber, today } from '../lib/num'
+import { docNumber, today, invoiceNumber } from '../lib/num'
 
 // Создать приходную накладную (закуп): проводка = документ + строки + приход склада.
 // Долг перед поставщиком не храним — он считается из документов и оплат.
 export async function createPurchase(input: CreatePurchaseInput & { number?: string }) {
-  const count = await docRepo.countByType(input.orgId, 'purchase')
   const docId = randomUUID()
   const date = input.date || today()
+  // Номер приходной: порядковый за день + дата (01-060826). Дата = день приёмки логистом.
+  const seq = (await docRepo.countByTypeAndDate(input.orgId, 'purchase', date)) + 1
+  const autoNumber = invoiceNumber(seq, date)
 
   let total = 0
   const lines = input.lines.map((l: any) => {
@@ -30,7 +32,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
 
   const doc = {
     id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
-    number: input.number || docNumber('purchase', count),   // номер карточки, если передан (1 карточка = 1 накладная)
+    number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
@@ -74,6 +76,8 @@ export async function updateDocument(id: string, patch: any) {
   }
   // Шапка.
   const head: any = {}
+  if (patch.number !== undefined && String(patch.number).trim()) head.number = String(patch.number).trim()
+  if (patch.date !== undefined && patch.date) head.date = patch.date
   if (patch.inNumber !== undefined) head.inNumber = patch.inNumber || null
   if (patch.inDate !== undefined) head.inDate = patch.inDate || null
   if (patch.operation !== undefined) head.operation = patch.operation

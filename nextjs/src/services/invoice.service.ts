@@ -4,6 +4,7 @@
 import * as docSvc from './document.service'
 import * as orderRepo from '../repositories/order.repo'
 import * as refsRepo from '../repositories/refs.repo'
+import { toYMD, today } from '../lib/num'
 import type { Session } from '../lib/auth'
 
 export async function postOrderInvoice(cardId: string, actor?: Session | null) {
@@ -12,7 +13,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   if (o.linkedDocId) return { ok: false as const, error: 'Накладная уже проведена' }
 
   const positions = await orderRepo.positionsByCard(cardId)
-  const lines = positions.filter(p => p.productId).map(p => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price) }))
+  const lines = positions.filter(p => p.productId).map(p => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт' }))
   if (!lines.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
 
   const isPurchase = o.kind === 'purchase'
@@ -22,8 +23,12 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   const contragentId = isPurchase ? (positions.find(p => p.supplierId)?.supplierId || o.contactId) : o.contactId
   if (!contragentId) return { ok: false as const, error: isPurchase ? 'В заявке не указан поставщик' : 'В заявке не указан клиент' }
 
-  // 1 карточка = 1 накладная: номер накладной = номер карточки (для сквозного поиска).
-  const input = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, number: o.id, comment: `Из заявки ${o.id}` }
+  // Дата документа = день, когда логист принял/довёз (delivered), иначе сегодня.
+  const acceptDate = o.delivered ? toYMD(o.delivered as any) : today()
+  // Приходная: номер авто (порядковый-дата, 01-060826), карточка-основание — в комментарии.
+  // Расходная: пока прежняя схема (номер карточки).
+  const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, date: acceptDate, comment: `Из заявки ${o.id}` }
+  if (!isPurchase) input.number = o.id
   const doc = isPurchase ? await docSvc.createPurchase(input) : await docSvc.createSale(input)
 
   await orderRepo.updateOrder(cardId, { linkedDocId: doc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
