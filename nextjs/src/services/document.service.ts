@@ -33,6 +33,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   const doc = {
     id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
+    sourceOrderId: (input as any).sourceOrderId || null,    // id карточки-основания (ЗП-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
@@ -141,6 +142,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   const doc = {
     id: docId, orgId: input.orgId, type: 'sale',
     number: input.number || docNumber('sale', count),      // номер карточки, если передан (1 карточка = 1 накладная)
+    sourceOrderId: (input as any).sourceOrderId || null,
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }

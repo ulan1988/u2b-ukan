@@ -27,7 +27,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   const acceptDate = o.delivered ? toYMD(o.delivered as any) : today()
   // Приходная: номер авто (порядковый-дата, 01-060826), карточка-основание — в комментарии.
   // Расходная: пока прежняя схема (номер карточки).
-  const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, date: acceptDate, comment: `Из заявки ${o.id}` }
+  const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines, date: acceptDate, sourceOrderId: o.id, comment: `Из заявки ${o.id}` }
   if (!isPurchase) input.number = o.id
   const doc = isPurchase ? await docSvc.createPurchase(input) : await docSvc.createSale(input)
 

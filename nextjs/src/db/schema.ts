@@ -94,6 +94,7 @@ export const documents = pgTable('documents', {
   inNumber: text('in_number'),                            // № накладной поставщика
   inDate: date('in_date'),                                // дата накладной поставщика
   operation: text('operation').notNull().default('receipt'), // receipt | return
+  sourceOrderId: text('source_order_id'),                 // id карточки-основания (ЗП-0001-060826) — чтобы связь не терялась
   discountPct: money('discount_pct').notNull().default('0'),  // скидка руч., %
   discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
   paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
