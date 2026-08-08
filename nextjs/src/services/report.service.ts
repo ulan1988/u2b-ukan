@@ -3,10 +3,12 @@ import * as repo from '../repositories/report.repo'
 import { today } from '../lib/num'
 import type { Session } from '../lib/auth'
 
+// Открытая смена логиста = status 'draft' (в бухгалтерию не показывается, пока не сдана).
+// Цепочка: draft (открыта) → processing (сдана, «Новый») → done («Принят») → archive.
 async function ensureDraft(orgId: string, logistId: string, date: string) {
   const [ex] = await repo.draftForDay(orgId, logistId, date)
   if (ex) return ex
-  const [created] = await repo.createReport({ orgId, logistId, date, status: 'processing' })
+  const [created] = await repo.createReport({ orgId, logistId, date, status: 'draft' })
   return created
 }
 
@@ -39,9 +41,10 @@ export const updateRow = (id: string, row: any) => repo.updateRow(id, {
 
 export const pastDrafts = (actor: Session) => repo.pastDrafts(actor.orgId, actor.id, today())
 
+// Логист закрывает/сдаёт смену → 'processing' (бухгалтер видит как «Новый»).
 export async function closeShift(actor: Session, date?: string) {
   const draft = await ensureDraft(actor.orgId, actor.id, date || today())
-  const [r] = await repo.setStatus(draft.id, 'done')
+  const [r] = await repo.setStatus(draft.id, 'processing')
   return r
 }
 

@@ -3,10 +3,11 @@ import { db } from '../lib/db'
 import { dailyReports, dailyReportRows, users } from '../db/schema'
 import { and, eq, desc, lt, ne, inArray, sql } from 'drizzle-orm'
 
+// Открытая (несданная) смена логиста за день = status 'draft'.
 export const draftForDay = (orgId: string, logistId: string, date: string) =>
   db.select().from(dailyReports).where(and(
     eq(dailyReports.orgId, orgId), eq(dailyReports.logistId, logistId),
-    eq(dailyReports.date, date), eq(dailyReports.status, 'processing'),
+    eq(dailyReports.date, date), eq(dailyReports.status, 'draft'),
   )).limit(1)
 
 export const createReport = (v: typeof dailyReports.$inferInsert) => db.insert(dailyReports).values(v).returning()
@@ -18,14 +19,14 @@ export const deleteRow = (id: string) => db.delete(dailyReportRows).where(eq(dai
 export const updateRow = (id: string, patch: Partial<typeof dailyReportRows.$inferInsert>) =>
   db.update(dailyReportRows).set(patch).where(eq(dailyReportRows.id, id)).returning()
 
-// Незакрытые смены прошлых дней (processing, дата < сегодня) + число строк.
+// Незакрытые смены прошлых дней (draft, дата < сегодня) + число строк.
 export const pastDrafts = (orgId: string, logistId: string, todayStr: string) =>
   db.select({
     id: dailyReports.id, date: dailyReports.date,
     rowCount: sql<number>`(select count(*)::int from ${dailyReportRows} where ${dailyReportRows.reportId} = ${dailyReports.id})`,
   }).from(dailyReports).where(and(
     eq(dailyReports.orgId, orgId), eq(dailyReports.logistId, logistId),
-    eq(dailyReports.status, 'processing'), lt(dailyReports.date, todayStr),
+    eq(dailyReports.status, 'draft'), lt(dailyReports.date, todayStr),
   )).orderBy(desc(dailyReports.date))
 export const setStatus = (id: string, status: string) =>
   db.update(dailyReports).set({ status }).where(eq(dailyReports.id, id)).returning()

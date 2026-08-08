@@ -13,7 +13,7 @@ async function addDeliveryToShift(orgId: string, pos: any, order: any) {
   if (!pos.respUserId) return
   const day = today()
   let [draft] = await reportRepo.draftForDay(orgId, pos.respUserId, day)
-  if (!draft) [draft] = await reportRepo.createReport({ orgId, logistId: pos.respUserId, date: day, status: 'processing' })
+  if (!draft) [draft] = await reportRepo.createReport({ orgId, logistId: pos.respUserId, date: day, status: 'draft' })
   const rowData = {
     posId: pos.id, name: pos.name1c || pos.oral || '', fromWho: order.fromName || '',
     qtyIn: String(pos.qty), commentIn: '',
