@@ -62,7 +62,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   const refreshDetail = async (id: string) => { const c: any = await getCard(id); if (c) setDetails(prev => ({ ...prev, [id]: c })) }
 
-  async function act(id: string, action: string, okMsg: string) { await orderAction(id, action); await load(); await refreshDetail(id); showMsg(okMsg) }
+  async function act(id: string, action: string, okMsg: string) {
+    try {
+      const r = await orderAction(id, action)
+      if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось выполнить')); return }
+      await load(); await refreshDetail(id); showMsg(okMsg)
+    } catch { showMsg('⚠ Ошибка сети') }
+  }
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
   async function addToOrder(orderId: string, items: PickedPos[]) { setAddCatalogFor(null); if (!items.length) return; for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, supplierId: undefined }); await refreshDetail(orderId); showMsg(`✓ Добавлено: ${items.length}`) }
   async function sendChat(orderId: string) { const t = msg.trim(); if (!t) return; setMsg(''); await sendMessage(orderId, t); const m = await listMessages(orderId); setDetails(prev => ({ ...prev, [orderId]: { ...prev[orderId], messages: m } })) }
@@ -72,10 +78,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     e.preventDefault()
     if (!newText.trim() && catalogPos.length === 0) { showMsg('Выберите товары из каталога или опишите заявку'); return }
     setNewLoading(true)
-    const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
-    const r = await createClientOrder({ comment: newText, positions })
-    setNewLoading(false)
-    if (r.ok) { setNewDone({ id: r.data.id }); setNewTo(''); setNewText(''); setCatalogPos([]); load() }
+    try {
+      const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
+      const r = await createClientOrder({ comment: newText, positions })
+      if (r.ok) { setNewDone({ id: r.data.id }); setNewTo(''); setNewText(''); setCatalogPos([]); load() }
+      else showMsg('⚠ ' + (r.error || 'Не удалось отправить заявку'))
+    } catch { showMsg('⚠ Ошибка сети — попробуйте ещё раз') }
+    finally { setNewLoading(false) }
   }
 
   const INP: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
