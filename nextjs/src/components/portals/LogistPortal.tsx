@@ -9,6 +9,7 @@ import { RalDot, extractRal } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
+import PushSetup from '@/components/PushSetup'
 import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
@@ -327,6 +328,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       </div>
       <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
       <AppBadge count={badgeCount} baseTitle="Логист · U2B" />
+      <PushSetup />
     </div>
   )
 }

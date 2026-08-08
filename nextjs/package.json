@@ -23,6 +23,7 @@
     "pusher-js": "^8.6.0",
     "react": "^18",
     "react-dom": "^18",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {

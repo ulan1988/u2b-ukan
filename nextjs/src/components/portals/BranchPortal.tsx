@@ -10,6 +10,7 @@ import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
+import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -197,6 +198,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
       <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
       <AppBadge count={badgeCount} baseTitle="Филиал · U2B" />
+      <PushSetup />
     </div>
   )
 }

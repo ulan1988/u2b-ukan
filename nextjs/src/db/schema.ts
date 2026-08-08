@@ -334,6 +334,16 @@ export const notifications = pgTable('notifications', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byUser: index('notifications_user_idx').on(t.userId) }))
 
+// Web Push подписки браузера/PWA пользователя (для уведомлений в шторке телефона).
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byUser: index('push_subs_user_idx').on(t.userId) }))
+
 // Суточный отчёт логиста (смена)
 export const dailyReports = pgTable('daily_reports', {
   id: uuid('id').defaultRandom().primaryKey(),

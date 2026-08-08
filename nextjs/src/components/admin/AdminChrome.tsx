@@ -6,6 +6,7 @@ import Topbar from '@/components/admin/Topbar'
 import CardModal from '@/components/admin/CardModal'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
+import PushSetup from '@/components/PushSetup'
 import { COLORS } from '@/lib/colors'
 import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
 import { fetchRefs } from '@/lib/api/refs'
@@ -113,6 +114,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
       {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} />}
       <ChatWidget myId={user.id} orgId={orgId} />
       <AppBadge count={newCount} baseTitle="U2B ERP" />
+      <PushSetup />
     </div>
   )
 }

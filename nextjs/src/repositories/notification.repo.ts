@@ -1,7 +1,14 @@
 // Уведомления пользователя (только запросы Drizzle).
 import { db } from '../lib/db'
 import { notifications } from '../db/schema'
-import { and, eq, desc } from 'drizzle-orm'
+import { and, eq, desc, sql } from 'drizzle-orm'
+
+// Число непрочитанных у пользователя (для бейджа-числа на иконке).
+export const unreadCount = async (userId: string) => {
+  const [r] = await db.select({ c: sql<number>`count(*)::int` }).from(notifications)
+    .where(and(eq(notifications.userId, userId), eq(notifications.read, false)))
+  return r?.c ?? 0
+}
 
 export const byUser = (userId: string, limit = 50) =>
   db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(limit)
