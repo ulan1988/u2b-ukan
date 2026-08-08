@@ -1,7 +1,15 @@
 // Данные для панели Фильтр/Настройки (только запросы Drizzle).
 import { db } from '../lib/db'
-import { contragents, projects, specProjects, specProjectItems } from '../db/schema'
+import { contragents, projects, specProjects, specProjectItems, organizations } from '../db/schema'
 import { and, eq, or, inArray } from 'drizzle-orm'
+
+// Логист по умолчанию организации (для авто-связанных продаж из закупа).
+export const orgDefaultLogist = async (orgId: string) => {
+  const [o] = await db.select({ id: organizations.defaultLogistId }).from(organizations).where(eq(organizations.id, orgId)).limit(1)
+  return o?.id || null
+}
+export const setOrgDefaultLogist = (orgId: string, userId: string | null) =>
+  db.update(organizations).set({ defaultLogistId: userId }).where(eq(organizations.id, orgId))
 
 // Поставщики = контрагенты kind supplier|both (не архивные) организации.
 export const suppliers = (orgId: string) =>

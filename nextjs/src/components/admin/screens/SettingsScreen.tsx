@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listUsers, createUser, editUser, deleteUser } from '@/lib/api/auth'
-import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, createProject, createSpecProject } from '@/lib/api/refs'
+import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, createProject, createSpecProject } from '@/lib/api/refs'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
 const ROLES = [
@@ -150,6 +150,7 @@ function AutofillPanel({ orgId }: { orgId: string }) {
   const [rules, setRules] = useState<Record<string, any>>({})
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [logists, setLogists] = useState<any[]>([])
+  const [defLogist, setDefLogist] = useState('')
   const [msg, setMsg] = useState('')
 
   async function load() {
@@ -157,7 +158,14 @@ function AutofillPanel({ orgId }: { orgId: string }) {
     const byCat: Record<string, any> = {}; for (const r of rl) byCat[r.category] = r
     setRules(byCat)
     setSuppliers((st as any).suppliers || [])
+    setDefLogist((st as any).defaultLogistId || '')
     setLogists(us.filter((u: any) => u.role === 'logist' && u.orgId === orgId))
+  }
+
+  async function saveDefaultLogist(id: string) {
+    setDefLogist(id); setMsg('')
+    const r = await setDefaultLogist(orgId, id)
+    if (r.ok) setMsg('✅ Логист по умолчанию сохранён')
   }
   useEffect(() => { load() }, [orgId])
 
@@ -181,6 +189,17 @@ function AutofillPanel({ orgId }: { orgId: string }) {
     <div>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Автоподстановка по группе</div>
       <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }}>При «Взять в обработку» позиции получают поставщика и логиста по своей категории. {msg}</div>
+
+      {/* Логист по умолчанию — для авто-связанных продаж при оформлении закупа. */}
+      <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Логист по умолчанию</div>
+          <div style={{ fontSize: 12, color: COLORS.textMuted }}>Назначается связанным продажам, когда оформлен закуп (готовый вид в Приёмке).</div>
+        </div>
+        <select style={{ ...inp, minWidth: 220, width: 'auto', marginLeft: 'auto' }} value={defLogist} onChange={e => saveDefaultLogist(e.target.value)}>
+          <option value="">— не выбран —</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+      </div>
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Категория', 'Поставщик', 'Логист'].map(h => <th key={h} style={{ textAlign: 'left', padding: '10px 16px' }}>{h}</th>)}</tr></thead>

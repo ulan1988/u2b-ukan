@@ -15,12 +15,14 @@ export async function createSpecProject(orgId: string, name: string, items: { na
 
 // Сводка для панели Фильтр (канбан-колонки): поставщики, проекты, спецпроекты (с items).
 export async function settingsBundle(orgId: string) {
-  const [suppliers, projects, specs] = await Promise.all([
-    repo.suppliers(orgId), repo.projectsByOrg(orgId), repo.specProjectsByOrg(orgId),
+  const [suppliers, projects, specs, defaultLogistId] = await Promise.all([
+    repo.suppliers(orgId), repo.projectsByOrg(orgId), repo.specProjectsByOrg(orgId), repo.orgDefaultLogist(orgId),
   ])
   const items = await repo.specItemsByProjects(specs.map(s => s.id))
   const byProject: Record<string, any[]> = {}
   for (const it of items) (byProject[it.specProjectId] ||= []).push(it)
   const specProjects = specs.map(s => ({ ...s, items: byProject[s.id] || [] }))
-  return { suppliers, projects, specProjects }
+  return { suppliers, projects, specProjects, defaultLogistId }
 }
+
+export const setDefaultLogist = (orgId: string, userId: string | null) => repo.setOrgDefaultLogist(orgId, userId || null)

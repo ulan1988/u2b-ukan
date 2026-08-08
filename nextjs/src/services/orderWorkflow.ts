@@ -187,6 +187,11 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (action === 'returnOut' || action === 'returnToReception') {
     await repo.resetPositionsForReturn(id)
   }
+  // Закуп оформлен → открыть связанные продажи: перенести поставщика/цену/логиста,
+  // продажи становятся готовыми на столе Приёмки (openLinkedSales, как в Улкане).
+  if (action === 'finalizePurchase') {
+    try { const { openLinkedSales } = await import('./procurement.service'); await openLinkedSales(order.orgId, id) } catch {}
+  }
 
   // Эффект take: автоподстановка поставщик/логист по группе товара (CategoryRule).
   if (action === 'take') {

@@ -1,10 +1,69 @@
 // Автозакуп: сводка потребности → черновик-накопитель закупа + связи.
 import * as repo from '../repositories/procurement.repo'
+import * as orderRepo from '../repositories/order.repo'
 import { countPositions } from '../repositories/order.repo'
+import * as settingsRepo from '../repositories/settings.repo'
 import { docNumber } from '../lib/num'
 import { matchCategoryKey } from '../lib/nomCatalog'
 import { listRules } from '../repositories/categoryRule.repo'
 import type { Session } from '../lib/auth'
+
+const normNom = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ')
+
+// Связка закуп→продажа: при оформлении закупа переносим на связанные продажи
+// поставщика (из позиций закупа по товару), товар 1С, цену (по типу клиента) и
+// логиста по умолчанию — продажа становится «готовой» и падает на стол Приёмки.
+// Как openLinkedSales в Улкане, адаптировано под модель u2b (supplierId/respUserId).
+export async function openLinkedSales(orgId: string, purchaseCardId: string) {
+  const links = await repo.linksByPurchases([purchaseCardId])
+  if (!links.length) return { opened: 0 }
+
+  const purchasePos = await orderRepo.positionsByCard(purchaseCardId)
+  const supByProduct: Record<string, { supplierId: string | null; productId: string | null }> = {}
+  for (const pp of purchasePos) {
+    const nm = normNom(pp.name1c || pp.oral || '')
+    if (nm && pp.supplierId) supByProduct[nm] = { supplierId: pp.supplierId, productId: pp.productId }
+  }
+
+  const defaultLogist = await settingsRepo.orgDefaultLogist(orgId)
+  const cags = await (await import('../repositories/refs.repo')).listContragents()
+  const cagType: Record<string, string> = {}; for (const c of cags as any[]) cagType[c.id] = c.priceType || 'retail'
+  const prodIds = Array.from(new Set(Object.values(supByProduct).map(s => s.productId).filter(Boolean))) as string[]
+  const prods = await repo.productsByIds(prodIds)
+  const prodById: Record<string, any> = {}; for (const p of prods) prodById[p.id] = p
+
+  const saleIds = Array.from(new Set(links.map(l => l.saleCardId)))
+  let opened = 0
+  for (const saleId of saleIds) {
+    const [sale] = await orderRepo.getOrder(saleId)
+    if (!sale || sale.isCancelled) continue
+    const opt = cagType[sale.contactId || ''] === 'opt'
+    const positions = await orderRepo.positionsByCard(saleId)
+    let touched = false
+    for (const sl of links.filter(l => l.saleCardId === saleId)) {
+      const orig = supByProduct[normNom(sl.product || '')]
+      if (!orig) continue
+      const pos = positions.find((p: any) => normNom(p.name1c || p.oral || '') === normNom(sl.product || '') && !p.supplierId)
+      if (!pos) continue
+      const set: any = { supplierId: orig.supplierId }
+      if (orig.productId) set.productId = orig.productId
+      if (!(pos.name1c || '').trim() && sl.product) set.name1c = sl.product
+      const prod = orig.productId ? prodById[orig.productId] : null
+      if (prod) { const pr = Number(opt ? prod.priceOpt : prod.priceRetail); if (pr > 0) set.price = String(pr) }
+      if (!pos.respUserId && defaultLogist) set.respUserId = defaultLogist
+      await orderRepo.updatePosition(pos.id, set)
+      touched = true
+    }
+    if (touched) {
+      // Готовая продажа падает на стол Приёмки (screen reception, block processing).
+      await orderRepo.updateOrder(saleId, { screen: 'reception', block: 'processing', status: 'В обработке' })
+      await orderRepo.insertHistory({ cardId: saleId, action: 'linked', detail: `🟢 Закуплено (закуп ${purchaseCardId}) — поставщик и цена назначены, можно отгружать`, userName: 'Система' })
+      opened++
+    }
+  }
+  if (opened) { try { const { pushSignal } = await import('../lib/pusherServer'); await pushSignal('orders') } catch {} }
+  return { opened }
+}
 
 // Сводка потребности: агрегируем позиции новых продаж по товару, с разбивкой по
 // заявкам. Уже попавшие в закуп (ProcurementLink) — исключаем.
