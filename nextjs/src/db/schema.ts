@@ -90,6 +90,13 @@ export const documents = pgTable('documents', {
   status: text('status').notNull().default('draft'),      // draft|posted|paid|cancelled
   total: money('total').notNull().default('0'),
   comment: text('comment'),
+  // Приходная накладная (1С УНФ): вх. документ поставщика, тип операции, скидка, оплата.
+  inNumber: text('in_number'),                            // № накладной поставщика
+  inDate: date('in_date'),                                // дата накладной поставщика
+  operation: text('operation').notNull().default('receipt'), // receipt | return
+  discountPct: money('discount_pct').notNull().default('0'),  // скидка руч., %
+  discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
+  paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -105,6 +112,7 @@ export const documentLines = pgTable('document_lines', {
   productId: uuid('product_id').notNull().references(() => products.id),
   role: text('role').notNull().default('main'),           // main | input | output (производство)
   qty: qtyCol('qty').notNull().default('0'),
+  unit: text('unit').notNull().default('шт'),             // ед. изм. строки (снимок)
   price: money('price').notNull().default('0'),
   amount: money('amount').notNull().default('0'),         // qty×price ИЛИ area×rate×qty
   // Размерное ценообразование (производитель): см · м² · сумма
