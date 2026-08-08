@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import NomInline from '@/components/NomInline'
+import { matchNom } from '@/lib/nomMatch'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
@@ -338,12 +339,42 @@ function ProcessingCard({ order, clients, logists, products, onAction, onReload,
   const [editing, setEditing] = useState<Record<string, any>>({})
   const ps = order.positions || []
 
+  // Автоподбор «наим. 1С» из «со слов» (устного названия клиента) по справочнику.
+  const matches = useMemo(() => {
+    const m: Record<string, any> = {}
+    for (const p of ps) if (!(p.name1c || '').trim() && (p.oral || '').trim()) m[p.id] = matchNom(p.oral, products)
+    return m
+  }, [ps, products])
+
+  // 100% совпадение → подставляем товар автоматически (один раз на позицию).
+  const appliedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!products.length) return
+    for (const pos of ps) {
+      if ((pos.name1c || '').trim() || !(pos.oral || '').trim() || appliedRef.current.has(pos.id)) continue
+      const ex = matches[pos.id]?.exact
+      if (ex) {
+        appliedRef.current.add(pos.id)
+        updatePosition(order.id, pos.id, { productId: ex.id, name1c: ex.name, unit: ex.unit || pos.unit, price: ex.priceRetail != null ? Number(ex.priceRetail) : (Number(pos.price) || 0) }).then(onReload)
+      }
+    }
+  }, [matches, products.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Применить кандидата-подсказку (частичное совпадение) по клику.
+  function applyMatch(pos: any, p: any) {
+    updatePosition(order.id, pos.id, { productId: p.id, name1c: p.name, unit: p.unit || pos.unit, price: p.priceRetail != null ? Number(p.priceRetail) : (Number(pos.price) || 0) }).then(onReload)
+  }
+
   async function upd(posId: string, patch: any) { await updatePosition(order.id, posId, patch); onReload() }
-  function startEdit(pos: any) { setEditing(e => ({ ...e, [pos.id]: { name1c: pos.name1c, qty: String(pos.qty), unit: pos.unit, price: String(pos.price), respUserId: pos.respUserId || '', deadline: pos.deadline ? String(pos.deadline).slice(0, 10) : '', payment: pos.payment || '' } })) }
+  function startEdit(pos: any) {
+    // Если «наим. 1С» пусто — предзаполняем точным совпадением из «со слов».
+    const ex = (!(pos.name1c || '').trim() && (pos.oral || '').trim()) ? matchNom(pos.oral, products).exact : null
+    setEditing(e => ({ ...e, [pos.id]: { productId: ex?.id || pos.productId || '', name1c: ex?.name || pos.name1c, qty: String(pos.qty), unit: ex?.unit || pos.unit, price: ex?.priceRetail != null ? String(ex.priceRetail) : String(pos.price), respUserId: pos.respUserId || '', deadline: pos.deadline ? String(pos.deadline).slice(0, 10) : '', payment: pos.payment || '' } }))
+  }
   function cancelEdit(id: string) { setEditing(e => { const n = { ...e }; delete n[id]; return n }) }
   async function saveEdit(pos: any) {
     const ed = editing[pos.id]
-    await updatePosition(order.id, pos.id, { name1c: ed.name1c, qty: Number(ed.qty) || 0, unit: ed.unit, price: Number(ed.price) || 0, respUserId: ed.respUserId || undefined, deadline: ed.deadline || null, payment: ed.payment })
+    await updatePosition(order.id, pos.id, { productId: ed.productId || undefined, name1c: ed.name1c, qty: Number(ed.qty) || 0, unit: ed.unit, price: Number(ed.price) || 0, respUserId: ed.respUserId || undefined, deadline: ed.deadline || null, payment: ed.payment })
     cancelEdit(pos.id); onReload()
   }
   async function clone(pos: any) { await addPosition(order.id, { name1c: pos.name1c, oral: pos.oral, qty: Number(pos.qty), unit: pos.unit, price: Number(pos.price), respUserId: pos.respUserId || undefined, supplierId: pos.supplierId || undefined }); onReload(); toast('Позиция клонирована') }
@@ -393,7 +424,7 @@ function ProcessingCard({ order, clients, logists, products, onAction, onReload,
               return (
                 <tr key={pos.id} style={{ borderBottom: '1px solid #f1efec', background: !(isEd ? ed.name1c : pos.name1c) ? '#fff5f0' : 'transparent', cursor: isEd ? 'default' : 'pointer' }} onClick={() => !isEd && startEdit(pos)}>
                   <td style={{ padding: '6px 8px' }}><div style={{ background: '#fff8e1', borderRadius: 6, padding: '4px 8px', fontSize: 13, color: '#8a6f00', minWidth: 80, cursor: 'default' }}>{pos.oral || '—'}</div></td>
-                  <td style={{ padding: '6px 4px', minWidth: 170 }}>{isEd ? <NomInline products={products} value="" onPick={p => setEditing(e => ({ ...e, [pos.id]: { ...e[pos.id], name1c: p.name, unit: p.unit || e[pos.id].unit, price: p.priceRetail != null ? String(p.priceRetail) : e[pos.id].price } }))} /> : <span style={{ fontSize: 13 }}>{pos.name1c || <span style={{ color: '#837c72' }}>—</span>}</span>}{isEd && ed.name1c && <div style={{ fontSize: 12, color: '#5f5952', marginTop: 2 }}>{ed.name1c}</div>}</td>
+                  <td style={{ padding: '6px 4px', minWidth: 170 }}>{isEd ? <NomInline products={products} value={ed.productId || ''} onPick={p => setEditing(e => ({ ...e, [pos.id]: { ...e[pos.id], productId: p.id, name1c: p.name, unit: p.unit || e[pos.id].unit, price: p.priceRetail != null ? String(p.priceRetail) : e[pos.id].price } }))} /> : (pos.name1c ? <span style={{ fontSize: 13 }}>{pos.name1c}</span> : (matches[pos.id]?.near ? <button onClick={e => { e.stopPropagation(); applyMatch(pos, matches[pos.id].near) }} title="Похоже на это — нажмите, чтобы подставить" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff8e1', border: '1.5px dashed #e0b34a', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#8a6f00' }}>≈ {matches[pos.id].near.name} <span style={{ fontWeight: 700 }}>✓</span></button> : <span style={{ color: '#837c72' }}>—</span>))}{isEd && ed.name1c && <div style={{ fontSize: 12, color: '#5f5952', marginTop: 2 }}>{ed.name1c}</div>}</td>
                   <td style={{ padding: '6px 4px', width: 70 }}>{isEd ? <input style={{ ...inpSm, width: 60 }} type="number" value={ed.qty} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], qty: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{Number(pos.qty)}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 50 }}>{isEd ? <input style={{ ...inpSm, width: 44 }} value={ed.unit} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], unit: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{pos.unit}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 96, whiteSpace: 'nowrap' }}>{isEd ? <input style={{ ...inpSm, width: 84, textAlign: 'right' }} type="number" value={ed.price} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], price: e.target.value } }))} /> : <span style={{ fontSize: 13, fontWeight: 700, color: Number(pos.price) > 0 ? '#26231f' : '#837c72' }}>{Number(pos.price) > 0 ? fmtMoney(Number(pos.price)) : '—'}</span>}</td>

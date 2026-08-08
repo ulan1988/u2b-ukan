@@ -199,6 +199,7 @@ export async function requestChange(cardId: string, text: string, phone?: string
 // Частичное обновление позиции (логист меняет поставщика/кол-во/имя). Непереданное не трогаем.
 export async function updatePositionDetail(cardId: string, posId: string, patch: any, actor?: Session | null) {
   const set: Record<string, any> = {}
+  if (patch.productId !== undefined) set.productId = patch.productId || null
   if (patch.name1c !== undefined) set.name1c = patch.name1c
   if (patch.oral !== undefined) set.oral = patch.oral
   if (patch.qty !== undefined) set.qty = String(patch.qty)
