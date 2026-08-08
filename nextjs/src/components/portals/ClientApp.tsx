@@ -70,14 +70,17 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit })
     await load(); setToast(`✓ Добавлено: ${items.length}`)
   }
-  async function handleNewOrder(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleNewOrder(e?: React.FormEvent) {
+    e?.preventDefault()
     if (!newText.trim() && catalogPos.length === 0) { setToast('Опишите заявку или соберите по каталогу'); return }
     setNewLoading(true)
-    const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
-    const r = await createClientOrder({ comment: newText, positions })
-    setNewLoading(false)
-    if (r.ok) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setCatalogPos([]); load() }
+    try {
+      const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
+      const r = await createClientOrder({ comment: newText, positions })
+      if (r.ok) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); load() }
+      else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))
+    } catch { setToast('⚠ Ошибка сети — попробуйте ещё раз') }
+    finally { setNewLoading(false) }
   }
   async function openChat(cardId: string) { setChat(prev => ({ ...prev, [cardId]: [] })); setChat(prev => ({ ...prev })); const m = await listMessages(cardId); setChat(prev => ({ ...prev, [cardId]: m })) }
   async function sendChat(cardId: string) { const t = msg.trim(); if (!t) return; setMsg(''); await sendMessage(cardId, t); const m = await listMessages(cardId); setChat(prev => ({ ...prev, [cardId]: m })) }
@@ -186,7 +189,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
               <div style={{ background: '#fff', borderRadius: 14, padding: 28, boxShadow: '0 0 0 1px #e6e2dc', maxWidth: 560 }}>
                 <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Новая заявка</div>
                 <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 22 }}>Выберите товары из каталога или опишите словами — заявка уйдёт менеджеру</div>
-                <form onSubmit={handleNewOrder} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div>
                     <label style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', marginBottom: 8, display: 'block', letterSpacing: '.03em' }}>ТОВАРЫ ИЗ КАТАЛОГА{catalogPos.length ? ` · ${catalogPos.length}` : ''}</label>
                     {catalogPos.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>{catalogPos.map((p, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8f6f3', borderRadius: 8, padding: '8px 10px' }}><RalDot code={extractRal(p.name1c || p.oral)} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span><span style={{ fontSize: 13, color: '#5f5952', flexShrink: 0, fontWeight: 600 }}>{p.qty} {p.unit}</span><button type="button" onClick={() => setCatalogPos(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button></div>)}</div>}
@@ -194,8 +197,8 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
                   </div>
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>КОММЕНТАРИЙ <span style={{ fontWeight: 400 }}>(необязательно)</span></label><textarea style={{ ...inp, minHeight: 72, resize: 'vertical' }} value={newText} onChange={e => setNewText(e.target.value)} placeholder="Уточнения, пожелания — или опишите заявку словами" /></div>
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>ЖЕЛАЕМЫЙ СРОК</label><input style={inp} type="date" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} /></div>
-                  <button type="submit" disabled={newLoading} style={{ padding: '13px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1 }}>{newLoading ? 'Отправка...' : catalogPos.length ? `ОТПРАВИТЬ ЗАЯВКУ · ${catalogPos.length} поз. →` : 'ОТПРАВИТЬ ЗАЯВКУ →'}</button>
-                </form>
+                  <button type="button" onClick={() => handleNewOrder()} disabled={newLoading} style={{ padding: '13px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1 }}>{newLoading ? 'Отправка...' : catalogPos.length ? `ОТПРАВИТЬ ЗАЯВКУ · ${catalogPos.length} поз. →` : 'ОТПРАВИТЬ ЗАЯВКУ →'}</button>
+                </div>
                 {showCatalog && <NomPicker onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
               </div>
             )}
