@@ -1,7 +1,7 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
 import { orders, orderPositions, orderHistory, products } from '../db/schema'
-import { and, eq, ne, desc, inArray, sql } from 'drizzle-orm'
+import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
 
 // Метаданные товаров (группа/подгруппа) для автоподстановки по группе.
 export const productMeta = (ids: string[]) =>
@@ -62,13 +62,18 @@ export const historyByOrg = (orgId: string, f: { user?: string; from?: string; t
     .where(and(...conds)).orderBy(desc(orderHistory.createdAt)).limit(limit)
 }
 
-// Позиции, назначенные логисту, на активных стадиях (для портала логиста).
+// Позиции для портала логиста: назначенные ему (outgoing/reception) + неназначенные
+// в Исходящих (пул «на разбор» — напр. пересланные филиалом без логиста), чтобы
+// связь филиал→логист не рвалась и любой логист мог взять карточку.
 export const positionsForLogist = (orgId: string, userId: string) =>
   db.select({ o: orders, p: orderPositions })
     .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
     .where(and(
-      eq(orders.orgId, orgId), eq(orderPositions.respUserId, userId),
-      inArray(orders.screen, ['outgoing', 'reception']), eq(orders.isCancelled, false),
+      eq(orders.orgId, orgId), eq(orders.isCancelled, false),
+      or(
+        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception'])),
+        and(isNull(orderPositions.respUserId), eq(orders.screen, 'outgoing')),
+      ),
     )).orderBy(desc(orders.createdAt))
 
 export const updateOrder = (id: string, patch: Partial<typeof orders.$inferInsert>) =>
