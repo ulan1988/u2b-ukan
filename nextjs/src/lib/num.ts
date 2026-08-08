@@ -11,7 +11,8 @@ export function docNumber(type: string, count: number): string {
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yy = String(d.getFullYear()).slice(-2)
-  return `${p}-${String(count + 1).padStart(4, '0')}-${dd}${mm}${yy}`
+  // Минимум 2 знака: 01, 02 … 99, дальше растёт естественно (100, 101 …).
+  return `${p}-${String(count + 1).padStart(2, '0')}-${dd}${mm}${yy}`
 }
 
 // Транслит кириллицы → адрес личного портала (/rsp/{slug} и т.п.).
