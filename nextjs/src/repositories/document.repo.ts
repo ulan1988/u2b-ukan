@@ -1,7 +1,7 @@
 // Запросы по документам (только Drizzle). Логика проводки — в service.
 import { db, sqlClient } from '../lib/db'
-import { documents, documentLines, stockMovements, docLinks } from '../db/schema'
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses } from '../db/schema'
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
 
 type NewDoc = typeof documents.$inferInsert
 type NewLine = typeof documentLines.$inferInsert
@@ -61,6 +61,18 @@ export function listByType(orgId: string, type: string) {
     .limit(100)
 }
 
+// Список накладных с именем контрагента (для экрана Приход/Расход, как в 1С).
+export function listInvoices(orgId: string, type: string) {
+  return db
+    .select({
+      id: documents.id, number: documents.number, date: documents.date, total: documents.total,
+      status: documents.status, operation: documents.operation, contragent: contragents.name,
+    })
+    .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
+    .where(and(eq(documents.orgId, orgId), eq(documents.type, type)))
+    .orderBy(desc(documents.createdAt)).limit(100)
+}
+
 export function listByTypes(orgId: string, types: string[]) {
   return db
     .select()
@@ -69,6 +81,27 @@ export function listByTypes(orgId: string, types: string[]) {
     .orderBy(desc(documents.createdAt))
     .limit(100)
 }
+
+// Один документ + его строки (с именем товара) + имена контрагента/склада — для формы накладной.
+export const getDoc = (id: string) => db.select().from(documents).where(eq(documents.id, id)).limit(1)
+
+export const linesWithProduct = (docId: string) =>
+  db.select({
+    id: documentLines.id, productId: documentLines.productId, name: products.name,
+    qty: documentLines.qty, unit: documentLines.unit, price: documentLines.price,
+    amount: documentLines.amount, comment: documentLines.comment,
+  }).from(documentLines).innerJoin(products, eq(documentLines.productId, products.id))
+    .where(eq(documentLines.documentId, docId)).orderBy(asc(documentLines.id))
+
+export const contragentById = (id: string) =>
+  db.select({ id: contragents.id, name: contragents.name }).from(contragents).where(eq(contragents.id, id)).limit(1)
+export const warehouseById = (id: string) =>
+  db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses).where(eq(warehouses.id, id)).limit(1)
+
+export const updateDoc = (id: string, patch: Partial<NewDoc>) =>
+  db.update(documents).set({ ...patch, updatedAt: new Date() }).where(eq(documents.id, id)).returning()
+export const updateLine = (id: string, patch: Partial<NewLine>) =>
+  db.update(documentLines).set(patch).where(eq(documentLines.id, id)).returning()
 
 // Остаток склада = Σ движений по (склад, товар). Отдаём по всем товарам склада.
 export function stockByWarehouse(orgId: string, warehouseId: string) {

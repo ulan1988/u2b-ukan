@@ -1,8 +1,10 @@
 // Домен: ERP-документы (приход/расход/возвраты/оплаты/производство).
-import { getArray, post } from './http'
+import { getArray, getObj, post, patch } from './http'
 
 export const listPurchases = (orgId: string) => getArray(`/api/documents?orgId=${orgId}`)
 export const createPurchase = (b: any) => post('/api/documents', b)
+export const getDocument = (id: string) => getObj(`/api/documents/${id}`, null as any)
+export const updateDocument = (id: string, b: any) => patch(`/api/documents/${id}`, b)
 
 export const listSales = (orgId: string) => getArray(`/api/sales?orgId=${orgId}`)
 export const createSale = (b: any) => post('/api/sales', b)

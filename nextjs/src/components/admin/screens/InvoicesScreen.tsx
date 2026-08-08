@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
+import InvoiceForm from '@/components/admin/InvoiceForm'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { postInvoice } from '@/lib/adminApi'
@@ -12,6 +13,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
 }) {
   const [docs, setDocs] = useState<any[]>([])
   const [msg, setMsg] = useState('')
+  const [openDocId, setOpenDocId] = useState<string | null>(null)
 
   const wantKind = kind === 'in' ? 'purchase' : 'sale'
   const title = kind === 'in' ? 'Приходные накладные' : 'Расходные накладные'
@@ -53,12 +55,13 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         : (
           <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Номер', 'Дата', 'Сумма', 'Статус'].map((h, i) => <th key={h} style={{ textAlign: i >= 2 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Номер', 'Дата', 'Поставщик', 'Сумма', 'Статус'].map((h, i) => <th key={h} style={{ textAlign: i >= 3 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {docs.map(d => (
-                  <tr key={d.id} style={{ borderTop: '1px solid #f1efec' }}>
-                    <td style={{ padding: '8px 16px', fontWeight: 600 }}>{d.number}</td>
+                  <tr key={d.id} onClick={() => kind === 'in' && setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: kind === 'in' ? 'pointer' : 'default' }}>
+                    <td style={{ padding: '8px 16px', fontWeight: 600, color: kind === 'in' ? COLORS.primary : COLORS.text }}>{d.number}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{fmtDate(d.date)}</td>
+                    <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(Number(d.total))} ₸</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', color: d.status === 'cancelled' ? '#b03020' : '#2e8a5e' }}>{d.status === 'cancelled' ? 'отменён' : 'проведён'}</td>
                   </tr>
@@ -67,6 +70,8 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
             </table>
           </div>
         )}
+
+      {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={loadDocs} />}
     </div>
   )
 }

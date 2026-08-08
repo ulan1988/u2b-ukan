@@ -13,12 +13,12 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   const date = input.date || today()
 
   let total = 0
-  const lines = input.lines.map(l => {
+  const lines = input.lines.map((l: any) => {
     const amount = l.qty * l.price
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
-      qty: String(l.qty), price: String(l.price), amount: String(amount),
+      qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
     }
   })
 
@@ -29,7 +29,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   }))
 
   const doc = {
-    id: docId, orgId: input.orgId, type: 'purchase',
+    id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
     number: input.number || docNumber('purchase', count),   // номер карточки, если передан (1 карточка = 1 накладная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
@@ -39,7 +39,61 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   return { id: docId, number: doc.number, total }
 }
 
-export const listPurchases = (orgId: string) => docRepo.listByType(orgId, 'purchase')
+export const listPurchases = (orgId: string) => docRepo.listInvoices(orgId, 'purchase')
+
+// Полный документ для формы накладной: шапка + строки (с именем товара) + контрагент/склад.
+export async function getDocument(id: string) {
+  const [doc] = await docRepo.getDoc(id)
+  if (!doc) return null
+  const lines = await docRepo.linesWithProduct(id)
+  const [contragent] = doc.contragentId ? await docRepo.contragentById(doc.contragentId) : [null]
+  const [warehouse] = doc.warehouseId ? await docRepo.warehouseById(doc.warehouseId) : [null]
+  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null }
+}
+
+// Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
+// Пересчитывает суммы строк, подытог, скидку (по % или сумме) и итог.
+export async function updateDocument(id: string, patch: any) {
+  if (Array.isArray(patch.lines)) {
+    for (const l of patch.lines) {
+      if (!l.id) continue
+      const set: any = {}
+      if (l.price !== undefined) set.price = String(Number(l.price) || 0)
+      if (l.unit !== undefined) set.unit = l.unit
+      if (l.comment !== undefined) set.comment = l.comment
+      if (Object.keys(set).length) await docRepo.updateLine(l.id, set)
+    }
+  }
+  // Пересчёт сумм строк и подытога.
+  const lines = await docRepo.linesWithProduct(id)
+  let subtotal = 0
+  for (const ln of lines) {
+    const amount = Number(ln.qty) * Number(ln.price)
+    if (String(amount) !== String(ln.amount)) await docRepo.updateLine(ln.id, { amount: String(amount) })
+    subtotal += amount
+  }
+  // Шапка.
+  const head: any = {}
+  if (patch.inNumber !== undefined) head.inNumber = patch.inNumber || null
+  if (patch.inDate !== undefined) head.inDate = patch.inDate || null
+  if (patch.operation !== undefined) head.operation = patch.operation
+  if (patch.comment !== undefined) head.comment = patch.comment
+  if (patch.paidSum !== undefined) head.paidSum = String(Number(patch.paidSum) || 0)
+  // Скидка: приоритет у процента (считаем сумму), иначе берём сумму (считаем процент).
+  let discountSum = Number((await docRepo.getDoc(id))[0]?.discountSum || 0)
+  if (patch.discountPct !== undefined) {
+    const pct = Number(patch.discountPct) || 0
+    discountSum = Math.round(subtotal * pct) / 100
+    head.discountPct = String(pct); head.discountSum = String(discountSum)
+  } else if (patch.discountSum !== undefined) {
+    discountSum = Number(patch.discountSum) || 0
+    head.discountSum = String(discountSum)
+    head.discountPct = subtotal > 0 ? String(Math.round(discountSum / subtotal * 10000) / 100) : '0'
+  }
+  head.total = String(Math.max(0, subtotal - discountSum))
+  await docRepo.updateDoc(id, head)
+  return { ok: true, subtotal, discountSum, total: subtotal - discountSum }
+}
 
 // Создать расходную накладную (продажа): проводка = документ + строки +
 // РАСХОД склада (stock_movement −). Долг заказчика считается из документов и оплат.
@@ -91,7 +145,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   return { id: docId, number: doc.number, total }
 }
 
-export const listSales = (orgId: string) => docRepo.listByType(orgId, 'sale')
+export const listSales = (orgId: string) => docRepo.listInvoices(orgId, 'sale')
 
 // Возврат: return_in = от покупателя (+склад, −долг заказчика);
 // return_out = поставщику (−склад, −наш долг). Проводка = документ + строки + движение.
