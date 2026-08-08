@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { settingsBundle, setDefaultLogist } from '@/services/settings.service'
+import { settingsBundle, setDefaultLogist, setDefaultContragent } from '@/services/settings.service'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,5 +14,6 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json()
   if (!b?.orgId) return NextResponse.json({ error: 'orgId обязателен' }, { status: 400 })
   if (b.defaultLogistId !== undefined) await setDefaultLogist(b.orgId, b.defaultLogistId || null)
+  if (b.defaultContragentId !== undefined) await setDefaultContragent(b.orgId, b.defaultContragentId || null)
   return NextResponse.json({ ok: true })
 }

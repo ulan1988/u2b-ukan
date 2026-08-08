@@ -16,6 +16,7 @@ export const organizations = pgTable('organizations', {
   kind: text('kind').notNull().default('seller'),        // hq | producer_seller | seller
   archived: boolean('archived').notNull().default(false),
   defaultLogistId: uuid('default_logist_id'),            // логист по умолчанию для авто-связанных продаж (без FK — избегаем цикла с users)
+  defaultContragentId: uuid('default_contragent_id'),    // контрагент по умолчанию (первым в списке выбора «Кому»/поставщик)
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

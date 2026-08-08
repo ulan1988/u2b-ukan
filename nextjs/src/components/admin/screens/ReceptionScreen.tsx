@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import NomInline from '@/components/NomInline'
+import ContragentPicker from '@/components/ContragentPicker'
 import { matchNom } from '@/lib/nomMatch'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import { COLORS } from '@/lib/colors'
@@ -31,8 +32,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void
 }) {
   const [products, setProducts] = useState<any[]>([])
-  const [clients, setClients] = useState<any[]>([])
-  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [allCags, setAllCags] = useState<any[]>([])   // все контрагенты (клиент/поставщик не делим)
+  const [defaultCagId, setDefaultCagId] = useState('')
   const [logists, setLogists] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [specs, setSpecs] = useState<any[]>([])
@@ -52,13 +53,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [showCatalog, setShowCatalog] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  function loadSettings() { fetchSettings(orgId).then((s: any) => { setProjects((s.projects || []).filter((p: any) => p.status === 'active')); setSpecs((s.specProjects || []).filter((p: any) => p.status === 'active')) }) }
+  function loadSettings() { fetchSettings(orgId).then((s: any) => { setProjects((s.projects || []).filter((p: any) => p.status === 'active')); setSpecs((s.specProjects || []).filter((p: any) => p.status === 'active')); setDefaultCagId(s.defaultContragentId || '') }) }
   useEffect(() => {
     fetchRefs().then((r: any) => {
       const inOrg = (x: any) => !x.orgId || x.orgId === orgId
       setProducts(r.products || [])
-      setClients((r.contragents || []).filter((c: any) => inOrg(c) && c.kind !== 'supplier'))
-      setSuppliers((r.contragents || []).filter((c: any) => inOrg(c) && c.kind !== 'client'))
+      // Один общий список контрагентов — клиент может быть и поставщиком, не делим.
+      setAllCags((r.contragents || []).filter(inOrg))
     })
     fetchUsers().then((us: any[]) => setLogists(us.filter(u => u.role === 'logist' && u.orgId === orgId)))
     loadSettings()
@@ -86,7 +87,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
   async function submit(asDraft: boolean) {
     setBusy(true)
-    const client = clients.find(c => c.id === contactId)
+    const client = allCags.find(c => c.id === contactId)
     const positions = rows.filter(r => r.name1c || r.productId).map(r => ({
       productId: r.productId || undefined, name1c: r.name1c, oral: r.name1c, qty: Number(r.qty) || 0, unit: r.unit,
       price: Number(r.price) || 0, respUserId: r.respUserId || undefined, supplierId: kind === 'purchase' ? (r.supplierId || undefined) : undefined,
@@ -152,7 +153,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 <label style={LBL}>{kind === 'purchase' ? 'ПОЛУЧАТЕЛЬ' : 'К КОМУ (КЛИЕНТ) *'}</label>
                 {kind === 'purchase'
                   ? <input style={{ ...INP, background: '#f6f3f0', color: purple, fontWeight: 700 }} value={CENTER} disabled />
-                  : <select style={INP} value={contactId} onChange={e => setContactId(e.target.value)}><option value="">— выберите клиента —</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
+                  : <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={c => setContactId(c.id)} placeholder="— выберите контрагента —" />}
               </div>
               <div>
                 <label style={LBL}>ПРОЕКТ</label>
@@ -178,7 +179,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', background: '#f8f6f3', borderRadius: 8, padding: '5px 8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КО ВСЕМ:</span>
                 <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllLogist(e.target.value)}><option value="">Логист →</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                {kind === 'purchase' && <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllSupplier(e.target.value)}><option value="">Поставщик →</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
+                {kind === 'purchase' && <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllSupplier(e.target.value)}><option value="">Поставщик →</option>{allCags.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
               </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -192,7 +193,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 100 }}><input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
-                      {kind === 'purchase' && <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.supplierId} onChange={e => setRow(i, { supplierId: e.target.value })}><option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></td>}
+                      {kind === 'purchase' && <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={defaultCagId} onPick={c => setRow(i, { supplierId: c.id })} placeholder="— поставщик —" style={{ fontSize: 13 }} /></td>}
                       <td style={{ padding: '6px 4px', width: 120 }}><input style={inpSm} type="date" value={r.deadline} onChange={e => setRow(i, { deadline: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 120 }}><select style={inpSm} value={r.payment} onChange={e => setRow(i, { payment: e.target.value })}>{PAY.map(p => <option key={p} value={p}>{p || '—'}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 60 }}>
@@ -228,7 +229,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       {/* Черновик закупа (накопитель) */}
       {purchaseDrafts.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          {purchaseDrafts.map(d => <PurchaseDraft key={d.id} draft={d} logists={logists} suppliers={suppliers} onAction={onAction} onReload={onReload} toast={toast} />)}
+          {purchaseDrafts.map(d => <PurchaseDraft key={d.id} draft={d} logists={logists} contragents={allCags} defaultCagId={defaultCagId} onAction={onAction} onReload={onReload} toast={toast} />)}
         </div>
       )}
 
@@ -237,7 +238,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>Стол приёмки <span style={{ fontSize: 13, background: '#fdf8e1', color: '#8a6f00', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{processing.length}</span></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {processing.map(o => <ProcessingCard key={o.id} order={o} clients={clients} logists={logists} products={products} onAction={onAction} onReload={onReload} toast={toast} />)}
+            {processing.map(o => <ProcessingCard key={o.id} order={o} contragents={allCags} defaultCagId={defaultCagId} logists={logists} products={products} onAction={onAction} onReload={onReload} toast={toast} />)}
           </div>
         </div>
       )}
@@ -293,7 +294,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 }
 
 // ─── Черновик закупа (накопитель) ─────────────────────────────────────────────
-function PurchaseDraft({ draft, logists, suppliers, onAction, onReload, toast }: { draft: any; logists: any[]; suppliers: any[]; onAction: (id: string, a: string) => void; onReload: () => void; toast: (m: string) => void }) {
+function PurchaseDraft({ draft, logists, contragents, defaultCagId, onAction, onReload, toast }: { draft: any; logists: any[]; contragents: any[]; defaultCagId: string; onAction: (id: string, a: string) => void; onReload: () => void; toast: (m: string) => void }) {
   const ps = draft.positions || []
   const ready = ps.length > 0 && ps.every((p: any) => p.respUserId && p.supplierId)
   const total = ps.reduce((s: number, p: any) => s + Number(p.price || 0) * Number(p.qty || 0), 0)
@@ -305,7 +306,7 @@ function PurchaseDraft({ draft, logists, suppliers, onAction, onReload, toast }:
         <span style={{ fontSize: 12, fontWeight: 700, background: '#f3eeff', color: '#7a3aaa', padding: '2px 9px', borderRadius: 20 }}>🛒 ЧЕРНОВИК ЗАКУПА · {ps.length} поз.</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <select style={{ ...inpSm, width: 150 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { respUserId: e.target.value })) }}><option value="">Закупщик → всем</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-          <select style={{ ...inpSm, width: 150 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { supplierId: e.target.value })) }}><option value="">Поставщик → всем</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          <select style={{ ...inpSm, width: 150 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { supplierId: e.target.value })) }}><option value="">Поставщик → всем</option>{contragents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
           <Btn variant="primary" disabled={!ready} onClick={() => onAction(draft.id, 'finalizePurchase')}>✓ Оформить закуп →</Btn>
         </div>
       </div>
@@ -320,7 +321,7 @@ function PurchaseDraft({ draft, logists, suppliers, onAction, onReload, toast }:
                 <td style={{ padding: '6px 8px', width: 110 }}><input key={`${pos.id}-p-${pos.price}`} type="number" defaultValue={Number(pos.price) || ''} placeholder="0" style={{ ...inpSm, width: 96, textAlign: 'right', fontWeight: 600 }} onBlur={e => { const pr = Number(e.target.value) || 0; if (pr !== Number(pos.price)) upd(pos.id, { price: pr }) }} /></td>
                 <td style={{ padding: '6px 8px', width: 100, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', color: '#7a3aaa' }}>{Number(pos.price) > 0 ? fmtMoney(Number(pos.price) * Number(pos.qty)) : '—'}</td>
                 <td style={{ padding: '6px 8px', width: 150 }}><select style={inpSm} value={pos.respUserId || ''} onChange={e => upd(pos.id, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
-                <td style={{ padding: '6px 8px', width: 150 }}><select style={inpSm} value={pos.supplierId || ''} onChange={e => upd(pos.id, { supplierId: e.target.value })}><option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></td>
+                <td style={{ padding: '6px 8px', width: 160 }}><ContragentPicker contragents={contragents} value={pos.supplierId || ''} defaultId={defaultCagId} onPick={c => upd(pos.id, { supplierId: c.id })} placeholder="— поставщик —" /></td>
               </tr>
             ))}
           </tbody>
@@ -335,12 +336,12 @@ function PurchaseDraft({ draft, logists, suppliers, onAction, onReload, toast }:
 }
 
 // ─── Стол приёмки: карточка с инлайн-редактором позиций ───────────────────────
-function ProcessingCard({ order, clients, logists, products, onAction, onReload, toast }: { order: any; clients: any[]; logists: any[]; products: any[]; onAction: (id: string, a: string) => void; onReload: () => void; toast: (m: string) => void }) {
+function ProcessingCard({ order, contragents, defaultCagId, logists, products, onAction, onReload, toast }: { order: any; contragents: any[]; defaultCagId: string; logists: any[]; products: any[]; onAction: (id: string, a: string) => void; onReload: () => void; toast: (m: string) => void }) {
   const [editing, setEditing] = useState<Record<string, any>>({})
   const ps = order.positions || []
 
   // Цена из базы по типу цены получателя: опт-клиент → priceOpt, иначе priceRetail (как в Улкане).
-  const clientOpt = clients.find((c: any) => c.id === order.contactId)?.priceType === 'opt'
+  const clientOpt = contragents.find((c: any) => c.id === order.contactId)?.priceType === 'opt'
   const priceOf = (p: any, fallback = 0) => { const v = clientOpt ? p.priceOpt : p.priceRetail; return v != null ? Number(v) : fallback }
 
   // Автоподбор «наим. 1С» из «со слов» (устного названия клиента) по справочнику.
@@ -407,7 +408,7 @@ function ProcessingCard({ order, clients, logists, products, onAction, onReload,
         <span style={statusStyle(order.status)}>{order.status}</span>
         <span style={{ fontSize: 14, fontWeight: 500 }}>{order.fromName} →</span>
         {order.kind === 'sale'
-          ? <select value={order.contactId || ''} onChange={e => { updateCard(order.id, { contactId: e.target.value }).then(onReload) }} style={{ ...inpSm, minWidth: 140, width: 'auto' }}><option value="">К кому / куда</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          ? <div style={{ minWidth: 180 }}><ContragentPicker contragents={contragents} value={order.contactId || ''} defaultId={defaultCagId} onPick={c => updateCard(order.id, { contactId: c.id }).then(onReload)} placeholder="К кому / куда" /></div>
           : <span style={{ fontSize: 13, color: purple, fontWeight: 700 }}>Центр-Склад</span>}
         {order.deadline && <span style={{ fontSize: 13, color: '#5f5952' }}>срок {fmtDate(order.deadline)}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>

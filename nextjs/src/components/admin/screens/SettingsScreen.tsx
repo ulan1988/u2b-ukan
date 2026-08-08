@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listUsers, createUser, editUser, deleteUser } from '@/lib/api/auth'
-import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, createProject, createSpecProject } from '@/lib/api/refs'
+import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject } from '@/lib/api/refs'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
 const ROLES = [
@@ -150,22 +150,32 @@ function AutofillPanel({ orgId }: { orgId: string }) {
   const [rules, setRules] = useState<Record<string, any>>({})
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [logists, setLogists] = useState<any[]>([])
+  const [allCags, setAllCags] = useState<any[]>([])
   const [defLogist, setDefLogist] = useState('')
+  const [defCag, setDefCag] = useState('')
   const [msg, setMsg] = useState('')
 
   async function load() {
-    const [rl, st, us] = await Promise.all([fetchRules(orgId), fetchSettings(orgId), listUsers()])
+    const [rl, st, us, refs] = await Promise.all([fetchRules(orgId), fetchSettings(orgId), listUsers(), fetchRefs()])
     const byCat: Record<string, any> = {}; for (const r of rl) byCat[r.category] = r
     setRules(byCat)
     setSuppliers((st as any).suppliers || [])
     setDefLogist((st as any).defaultLogistId || '')
+    setDefCag((st as any).defaultContragentId || '')
     setLogists(us.filter((u: any) => u.role === 'logist' && u.orgId === orgId))
+    setAllCags(((refs as any).contragents || []).filter((c: any) => !c.orgId || c.orgId === orgId))
   }
 
   async function saveDefaultLogist(id: string) {
     setDefLogist(id); setMsg('')
     const r = await setDefaultLogist(orgId, id)
     if (r.ok) setMsg('✅ Логист по умолчанию сохранён')
+  }
+
+  async function saveDefaultCag(id: string) {
+    setDefCag(id); setMsg('')
+    const r = await setDefaultContragent(orgId, id)
+    if (r.ok) setMsg('✅ Контрагент по умолчанию сохранён')
   }
   useEffect(() => { load() }, [orgId])
 
@@ -198,6 +208,17 @@ function AutofillPanel({ orgId }: { orgId: string }) {
         </div>
         <select style={{ ...inp, minWidth: 220, width: 'auto', marginLeft: 'auto' }} value={defLogist} onChange={e => saveDefaultLogist(e.target.value)}>
           <option value="">— не выбран —</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+      </div>
+
+      {/* Контрагент по умолчанию — первым в списке выбора «Кому»/поставщик. */}
+      <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Контрагент по умолчанию</div>
+          <div style={{ fontSize: 12, color: COLORS.textMuted }}>Показывается первым (★) в списке выбора контрагента; остальные — через поиск.</div>
+        </div>
+        <select style={{ ...inp, minWidth: 220, width: 'auto', marginLeft: 'auto' }} value={defCag} onChange={e => saveDefaultCag(e.target.value)}>
+          <option value="">— не выбран —</option>{allCags.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
