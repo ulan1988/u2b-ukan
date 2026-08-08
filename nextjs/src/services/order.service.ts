@@ -134,6 +134,17 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   else await repo.updatePositionsByCard(cardId, { status })
 
   const positions = await repo.positionsByCard(cardId)
+  // Пул-позиция без логиста (напр. закуп из Автозакупа без правила категории):
+  // логист, который её ведёт, становится ответственным. Иначе после доставки
+  // карточка уходит на incoming и пропадает из его «Выполнено» (positionsForLogist
+  // требует respUserId), а строка смены не создаётся (addDeliveryToShift требует
+  // respUserId). Так закупки собираются в отчёт логиста, как в Улкане.
+  if (actor?.role === 'logist') {
+    const touched = posId ? positions.filter(p => p.id === posId) : positions
+    for (const p of touched) if (!p.respUserId) {
+      await repo.updatePosition(p.id, { respUserId: actor.id }); p.respUserId = actor.id
+    }
+  }
   const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
   const [order] = await repo.getOrder(cardId)
   // Все доставлены → карточка едет к учёту (incoming+toacc). Откат авто-доставленной
