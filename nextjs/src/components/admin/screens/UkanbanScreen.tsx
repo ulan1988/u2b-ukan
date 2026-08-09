@@ -1,20 +1,50 @@
 'use client'
-// «Накладные» (У-Канбан) — дашборд накладных: приходные + расходные, колонки по статусам,
-// переключатель Приход/Расход/Всё, поиск (номер/контрагент), галочка «проверено» вкл/выкл
-// прямо на карточке. Клик → форма накладной. (Позже добавим остальные стадии/страницы.)
+// У-Канбан — гипер-универсальный интерфейс. Внутри РЕЖИМЫ (переключаешь один/другой):
+// сейчас «Накладные» (канбан приходных+расходных по статусам). Позже — Финанс, Сделки и т.д.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { listPurchases, listSales, updateDocument } from '@/lib/api/docs'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 
+const MODES = [
+  { key: 'invoices', label: '🧾 Накладные', ready: true },
+  { key: 'finance', label: '💰 Финанс', ready: false },
+  { key: 'deals', label: '📋 Сделки', ready: false },
+]
+
+export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId: string; onAction?: (id: string, a: string) => void; onOpen?: (o: any) => void }) {
+  const [mode, setMode] = useState('invoices')
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, fontSize: 20 }}>🗂 У-Канбан</div>
+        {/* Переключатель режимов — включить один, выключить другой. */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {MODES.map(m => (
+            <button key={m.key} onClick={() => setMode(m.key)} disabled={!m.ready} title={m.ready ? '' : 'Скоро'}
+              style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: m.ready ? 'pointer' : 'not-allowed', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: mode === m.key ? COLORS.primary : '#fff', color: mode === m.key ? '#fff' : (m.ready ? COLORS.textMuted : '#b8b1a6'), boxShadow: mode === m.key ? 'none' : '0 0 0 1.5px #e6e2dc', position: 'relative' }}>
+              {m.label}{!m.ready && <span style={{ fontSize: 10, marginLeft: 5, opacity: .8 }}>скоро</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === 'invoices' && <InvoicesMode orgId={orgId} />}
+      {mode !== 'invoices' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
+    </div>
+  )
+}
+
+// ─── Режим «Накладные»: канбан приходных+расходных по статусам ─────────────────
 const COLS = [
   { key: 'unrev', label: '⚠ Не проверено', tint: '#fff8e1', test: (d: any) => d.status !== 'cancelled' && !d.reviewed },
   { key: 'rev', label: '✓ Проверено', tint: '#e8f5ee', test: (d: any) => d.status !== 'cancelled' && d.reviewed },
   { key: 'cancelled', label: '❌ Отменён', tint: '#faeaea', test: (d: any) => d.status === 'cancelled' },
 ]
 
-export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId: string; onAction?: (id: string, a: string) => void; onOpen?: (o: any) => void }) {
+function InvoicesMode({ orgId }: { orgId: string }) {
   const [docs, setDocs] = useState<any[]>([])
   const [kind, setKind] = useState<'all' | 'purchase' | 'sale'>('all')
   const [q, setQ] = useState('')
@@ -28,7 +58,7 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
   useEffect(() => { load() }, [load])
 
   async function toggleReviewed(d: any, checked: boolean) {
-    setDocs(prev => prev.map(x => x.id === d.id ? { ...x, reviewed: checked } : x))   // оптимистично
+    setDocs(prev => prev.map(x => x.id === d.id ? { ...x, reviewed: checked } : x))
     await updateDocument(d.id, { reviewed: checked })
   }
 
@@ -43,23 +73,22 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
   const cols = COLS.filter(c => c.key !== 'cancelled' || showCancelled).map(c => ({ ...c, items: filtered.filter(c.test) }))
 
   const kindBtn = (k: 'all' | 'purchase' | 'sale', label: string) => (
-    <button onClick={() => setKind(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: kind === k ? COLORS.primary : '#fff', color: kind === k ? '#fff' : COLORS.textMuted, boxShadow: kind === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
+    <button onClick={() => setKind(k)} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: kind === k ? '#7a3aaa' : '#fff', color: kind === k ? '#fff' : COLORS.textMuted, boxShadow: kind === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
   )
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 20 }}>🧾 Накладные</div>
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>всего: <b style={{ color: COLORS.text }}>{filtered.length}</b></span>
-        <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{filtered.length}</b></span>
+        <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}</div>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, контрагент…"
-          style={{ marginLeft: 'auto', minWidth: 260, flex: '1 1 260px', maxWidth: 420, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
+          style={{ marginLeft: 'auto', minWidth: 240, flex: '1 1 240px', maxWidth: 400, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
       </div>
 
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 10, alignItems: 'flex-start' }}>
         {cols.map(c => (
-          <div key={c.key} style={{ flexShrink: 0, width: 320, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 180px)' }}>
+          <div key={c.key} style={{ flexShrink: 0, width: 320, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 210px)' }}>
             <div style={{ padding: '9px 12px', background: '#fff', borderRadius: '12px 12px 0 0', boxShadow: '0 0 0 1.5px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontWeight: 700, fontSize: 13 }}>{c.label}</span>
               <span style={{ marginLeft: 'auto', background: c.items.length ? COLORS.primary : '#e6e2dc', color: c.items.length ? '#fff' : '#837c72', fontSize: 12, padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{c.items.length}</span>
