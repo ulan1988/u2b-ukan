@@ -21,7 +21,7 @@ export const NAV: NavItem[] = [
   { key: 'outgoing', label: 'Исходящие', icon: '📤' },
   { key: 'procurement', label: 'Закуп-отчёт', icon: '🛒' },
   { key: 'filter', label: 'Фильтр', icon: '🔍' },
-  { key: 'accounting', label: 'К учёту', icon: '📋' },
+  { key: 'accounting', label: 'У-Канбан', icon: '🗂' },
   { key: 'bookkeeping', label: 'Бухгалтерия', icon: '📒' },
   { key: 'invoice_in', label: 'Приходные накладные', icon: '🧾' },
   { key: 'invoice_out', label: 'Расходные накладные', icon: '📄' },
