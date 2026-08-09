@@ -75,7 +75,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
               <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
               {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}
               {!isSale && <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>}
-              <div><label style={lbl}>ОПЕРАЦИЯ</label><select style={inp} value={f.operation} onChange={e => setF({ ...f, operation: e.target.value })}>{OPS.map(op => <option key={op.v} value={op.v}>{op.l}</option>)}</select></div>
+              <div><label style={lbl}>ОПЕРАЦИЯ</label><select style={inp} value={f.operation} onChange={e => { if (e.target.value === 'return') { setReturning(true) } else setF({ ...f, operation: e.target.value }) }}>{OPS.map(op => <option key={op.v} value={op.v}>{op.l}</option>)}</select></div>
               <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>КОММЕНТАРИЙ</label><input style={inp} value={f.comment} onChange={e => setF({ ...f, comment: e.target.value })} /></div>
             </div>
 
