@@ -48,9 +48,9 @@ export async function resolveTarget(session: any, uid?: string | null) {
   const isAdmin = ['admin', 'super_admin', 'bookkeeper'].includes(session.role)
   if (uid && isAdmin) {
     const [u] = await userRepo.findById(uid)
-    if (u) return { id: u.id, orgId: u.orgId }
+    if (u) return { id: u.id, orgId: u.orgId, contragentId: (u as any).contragentId ?? null }
   }
-  return { id: session.id, orgId: session.orgId }
+  return { id: session.id, orgId: session.orgId, contragentId: (session as any).contragentId ?? null }
 }
 
 // Правка пользователя (имя/роль/email/телефон/slug/тип цены/активность).

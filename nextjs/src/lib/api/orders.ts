@@ -49,4 +49,7 @@ export const logistOrders = (uid?: string) => getArray(`/api/logist/orders${uid 
 export const clientOrders = (uid?: string) => getArray(`/api/client/orders${uid ? `?uid=${uid}` : ''}`)
 export const branchOrders = () => getArray('/api/branch/orders')
 export const createClientOrder = (body: any) => post('/api/client/orders', body)
+// Документы кабинета контрагента: { purchases, sales, returns } + приём.
+export const clientDocs = (uid?: string) => getOne<{ purchases: any[]; sales: any[]; returns: any[] }>(`/api/client/docs${uid ? `?uid=${uid}` : ''}`)
+export const acceptClientDoc = (id: string, uid?: string) => post(`/api/client/docs/${id}/accept${uid ? `?uid=${uid}` : ''}`)
 export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(id)}`)

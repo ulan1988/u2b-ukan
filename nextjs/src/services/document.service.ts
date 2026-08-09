@@ -204,6 +204,34 @@ const fmtSum = (n: number) => new Intl.NumberFormat('ru-RU').format(Math.round(n
 
 export const listReturns = (orgId: string) => docRepo.listInvoices(orgId, ['return_in', 'return_out'])
 
+// Кабинет контрагента: его накладные, разбитые по разделам Покупки / Продажа / Возврат.
+// Покупки  = он купил у нас (расходные, type=sale).
+// Продажа  = он поставил нам (приходные, type=purchase).
+// Возврат  = возвраты с ним (return_in — от него нам / return_out — мы ему).
+export async function listDocsForContragent(orgId: string, contragentId: string) {
+  const all = await docRepo.listInvoicesForContragent(orgId, contragentId, ['sale', 'purchase', 'return_in', 'return_out'])
+  return {
+    purchases: all.filter(d => d.type === 'sale'),            // его покупки у нас
+    sales: all.filter(d => d.type === 'purchase'),            // его продажи нам
+    returns: all.filter(d => d.type === 'return_in' || d.type === 'return_out'),
+  }
+}
+
+// Контрагент принимает документ/возврат в своём кабинете. Проверяем принадлежность.
+export async function acceptDocByContragent(docId: string, contragentId: string, actorName: string) {
+  const [doc] = await docRepo.getDoc(docId)
+  if (!doc) return { ok: false, error: 'Документ не найден' }
+  if (doc.contragentId !== contragentId) return { ok: false, error: 'Это не ваш документ' }
+  if (doc.contragentAccepted) return { ok: true, already: true }
+  await docRepo.updateDoc(docId, { contragentAccepted: true } as any)
+  try {
+    const kindLabel = doc.type === 'return_in' || doc.type === 'return_out' ? 'возврат' : 'накладную'
+    const { notifyAdmins } = await import('./notifyHelpers')
+    await notifyAdmins(doc.orgId, `✓ ${actorName} принял ${kindLabel} ${doc.number}`)
+  } catch { /* уведомление не критично */ }
+  return { ok: true, number: doc.number }
+}
+
 // Производство: сырьё (input) списывается со склада, готовый товар (output)
 // приходуется. Готовый товар — размерное ценообразование: (см×см)/10000=м² × ставка × кол-во.
 export async function createProduction(input: CreateProductionInput) {

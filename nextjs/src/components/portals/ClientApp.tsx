@@ -11,7 +11,7 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import FinanceView from '@/components/portals/FinanceView'
-import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
+import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage, clientDocs, acceptClientDoc } from '@/lib/api/orders'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -32,14 +32,61 @@ function StatusBadge({ status }: { status: string }) {
   return <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }}>{status}</span>
 }
 const barColor = (pct: number) => pct >= 100 ? '#3a9d6e' : pct >= 60 ? '#c4a832' : '#d4613a'
+const PRIMARY = '#d4613a'
+
+// Ярлык документа с точки зрения контрагента.
+function docLabel(type: string): { text: string; bg: string; color: string } {
+  switch (type) {
+    case 'sale': return { text: 'Покупка у нас', bg: '#fff0ea', color: '#c0532a' }
+    case 'purchase': return { text: 'Ваша поставка нам', bg: '#e8f5ee', color: '#2e8a5e' }
+    case 'return_in': return { text: '↩ Вы вернули нам', bg: '#faeaea', color: '#b03020' }
+    case 'return_out': return { text: '↩ Мы вернули вам', bg: '#faeaea', color: '#b03020' }
+    default: return { text: type, bg: '#efece8', color: '#6b655b' }
+  }
+}
+const fmtSum = (n: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(n) || 0))
+
+// Список накладных/возвратов контрагента с кнопкой «Принять».
+function DocList({ list, loading, emptyIcon, emptyText, onAccept }: { list: any[]; loading: boolean; emptyIcon: string; emptyText: string; onAccept: (id: string) => void }) {
+  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>
+  if (!list.length) return <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 8 }}>{emptyIcon}</div><div style={{ color: '#5f5952' }}>{emptyText}</div></div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {list.map(d => {
+        const lb = docLabel(d.type)
+        const cancelled = d.status === 'cancelled'
+        return (
+          <div key={d.id} style={{ background: '#fff', borderRadius: 12, padding: '14px 18px', boxShadow: '0 0 0 1px #e6e2dc', opacity: cancelled ? 0.6 : 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14, color: PRIMARY }}>{d.number}</span>
+              <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, fontWeight: 600, background: lb.bg, color: lb.color }}>{lb.text}</span>
+              {cancelled && <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, fontWeight: 600, background: '#faeaea', color: '#b03020' }}>Отменён</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 15, fontWeight: 800 }}>{fmtSum(d.total)} ₸</span>
+            </div>
+            {d.items && <div style={{ fontSize: 13, color: '#5f5952', marginTop: 8, lineHeight: 1.5 }}>{d.items}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+              <span style={{ fontSize: 13, color: '#837c72' }}>{fmtDate(d.date)}</span>
+              <div style={{ marginLeft: 'auto' }}>
+                {cancelled ? null : d.contragentAccepted
+                  ? <span style={{ fontSize: 13, fontWeight: 700, color: '#2e8a5e' }}>✓ Принято</span>
+                  : <button onClick={() => onAccept(d.id)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>✓ Принять</button>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 const fmtDate = (d?: string | null) => !d ? '—' : new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
 const fmtDateTime = (d?: string) => { if (!d) return '—'; const dt = new Date(d), diff = Math.floor((Date.now() - dt.getTime()) / 60000); if (diff < 1) return 'только что'; if (diff < 60) return `${diff} мин`; if (diff < 1440) return `${Math.floor(diff / 60)} ч`; return fmtDate(d) }
 
 export default function ClientApp({ user, viewAs }: { user: { id: string; name: string; orgId: string; slug?: string }; viewAs?: boolean }) {
   const [orders, setOrders] = useState<any[]>([])
+  const [docs, setDocs] = useState<{ purchases: any[]; sales: any[]; returns: any[] }>({ purchases: [], sales: [], returns: [] })
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'orders' | 'new' | 'notifications' | 'finance'>('orders')
+  const [tab, setTab] = useState<'orders' | 'buy' | 'sell' | 'return' | 'new' | 'notifications' | 'finance'>('orders')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [toast, setToast] = useState('')
   const [newText, setNewText] = useState(''); const [newDeadline, setNewDeadline] = useState(''); const [newLoading, setNewLoading] = useState(false)
@@ -52,15 +99,31 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
   const didInit = useRef(false)
   const load = useCallback(async () => {
     if (!didInit.current) setLoading(true)
-    const [ord, notifs] = await Promise.all([clientOrders(viewAs ? user.id : undefined), viewAs ? Promise.resolve([]) : listNotifications()])
-    setOrders(ord); setNotifications(notifs as any); didInit.current = true; setLoading(false)
+    const uid = viewAs ? user.id : undefined
+    const [ord, dcs, notifs] = await Promise.all([clientOrders(uid), clientDocs(uid), viewAs ? Promise.resolve([]) : listNotifications()])
+    setOrders(ord); setDocs(dcs || { purchases: [], sales: [], returns: [] }); setNotifications(notifs as any); didInit.current = true; setLoading(false)
   }, [viewAs, user.id])
+
+  async function acceptDoc(id: string) {
+    const r: any = await acceptClientDoc(id, viewAs ? user.id : undefined)
+    if (r?.ok) { setToast('✓ Принято'); await load() } else setToast('⚠ ' + (r?.error || 'Не удалось принять'))
+  }
   const pausedRef = useRef(false); pausedRef.current = (tab === 'new' && !newResult) || addCatalogFor !== null || Object.keys(editQty).length > 0
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { if (tab === 'new') setNewDeadline(d => d || todayLocal()) }, [tab])
 
   const unread = notifications.filter(n => !n.read).length
   const myOrders = orders.filter(o => inPeriod(o.createdAt, period, day))
+  const pendingReturns = docs.returns.filter(d => !d.contragentAccepted && d.status !== 'cancelled').length
+  const NAV: { key: typeof tab; icon: string; label: string; badge: number; blink?: boolean }[] = [
+    { key: 'orders', icon: '📦', label: 'Заявки', badge: myOrders.length },
+    { key: 'buy', icon: '🛒', label: 'Покупки', badge: docs.purchases.length },
+    { key: 'sell', icon: '💰', label: 'Продажа', badge: docs.sales.length },
+    { key: 'return', icon: '↩', label: 'Возврат', badge: pendingReturns, blink: pendingReturns > 0 },
+    { key: 'new', icon: '➕', label: 'Новая', badge: 0 },
+    { key: 'finance', icon: '💹', label: 'Финансы', badge: 0 },
+    { key: 'notifications', icon: '🔔', label: 'Уведомления', badge: unread, blink: unread > 0 },
+  ]
 
   async function saveQty(orderId: string, posId: string, qty: string) {
     setSavingPos(true); await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 })
@@ -104,12 +167,23 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
         </div>
       </div>
 
-      <div style={{ maxWidth: 880, margin: '0 auto', padding: 20 }}>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap' }}>
-          {[{ key: 'orders', label: `Мои заявки (${myOrders.length})` }, { key: 'new', label: '+ Новая заявка' }, { key: 'finance', label: '💰 Финансы' }, { key: 'notifications', label: `Уведомления${unread > 0 ? ` (${unread})` : ''}` }].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key as any)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', background: tab === t.key ? '#d4613a' : '#fff', color: tab === t.key ? '#fff' : '#26231f', boxShadow: '0 0 0 1px #e6e2dc' }}>{t.label}</button>
-          ))}
-          <div style={{ marginLeft: 'auto' }}><button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳</button></div>
+      {/* Круглые кнопки навигации — как в кабинете логиста */}
+      <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {NAV.map(({ key, icon, label, badge, blink }) => {
+          const active = tab === key
+          return (
+            <button key={key} onClick={() => setTab(key)} title={label} aria-label={label} className={blink ? 'uk-blink' : undefined} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}>
+              <span>{icon}</span>
+              {badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: blink ? '#c1121c' : (active ? '#fff' : PRIMARY), color: blink ? '#fff' : (active ? PRIMARY : '#fff'), fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      <div style={{ maxWidth: 880, margin: '0 auto', padding: '20px 72px 20px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{NAV.find(n => n.key === tab)?.icon} {tab === 'orders' ? 'Мои заявки' : tab === 'new' ? 'Новая заявка' : NAV.find(n => n.key === tab)?.label}</h2>
+          <button onClick={load} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳</button>
         </div>
 
         {tab === 'orders' && (
@@ -172,6 +246,15 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
                     )
                   })}
                 </div>}
+          </div>
+        )}
+
+        {tab === 'buy' && <div className="anim-fade"><DocList list={docs.purchases} loading={loading} emptyIcon="🛒" emptyText="Покупок пока нет" onAccept={acceptDoc} /></div>}
+        {tab === 'sell' && <div className="anim-fade"><DocList list={docs.sales} loading={loading} emptyIcon="💰" emptyText="Поставок пока нет" onAccept={acceptDoc} /></div>}
+        {tab === 'return' && (
+          <div className="anim-fade">
+            {pendingReturns > 0 && <div style={{ background: '#fff8f5', border: '1.5px solid #f3c8b0', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#c0532a', fontWeight: 600 }}>↩ Есть возвраты, ожидающие вашего подтверждения: {pendingReturns}</div>}
+            <DocList list={docs.returns} loading={loading} emptyIcon="↩" emptyText="Возвратов пока нет" onAccept={acceptDoc} />
           </div>
         )}
 
