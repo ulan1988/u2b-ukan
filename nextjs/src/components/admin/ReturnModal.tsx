@@ -38,8 +38,9 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
       lines: rows.filter(x => x.on && x.retN > 0).map(x => ({ productId: x.productId, qty: x.retN, price: Number(x.price) || 0, unit: x.unit || 'шт' })),
     })
     setBusy(false)
-    if (r.id || r.number) { onDone?.(); onClose() }
-    else setFlash('⚠ ' + (r.error || 'Ошибка возврата'))
+    // createReturn отдаёт обёртку { ok, data, error } (http.send)
+    if (r?.ok && (r.data?.id || r.data?.number)) { onDone?.(); onClose() }
+    else setFlash('⚠ ' + (r?.error || 'Ошибка возврата'))
   }
 
   return (
