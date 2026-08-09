@@ -23,9 +23,11 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
   const isReturnDoc = doc && (doc.type === 'return_in' || doc.type === 'return_out')
   const kind: 'in' | 'out' = doc?.type === 'purchase' ? 'out' : 'in'   // закуп → поставщику; продажа → от клиента
   const dirLabel = kind === 'out' ? 'Возврат ПОСТАВЩИКУ' : 'Возврат ОТ КЛИЕНТА'
-  const rows = lines.map(l => ({ ...l, retN: Math.min(Number(ret[l.id] || 0), Number(l.qty)) }))
-  const totalRet = rows.reduce((s, r) => s + r.retN * Number(r.price || 0), 0)
-  const anyRet = rows.some(r => r.retN > 0)
+  // Позиция в возврате = есть ключ в ret (галочка отмечена). Без галочки — не возвращаем.
+  const rows = lines.map(l => ({ ...l, on: l.id in ret, retN: Math.min(Number(ret[l.id] || 0), Number(l.qty)) }))
+  const totalRet = rows.reduce((s, r) => s + (r.on ? r.retN : 0) * Number(r.price || 0), 0)
+  const anyRet = rows.some(r => r.on && r.retN > 0)
+  const toggle = (l: any) => setRet(s => { const n = { ...s }; if (l.id in n) delete n[l.id]; else n[l.id] = String(Number(l.qty)); return n })
 
   async function submit() {
     if (!anyRet) { setFlash('⚠ Укажите кол-во возврата хотя бы по одной позиции'); return }
@@ -33,7 +35,7 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
     const r: any = await createReturn(kind, {
       orgId: doc.orgId, contragentId: doc.contragentId, warehouseId: doc.warehouseId,
       comment: `Возврат по ${doc.number}${reason ? ' · ' + reason : ''}`,
-      lines: rows.filter(x => x.retN > 0).map(x => ({ productId: x.productId, qty: x.retN, price: Number(x.price) || 0, unit: x.unit || 'шт' })),
+      lines: rows.filter(x => x.on && x.retN > 0).map(x => ({ productId: x.productId, qty: x.retN, price: Number(x.price) || 0, unit: x.unit || 'шт' })),
     })
     setBusy(false)
     if (r.id || r.number) { onDone?.(); onClose() }
@@ -52,22 +54,23 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>по {doc.number}</span>
               <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
             </div>
-            <div style={{ padding: '10px 20px', fontSize: 13, color: COLORS.textMuted }}>Контрагент: <b style={{ color: COLORS.text }}>{data.contragent?.name || '—'}</b>. Укажи, сколько вернуть по каждой позиции (можно 1 шт).</div>
+            <div style={{ padding: '10px 20px', fontSize: 13, color: COLORS.textMuted }}>Контрагент: <b style={{ color: COLORS.text }}>{data.contragent?.name || '—'}</b>. Отметь <b>только те позиции</b>, что возвращаешь, и укажи кол-во (можно 1 шт). Неотмеченные — не возвращаются.</div>
             <div style={{ padding: '0 20px 8px', maxHeight: 360, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['Товар', 'Было', 'Цена', 'Вернуть', 'Сумма'].map((h, i) => <th key={h} style={{ textAlign: i >= 1 ? 'right' : 'left', padding: '6px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', 'Товар', 'Было', 'Цена', 'Вернуть', 'Сумма'].map((h, i) => <th key={i} style={{ textAlign: i >= 2 ? 'right' : 'left', padding: '6px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map(l => (
-                    <tr key={l.id} style={{ borderTop: '1px solid #f1efec' }}>
+                    <tr key={l.id} style={{ borderTop: '1px solid #f1efec', background: l.on ? '#fff8f6' : 'transparent', opacity: l.on ? 1 : 0.6 }}>
+                      <td style={{ padding: '7px 8px', width: 28 }}><input type="checkbox" checked={l.on} onChange={() => toggle(l)} style={{ cursor: 'pointer', width: 16, height: 16 }} /></td>
                       <td style={{ padding: '7px 8px', fontWeight: 500 }}>{l.name}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right' }}>{Number(l.qty)} {l.unit}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right' }}>{fmtMoney(Number(l.price))}</td>
                       <td style={{ padding: '7px 8px', width: 90 }}>
-                        <input type="number" min={0} max={Number(l.qty)} value={ret[l.id] ?? ''} placeholder="0"
+                        <input type="number" min={0} max={Number(l.qty)} disabled={!l.on} value={l.on ? (ret[l.id] ?? '') : ''} placeholder="0"
                           onChange={e => { const v = Math.max(0, Math.min(Number(e.target.value) || 0, Number(l.qty))); setRet(s => ({ ...s, [l.id]: String(v) })) }}
-                          style={{ ...inp, padding: '5px 7px', textAlign: 'right', borderColor: l.retN > 0 ? '#b4574c' : '#e6e2dc' }} />
+                          style={{ ...inp, padding: '5px 7px', textAlign: 'right', borderColor: l.on && l.retN > 0 ? '#b4574c' : '#e6e2dc', background: l.on ? '#fff' : '#f6f3f0' }} />
                       </td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{l.retN > 0 ? fmtMoney(l.retN * Number(l.price || 0)) : '—'}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{l.on && l.retN > 0 ? fmtMoney(l.retN * Number(l.price || 0)) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
