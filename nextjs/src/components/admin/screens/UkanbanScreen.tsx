@@ -6,6 +6,7 @@ import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { listPurchases, listSales, updateDocument } from '@/lib/api/docs'
 import InvoiceForm from '@/components/admin/InvoiceForm'
+import RouteModal from '@/components/admin/RouteModal'
 
 const MODES = [
   { key: 'invoices', label: '🧾 Накладные', ready: true },
@@ -71,6 +72,8 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   const [period, setPeriod] = useState<DPeriod>('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  const [routeDocId, setRouteDocId] = useState<string | null>(null)
+  const [links, setLinks] = useState(false)   // тумблер «Связки»: клик → граф пути
 
   const load = useCallback(async () => {
     const [p, s] = await Promise.all([listPurchases(orgId), listSales(orgId)])
@@ -103,6 +106,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{filtered.length}</b></span>
         <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}</div>
+        <button onClick={() => setLinks(v => !v)} title="Клик по накладной покажет её путь (граф)" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: links ? '#7a3aaa' : '#fff', color: links ? '#fff' : COLORS.textMuted, boxShadow: links ? 'none' : '0 0 0 1.5px #e6e2dc' }}>🔗 Связки {links ? 'вкл' : 'выкл'}</button>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, контрагент, товар…"
           style={{ marginLeft: 'auto', minWidth: 240, flex: '1 1 240px', maxWidth: 400, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
@@ -133,7 +137,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
                 : c.items.map(d => {
                   const purchase = d.type === 'purchase'
                   return (
-                    <div key={d.id} onClick={() => setOpenDocId(d.id)} style={{ background: '#fff', borderRadius: 10, padding: 10, marginBottom: 8, cursor: 'pointer', borderLeft: `4px solid ${purchase ? '#7a3aaa' : '#2e8a5e'}`, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
+                    <div key={d.id} onClick={() => links ? setRouteDocId(d.id) : setOpenDocId(d.id)} style={{ background: '#fff', borderRadius: 10, padding: 10, marginBottom: 8, cursor: 'pointer', borderLeft: `4px solid ${links ? '#7a3aaa' : (purchase ? '#7a3aaa' : '#2e8a5e')}`, boxShadow: links ? '0 0 0 1.5px #e3d4f0' : '0 1px 4px rgba(0,0,0,.06)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: purchase ? '#7a3aaa' : COLORS.primary }}>{d.number}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: purchase ? '#f3eeff' : '#e8f5ee', color: purchase ? '#7a3aaa' : '#2e8a5e' }}>{purchase ? 'ПРИХОД' : 'РАСХОД'}</span>
@@ -157,6 +161,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
       </div>
 
       {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={load} />}
+      {routeDocId && <RouteModal docId={routeDocId} onClose={() => setRouteDocId(null)} />}
     </div>
   )
 }

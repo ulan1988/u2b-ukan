@@ -323,6 +323,83 @@ export async function addPosition(cardId: string, i: any, actor?: Session | null
   return { ok: true, position: p }
 }
 
+// Маршрут карточки для модалки «Связки» (граф-дерево пути). Строится из стадий (screen)
+// + журнала (orderHistory) + связей закуп↔продажа. Узлы: done/current/pending/returned.
+// Финансы — узел «Оплата» (pending), расширяемо когда появятся оплаты.
+export async function cardRoute(cardId: string) {
+  const [o] = await repo.getOrder(cardId)
+  if (!o) return null
+  const positions = await repo.positionsByCard(cardId)
+  const hist = (await repo.historyByCard(cardId)).slice().reverse() // asc по времени
+  const findH = (...acts: string[]) => hist.find((h: any) => acts.includes(h.action))
+  const lastH = (pred: (h: any) => boolean) => [...hist].reverse().find(pred)
+  const purchase = o.kind === 'purchase'
+
+  // Текущая стадия (уровень) по screen/флагам.
+  const cur = o.screen === 'archive' ? 5
+    : o.screen === 'bookkeeping' ? 5
+    : o.linkedDocId ? 4
+    : (o.screen === 'incoming' && o.toacc) ? 3
+    : o.screen === 'outgoing' ? 2
+    : o.screen === 'reception' ? 1 : 0
+
+  const STAGES = [
+    { key: 'created', label: 'Создана', h: findH('create') },
+    { key: 'reception', label: 'Приёмка', h: findH('accept') },
+    { key: 'outgoing', label: purchase ? 'Закуп в работе' : 'Исходящие', h: findH('process', 'logistAccept', 'branchForward', 'finalizePurchase') },
+    { key: 'delivered', label: purchase ? 'Приход на склад' : 'Доставлено', h: lastH((h: any) => h.action === 'updatePos' && /Доставлено/i.test(h.detail || '')) || findH('markAll') },
+    { key: 'invoice', label: purchase ? 'Приходная накладная' : 'Расходная накладная', h: findH('invoice') },
+    { key: 'book', label: 'Бухгалтерия', h: findH('sendAcc', 'post1c') },
+  ]
+
+  const nodes: any[] = STAGES.map((s, i) => ({
+    id: i, level: i, lane: 0, label: s.label, key: s.key,
+    state: i < cur ? 'done' : i === cur ? 'current' : 'pending',
+    at: s.h?.createdAt || null, user: s.h?.userName || null, detail: s.h?.detail || null,
+  }))
+  // Узел финансов — на будущее (pending).
+  nodes.push({ id: 6, level: 6, lane: 0, label: 'Оплата', key: 'payment', state: 'pending', at: null, user: null, detail: 'Финансовый модуль — позже' })
+  const edges: any[] = []
+  for (let i = 0; i < 6; i++) edges.push({ from: i, to: i + 1, kind: 'normal' })
+
+  let nid = 100
+  // Плечо филиала (два плеча): если карточка проходила через филиал.
+  const branchH = findH('branchAccept')
+  if (branchH) {
+    nodes.push({ id: nid, level: 1, lane: -1, label: 'Филиал (плечо 1)', key: 'branch', state: 'done', at: branchH.createdAt, user: branchH.userName, detail: branchH.detail })
+    edges.push({ from: 1, to: nid, kind: 'normal' }); edges.push({ from: nid, to: 2, kind: 'normal' }); nid++
+  }
+  // Возвраты — отдельные узлы со стрелкой назад.
+  hist.filter((h: any) => ['returnOut', 'returnToReception', 'branchRecall'].includes(h.action)).forEach((h: any, k: number) => {
+    nodes.push({ id: nid, level: 2, lane: 1 + k, label: 'Возврат', key: 'returned', state: 'returned', at: h.createdAt, user: h.userName, detail: h.detail })
+    edges.push({ from: nid, to: 0, kind: 'return' }); nid++
+  })
+  // Отмена.
+  const cancelH = findH('cancel')
+  if (cancelH) { nodes.push({ id: nid, level: cur, lane: -1, label: 'Отменён', key: 'returned', state: 'returned', at: cancelH.createdAt, user: cancelH.userName, detail: cancelH.detail }); edges.push({ from: 0, to: nid, kind: 'return' }); nid++ }
+
+  // Связка закуп↔продажа (procurementLinks) — ветки «откуда/куда товар».
+  try {
+    const { db } = await import('../lib/db')
+    const { procurementLinks } = await import('../db/schema')
+    const { eq } = await import('drizzle-orm')
+    const rows = purchase
+      ? await db.select().from(procurementLinks).where(eq(procurementLinks.purchaseCardId, cardId))
+      : await db.select().from(procurementLinks).where(eq(procurementLinks.saleCardId, cardId))
+    const linkedIds = Array.from(new Set(rows.map((r: any) => purchase ? r.saleCardId : r.purchaseCardId)))
+    linkedIds.forEach((lid, k) => {
+      nodes.push({ id: nid, level: 0, lane: -1 - k, label: (purchase ? '📄 Продажа ' : '🛒 Закуп ') + lid, key: 'link', state: 'done', at: null, user: null, detail: 'Связанная карточка', linkCardId: lid })
+      edges.push({ from: nid, to: 0, kind: 'link' }); nid++
+    })
+  } catch { /* связи не критичны */ }
+
+  const sum = positions.reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+  return {
+    document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', status: o.status },
+    nodes, edges,
+  }
+}
+
 export async function getCard(id: string) {
   const [order] = await repo.getOrder(id)
   if (!order) return null

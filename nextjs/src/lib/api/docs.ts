@@ -4,6 +4,7 @@ import { getArray, getObj, post, patch } from './http'
 export const listPurchases = (orgId: string) => getArray(`/api/documents?orgId=${orgId}`)
 export const createPurchase = (b: any) => post('/api/documents', b)
 export const getDocument = (id: string) => getObj(`/api/documents/${id}`, null as any)
+export const docChain = (id: string) => getObj(`/api/documents/${id}/chain`, null as any)
 export const updateDocument = (id: string, b: any) => patch(`/api/documents/${id}`, b)
 
 export const listSales = (orgId: string) => getArray(`/api/sales?orgId=${orgId}`)
