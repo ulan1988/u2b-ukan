@@ -400,9 +400,48 @@ export async function cardRoute(cardId: string) {
   const supId = positions.find((p: any) => p.supplierId)?.supplierId
   const supplier = supId ? (cagName[supId] || '—') : (purchase ? '—' : 'Центр-Склад')
   const buyer = purchase ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || o.fromName || '—') : (o.fromName || '—'))
+
+  // ── Цепочка (как листы закуп-отчёта): Поставщик → Товар (через Центр-Склад) → Заказчик ──
+  // Много поставщиков/товаров/покупателей: клик по узлу «разлетает» его цепочку.
+  const chNodes: any[] = [], chEdges: any[] = []
+  const supNode: Record<string, string> = {}, prodTid: Record<string, string> = {}
+  positions.forEach((p: any, i: number) => {
+    const sName = p.supplierId ? (cagName[p.supplierId] || '—') : (purchase ? '—' : 'Центр-Склад')
+    const sk = 'sup:' + sName.toLowerCase()
+    if (!supNode[sk]) { supNode[sk] = 'S' + i; chNodes.push({ id: supNode[sk], col: 0, kind: 'supplier', label: sName }) }
+    const tid = 'T' + i
+    chNodes.push({ id: tid, col: 1, kind: 'product', label: p.name1c || p.oral || '—', sub: `${Number(p.qty)} ${p.unit || 'шт'}` })
+    chEdges.push({ from: supNode[sk], to: tid })
+    prodTid[(p.name1c || p.oral || '').trim().toLowerCase()] = tid
+  })
+  try {
+    const { db } = await import('../lib/db')
+    const { procurementLinks } = await import('../db/schema')
+    const { eq } = await import('drizzle-orm')
+    const buyerNode: Record<string, string> = {}; let bi = 0
+    if (purchase) {
+      const rows: any[] = await db.select().from(procurementLinks).where(eq(procurementLinks.purchaseCardId, cardId))
+      const saleIds = Array.from(new Set(rows.map(r => r.saleCardId)))
+      const sales = await repo.ordersByIds(saleIds)
+      const sName: Record<string, string> = {}; for (const s of sales as any[]) sName[s.id] = s.fromName || s.id
+      for (const l of rows) {
+        const bn = sName[l.saleCardId] || l.saleCardId
+        const bk = 'buy:' + bn.toLowerCase()
+        if (!buyerNode[bk]) { buyerNode[bk] = 'B' + (bi++); chNodes.push({ id: buyerNode[bk], col: 2, kind: 'buyer', label: bn }) }
+        const tid = prodTid[(l.product || '').trim().toLowerCase()]
+        if (tid) chEdges.push({ from: tid, to: buyerNode[bk], qty: Number(l.qty) })
+      }
+    } else {
+      // продажа: покупатель — клиент карточки; все товары идут ему.
+      chNodes.push({ id: 'B0', col: 2, kind: 'buyer', label: buyer })
+      positions.forEach((p: any, i: number) => chEdges.push({ from: 'T' + i, to: 'B0', qty: Number(p.qty) }))
+    }
+  } catch { /* цепочка не критична */ }
+
   return {
     document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', supplier, buyer, status: o.status },
     nodes, edges,
+    chain: { nodes: chNodes, edges: chEdges },
   }
 }
 
