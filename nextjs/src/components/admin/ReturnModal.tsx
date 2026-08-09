@@ -34,6 +34,9 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
     setBusy(true)
     const r: any = await createReturn(kind, {
       orgId: doc.orgId, contragentId: doc.contragentId, warehouseId: doc.warehouseId,
+      // Ссылка на источник: карточка-основание накладной (или сама накладная) →
+      // номер возврата будет ВП/ВС-порядковый-номер_исходной_карточки (видно откуда возврат).
+      sourceOrderId: doc.sourceOrderId || undefined, sourceDocId: doc.id,
       comment: `Возврат по ${doc.number}${reason ? ' · ' + reason : ''}`,
       lines: rows.filter(x => x.on && x.retN > 0).map(x => ({ productId: x.productId, qty: x.retN, price: Number(x.price) || 0, unit: x.unit || 'шт' })),
     })

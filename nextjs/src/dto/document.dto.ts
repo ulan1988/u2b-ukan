@@ -14,6 +14,8 @@ export const createPurchaseSchema = z.object({
   date: z.string().optional(),          // YYYY-MM-DD, по умолчанию сегодня
   comment: z.string().optional().default(''),
   lines: z.array(purchaseLineSchema).min(1),
+  sourceOrderId: z.string().optional(), // номер карточки-основания (ЗП-…/ПР-…), чтобы связь не терялась
+  sourceDocId: z.string().uuid().optional(), // id исходной накладной (для возврата — узнать откуда)
 })
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>

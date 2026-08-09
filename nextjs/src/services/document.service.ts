@@ -163,11 +163,23 @@ export const listSales = (orgId: string) => docRepo.listInvoices(orgId, 'sale')
 
 // Возврат: return_in = от покупателя (+склад, −долг заказчика);
 // return_out = поставщику (−склад, −наш долг). Проводка = документ + строки + движение.
-export async function createReturn(input: CreateSaleInput, kind: 'return_in' | 'return_out') {
+export async function createReturn(input: CreateSaleInput & { sourceOrderId?: string; sourceDocId?: string }, kind: 'return_in' | 'return_out') {
   const count = await docRepo.countByType(input.orgId, kind)
   const docId = randomUUID()
   const date = input.date || today()
   const sign = kind === 'return_in' ? 1 : -1   // товар возвращается на склад (+) или уходит (−)
+
+  // Откуда возврат: если пришёл id исходной накладной — берём её карточку-основание
+  // (или её номер), чтобы номер возврата ССЫЛАЛСЯ на источник и путь не терялся.
+  let srcCard = input.sourceOrderId || ''
+  if (!srcCard && input.sourceDocId) {
+    const [src] = await docRepo.getDoc(input.sourceDocId)
+    if (src) srcCard = src.sourceOrderId || src.number
+  }
+  // Номер возврата = <ВП|ВС>-<порядковый>-<номер карточки/накладной-источника>.
+  const prefix = kind === 'return_in' ? 'ВП' : 'ВС'
+  const seq2 = String(count + 1).padStart(2, '0')
+  const number = srcCard ? `${prefix}-${seq2}-${srcCard}` : docNumber(kind, count)
 
   let total = 0
   const lines = input.lines.map(l => {
@@ -180,7 +192,8 @@ export async function createReturn(input: CreateSaleInput, kind: 'return_in' | '
     productId: l.productId, qty: String(sign * l.qty), documentId: docId, date,
   }))
   const doc = {
-    id: docId, orgId: input.orgId, type: kind, number: docNumber(kind, count),
+    id: docId, orgId: input.orgId, type: kind, number,
+    sourceOrderId: srcCard || null,   // связь возврата с исходной карточкой/накладной (для «Связок»)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
