@@ -76,6 +76,8 @@ export function listInvoices(orgId: string, type: string) {
     .select({
       id: documents.id, number: documents.number, date: documents.date, total: documents.total,
       status: documents.status, operation: documents.operation, reviewed: documents.reviewed, contragent: contragents.name,
+      // Названия товаров документа — для поиска по номенклатуре.
+      items: sql<string>`(select string_agg(p.name, ' | ') from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
     })
     .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
     .where(and(eq(documents.orgId, orgId), eq(documents.type, type)))

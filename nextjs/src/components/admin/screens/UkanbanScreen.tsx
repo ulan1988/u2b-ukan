@@ -37,6 +37,25 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
   )
 }
 
+// Фильтр по дате: диапазон от-до имеет приоритет, иначе пресет сегодня/вчера/месяц.
+type DPeriod = 'all' | 'today' | 'yesterday' | 'month'
+function matchDate(dateStr: any, period: DPeriod, from: string, to: string): boolean {
+  if (!dateStr) return period === 'all' && !from && !to
+  const d = new Date(dateStr)
+  if (from || to) {
+    if (from && d < new Date(from)) return false
+    if (to && d > new Date(to + 'T23:59:59')) return false
+    return true
+  }
+  if (period === 'all') return true
+  const now = new Date()
+  const same = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  if (period === 'today') return same(d, now)
+  if (period === 'yesterday') { const y = new Date(now); y.setDate(now.getDate() - 1); return same(d, y) }
+  if (period === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+  return true
+}
+
 // ─── Режим «Накладные»: канбан приходных+расходных по статусам ─────────────────
 const COLS = [
   { key: 'unrev', label: '⚠ Не проверено', tint: '#fff8e1', test: (d: any) => d.status !== 'cancelled' && !d.reviewed },
@@ -49,6 +68,8 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   const [kind, setKind] = useState<'all' | 'purchase' | 'sale'>('all')
   const [q, setQ] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
+  const [period, setPeriod] = useState<DPeriod>('all')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [openDocId, setOpenDocId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -65,10 +86,11 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   const filtered = useMemo(() => {
     let base = docs
     if (kind !== 'all') base = base.filter(d => d.type === kind)
+    base = base.filter(d => matchDate(d.date, period, from, to))
     const s = q.trim().toLowerCase()
-    if (s) base = base.filter(d => `${d.number} ${d.contragent || ''} ${d.total} ${fmtDate(d.date)}`.toLowerCase().includes(s))
+    if (s) base = base.filter(d => `${d.number} ${d.contragent || ''} ${d.items || ''} ${d.total} ${fmtDate(d.date)}`.toLowerCase().includes(s))
     return base
-  }, [docs, kind, q])
+  }, [docs, kind, q, period, from, to])
 
   const cols = COLS.filter(c => c.key !== 'cancelled' || showCancelled).map(c => ({ ...c, items: filtered.filter(c.test) }))
 
@@ -82,8 +104,21 @@ function InvoicesMode({ orgId }: { orgId: string }) {
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{filtered.length}</b></span>
         <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}</div>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, контрагент…"
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, контрагент, товар…"
           style={{ marginLeft: 'auto', minWidth: 240, flex: '1 1 240px', maxWidth: 400, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
+      </div>
+
+      {/* Фильтр по датам: пресеты + диапазон от-до */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>📅</span>
+        {([['all', 'Всё'], ['today', 'Сегодня'], ['yesterday', 'Вчера'], ['month', 'Месяц']] as [DPeriod, string][]).map(([p, l]) => (
+          <button key={p} onClick={() => { setPeriod(p); setFrom(''); setTo('') }} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', fontSize: 12.5, fontWeight: (!from && !to && period === p) ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: (!from && !to && period === p) ? COLORS.primary : '#f1efec', color: (!from && !to && period === p) ? '#fff' : '#6b655b' }}>{l}</button>
+        ))}
+        <span style={{ fontSize: 12.5, color: '#5f5952', marginLeft: 6 }}>от</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={{ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${from ? COLORS.primary : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }} />
+        <span style={{ fontSize: 12.5, color: '#5f5952' }}>до</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={{ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${to ? COLORS.primary : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }} />
+        {(from || to) && <button onClick={() => { setFrom(''); setTo('') }} title="Сбросить диапазон" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer' }}>×</button>}
       </div>
 
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 10, alignItems: 'flex-start' }}>
