@@ -75,7 +75,7 @@ export function listInvoices(orgId: string, type: string) {
   return db
     .select({
       id: documents.id, number: documents.number, date: documents.date, total: documents.total,
-      status: documents.status, operation: documents.operation, contragent: contragents.name,
+      status: documents.status, operation: documents.operation, reviewed: documents.reviewed, contragent: contragents.name,
     })
     .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
     .where(and(eq(documents.orgId, orgId), eq(documents.type, type)))

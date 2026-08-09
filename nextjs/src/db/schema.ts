@@ -84,6 +84,7 @@ export const cashAccounts = pgTable('cash_accounts', {
 
 // ─── Документы (ядро) ────────────────────────────────────────────────────────
 
+// (reviewed — проверена ли накладная оператором; авто-проведённые = false → жёлтая метка)
 export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   orgId: uuid('org_id').notNull().references(() => organizations.id),
@@ -103,6 +104,7 @@ export const documents = pgTable('documents', {
   discountPct: money('discount_pct').notNull().default('0'),  // скидка руч., %
   discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
   paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
+  reviewed: boolean('reviewed').notNull().default(false), // проверена оператором? авто-проведённая = false (жёлтая метка «не проверено»)
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

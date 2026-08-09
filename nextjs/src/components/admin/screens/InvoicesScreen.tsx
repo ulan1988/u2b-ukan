@@ -57,15 +57,21 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Номер', 'Дата', kind === 'in' ? 'Поставщик' : 'Покупатель', 'Сумма', 'Статус'].map((h, i) => <th key={h} style={{ textAlign: i >= 3 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
               <tbody>
-                {docs.map(d => (
-                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer' }}>
+                {docs.map(d => {
+                  const notReviewed = d.status !== 'cancelled' && !d.reviewed
+                  return (
+                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', background: notReviewed ? '#fff8e1' : 'transparent' }} title={notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
                     <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{fmtDate(d.date)}</td>
                     <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(Number(d.total))} ₸</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', color: d.status === 'cancelled' ? '#b03020' : '#2e8a5e' }}>{d.status === 'cancelled' ? 'отменён' : 'проведён'}</td>
+                    <td style={{ padding: '8px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {d.status === 'cancelled' ? <span style={{ color: '#b03020' }}>отменён</span>
+                        : notReviewed ? <span style={{ color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>
+                        : <span style={{ color: '#2e8a5e' }}>✓ проверено</span>}
+                    </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

@@ -204,6 +204,11 @@ export async function setPositions(cardId: string, posId: string | undefined, st
     const delivered = posId ? positions.filter(p => p.id === posId) : positions
     for (const p of delivered) { try { await addDeliveryToShift(order.orgId, p, order) } catch {} }
   }
+  // Всё доставлено → авто-проведение накладной (приходная/расходная) с меткой «не проверено».
+  // Если товары без 1С-productId — проведение не пройдёт, карточка останется «К учёту» (ручной разбор).
+  if (allDelivered && order && !order.linkedDocId) {
+    try { const { postOrderInvoice } = await import('./invoice.service'); await postOrderInvoice(cardId, actor) } catch {}
+  }
   await repo.insertHistory({
     cardId, action: 'updatePos',
     detail: posId ? `Позиция → ${status}` : `Все позиции → ${status}`,

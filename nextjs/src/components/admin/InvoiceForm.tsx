@@ -25,7 +25,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   useEffect(() => { getDocument(id).then((d: any) => {
     if (!d) return
     setData(d)
-    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0 })
+    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
     setLines((d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) })))
   }) }, [id])
 
@@ -34,7 +34,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   const total = Math.max(0, subtotal - discountSum)
   const remain = total - (Number(f.paidSum) || 0)
 
-  async function save() {
+  async function save(markReviewed?: boolean) {
     setBusy(true)
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
@@ -42,9 +42,10 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
     else patch.discountSum = Number(f.discountSum) || 0
+    if (markReviewed) patch.reviewed = true
     const r: any = await updateDocument(id, patch)
     setBusy(false)
-    if (r.ok !== false) { setFlash('✓ Сохранено'); setTimeout(() => setFlash(''), 1500); onSaved?.() }
+    if (r.ok !== false) { if (markReviewed) setF((p: any) => ({ ...p, reviewed: true })); setFlash(markReviewed ? '✓ Проверено и сохранено' : '✓ Сохранено'); setTimeout(() => setFlash(''), 1500); onSaved?.() }
     else setFlash('⚠ ' + (r.error || 'Ошибка'))
   }
 
@@ -61,6 +62,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
               <span style={{ fontWeight: 800, fontSize: 17 }}>{isSale ? 'Расходная накладная' : 'Приходная накладная'}</span>
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{o.number}</span>
               <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>
+              {o.status !== 'cancelled' && !f.reviewed && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#fff3cd', color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>}
               <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
             </div>
 
@@ -131,7 +133,8 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
               {flash && <span style={{ marginRight: 'auto', fontSize: 13, color: flash.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{flash}</span>}
               <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
-              <button onClick={save} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? 'Сохранение…' : 'Сохранить'}</button>
+              <button onClick={() => save()} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? '…' : 'Сохранить'}</button>
+              {o.status !== 'cancelled' && !f.reviewed && <button onClick={() => save(true)} disabled={busy} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>✓ Проверено</button>}
             </div>
           </>
         )}

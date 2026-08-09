@@ -84,6 +84,7 @@ export async function updateDocument(id: string, patch: any) {
   if (patch.inNumber !== undefined) head.inNumber = patch.inNumber || null
   if (patch.inDate !== undefined) head.inDate = patch.inDate || null
   if (patch.operation !== undefined) head.operation = patch.operation
+  if (patch.reviewed !== undefined) head.reviewed = !!patch.reviewed
   if (patch.comment !== undefined) head.comment = patch.comment
   if (patch.paidSum !== undefined) head.paidSum = String(Number(patch.paidSum) || 0)
   // Скидка: приоритет у процента (считаем сумму), иначе берём сумму (считаем процент).
