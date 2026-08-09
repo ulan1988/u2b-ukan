@@ -394,8 +394,14 @@ export async function cardRoute(cardId: string) {
   } catch { /* связи не критичны */ }
 
   const sum = positions.reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+  // Суть: ОТ КОГО (поставщик) → КОМУ (покупатель).
+  const cags = await refsRepo.listContragents()
+  const cagName: Record<string, string> = {}; for (const c of cags as any[]) cagName[c.id] = c.name
+  const supId = positions.find((p: any) => p.supplierId)?.supplierId
+  const supplier = supId ? (cagName[supId] || '—') : (purchase ? '—' : 'Центр-Склад')
+  const buyer = purchase ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || o.fromName || '—') : (o.fromName || '—'))
   return {
-    document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', status: o.status },
+    document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', supplier, buyer, status: o.status },
     nodes, edges,
   }
 }
