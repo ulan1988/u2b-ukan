@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listUsers, createUser, editUser, deleteUser } from '@/lib/api/auth'
+import { listUsers, createUser, editUser, deleteUser, deleteCabinet } from '@/lib/api/auth'
 import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject, listContragents, addContragent, editContragent } from '@/lib/api/refs'
+import ContragentPicker from '@/components/ContragentPicker'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
 const ROLES = [
@@ -22,6 +23,8 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   const [msg, setMsg] = useState('')
   const [editing, setEditing] = useState<any>(null)
   const [copied, setCopied] = useState('')
+  const [allCags, setAllCags] = useState<any[]>([])
+  const [cab, setCab] = useState<null | { cagId: string; login: string; password: string; role: string }>(null)
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   const accessUrl = (u: any) => u.role === 'branch' ? `${base}/branch/${u.slug}` : (u.role === 'client' || u.role === 'supplier_client') ? `${base}/client/${u.slug}` : u.role === 'logist' ? `${base}/rsp/${u.slug}` : u.role === 'warehouse_manager' ? `${base}/warehouse/${u.slug}` : ''
 
@@ -33,11 +36,27 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   function copy(url: string, key: string) { navigator.clipboard.writeText(url); setCopied(key); setTimeout(() => setCopied(''), 2000) }
   useEffect(() => {
     load()
-    fetchRefs().then((r: any) => setOrgs(r.organizations || []))
-  }, [])
+    fetchRefs().then((r: any) => { setOrgs(r.organizations || []); setAllCags((r.contragents || []).filter((c: any) => !c.orgId || c.orgId === orgId)) })
+  }, [orgId]) // eslint-disable-line
 
   const orgName = (id: string) => orgs.find(o => o.id === id)?.name || '—'
+  const cagName = (id: string) => allCags.find(c => c.id === id)?.name || ''
   const reset = () => setF({ name: '', email: '', password: '', role: 'logist', orgId })
+
+  // Создать кабинет для контрагента (точная связка user.contragentId).
+  async function createCabinet() {
+    if (!cab) return
+    const c = allCags.find(x => x.id === cab.cagId)
+    if (!c) { setMsg('Выберите контрагента'); return }
+    if (!cab.login.trim() || cab.password.length < 4) { setMsg('Логин и пароль (мин. 4)'); return }
+    const r: any = await createUser({ orgId, name: c.name, email: cab.login.trim(), password: cab.password, role: cab.role, contragentId: cab.cagId })
+    if (r.ok !== false && (r.id || r.name)) { setCab(null); setMsg(`✅ Кабинет для «${c.name}» создан`); load() }
+    else setMsg('⚠ ' + (r.error || 'Ошибка'))
+  }
+  async function removeCabinet(u: any) {
+    if (!confirm(`Удалить кабинет «${u.name}»? Аккаунт будет стёрт, заказы сохранятся (связь через контрагента).`)) return
+    await deleteCabinet(u.id); load(); setMsg('✓ Кабинет удалён')
+  }
 
   async function create() {
     setMsg('')
@@ -57,10 +76,13 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
 
       {tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : tab === 'contragents' ? <ContragentsPanel orgId={orgId} /> : (
       <div>
-      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Пользователи</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>Пользователи</div>
+        <button onClick={() => setCab({ cagId: '', login: '', password: '', role: 'client' })} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7a3aaa', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>🔗 Создать кабинет (из контрагента)</button>
+      </div>
 
       <div style={{ background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 0 0 1.5px #e6e2dc', marginBottom: 20, maxWidth: 720 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 12 }}>НОВЫЙ ПОЛЬЗОВАТЕЛЬ</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 12 }}>НОВЫЙ ПОЛЬЗОВАТЕЛЬ (сотрудник / логист / филиал)</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
           <input style={inp} placeholder="Имя" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
           <input style={inp} placeholder="Логин" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
@@ -88,7 +110,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
               const url = accessUrl(u)
               return (
                 <tr key={u.id} style={{ borderTop: '1px solid #f1efec' }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>{u.name}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>{u.name}{u.contragentId && <div style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 600, marginTop: 2 }}>🔗 {cagName(u.contragentId) || 'контрагент'}</div>}</td>
                   <td style={{ padding: '10px 14px', color: COLORS.textMuted }}>{roleLabel(u.role)}</td>
                   <td style={{ padding: '10px 14px', color: COLORS.textMuted }}>{orgName(u.orgId)}</td>
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
@@ -107,6 +129,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
                       {u.active
                         ? <button onClick={() => removeUser(u)} style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid #f3d5c6', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#b03020' }}>Отключить</button>
                         : <button onClick={() => activateUser(u)} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>Включить</button>}
+                      {u.contragentId && <button onClick={() => removeCabinet(u)} style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid #f0c9c9', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#b03020', fontWeight: 600 }}>Удалить кабинет</button>}
                     </div>
                   </td>
                 </tr>
@@ -136,6 +159,28 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button onClick={() => setEditing(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
                 <button onClick={saveEdit} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>Сохранить →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cab && (
+        <div onClick={() => setCab(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} className="anim-pop" style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 460 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>🔗 Создать кабинет</div>
+            <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 18 }}>Выбери контрагента — кабинет будет жёстко к нему привязан (заказы пойдут на этого контрагента).</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div><label style={LBL}>КОНТРАГЕНТ</label><ContragentPicker contragents={allCags} value={cab.cagId} onPick={c => setCab({ ...cab, cagId: c.id, login: cab.login })} placeholder="— выберите контрагента —" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={LBL}>ЛОГИН</label><input style={inp} value={cab.login} onChange={e => setCab({ ...cab, login: e.target.value })} placeholder="логин для входа" /></div>
+                <div><label style={LBL}>ПАРОЛЬ</label><input style={inp} type="text" value={cab.password} onChange={e => setCab({ ...cab, password: e.target.value })} placeholder="мин. 4" /></div>
+              </div>
+              <div><label style={LBL}>ТИП КАБИНЕТА</label><select style={inp} value={cab.role} onChange={e => setCab({ ...cab, role: e.target.value })}><option value="client">Клиент</option><option value="supplier_client">Поставщик-клиент</option><option value="branch">Филиал</option></select></div>
+              {msg && <div style={{ fontSize: 13, color: COLORS.textMuted }}>{msg}</div>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setCab(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
+                <button onClick={createCabinet} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#7a3aaa', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>Создать кабинет →</button>
               </div>
             </div>
           </div>

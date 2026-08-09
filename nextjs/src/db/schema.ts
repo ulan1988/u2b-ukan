@@ -30,6 +30,7 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('manager'),        // admin|bookkeeper|logist|branch|client|supplier_client|warehouse_manager|manager
   slug: text('slug'),                                     // адрес личного портала (/rsp/{slug} и т.п.)
   priceType: text('price_type').notNull().default('retail'), // retail | opt (тип цены клиента)
+  contragentId: uuid('contragent_id'),                    // точная связка кабинета с контрагентом (без FK — избегаем цикла)
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('users_org_idx').on(t.orgId), emailUniq: uniqueIndex('users_email_uniq').on(t.email), slugUniq: uniqueIndex('users_slug_uniq').on(t.slug) }))

@@ -10,7 +10,7 @@ export async function login(email: string, password: string) {
   if (!u || !u.password || !u.active) return null
   const ok = await bcrypt.compare(password, u.password)
   if (!ok) return null
-  const session = { id: u.id, name: u.name, role: u.role, orgId: u.orgId, slug: u.slug || undefined }
+  const session = { id: u.id, name: u.name, role: u.role, orgId: u.orgId, slug: u.slug || undefined, contragentId: u.contragentId || undefined }
   return { token: await createToken(session), user: session }
 }
 
@@ -18,8 +18,22 @@ export async function createUser(i: z.infer<typeof createUserSchema>) {
   const hash = await bcrypt.hash(i.password, 10)
   // slug для порталов (логист/филиал/клиент/…). salt из времени — Node-рантайм, ок.
   const slug = slugify(i.name, Math.random().toString(36).slice(2))
-  const [u] = await userRepo.insertUser({ orgId: i.orgId, name: i.name, email: i.email.trim(), password: hash, role: i.role, slug, active: true })
+  const [u] = await userRepo.insertUser({ orgId: i.orgId, name: i.name, email: i.email.trim(), password: hash, role: i.role, slug, active: true, contragentId: (i as any).contragentId || null })
   return { id: u.id, name: u.name, email: u.email, role: u.role, slug: u.slug }
+}
+
+// Удалить кабинет: заказы отвязываем (fromId=null, связь с контрагентом через contactId
+// сохраняется), чистим личные уведомления/сообщения/подписки — и удаляем аккаунт.
+export async function deleteCabinet(userId: string) {
+  const { db } = await import('../lib/db')
+  const { orders, notifications, pushSubscriptions, cardMessages, users } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  await db.update(orders).set({ fromId: null }).where(eq(orders.fromId, userId))
+  await db.delete(notifications).where(eq(notifications.userId, userId))
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId))
+  await db.delete(cardMessages).where(eq(cardMessages.userId, userId))
+  await db.delete(users).where(eq(users.id, userId))
+  return { ok: true }
 }
 
 export const listUsers = () => userRepo.listUsers()
