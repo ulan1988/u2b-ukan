@@ -13,7 +13,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   if (o.linkedDocId) return { ok: false as const, error: 'Накладная уже проведена' }
 
   const positions = await orderRepo.positionsByCard(cardId)
-  const lines = positions.filter(p => p.productId).map(p => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт' }))
+  const lines = positions.filter(p => p.productId).map(p => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт', sourcePosId: p.id }))
   if (!lines.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
 
   const isPurchase = o.kind === 'purchase'

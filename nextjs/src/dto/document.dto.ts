@@ -5,6 +5,8 @@ export const purchaseLineSchema = z.object({
   productId: z.string().uuid(),
   qty: z.coerce.number().positive(),
   price: z.coerce.number().min(0),
+  unit: z.string().optional(),
+  sourcePosId: z.string().optional(),   // атомарный ID позиции карточки ({cardId}-P{n}) — тянем сквозь цепочку
 })
 
 export const createPurchaseSchema = z.object({

@@ -22,6 +22,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
+      sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
     }
   })
@@ -121,6 +122,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
+      sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
     }
   })
@@ -182,10 +184,10 @@ export async function createReturn(input: CreateSaleInput & { sourceOrderId?: st
   const number = srcCard ? `${prefix}-${seq2}-${srcCard}` : docNumber(kind, count)
 
   let total = 0
-  const lines = input.lines.map(l => {
+  const lines = input.lines.map((l: any) => {
     const amount = l.qty * l.price
     total += amount
-    return { id: randomUUID(), documentId: docId, productId: l.productId, role: 'main', qty: String(l.qty), price: String(l.price), amount: String(amount) }
+    return { id: randomUUID(), documentId: docId, productId: l.productId, role: 'main', sourcePosId: l.sourcePosId || null, qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount) }
   })
   const moves = input.lines.map(l => ({
     id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId,

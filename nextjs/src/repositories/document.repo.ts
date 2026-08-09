@@ -116,7 +116,7 @@ export const linesWithProduct = (docId: string) =>
   db.select({
     id: documentLines.id, productId: documentLines.productId, name: products.name,
     qty: documentLines.qty, unit: documentLines.unit, price: documentLines.price,
-    amount: documentLines.amount, comment: documentLines.comment,
+    amount: documentLines.amount, comment: documentLines.comment, sourcePosId: documentLines.sourcePosId,
   }).from(documentLines).innerJoin(products, eq(documentLines.productId, products.id))
     .where(eq(documentLines.documentId, docId)).orderBy(asc(documentLines.id))
 

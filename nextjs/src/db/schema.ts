@@ -119,6 +119,9 @@ export const documentLines = pgTable('document_lines', {
   id: uuid('id').defaultRandom().primaryKey(),
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
   productId: uuid('product_id').notNull().references(() => products.id),
+  // Атомарный ID исходной позиции карточки ({cardId}-P{n}). Тянется карточка→накладная→возврат,
+  // не меняется при дроблении — по нему фильтруется вся цепочка позиции в базе.
+  sourcePosId: text('source_pos_id'),
   role: text('role').notNull().default('main'),           // main | input | output (производство)
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),             // ед. изм. строки (снимок)

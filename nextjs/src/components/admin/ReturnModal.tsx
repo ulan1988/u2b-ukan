@@ -38,7 +38,7 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
       // номер возврата будет ВП/ВС-порядковый-номер_исходной_карточки (видно откуда возврат).
       sourceOrderId: doc.sourceOrderId || undefined, sourceDocId: doc.id,
       comment: `Возврат по ${doc.number}${reason ? ' · ' + reason : ''}`,
-      lines: rows.filter(x => x.on && x.retN > 0).map(x => ({ productId: x.productId, qty: x.retN, price: Number(x.price) || 0, unit: x.unit || 'шт' })),
+      lines: rows.filter(x => x.on && x.retN > 0).map(x => ({ productId: x.productId, qty: x.retN, price: Number(x.price) || 0, unit: x.unit || 'шт', sourcePosId: x.sourcePosId || undefined })),
     })
     setBusy(false)
     // createReturn отдаёт обёртку { ok, data, error } (http.send)
@@ -66,7 +66,7 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
                   {rows.map(l => (
                     <tr key={l.id} style={{ borderTop: '1px solid #f1efec', background: l.on ? '#fff8f6' : 'transparent', opacity: l.on ? 1 : 0.6 }}>
                       <td style={{ padding: '7px 8px', width: 28 }}><input type="checkbox" checked={l.on} onChange={() => toggle(l)} style={{ cursor: 'pointer', width: 16, height: 16 }} /></td>
-                      <td style={{ padding: '7px 8px', fontWeight: 500 }}>{l.name}</td>
+                      <td style={{ padding: '7px 8px', fontWeight: 500 }}>{l.name}{l.sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{l.sourcePosId}</div>}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right' }}>{Number(l.qty)} {l.unit}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right' }}>{fmtMoney(Number(l.price))}</td>
                       <td style={{ padding: '7px 8px', width: 90 }}>

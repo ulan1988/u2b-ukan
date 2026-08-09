@@ -93,8 +93,8 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
                   <tbody>
                     {lines.map((l, i) => (
                       <tr key={l.id} style={{ borderTop: '1px solid #efece8' }}>
-                        <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{i + 1}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 500 }}>{l.name}</td>
+                        <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : i + 1 : i + 1}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 500 }}>{l.name}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(l.qty)}</td>
                         <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} /></td>
                         <td style={{ padding: '6px 4px', width: 90 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} /></td>
