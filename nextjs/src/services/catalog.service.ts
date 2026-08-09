@@ -14,7 +14,10 @@ export async function addProduct(i: z.infer<typeof createProductSchema>) {
 }
 
 export async function addContragent(i: z.infer<typeof createContragentSchema>) {
-  const [c] = await repo.createContragent({ orgId: i.orgId, name: i.name, kind: i.kind, priceType: i.priceType, phone: i.phone || '' })
+  const [c] = await repo.createContragent({
+    orgId: i.orgId, name: i.name, kind: i.kind, priceType: i.priceType, phone: i.phone || '',
+    bin: (i as any).bin || null, openingBalance: String((i as any).openingBalance ?? 0),
+  })
   return c
 }
 
@@ -49,6 +52,8 @@ export async function editContragent(id: string, i: z.infer<typeof updateContrag
   for (const k of ['name', 'kind', 'priceType', 'phone', 'comment', 'archived'] as const) {
     if (i[k] !== undefined) patch[k] = i[k]
   }
+  if ((i as any).bin !== undefined) patch.bin = (i as any).bin || null
+  if ((i as any).openingBalance !== undefined) patch.openingBalance = String((i as any).openingBalance || 0)
   const [c] = await repo.updateContragent(id, patch)
   return c
 }

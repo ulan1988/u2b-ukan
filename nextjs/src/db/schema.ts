@@ -42,6 +42,8 @@ export const contragents = pgTable('contragents', {
   orgRefId: uuid('org_ref_id').references(() => organizations.id), // если контрагент — наш филиал
   priceType: text('price_type').notNull().default('retail'),       // retail | opt
   phone: text('phone'),
+  bin: text('bin'),                                                 // БИН/ИИН — ключ сверки при импорте из 1С
+  openingBalance: numeric('opening_balance', { precision: 14, scale: 2 }).notNull().default('0'), // нач. остаток из акта сверки: + нам должны, − мы должны
   comment: text('comment'),
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),

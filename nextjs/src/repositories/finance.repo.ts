@@ -59,6 +59,7 @@ export async function profitReport(orgId: string) {
 export async function contragentBalances(orgId: string) {
   return sqlClient`
     select c.id, c.name, c.kind,
+      coalesce(c.opening_balance,0)::float as opening,
       coalesce(s.total,0)::float  as sales,
       coalesce(p.total,0)::float  as purchases,
       coalesce(ri.total,0)::float as ret_in,
@@ -73,5 +74,5 @@ export async function contragentBalances(orgId: string) {
     left join (select contragent_id, sum(amount) total from payments where org_id=${orgId} and direction='in'  group by contragent_id) pi on pi.contragent_id=c.id
     left join (select contragent_id, sum(amount) total from payments where org_id=${orgId} and direction='out' group by contragent_id) po on po.contragent_id=c.id
     where c.org_id=${orgId} and c.archived=false
-    order by c.name` as unknown as Promise<Array<{ id: string; name: string; kind: string; sales: number; purchases: number; ret_in: number; ret_out: number; pay_in: number; pay_out: number }>>
+    order by c.name` as unknown as Promise<Array<{ id: string; name: string; kind: string; opening: number; sales: number; purchases: number; ret_in: number; ret_out: number; pay_in: number; pay_out: number }>>
 }

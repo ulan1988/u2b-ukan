@@ -151,21 +151,23 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
   const [list, setList] = useState<any[]>([])
   const [showArch, setShowArch] = useState(false)
   const [msg, setMsg] = useState('')
-  const [f, setF] = useState({ name: '', kind: 'client', priceType: 'retail', phone: '' })
+  const [f, setF] = useState({ name: '', kind: 'client', priceType: 'retail', phone: '', bin: '', openingBalance: '' })
 
   const load = () => listContragents(true).then((d: any[]) => setList((d || []).filter((c: any) => !c.orgId || c.orgId === orgId)))
   useEffect(() => { load() }, [orgId]) // eslint-disable-line
 
   async function create() {
     if (!f.name.trim()) { setMsg('Укажите название'); return }
-    const r: any = await addContragent({ orgId, ...f })
-    if (r.id || r.ok !== false) { setF({ name: '', kind: 'client', priceType: 'retail', phone: '' }); setMsg('✅ Добавлен'); load() }
+    const r: any = await addContragent({ orgId, ...f, openingBalance: Number(f.openingBalance) || 0 })
+    if (r.id || r.ok !== false) { setF({ name: '', kind: 'client', priceType: 'retail', phone: '', bin: '', openingBalance: '' }); setMsg('✅ Добавлен'); load() }
     else setMsg('⚠ ' + (r.error || 'Ошибка'))
   }
   async function setArchived(c: any, archived: boolean) { await editContragent(c.id, { archived }); load(); setMsg(archived ? '✓ В архиве' : '✓ Восстановлен') }
   async function rename(c: any, name: string) { if (name && name !== c.name) { await editContragent(c.id, { name }); load() } }
   async function setKind(c: any, kind: string) { await editContragent(c.id, { kind }); load() }
   async function setPT(c: any, priceType: string) { await editContragent(c.id, { priceType }); load() }
+  async function setBin(c: any, bin: string) { if (bin !== (c.bin || '')) { await editContragent(c.id, { bin }); load() } }
+  async function setOpening(c: any, v: string) { const n = Number(v) || 0; if (n !== Number(c.openingBalance || 0)) { await editContragent(c.id, { openingBalance: n }); load(); setMsg('✓ Нач. остаток сохранён') } }
 
   const visible = list.filter(c => showArch || !c.archived)
   return (
@@ -179,6 +181,8 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
         <div><label style={LBL}>ТИП</label><select style={inp} value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}>{Object.entries(KIND_LBL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
         <div><label style={LBL}>ЦЕНА</label><select style={inp} value={f.priceType} onChange={e => setF({ ...f, priceType: e.target.value })}><option value="retail">Розница</option><option value="opt">Опт</option></select></div>
         <div><label style={LBL}>ТЕЛЕФОН</label><input style={inp} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} placeholder="—" /></div>
+        <div><label style={LBL}>БИН/ИИН</label><input style={{ ...inp, width: 120 }} value={f.bin} onChange={e => setF({ ...f, bin: e.target.value })} placeholder="—" /></div>
+        <div><label style={LBL} title="+ нам должны, − мы должны">НАЧ. ОСТАТОК</label><input style={{ ...inp, width: 120, textAlign: 'right' }} type="number" value={f.openingBalance} onChange={e => setF({ ...f, openingBalance: e.target.value })} placeholder="0" /></div>
         <button onClick={create} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>+ Добавить</button>
       </div>
 
@@ -188,13 +192,15 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
       </div>
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Название', 'Тип', 'Цена', 'Телефон', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '9px 14px' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Название', 'Тип', 'Цена', 'БИН/ИИН', 'Нач. остаток', 'Телефон', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '9px 14px' }}>{h}</th>)}</tr></thead>
           <tbody>
             {visible.map(c => (
               <tr key={c.id} style={{ borderTop: '1px solid #f1efec', opacity: c.archived ? 0.5 : 1 }}>
                 <td style={{ padding: '7px 14px' }}><input defaultValue={c.name} onBlur={e => rename(c, e.target.value.trim())} style={{ ...inp, padding: '6px 8px', fontWeight: 600 }} /></td>
                 <td style={{ padding: '7px 14px' }}><select value={c.kind} onChange={e => setKind(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}>{Object.entries(KIND_LBL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
                 <td style={{ padding: '7px 14px' }}><select value={c.priceType || 'retail'} onChange={e => setPT(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}><option value="retail">Розница</option><option value="opt">Опт</option></select></td>
+                <td style={{ padding: '7px 14px' }}><input defaultValue={c.bin || ''} onBlur={e => setBin(c, e.target.value.trim())} style={{ ...inp, padding: '6px 8px', width: 110 }} placeholder="—" /></td>
+                <td style={{ padding: '7px 14px' }}><input defaultValue={Number(c.openingBalance || 0) || ''} onBlur={e => setOpening(c, e.target.value)} type="number" style={{ ...inp, padding: '6px 8px', width: 110, textAlign: 'right', color: Number(c.openingBalance || 0) > 0 ? '#2e8a5e' : Number(c.openingBalance || 0) < 0 ? '#b03020' : COLORS.text }} placeholder="0" /></td>
                 <td style={{ padding: '7px 14px', color: COLORS.textMuted }}>{c.phone || '—'}</td>
                 <td style={{ padding: '7px 14px', textAlign: 'right' }}>
                   {c.archived

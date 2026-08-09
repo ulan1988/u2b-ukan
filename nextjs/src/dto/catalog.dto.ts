@@ -18,6 +18,8 @@ export const createContragentSchema = z.object({
   kind: z.enum(['client', 'supplier', 'both']).default('client'),
   priceType: z.enum(['retail', 'opt']).default('retail'),
   phone: z.string().optional().default(''),
+  bin: z.string().optional(),
+  openingBalance: z.coerce.number().optional(),   // нач. остаток из акта сверки (+ нам должны, − мы должны)
 })
 
 // Правка/архив: все поля необязательны, плюс тумблер archived.
@@ -39,6 +41,8 @@ export const updateContragentSchema = z.object({
   kind: z.enum(['client', 'supplier', 'both']).optional(),
   priceType: z.enum(['retail', 'opt']).optional(),
   phone: z.string().optional(),
+  bin: z.string().optional(),
+  openingBalance: z.coerce.number().optional(),
   comment: z.string().optional(),
   archived: z.boolean().optional(),
 })
