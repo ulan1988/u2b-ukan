@@ -10,7 +10,7 @@ import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
+import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, listMessages, sendMessage, orderAction } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 import { getDraft, pastDrafts as apiPast, addRow as apiAddRow, updateRow as apiUpdRow, deleteRow as apiDelRow, closeShift } from '@/lib/api/reports'
@@ -84,6 +84,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
 
   async function saveSupplier(cardId: string, posId: string, supplierId: string) { await updatePosition(cardId, posId, { supplierId }); showMsg('✓ Поставщик изменён'); setSupEditPos(null); load() }
   async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
+  // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
+  async function handleAccept(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'logistAccept'); if (r.ok) { showMsg('✓ Продажа принята → в работу'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось принять')); setUpdating(null) }
   async function handleNew() {
     if (!newTo || !newName || !newQty) { showMsg('Заполните все поля'); return }
     setNewLoading(true)
@@ -158,7 +160,9 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
           <span style={{ fontSize: 12, background: pos.status === 'Доставлено' ? '#e8f5ee' : '#fff0ea', color: pos.status === 'Доставлено' ? '#2e8a5e' : '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{pos.status}</span>
         </div>
-        <StatusBtns cardId={order.id} posId={pos.id} posStatus={pos.status} compact={compact} />
+        {order.screen === 'reception' && !isPurchase(order)
+          ? <button onClick={() => handleAccept(order.id)} disabled={updating === order.id} style={{ marginTop: compact ? 8 : 12, width: '100%', padding: compact ? '9px' : '12px', borderRadius: compact ? 8 : 10, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: compact ? 12.5 : 14, cursor: 'pointer', fontFamily: 'inherit', opacity: updating === order.id ? 0.6 : 1 }}>✅ Принять продажу → в работу</button>
+          : <StatusBtns cardId={order.id} posId={pos.id} posStatus={pos.status} compact={compact} />}
         <button onClick={openChat} style={{ marginTop: compact ? 7 : 10, width: '100%', padding: compact ? '6px' : '8px', border: 'none', borderRadius: 8, background: chatOpenPos === pos.id ? PRIMARY : '#f1efec', color: chatOpenPos === pos.id ? '#fff' : '#5f5952', cursor: 'pointer', fontSize: compact ? 12.5 : 14, fontFamily: 'inherit', fontWeight: 600 }}>💬 Чат</button>
         {chatOpenPos === pos.id && (
           <div style={{ marginTop: 10, paddingTop: 4, borderTop: '1px solid #f1efec' }}>

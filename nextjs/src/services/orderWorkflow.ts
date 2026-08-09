@@ -36,6 +36,19 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: () => ({ screen: 'outgoing', block: '', status: 'В работе' }),
     history: () => 'Отправлен в работу (Исходящие)',
   },
+  // Логист сам принимает готовую продажу со стола Приёмки → в Исходящие (автозакуп
+  // уже проставил поставщика/цену/логиста). Убирается из Приёмки, идёт в его работу.
+  logistAccept: {
+    roles: [...ADMIN, 'logist'],
+    guard: c => {
+      if (c.order.kind !== 'sale') return 'Только продажа'
+      if (c.order.screen !== 'reception') return 'Карточка не на приёмке'
+      if (!(c.positions.length && c.positions.every(p => p.respUserId))) return 'Не все позиции готовы (нет логиста)'
+      return null
+    },
+    patch: () => ({ screen: 'outgoing', block: '', status: 'В работе' }),
+    history: c => `Логист ${c.actor?.name || ''} принял продажу → Исходящие`,
+  },
   sendAcc: {
     roles: ADMIN,
     guard: c => (c.order.toacc ? null : 'Карточка ещё не готова к учёту'),
@@ -170,8 +183,8 @@ export async function dispatchAction(id: string, action: string, actor: Session 
 
   await repo.updateOrder(id, def.patch(ctx))
 
-  // Эффект process: продажа уходит в работу → резервируем товар на Центр-Складе.
-  if (action === 'process' && order.kind === 'sale') {
+  // Эффект process/logistAccept: продажа уходит в работу → резервируем товар на Центр-Складе.
+  if ((action === 'process' || action === 'logistAccept') && order.kind === 'sale') {
     try { const { reserveForCard } = await import('./reserve.service'); await reserveForCard(order.orgId, id, positions) } catch {}
   }
   // Снятие резерва: карточка ушла в учёт (реальный расход) или отменена.
