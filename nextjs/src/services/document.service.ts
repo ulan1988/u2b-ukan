@@ -12,7 +12,9 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   const date = input.date || today()
   // Номер приходной: порядковый за день + дата (01-060826). Дата = день приёмки логистом.
   const seq = (await docRepo.countByTypeAndDate(input.orgId, 'purchase', date)) + 1
-  const autoNumber = invoiceNumber(seq, date)
+  // Номер накладной = порядковый + номер карточки-основания (чтобы не терять связь с карточкой).
+  const srcCard = (input as any).sourceOrderId
+  const autoNumber = srcCard ? `${String(seq).padStart(2, '0')}-${srcCard}` : invoiceNumber(seq, date)
 
   let total = 0
   const lines = input.lines.map((l: any) => {
@@ -108,7 +110,9 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   // Номер расходной: порядковый за день + дата (01-080826), как у приходной.
   // Отдельный счётчик от приходных. Дата = день отгрузки/доставки. Карточка (ПР-…) — основание.
   const seq = (await docRepo.countByTypeAndDate(input.orgId, 'sale', date)) + 1
-  const autoNumber = invoiceNumber(seq, date)
+  // Номер накладной = порядковый + номер карточки-основания (чтобы не терять связь с карточкой).
+  const srcCard = (input as any).sourceOrderId
+  const autoNumber = srcCard ? `${String(seq).padStart(2, '0')}-${srcCard}` : invoiceNumber(seq, date)
 
   let total = 0
   const lines = input.lines.map((l: any) => {
