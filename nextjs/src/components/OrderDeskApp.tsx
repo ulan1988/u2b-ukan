@@ -3,25 +3,22 @@
 // Оператор выбирает ОТ КОГО (контрагент из справочника) → добавляет товары → отправляет.
 // Карточка падает во Входящие (source cabinet), дальше идёт обычным маршрутом, история пишется.
 import { useEffect, useState, useCallback } from 'react'
-import { COLORS } from '@/lib/colors'
-import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
-import { fetchRefs } from '@/lib/api/refs'
-import { settings as fetchSettings } from '@/lib/api/refs'
+import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import { RalDot, extractRal } from '@/lib/ral'
+import { fetchRefs, settings as fetchSettings } from '@/lib/api/refs'
 import { createOrder } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
 
 const DARK = '#211f1c', PRIMARY = '#d4613a'
 const inp: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: 9, fontSize: 15, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 5, display: 'block', letterSpacing: '.04em' }
-const emptyRow = () => ({ productId: '', name1c: '', unit: 'шт', qty: '1' })
 
 export default function OrderDeskApp({ user }: { user: { id: string; name: string; orgId: string } }) {
   const [contragents, setContragents] = useState<any[]>([])
   const [defaultCagId, setDefaultCagId] = useState('')
-  const [products, setProducts] = useState<any[]>([])
   const [cagId, setCagId] = useState('')
-  const [rows, setRows] = useState<any[]>([emptyRow()])
+  const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [phone, setPhone] = useState(''); const [deadline, setDeadline] = useState(''); const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false); const [toast, setToast] = useState(''); const [sentToday, setSentToday] = useState<string[]>([])
 
@@ -29,33 +26,28 @@ export default function OrderDeskApp({ user }: { user: { id: string; name: strin
     fetchRefs().then((r: any) => {
       const inOrg = (x: any) => !x.orgId || x.orgId === user.orgId
       setContragents((r.contragents || []).filter(inOrg))
-      setProducts(r.products || [])
     })
     fetchSettings(user.orgId).then((s: any) => setDefaultCagId(s.defaultContragentId || ''))
   }, [user.orgId])
 
   const show = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(''), 2500) }, [])
   const cag = contragents.find(c => c.id === cagId)
-  const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
-  const addRow = () => setRows(rs => [...rs, emptyRow()])
-  const delRow = (i: number) => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs)
-  const validRows = rows.filter(r => (r.name1c || '').trim() && Number(r.qty) > 0)
 
   async function submit() {
     if (!cagId) { show('Выберите — от кого заказ'); return }
-    if (!validRows.length) { show('Добавьте хотя бы один товар'); return }
+    if (!catalogPos.length) { show('Выберите товары из каталога'); return }
     setBusy(true)
     const r: any = await createOrder({
       orgId: user.orgId, kind: 'sale', source: 'cabinet',
       contactId: cagId, fromName: cag?.name || '',
       phone: phone || undefined, deadline: deadline || undefined, comment,
-      positions: validRows.map(x => ({ productId: x.productId || undefined, name1c: x.name1c, oral: x.name1c, qty: Number(x.qty), unit: x.unit || 'шт', price: 0 })),
+      positions: catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, price: 0 })),
     })
     setBusy(false)
     if (r.id || r.ok !== false) {
       show(`✓ Заказ от «${cag?.name}» отправлен`)
-      setSentToday(s => [`${cag?.name} · ${validRows.length} поз.`, ...s].slice(0, 20))
-      setCagId(''); setRows([emptyRow()]); setPhone(''); setDeadline(''); setComment('')
+      setSentToday(s => [`${cag?.name} · ${catalogPos.length} поз.`, ...s].slice(0, 20))
+      setCagId(''); setCatalogPos([]); setPhone(''); setDeadline(''); setComment('')
     } else show('⚠ ' + (r.error || 'Ошибка отправки'))
   }
 
@@ -82,20 +74,22 @@ export default function OrderDeskApp({ user }: { user: { id: string; name: strin
           {cag && <div style={{ marginTop: 8, fontSize: 13, color: '#2e8a5e', fontWeight: 600 }}>✓ Заказ для: {cag.name}</div>}
         </div>
 
-        {/* ТОВАРЫ */}
+        {/* ТОВАРЫ — тот же каталог, что в кабинетах (NomPicker) */}
         <div style={{ background: '#fff', borderRadius: 14, padding: 16, marginBottom: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Товары</div>
-          {rows.map((r, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <NomInline products={products} value={r.productId} onPick={p => setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт' })} />
-                {!r.productId && <input style={{ ...inp, marginTop: 6, padding: '8px 10px', fontSize: 13 }} placeholder="или впишите вручную…" value={r.name1c} onChange={e => setRow(i, { name1c: e.target.value })} />}
-              </div>
-              <input type="number" inputMode="decimal" style={{ ...inp, width: 70, padding: '10px 8px', textAlign: 'center' }} value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} />
-              <button onClick={() => delRow(i)} style={{ padding: '10px 12px', border: '1.5px solid #f0d3c8', borderRadius: 8, background: '#fff', color: '#b03020', cursor: 'pointer', fontSize: 15 }}>×</button>
+          <label style={lbl}>ТОВАРЫ ИЗ КАТАЛОГА{catalogPos.length ? ` · ${catalogPos.length}` : ''}</label>
+          {catalogPos.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {catalogPos.map((p, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8f6f3', borderRadius: 8, padding: '8px 10px' }}>
+                  <RalDot code={extractRal(p.name1c || p.oral)} />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span>
+                  <span style={{ fontSize: 13, color: '#5f5952', flexShrink: 0, fontWeight: 600 }}>{p.qty} {p.unit}</span>
+                  <button type="button" onClick={() => setCatalogPos(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
+                </div>
+              ))}
             </div>
-          ))}
-          <button onClick={addRow} style={{ width: '100%', padding: '10px', border: '2px dashed #d8d3cc', borderRadius: 9, background: 'none', cursor: 'pointer', fontSize: 14, color: '#5f5952', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить товар</button>
+          )}
+          <button type="button" onClick={() => setShowCatalog(true)} style={{ width: '100%', padding: '13px', border: `1.5px ${catalogPos.length ? 'solid' : 'dashed'} ${PRIMARY}`, background: catalogPos.length ? '#fff' : '#fff8f5', color: PRIMARY, borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>📖 {catalogPos.length ? 'Добавить ещё товар' : 'Выбрать товары из каталога'}</button>
         </div>
 
         {/* ДОП. ПОЛЯ */}
@@ -116,6 +110,8 @@ export default function OrderDeskApp({ user }: { user: { id: string; name: strin
           </div>
         )}
       </div>
+
+      {showCatalog && <NomPicker onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
     </div>
   )
 }
