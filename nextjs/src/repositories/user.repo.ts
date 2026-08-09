@@ -1,9 +1,10 @@
 import { db } from '../lib/db'
 import { users } from '../db/schema'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 
+// Логин без учёта регистра (Nipa1 = nipa1) — удобнее для кабинетов.
 export const findByEmail = (email: string) =>
-  db.select().from(users).where(eq(users.email, email)).limit(1)
+  db.select().from(users).where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`).limit(1)
 
 export const findBySlug = (slug: string) =>
   db.select().from(users).where(eq(users.slug, slug)).limit(1)
