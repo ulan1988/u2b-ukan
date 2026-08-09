@@ -32,6 +32,25 @@ async function addDeliveryToShift(orgId: string, pos: any, order: any) {
   else await reportRepo.addRow({ ...rowData, reportId: draft.id })
 }
 
+// Оповещение об изменении карточки (как postCardChange в Улкане): системная запись
+// в чат карточки (видно в главном чате) + сигнал ответственным логистам (вкладка
+// «⚡ Изменения») и админам + realtime-пуш. Себе не шлём.
+async function notifyCardChange(cardId: string, text: string, actor?: Session | null) {
+  try {
+    const msgRepo = await import('../repositories/message.repo')
+    await msgRepo.insert({ cardId, userId: actor?.id || null, userName: actor?.name || 'Система', role: actor?.role || 'system', text })
+  } catch { /* чат не критичен */ }
+  try {
+    const positions = await repo.positionsByCard(cardId)
+    const [o] = await repo.getOrder(cardId)
+    const logistIds = Array.from(new Set(positions.map(p => p.respUserId).filter(Boolean))) as string[]
+    const targets = logistIds.filter(id => id !== actor?.id)
+    if (targets.length) { const { notify } = await import('./notification.service'); await notify(targets, text, cardId) }
+    if (o) { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(o.orgId, text, cardId, actor?.id) }
+    const { pushSignal } = await import('../lib/pusherServer'); await pushSignal()
+  } catch { /* уведомления не критичны */ }
+}
+
 export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: Session | null) {
   const count = await repo.countByKind(i.orgId, i.kind)
   const id = docNumber(i.kind, count)                     // ЗП-/ПР-0001-DDMMYY
@@ -198,6 +217,7 @@ export async function requestChange(cardId: string, text: string, phone?: string
 
 // Частичное обновление позиции (логист меняет поставщика/кол-во/имя). Непереданное не трогаем.
 export async function updatePositionDetail(cardId: string, posId: string, patch: any, actor?: Session | null) {
+  const old = (await repo.positionsByCard(cardId)).find((p: any) => p.id === posId)
   const set: Record<string, any> = {}
   if (patch.productId !== undefined) set.productId = patch.productId || null
   if (patch.name1c !== undefined) set.name1c = patch.name1c
@@ -212,6 +232,14 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.deadline !== undefined) set.deadline = patch.deadline ? new Date(patch.deadline) : null
   if (Object.keys(set).length) await repo.updatePosition(posId, set)
   await repo.insertHistory({ cardId, action: 'updatePosDetail', detail: 'Позиция изменена', userName: actor?.name || 'Система' })
+  // Оповещение об изменении: кол-во / цена / наименование (в чат + логисту).
+  const nm = old?.name1c || old?.oral || 'позиция'
+  const ch: string[] = []
+  if (patch.qty !== undefined && Number(patch.qty) !== Number(old?.qty || 0)) ch.push(`кол-во ${Number(old?.qty) || 0}→${Number(patch.qty) || 0} ${old?.unit || 'шт'}`)
+  if (patch.price !== undefined && Number(patch.price) !== Number(old?.price || 0)) ch.push(`цена ${Number(old?.price) || 0}→${Number(patch.price) || 0}`)
+  if (patch.name1c !== undefined && patch.name1c && patch.name1c !== old?.name1c) ch.push(`наим. → ${patch.name1c}`)
+  if (patch.payment !== undefined && patch.payment !== old?.payment) ch.push(`оплата → ${patch.payment || '—'}`)
+  if (ch.length) await notifyCardChange(cardId, `✏️ ${nm}: ${ch.join(', ')}`, actor)
   return { ok: true }
 }
 
@@ -224,6 +252,7 @@ export async function deletePosition(cardId: string, posId: string, actor?: Sess
 
 // Обновить карточку (получатель/срок/коммент/проект) — стол приёмки.
 export async function updateCard(cardId: string, patch: any, actor?: Session | null) {
+  const [old] = await repo.getOrder(cardId)
   const set: Record<string, any> = {}
   if (patch.contactId !== undefined) set.contactId = patch.contactId || null
   if (patch.deadline !== undefined) set.deadline = patch.deadline ? new Date(patch.deadline) : null
@@ -233,6 +262,9 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
   if (patch.specProjectId !== undefined) set.specProjectId = patch.specProjectId || null
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)
   await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })
+  // Оповещение об изменении карточки: комментарий / срок (в чат + логисту).
+  if (patch.comment !== undefined && (patch.comment || '') !== (old?.comment || '')) await notifyCardChange(cardId, `💬 Комментарий: ${String(patch.comment || '').slice(0, 100) || '—'}`, actor)
+  else if (patch.deadline !== undefined) await notifyCardChange(cardId, `📅 Срок изменён`, actor)
   return { ok: true }
 }
 
@@ -245,8 +277,8 @@ export async function addPosition(cardId: string, i: any, actor?: Session | null
     price: String(i.price || 0), supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null, status: 'В работе',
   })
   await repo.insertHistory({ cardId, action: 'addPos', detail: `Добавлена позиция: ${i.name1c || ''}`, userName: actor?.name || 'Система' })
-  // Уведомить админов об изменении состава.
-  try { const { notifyAdmins } = await import('./notifyHelpers'); const [o] = await repo.getOrder(cardId); if (o) await notifyAdmins(o.orgId, `⚡ ${actor?.name || 'Логист'} добавил позицию в ${cardId}`, cardId, actor?.id) } catch {}
+  // Оповещение об изменении состава: в чат карточки + сигнал логистам/админам.
+  await notifyCardChange(cardId, `➕ Добавлена позиция: ${i.name1c || i.oral || 'позиция'} — ${Number(i.qty) || 0} ${i.unit || 'шт'}`, actor)
   return { ok: true, position: p }
 }
 
