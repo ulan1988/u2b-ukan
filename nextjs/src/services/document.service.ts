@@ -185,8 +185,22 @@ export async function createReturn(input: CreateSaleInput, kind: 'return_in' | '
     date, status: 'posted', total: String(total), comment: input.comment || '',
   }
   await docRepo.insertDocumentPosting(doc, lines, moves)
+  // Уведомить кабинет контрагента (поставщик/клиент), если он есть, + админов.
+  try {
+    const dir = kind === 'return_out' ? 'поставщику' : 'от клиента'
+    const text = `↩ Возврат ${doc.number} (${dir}) на ${fmtSum(total)} ₸`
+    const { db } = await import('../lib/db')
+    const { users } = await import('../db/schema')
+    const { eq } = await import('drizzle-orm')
+    const cab = input.contragentId ? await db.select({ id: users.id }).from(users).where(eq(users.contragentId, input.contragentId)) : []
+    const { notify } = await import('./notification.service')
+    if (cab.length) await notify(cab.map((u: any) => u.id), text)
+    const { notifyAdmins } = await import('./notifyHelpers')
+    await notifyAdmins(input.orgId, text)
+  } catch { /* уведомления не критичны */ }
   return { id: docId, number: doc.number, total }
 }
+const fmtSum = (n: number) => new Intl.NumberFormat('ru-RU').format(Math.round(n))
 
 export const listReturns = (orgId: string) => docRepo.listInvoices(orgId, ['return_in', 'return_out'])
 

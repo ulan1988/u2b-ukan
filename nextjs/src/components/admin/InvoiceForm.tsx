@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument } from '@/lib/api/docs'
+import ReturnModal from '@/components/admin/ReturnModal'
 
 // Форма накладной (1С УНФ), зеркальная: приходная (закуп) и расходная (продажа).
 // Тип определяется по doc.type. Правим «бумажные» поля: вх.номер/дата (только приходная),
@@ -21,6 +22,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   const [discMode, setDiscMode] = useState<'pct' | 'sum'>('pct')
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState('')
+  const [returning, setReturning] = useState(false)
 
   useEffect(() => { getDocument(id).then((d: any) => {
     if (!d) return
@@ -132,6 +134,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
 
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
               {flash && <span style={{ marginRight: 'auto', fontSize: 13, color: flash.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{flash}</span>}
+              {o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
               <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
               <button onClick={() => save()} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? '…' : 'Сохранить'}</button>
               {o.status !== 'cancelled' && !f.reviewed && <button onClick={() => save(true)} disabled={busy} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>✓ Проверено</button>}
@@ -139,6 +142,7 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
           </>
         )}
       </div>
+      {returning && <ReturnModal docId={id} onClose={() => setReturning(false)} onDone={() => { setReturning(false); onSaved?.() }} />}
     </div>
   )
 }
