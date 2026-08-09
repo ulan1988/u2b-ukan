@@ -55,6 +55,30 @@ export async function profitReport(orgId: string) {
     order by d.date desc, d.created_at desc` as unknown as Promise<Array<{ id: string; number: string; date: string; client: string | null; revenue: number; cost: number }>>
 }
 
+// Нач. остаток контрагента (для выписки).
+export async function contragentOpening(orgId: string, contragentId: string) {
+  const r = await sqlClient`select coalesce(opening_balance,0)::float op from contragents where id=${contragentId} and org_id=${orgId}` as unknown as Array<{ op: number }>
+  return r[0]?.op ?? 0
+}
+
+// Все документы (накладные/возвраты) одного контрагента — для выписки в кабинете.
+export async function contragentDocs(orgId: string, contragentId: string) {
+  return sqlClient`
+    select id, number, type, date::text as date, total::float as total, status
+    from documents
+    where org_id=${orgId} and contragent_id=${contragentId}
+      and type in ('sale','purchase','return_in','return_out') and status<>'cancelled'
+    order by date desc, created_at desc` as unknown as Promise<Array<{ id: string; number: string; type: string; date: string; total: number; status: string }>>
+}
+
+// Оплаты одного контрагента.
+export async function contragentPayments(orgId: string, contragentId: string) {
+  return sqlClient`
+    select id, direction, amount::float as amount, date::text as date, comment
+    from payments where org_id=${orgId} and contragent_id=${contragentId}
+    order by date desc, created_at desc` as unknown as Promise<Array<{ id: string; direction: string; amount: number; date: string; comment: string | null }>>
+}
+
 // Баланс по каждому контрагенту: продажи/закупы и оплаты in/out.
 export async function contragentBalances(orgId: string) {
   return sqlClient`

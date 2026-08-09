@@ -289,7 +289,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
           </div>
         )}
 
-        {tab === 'finance' && <FinanceView />}
+        {tab === 'finance' && <FinanceView uid={viewAs ? user.id : undefined} />}
 
         {tab === 'notifications' && (
           <div className="anim-fade">
