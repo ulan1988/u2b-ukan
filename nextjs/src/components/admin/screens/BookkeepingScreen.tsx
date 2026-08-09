@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate, statusStyle } from '@/lib/adminFmt'
+import { RalDot, extractRal } from '@/lib/ral'
 import { finance } from '@/lib/api/finance'
 import { fetchDailyReports, updateDailyReport, postAllToBook } from '@/lib/api/reports'
 
@@ -85,21 +86,40 @@ export default function BookkeepingScreen({ orders, orgId, onAction, onReload, o
   )
 }
 
+// Отчёт логиста в стиле закуп-отчёта: ЗАКУП (от кого · товар · приход) → ЦЕНТР-СКЛАД → ПРОДАЖА (кому · расход · коммент).
+const RPURPLE = '#7a3aaa'
+const rth: React.CSSProperties = { padding: '7px 10px', fontSize: 12, fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap', color: '#5f5952' }
+const rtd: React.CSSProperties = { padding: '8px 10px', fontSize: 13, verticalAlign: 'top', borderTop: '1px solid #f1efec' }
 function ReportRows({ rows }: { rows: any[] }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 600 }}>
-        <thead><tr style={{ background: '#f8f6f3' }}>
-          {['ОТ КОГО', 'НАИМ.', 'ПРИХОД', 'КОММ.', 'КОМУ', 'РАСХОД', 'КОММ.', '№ НАКЛ.'].map(h => (
-            <th key={h} style={{ padding: '6px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
-          ))}
-        </tr></thead>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+        <thead>
+          <tr>
+            <th colSpan={3} style={{ ...rth, background: '#f3eeff', color: RPURPLE, textAlign: 'center', borderRight: '2px solid #e6e2dc' }}>ЗАКУП / ПРИХОД</th>
+            <th style={{ ...rth, background: '#eef2ff', color: '#4a5aaa', textAlign: 'center', borderRight: '2px solid #e6e2dc' }}>СКЛАД</th>
+            <th colSpan={3} style={{ ...rth, background: '#e8f5ee', color: '#2e8a5e', textAlign: 'center' }}>ПРОДАЖА / РАСХОД</th>
+          </tr>
+          <tr style={{ background: '#faf9f7' }}>
+            <th style={rth}>От кого</th>
+            <th style={rth}>Наименование</th>
+            <th style={{ ...rth, textAlign: 'right' }}>Приход</th>
+            <th style={{ ...rth, textAlign: 'center', borderLeft: '2px solid #e6e2dc', borderRight: '2px solid #e6e2dc' }}>Транзит</th>
+            <th style={rth}>Кому</th>
+            <th style={{ ...rth, textAlign: 'right' }}>Расход</th>
+            <th style={rth}>Коммент / №</th>
+          </tr>
+        </thead>
         <tbody>
           {rows.map((row: any) => (
-            <tr key={row.id} style={{ borderTop: '1px solid #f1efec' }}>
-              {[row.fromWho, row.name, Number(row.qtyIn) || '', row.commentIn, row.toWho, Number(row.qtyOut) || '', row.commentOut, row.invoiceNum].map((v: any, j: number) => (
-                <td key={j} style={{ padding: '6px 10px', color: v ? '#26231f' : '#837c72' }}>{v || '—'}</td>
-              ))}
+            <tr key={row.id}>
+              <td style={rtd}>{row.fromWho || '—'}</td>
+              <td style={{ ...rtd, fontWeight: 600 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><RalDot code={extractRal(row.name || '')} size={12} />{row.name || '—'}</span></td>
+              <td style={{ ...rtd, textAlign: 'right', fontWeight: 700, color: RPURPLE, whiteSpace: 'nowrap' }}>{Number(row.qtyIn) || '—'}</td>
+              <td style={{ ...rtd, textAlign: 'center', borderLeft: '2px solid #e6e2dc', borderRight: '2px solid #e6e2dc', fontSize: 12, color: '#4a5aaa', fontWeight: 600 }}>Центр-Склад</td>
+              <td style={rtd}>{row.toWho || '—'}</td>
+              <td style={{ ...rtd, textAlign: 'right', fontWeight: 700, color: '#2e8a5e', whiteSpace: 'nowrap' }}>{Number(row.qtyOut) || '—'}</td>
+              <td style={{ ...rtd, color: '#5f5952' }}>{[row.commentOut || row.commentIn, row.invoiceNum].filter(Boolean).join(' · ') || '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -200,25 +220,12 @@ function ShiftsTab({ reports, reload, toast }: { reports: any[]; reload: () => v
                   </div>
                   <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#e8f5ee', color: '#2e8a5e', fontWeight: 600 }}>✓ Закрыта</span>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 600 }}>
-                    <thead><tr style={{ background: '#f8f6f3' }}>
-                      {['ЛОГИСТ', 'ОТ КОГО', 'НАИМ.', 'ПРИХОД', 'КОМУ', 'РАСХОД'].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left' }}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {reps.map(r => r.rows.map((row: any, i: number) => (
-                        <tr key={row.id} style={{ borderTop: '1px solid #f1efec' }}>
-                          <td style={{ padding: '6px 10px', fontWeight: 600, color: COLORS.primary }}>{i === 0 ? r.logist?.name : ''}</td>
-                          <td style={{ padding: '6px 10px' }}>{row.fromWho || '—'}</td>
-                          <td style={{ padding: '6px 10px', fontWeight: 500 }}>{row.name || '—'}</td>
-                          <td style={{ padding: '6px 10px' }}>{Number(row.qtyIn) || '—'}</td>
-                          <td style={{ padding: '6px 10px' }}>{row.toWho || '—'}</td>
-                          <td style={{ padding: '6px 10px' }}>{Number(row.qtyOut) || '—'}</td>
-                        </tr>
-                      )))}
-                    </tbody>
-                  </table>
-                </div>
+                {reps.map((r: any) => (
+                  <div key={r.id} style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.primary, marginBottom: 4 }}>🚚 {r.logist?.name}</div>
+                    {r.rows.length ? <ReportRows rows={r.rows} /> : <div style={{ fontSize: 13, color: '#837c72' }}>Нет строк</div>}
+                  </div>
+                ))}
               </div>
             )
           })}
