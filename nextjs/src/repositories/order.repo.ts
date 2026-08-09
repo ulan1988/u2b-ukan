@@ -1,7 +1,25 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
-import { orders, orderPositions, orderHistory, products } from '../db/schema'
+import { orders, orderPositions, orderHistory, products, contragents } from '../db/schema'
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
+
+// id карточек, где есть позиция с поставщиком-филиалом (совпадение имени контрагента).
+export const orderIdsBySupplierName = async (name: string) => {
+  const nm = (name || '').trim().toLowerCase()
+  if (!nm) return [] as string[]
+  const rows = await db.select({ id: orders.id }).from(orders)
+    .innerJoin(orderPositions, eq(orderPositions.cardId, orders.id))
+    .innerJoin(contragents, eq(orderPositions.supplierId, contragents.id))
+    .where(and(eq(orders.isCancelled, false), sql`lower(trim(${contragents.name})) = ${nm}`))
+  return Array.from(new Set(rows.map(r => r.id)))
+}
+export const ordersByIds = (ids: string[]) =>
+  ids.length ? db.select().from(orders).where(inArray(orders.id, ids)).orderBy(desc(orders.createdAt)) : Promise.resolve([] as any[])
+
+// Смена плеча позиций карточки (branchForward: 1→2 — теперь видит логист; recall: 2→1).
+export const setLegForCard = (cardId: string, fromLeg: number, toLeg: number) =>
+  db.update(orderPositions).set({ leg: toLeg, updatedAt: sql`now()` })
+    .where(and(eq(orderPositions.cardId, cardId), eq(orderPositions.leg, fromLeg)))
 
 // Метаданные товаров (группа/подгруппа) для автоподстановки по группе.
 export const productMeta = (ids: string[]) =>

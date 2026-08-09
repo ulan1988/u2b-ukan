@@ -200,6 +200,8 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (action === 'returnOut' || action === 'returnToReception') {
     await repo.resetPositionsForReturn(id)
   }
+  // Филиал передал логисту: позиции первого плеча (leg=1) → leg=2, теперь их видит логист.
+  if (action === 'branchForward') await repo.setLegForCard(id, 1, 2)
   // Закуп оформлен → открыть связанные продажи: перенести поставщика/цену/логиста,
   // продажи становятся готовыми на столе Приёмки (openLinkedSales, как в Улкане).
   if (action === 'finalizePurchase') {

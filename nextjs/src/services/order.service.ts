@@ -6,6 +6,7 @@ import * as refsRepo from '../repositories/refs.repo'
 import * as reportRepo from '../repositories/report.repo'
 import type { createOrderSchema } from '../dto/order.dto'
 import type { Session } from '../lib/auth'
+import { legForSupplier, legForSuppliers } from '../lib/legDetect'
 
 // Авто-строка смены логиста при доставке позиции (как updatePos в Улкане):
 // upsert по posId в СЕГОДНЯШНИЙ черновик смены логиста-ответственного.
@@ -81,10 +82,13 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
   }
+  // Плечо позиции по поставщику: поставщик-филиал → leg 1 (через филиал), иначе → 2.
+  const legMap = await legForSuppliers(i.positions.map(p => p.supplierId))
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
+    leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : 2,
     deadline: p.deadline ? new Date(p.deadline) : null,
   }))
   const history = {
@@ -147,6 +151,19 @@ async function withPositions(rows: any[]) {
 // Заявки (все экраны или один) с позициями — для доски/админки.
 export async function listOrders(orgId: string, screen?: string) {
   return withPositions(screen ? await repo.listByScreen(orgId, screen) : await repo.listByOrg(orgId))
+}
+
+// Карточки для кабинета филиала (правило двух плеч): те, где филиал — поставщик
+// (leg=1, «проходят через него»). Филиал в своей отдельной орг видит ещё и карточки
+// своей организации. Так поставщик-филиал получает карточку к себе.
+export async function listForBranch(session: Session) {
+  const ids = new Set<string>(await repo.orderIdsBySupplierName(session.name))
+  const { db } = await import('../lib/db')
+  const { organizations } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [org] = await db.select({ kind: organizations.kind }).from(organizations).where(eq(organizations.id, session.orgId)).limit(1)
+  if (org && org.kind !== 'hq') for (const o of await repo.listByOrg(session.orgId)) ids.add(o.id)
+  return withPositions(await repo.ordersByIds(Array.from(ids)))
 }
 
 // Заявки клиента (кабинет): созданные им (fromId).
@@ -240,7 +257,7 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.qty !== undefined) set.qty = String(patch.qty)
   if (patch.unit !== undefined) set.unit = patch.unit
   if (patch.price !== undefined) set.price = String(patch.price)
-  if (patch.supplierId !== undefined) set.supplierId = patch.supplierId || null
+  if (patch.supplierId !== undefined) { set.supplierId = patch.supplierId || null; set.leg = await legForSupplier(patch.supplierId || null) }
   if (patch.respUserId !== undefined) set.respUserId = patch.respUserId || null
   if (patch.status !== undefined) set.status = patch.status
   if (patch.payment !== undefined) set.payment = patch.payment
@@ -292,7 +309,8 @@ export async function addPosition(cardId: string, i: any, actor?: Session | null
   const [p] = await repo.insertPosition({
     id: `${cardId}-P${n + 1}`, cardId, productId: i.productId ?? null,
     name1c: i.name1c || '', oral: i.oral || i.name1c || '', qty: String(i.qty || 0), unit: i.unit || 'шт',
-    price: String(i.price || 0), supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null, status: 'В работе',
+    price: String(i.price || 0), supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null,
+    leg: await legForSupplier(i.supplierId ?? null), status: 'В работе',
   })
   await repo.insertHistory({ cardId, action: 'addPos', detail: `Добавлена позиция: ${i.name1c || ''}`, userName: actor?.name || 'Система' })
   // Оповещение об изменении состава: в чат карточки + сигнал логистам/админам.

@@ -45,7 +45,8 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
       if (!orig) continue
       const pos = positions.find((p: any) => normNom(p.name1c || p.oral || '') === normNom(sl.product || '') && !p.supplierId)
       if (!pos) continue
-      const set: any = { supplierId: orig.supplierId }
+      const { legForSupplier } = await import('../lib/legDetect')
+      const set: any = { supplierId: orig.supplierId, leg: await legForSupplier(orig.supplierId) }
       if (orig.productId) set.productId = orig.productId
       if (!(pos.name1c || '').trim() && sl.product) set.name1c = sl.product
       const prod = orig.productId ? prodById[orig.productId] : null
