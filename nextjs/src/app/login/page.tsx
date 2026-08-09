@@ -33,7 +33,8 @@ function LoginForm() {
     if (from) { router.push(from); return }
     const needsSlug = ['logist', 'warehouse_manager', 'branch', 'client', 'supplier_client'].includes(user.role)
     if (needsSlug && !user.slug) { router.push('/login'); return }
-    if (user.role === 'logist') router.push(`/rsp/${user.slug}`)
+    if (user.role === 'order_desk') router.push('/order')
+    else if (user.role === 'logist') router.push(`/rsp/${user.slug}`)
     else if (user.role === 'warehouse_manager') router.push(`/warehouse/${user.slug}`)
     else if (user.role === 'branch') router.push(`/branch/${user.slug}`)
     else if (user.role === 'client' || user.role === 'supplier_client') router.push(`/client/${user.slug}`)

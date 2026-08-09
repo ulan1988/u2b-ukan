@@ -11,6 +11,7 @@ export interface Session { id: string; name: string; role: string; orgId: string
 // Домашний экран по роли (та же логика, что при входе): админ→/admin, порталы→свой slug.
 export function homePathFor(s: Session): string {
   switch (s.role) {
+    case 'order_desk': return '/order'                     // единый заказ-кабинет (без slug)
     case 'logist': return s.slug ? `/rsp/${s.slug}` : '/login'
     case 'warehouse_manager': return s.slug ? `/warehouse/${s.slug}` : '/login'
     case 'branch': return s.slug ? `/branch/${s.slug}` : '/login'
