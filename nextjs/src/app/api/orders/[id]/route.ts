@@ -15,7 +15,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const s = await sessionFromRequest(req)
   const b = await req.json().catch(() => ({}))
-  const res = await updateCard(params.id, b || {}, s)
+  const res: any = await updateCard(params.id, b || {}, s)
+  if (res?.ok === false) return NextResponse.json(res, { status: 403 })
   await pushSignal()
   return NextResponse.json(res)
 }

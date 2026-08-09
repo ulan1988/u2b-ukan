@@ -51,6 +51,20 @@ async function notifyCardChange(cardId: string, text: string, actor?: Session | 
   } catch { /* уведомления не критичны */ }
 }
 
+// Запрет правок доставленной/проведённой карточки. Админ/супер-админ — в обход
+// (может исправить). Остальным (логист/филиал/клиент/приёмка) — нельзя менять
+// доставленное. Чтобы отредактировать — сначала откатить доставку (В работе).
+async function editBlocked(cardId: string, actor?: Session | null): Promise<string | null> {
+  if (actor && ['admin', 'super_admin'].includes(actor.role)) return null
+  const [o] = await repo.getOrder(cardId)
+  if (!o) return null
+  const positions = await repo.positionsByCard(cardId)
+  const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
+  if (allDelivered || o.toacc || o.posted1c || ['bookkeeping', 'archive'].includes(o.screen))
+    return 'Карточка доставлена — изменения запрещены (откатите доставку, чтобы править)'
+  return null
+}
+
 export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: Session | null) {
   const count = await repo.countByKind(i.orgId, i.kind)
   const id = docNumber(i.kind, count)                     // ЗП-/ПР-0001-DDMMYY
@@ -217,6 +231,7 @@ export async function requestChange(cardId: string, text: string, phone?: string
 
 // Частичное обновление позиции (логист меняет поставщика/кол-во/имя). Непереданное не трогаем.
 export async function updatePositionDetail(cardId: string, posId: string, patch: any, actor?: Session | null) {
+  const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
   const old = (await repo.positionsByCard(cardId)).find((p: any) => p.id === posId)
   const set: Record<string, any> = {}
   if (patch.productId !== undefined) set.productId = patch.productId || null
@@ -245,6 +260,7 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
 
 // Удалить позицию карточки (стол приёмки).
 export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
+  const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
   await repo.deletePosition(posId)
   await repo.insertHistory({ cardId, action: 'deletePos', detail: 'Позиция удалена', userName: actor?.name || 'Система' })
   return { ok: true }
@@ -252,6 +268,7 @@ export async function deletePosition(cardId: string, posId: string, actor?: Sess
 
 // Обновить карточку (получатель/срок/коммент/проект) — стол приёмки.
 export async function updateCard(cardId: string, patch: any, actor?: Session | null) {
+  const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
   const [old] = await repo.getOrder(cardId)
   const set: Record<string, any> = {}
   if (patch.contactId !== undefined) set.contactId = patch.contactId || null
@@ -270,6 +287,7 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
 
 // Добавить позицию к карточке (логист/филиал).
 export async function addPosition(cardId: string, i: any, actor?: Session | null) {
+  const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
   const n = await repo.countPositions(cardId)
   const [p] = await repo.insertPosition({
     id: `${cardId}-P${n + 1}`, cardId, productId: i.productId ?? null,
