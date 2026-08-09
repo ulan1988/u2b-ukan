@@ -188,7 +188,7 @@ export async function createReturn(input: CreateSaleInput, kind: 'return_in' | '
   return { id: docId, number: doc.number, total }
 }
 
-export const listReturns = (orgId: string) => docRepo.listByTypes(orgId, ['return_in', 'return_out'])
+export const listReturns = (orgId: string) => docRepo.listInvoices(orgId, ['return_in', 'return_out'])
 
 // Производство: сырьё (input) списывается со склада, готовый товар (output)
 // приходуется. Готовый товар — размерное ценообразование: (см×см)/10000=м² × ставка × кол-во.

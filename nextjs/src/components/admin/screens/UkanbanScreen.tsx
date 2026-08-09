@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
-import { listPurchases, listSales, updateDocument } from '@/lib/api/docs'
+import { listPurchases, listSales, listReturns, updateDocument } from '@/lib/api/docs'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import RouteModal from '@/components/admin/RouteModal'
 
@@ -66,7 +66,7 @@ const COLS = [
 
 function InvoicesMode({ orgId }: { orgId: string }) {
   const [docs, setDocs] = useState<any[]>([])
-  const [kind, setKind] = useState<'all' | 'purchase' | 'sale'>('all')
+  const [kind, setKind] = useState<'all' | 'purchase' | 'sale' | 'return'>('all')
   const [q, setQ] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
   const [period, setPeriod] = useState<DPeriod>('all')
@@ -76,8 +76,8 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   const [links, setLinks] = useState(false)   // тумблер «Связки»: клик → граф пути
 
   const load = useCallback(async () => {
-    const [p, s] = await Promise.all([listPurchases(orgId), listSales(orgId)])
-    setDocs([...(p as any[]).map(d => ({ ...d, type: 'purchase' })), ...(s as any[]).map(d => ({ ...d, type: 'sale' }))])
+    const [p, s, r] = await Promise.all([listPurchases(orgId), listSales(orgId), listReturns(orgId)])
+    setDocs([...(p as any[]), ...(s as any[]), ...(r as any[])])   // у каждого свой type (purchase/sale/return_in/return_out)
   }, [orgId])
   useEffect(() => { load() }, [load])
 
@@ -88,7 +88,9 @@ function InvoicesMode({ orgId }: { orgId: string }) {
 
   const filtered = useMemo(() => {
     let base = docs
-    if (kind !== 'all') base = base.filter(d => d.type === kind)
+    if (kind === 'purchase') base = base.filter(d => d.type === 'purchase')
+    else if (kind === 'sale') base = base.filter(d => d.type === 'sale')
+    else if (kind === 'return') base = base.filter(d => d.type === 'return_in' || d.type === 'return_out')
     base = base.filter(d => matchDate(d.date, period, from, to))
     const s = q.trim().toLowerCase()
     if (s) base = base.filter(d => `${d.number} ${d.contragent || ''} ${d.items || ''} ${d.total} ${fmtDate(d.date)}`.toLowerCase().includes(s))
@@ -97,7 +99,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
 
   const cols = COLS.filter(c => c.key !== 'cancelled' || showCancelled).map(c => ({ ...c, items: filtered.filter(c.test) }))
 
-  const kindBtn = (k: 'all' | 'purchase' | 'sale', label: string) => (
+  const kindBtn = (k: 'all' | 'purchase' | 'sale' | 'return', label: string) => (
     <button onClick={() => setKind(k)} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: kind === k ? '#7a3aaa' : '#fff', color: kind === k ? '#fff' : COLORS.textMuted, boxShadow: kind === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
   )
 
@@ -105,7 +107,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{filtered.length}</b></span>
-        <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}</div>
+        <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}{kindBtn('return', '↩ Возвраты')}</div>
         <button onClick={() => setLinks(v => !v)} title="Клик по накладной покажет её путь (граф)" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: links ? '#7a3aaa' : '#fff', color: links ? '#fff' : COLORS.textMuted, boxShadow: links ? 'none' : '0 0 0 1.5px #e6e2dc' }}>🔗 Связки {links ? 'вкл' : 'выкл'}</button>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, контрагент, товар…"
@@ -135,12 +137,15 @@ function InvoicesMode({ orgId }: { orgId: string }) {
             <div style={{ flex: 1, overflowY: 'auto', background: c.tint, borderRadius: '0 0 12px 12px', padding: '8px 8px 4px', minHeight: 60 }}>
               {c.items.length === 0 ? <div style={{ color: '#9a938a', fontSize: 12, textAlign: 'center', padding: '14px 0' }}>—</div>
                 : c.items.map(d => {
+                  const isReturn = d.type === 'return_in' || d.type === 'return_out'
                   const purchase = d.type === 'purchase'
+                  const accent = isReturn ? '#b4574c' : purchase ? '#7a3aaa' : '#2e8a5e'
+                  const badge = isReturn ? (d.type === 'return_in' ? '↩ ВОЗВРАТ от клиента' : '↩ ВОЗВРАТ поставщику') : purchase ? 'ПРИХОД' : 'РАСХОД'
                   return (
-                    <div key={d.id} onClick={() => links ? setRouteDocId(d.id) : setOpenDocId(d.id)} style={{ background: '#fff', borderRadius: 10, padding: 10, marginBottom: 8, cursor: 'pointer', borderLeft: `4px solid ${links ? '#7a3aaa' : (purchase ? '#7a3aaa' : '#2e8a5e')}`, boxShadow: links ? '0 0 0 1.5px #e3d4f0' : '0 1px 4px rgba(0,0,0,.06)' }}>
+                    <div key={d.id} onClick={() => links ? setRouteDocId(d.id) : setOpenDocId(d.id)} style={{ background: '#fff', borderRadius: 10, padding: 10, marginBottom: 8, cursor: 'pointer', borderLeft: `4px solid ${links ? '#7a3aaa' : accent}`, boxShadow: links ? '0 0 0 1.5px #e3d4f0' : '0 1px 4px rgba(0,0,0,.06)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: purchase ? '#7a3aaa' : COLORS.primary }}>{d.number}</span>
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: purchase ? '#f3eeff' : '#e8f5ee', color: purchase ? '#7a3aaa' : '#2e8a5e' }}>{purchase ? 'ПРИХОД' : 'РАСХОД'}</span>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: accent }}>{d.number}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: isReturn ? '#f7ebe9' : purchase ? '#f3eeff' : '#e8f5ee', color: accent }}>{badge}</span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#837c72' }}>{fmtDate(d.date)}</span>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{d.contragent || '—'}</div>
