@@ -18,8 +18,15 @@ export async function POST(req: NextRequest) {
   try {
     return NextResponse.json(await createUser(parsed.data))
   } catch (e: any) {
-    const msg = String(e?.message || '')
-    if (msg.includes('duplicate') || msg.includes('unique')) return NextResponse.json({ error: 'Такой email уже есть' }, { status: 409 })
-    return NextResponse.json({ error: 'Ошибка создания' }, { status: 500 })
+    // Ошибка Drizzle/neon оборачивает причину в e.cause (код 23505 = unique violation, constraint — имя индекса).
+    const cause = e?.cause || e
+    const code = String(cause?.code || '')
+    const constraint = String(cause?.constraint || '')
+    const text = `${e?.message || ''} ${cause?.message || ''} ${constraint}`.toLowerCase()
+    if (code === '23505' || text.includes('duplicate') || text.includes('unique')) {
+      const isSlug = constraint.includes('slug') || text.includes('slug')
+      return NextResponse.json({ error: isSlug ? 'Кабинет с таким именем уже есть — измените имя контрагента или логин' : 'Такой логин уже занят — выберите другой' }, { status: 409 })
+    }
+    return NextResponse.json({ error: 'Ошибка создания: ' + String(e?.message || cause?.message || '').slice(0, 120) }, { status: 500 })
   }
 }
