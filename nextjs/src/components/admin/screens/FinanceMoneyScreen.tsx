@@ -136,7 +136,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                 <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (opening[a.id] || 0), 0))}</td><td style={td}></td>
               </tr>
               {rows.map((r, i) => {
-                const isPosted = r.status === 'posted'; const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || TYPE_COLOR.etc
+                const isPosted = r.status === 'posted'; const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#eceff2', c: '#6b7686' }
                 return (
                   <tr key={r.id || i} style={{ background: isPosted ? '#fff' : '#fffdf2' }}>
                     <td style={tdNum}>{i + 1}</td>
