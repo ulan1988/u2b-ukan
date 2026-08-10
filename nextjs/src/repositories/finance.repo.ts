@@ -51,6 +51,7 @@ export async function profitReport(orgId: string) {
     left join contragents c on c.id=d.contragent_id
     left join cost on cost.sale_id=d.id
     where d.org_id=${orgId} and d.type='sale' and d.status<>'cancelled'
+      and coalesce(d.operation,'') <> 'opening1c'   -- исторический импорт 1С (акт сверки) не в рентабельность
     group by d.id, d.number, d.date, c.name, d.total
     order by d.date desc, d.created_at desc` as unknown as Promise<Array<{ id: string; number: string; date: string; client: string | null; revenue: number; cost: number }>>
 }
