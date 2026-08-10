@@ -92,6 +92,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     setRows(p => [...p]); await persist(r)
   }
 
+  // Перемещение: счёт «от» = минус, «к» = плюс. Итог по строке = 0.
+  function setMv(r: any, accId: string, dir: string, absVal: number) {
+    const n = dir === 'from' ? -Math.abs(absVal) : dir === 'to' ? Math.abs(absVal) : 0
+    if (!n) delete r.amt[accId]; else r.amt[accId] = n
+    setRows(p => [...p]); scheduleSave(r)
+  }
   function setCell(r: any, accId: string, val: string) {
     const n = calc(val); if (n == null) return
     if (n === 0) delete r.amt[accId]; else r.amt[accId] = n
@@ -187,6 +193,17 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                     {accounts.map(a => {
                       const v = r.amt[a.id]
                       if (isPosted) return <td key={a.id} style={{ ...tdNum, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td>
+                      // Перемещение: выбор «от/к» + сумма прямо в колонке счёта.
+                      if (r.type === 'mv') {
+                        const dir = (v || 0) < 0 ? 'from' : (v || 0) > 0 ? 'to' : ''
+                        return <td key={a.id} style={td}><div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                          <select value={dir} onChange={e => setMv(r, a.id, e.target.value, Math.abs(v || 0))} style={{ border: `1px solid ${dir === 'from' ? '#b3261e' : dir === 'to' ? '#0f7b3d' : '#d0d5db'}`, borderRadius: 4, fontSize: 11, fontWeight: 700, padding: '3px 2px', color: dir === 'from' ? '#b3261e' : dir === 'to' ? '#0f7b3d' : '#9a938a', fontFamily: 'inherit', cursor: 'pointer' }}>
+                            <option value="">—</option><option value="from">от</option><option value="to">к</option>
+                          </select>
+                          <input value={v ? String(Math.abs(v)) : ''} inputMode="decimal" placeholder="0" onChange={e => setMv(r, a.id, dir || 'to', parseCell(e.target.value))}
+                            style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '5px 4px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 13, background: 'transparent' }} />
+                        </div></td>
+                      }
                       return <td key={a.id} style={td}><input defaultValue={v != null && v !== 0 ? v : ''} key={(r.id || i) + a.id + (v || 0)} inputMode="decimal"
                         onBlur={e => setCell(r, a.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
                         style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '5px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 13, background: 'transparent' }} /></td>
