@@ -378,3 +378,37 @@ export const dailyReportRows = pgTable('daily_report_rows', {
   commentOut: text('comment_out').notNull().default(''),
   invoiceNum: text('invoice_num').notNull().default(''),
 }, t => ({ byReport: index('daily_report_rows_report_idx').on(t.reportId) }))
+
+// ─── Финанс «Деньги»: дневной кассовый лист (универсальный, всё в БД по ID) ───
+// Строка операции дня. Суммы по счетам — в fin_row_amounts (динамические счета).
+export const finRows = pgTable('fin_rows', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  date: date('date').notNull(),                            // день листа
+  type: text('type').notNull().default('etc'),            // in|out|dolg|vozv|mv|etc
+  article: text('article').notNull().default(''),         // статья (Кристалл, Зарплата, Аренда…)
+  contragentId: uuid('contragent_id').references(() => contragents.id),  // если завязано на контрагента
+  docId: uuid('doc_id').references(() => documents.id),    // подобранный документ (накладная/счёт)
+  who: text('who').notNull().default(''),                  // свободный текст «Контрагент/документ»
+  status: text('status').notNull().default('draft'),      // draft | posted
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrgDate: index('fin_rows_org_date_idx').on(t.orgId, t.date) }))
+
+// Сумма строки по конкретному счёту (QR/Gold/Наличка…). Знак: расход/возврат — минус.
+export const finRowAmounts = pgTable('fin_row_amounts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  rowId: uuid('row_id').notNull().references(() => finRows.id, { onDelete: 'cascade' }),
+  accountId: uuid('account_id').notNull().references(() => cashAccounts.id),
+  amount: money('amount').notNull().default('0'),
+}, t => ({ byRow: index('fin_row_amounts_row_idx').on(t.rowId) }))
+
+// Избранные статьи — шаблон строк, появляется в каждом новом дне.
+export const finFavorites = pgTable('fin_favorites', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  label: text('label').notNull().default(''),
+  type: text('type').notNull().default('etc'),
+  contragentId: uuid('contragent_id').references(() => contragents.id),
+  sortOrder: integer('sort_order').notNull().default(0),
+}, t => ({ byOrg: index('fin_favorites_org_idx').on(t.orgId) }))
