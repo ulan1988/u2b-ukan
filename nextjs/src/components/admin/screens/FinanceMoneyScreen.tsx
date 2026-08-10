@@ -159,7 +159,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {isPosted
                           ? <span style={{ flex: 1 }}>{r.contragent || r.who || ''}</span>
-                          : <input value={r.who || ''} onChange={e => { r.who = e.target.value; setRows(p => [...p]); scheduleSave(r) }} placeholder="…" style={{ flex: 1, border: '1px solid transparent', borderRadius: 4, padding: '4px 6px', fontSize: 13, minWidth: 40, fontFamily: 'inherit' }} />}
+                          : <WhoInput row={r} cags={cags} onText={(t: string) => { r.who = t; setRows(p => [...p]); scheduleSave(r) }} onPick={(c: any) => { r.contragentId = c.id; r.who = c.name; setRows(p => [...p]); persist(r) }} />}
                         {r.docNumber && <span style={{ fontSize: 11, color: '#1a56b0', whiteSpace: 'nowrap' }} title={r.docNumber}>📄</span>}
                         {r.contragentId && <span style={{ fontSize: 11 }} title={r.contragent}>🏷</span>}
                         {!isPosted && <button onClick={() => setModalRow(r)} title="Распределить / документ / контрагент" style={{ border: '1px solid #d0d5db', borderRadius: 4, background: '#fff', color: '#6b7686', fontWeight: 700, padding: '2px 6px', cursor: 'pointer' }}>⋯</button>}
@@ -208,6 +208,24 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
 const actBtn: React.CSSProperties = { border: 0, background: 'none', color: '#b7bfc9', fontSize: 13, padding: '1px 3px', cursor: 'pointer' }
 const ov: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(20,26,34,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '36px 14px', overflow: 'auto', zIndex: 1300 }
 const modalBox: React.CSSProperties = { background: '#fff', borderRadius: 10, maxWidth: 600, width: '100%', padding: 18 }
+
+// ─── Поле «Контрагент» с автоподсказкой прямо в строке ─────────────────────────
+function WhoInput({ row, cags, onText, onPick }: { row: any; cags: any[]; onText: (t: string) => void; onPick: (c: any) => void }) {
+  const [focus, setFocus] = useState(false)
+  const s = (row.who || '').trim().toLowerCase()
+  const matches = focus && s.length >= 1 ? cags.filter(c => (c.name || '').toLowerCase().includes(s)).slice(0, 8) : []
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth: 40 }}>
+      <input value={row.who || ''} onChange={e => onText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 150)} placeholder="контрагент…"
+        style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '4px 6px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: row.contragentId ? '#f0f8f2' : 'transparent' }} />
+      {matches.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 70, minWidth: 200, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d0d5db', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', marginTop: 2 }}>
+          {matches.map(c => <div key={c.id} onMouseDown={() => onPick(c)} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }} onMouseEnter={e => (e.currentTarget.style.background = '#eef4ff')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>{c.name}</div>)}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Выбор статьи ДДС прямо в строке (сгруппировано, с поиском) ────────────────
 const STAT_ICON = (t: string) => t === 'in' ? { i: '↑', c: '#0f7b3d' } : t === 'out' ? { i: '↓', c: '#b3261e' } : t === 'both' ? { i: '↕', c: '#8a6d00' } : t === 'mv' ? { i: '⇄', c: '#1a56b0' } : { i: '•', c: '#6b7686' }
