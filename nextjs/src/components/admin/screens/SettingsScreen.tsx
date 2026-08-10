@@ -4,7 +4,7 @@ import { COLORS } from '@/lib/colors'
 import { listUsers, createUser, editUser, deleteUser, deleteCabinet } from '@/lib/api/auth'
 import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject, listContragents, addContragent, editContragent } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finFavList, finFavSave, finExpList, finExpSave } from '@/lib/api/finmoney'
+import { finFavList, finFavSave } from '@/lib/api/finmoney'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
 const STATI_TYPES: [string, string][] = [['in', '↑ Поступление'], ['out', '↓ Платёж'], ['both', '↕ Приход/Расход'], ['mv', '⇄ Перемещение'], ['service', '• Служебное']]
@@ -27,7 +27,7 @@ const roleLabel = (v: string) => ROLES.find(r => r.v === v)?.l || v
 const inp: React.CSSProperties = { padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 14, outline: 'none', width: '100%' }
 
 export default function SettingsScreen({ orgId }: { orgId: string }) {
-  const [tab, setTab] = useState<'users' | 'contragents' | 'autofill' | 'projects' | 'stati' | 'expense'>('users')
+  const [tab, setTab] = useState<'users' | 'contragents' | 'autofill' | 'projects' | 'stati'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'logist', orgId })
@@ -80,12 +80,12 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
     <div style={{ maxWidth: 1200 }}>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['users', 'Пользователи'], ['contragents', 'Контрагенты'], ['stati', 'Статьи'], ['expense', 'Статьи расходов'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
+        {([['users', 'Пользователи'], ['contragents', 'Контрагенты'], ['stati', 'Статьи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
 
-      {tab === 'stati' ? <StatiPanel orgId={orgId} /> : tab === 'expense' ? <ExpensePanel orgId={orgId} /> : tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : tab === 'contragents' ? <ContragentsPanel orgId={orgId} /> : (
+      {tab === 'stati' ? <StatiPanel orgId={orgId} /> : tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : tab === 'contragents' ? <ContragentsPanel orgId={orgId} /> : (
       <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 16 }}>Пользователи</div>
@@ -511,46 +511,6 @@ function StatiPanel({ orgId }: { orgId: string }) {
           )
         })}
       </div></div>
-    </div>
-  )
-}
-
-// Справочник статей затрат (7100/7200/7400) — для расходных строк «Деньги».
-function ExpensePanel({ orgId }: { orgId: string }) {
-  const [list, setList] = useState<any[]>([])
-  const [msg, setMsg] = useState('')
-  const [loading, setLoading] = useState(true)
-  useEffect(() => { (async () => { const r: any = await finExpList(); setList(((r?.data) || []).map((x: any) => ({ code: x.code || '', name: x.name }))); setLoading(false) })() }, [])
-  const upd = (i: number, patch: any) => setList(l => l.map((x, j) => j === i ? { ...x, ...patch } : x))
-  const move = (i: number, d: number) => setList(l => { const n = [...l]; const j = i + d; if (j < 0 || j >= n.length) return n;[n[i], n[j]] = [n[j], n[i]]; return n })
-  async function save() { const r: any = await finExpSave(list); setMsg(r?.ok ? '✓ Сохранено' : '⚠ Ошибка'); setTimeout(() => setMsg(''), 2000) }
-  const miniB: React.CSSProperties = { border: '1px solid #e6e2dc', background: '#fff', borderRadius: 6, color: '#6b655b', padding: '2px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
-  if (loading) return <div style={{ padding: 30, color: COLORS.textMuted }}>Загрузка…</div>
-  return (
-    <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 0 0 1px #e6e2dc' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Статьи расходов (затраты)</div>
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>{list.length} шт. · коды 7100/7200/7400</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {msg && <span style={{ fontSize: 13, color: msg[0] === '✓' ? '#2e8a5e' : '#b03020' }}>{msg}</span>}
-          <button onClick={() => setList(l => [...l, { code: '7400', name: 'Новая статья' }])} style={miniB}>+ Статья</button>
-          <button onClick={save} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Сохранить</button>
-        </div>
-      </div>
-      <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>Бухгалтерская статья затрат («на что расход») — выбирается на расходной строке в «Деньги» поверх статьи ДДС.</div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', 'Код', 'Наименование', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>)}</tr></thead>
-        <tbody>
-          {list.map((f, i) => (
-            <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
-              <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}><button onClick={() => move(i, -1)} style={miniB}>▲</button> <button onClick={() => move(i, 1)} style={miniB}>▼</button></td>
-              <td style={{ padding: '6px 8px' }}><input value={f.code || ''} onChange={e => upd(i, { code: e.target.value })} placeholder="7400" style={{ ...inp, padding: '6px 9px', width: 80, fontFamily: 'Consolas, monospace' }} /></td>
-              <td style={{ padding: '6px 8px' }}><input value={f.name} onChange={e => upd(i, { name: e.target.value })} style={{ ...inp, padding: '6px 9px' }} /></td>
-              <td style={{ padding: '6px 8px' }}><button onClick={() => setList(l => l.filter((_, j) => j !== i))} title="Удалить" style={{ ...miniB, color: '#c1121c' }}>✕</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   )
 }

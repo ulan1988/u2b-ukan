@@ -178,7 +178,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                     </td>
                     <td style={td}>{isPosted
                       ? <span>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</span>
-                      : <StatiaPicker favs={data?.favorites || []} code={r.code} label={r.article} onPick={(fav: any) => applyStatia(r, fav)} />}
+                      : <StatiaPicker favs={data?.favorites || []} type={r.type} code={r.code} label={r.article} onPick={(fav: any) => applyStatia(r, fav)} />}
                     </td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -187,7 +187,6 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                           : <WhoInput row={r} cags={cags} onText={(t: string) => { r.who = t; setRows(p => [...p]); scheduleSave(r) }} onPick={(c: any) => { r.contragentId = c.id; r.who = c.name; setRows(p => [...p]); persist(r) }} />}
                         {r.docNumber && <span style={{ fontSize: 11, color: '#1a56b0', whiteSpace: 'nowrap' }} title={r.docNumber}>📄</span>}
                         {r.contragentId && <span style={{ fontSize: 11 }} title={r.contragent}>🏷</span>}
-                        {r.expName && <span style={{ fontSize: 11 }} title={`Статья расходов: ${r.expCode || ''} ${r.expName}`}>💠</span>}
                         {!isPosted && <button onClick={() => setModalRow(r)} title="Распределить / документ / контрагент" style={{ border: '1px solid #d0d5db', borderRadius: 4, background: '#fff', color: '#6b7686', fontWeight: 700, padding: '2px 6px', cursor: 'pointer' }}>⋯</button>}
                       </div>
                     </td>
@@ -236,7 +235,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
         </div>
       )}
 
-      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} expArticles={data?.expenseArticles || []} orgId={orgId} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
+      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
       {favOpen && <FavModal favs={favs} setFavs={setFavs} cags={cags} onApply={applyFavs} onClose={async () => { await finFavSave(favs); setFavOpen(false); await load() }} />}
     </div>
   )
@@ -269,13 +268,20 @@ const STAT_ICON = (t: string) => t === 'in' ? { i: '↑', c: '#0f7b3d' } : t ===
 const ACT_TITLES: Record<string, string> = { operating: 'Операционная', financial: 'Финансовая', investing: 'Инвестиционная', transfer: 'Перемещения', service: 'Служебные' }
 const ACT_ORDER = ['operating', 'financial', 'investing', 'transfer', 'service']
 
-function StatiaPicker({ favs, code, label, onPick }: { favs: any[]; code?: string; label?: string; onPick: (f: any) => void }) {
+function StatiaPicker({ favs, type, code, label, onPick }: { favs: any[]; type?: string; code?: string; label?: string; onPick: (f: any) => void }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => { function h(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) } document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
   const s = q.trim().toLowerCase()
-  const filtered = favs.filter(f => !s || (f.code || '').toLowerCase().includes(s) || (f.label || '').toLowerCase().includes(s))
+  // Фильтр по выбранному типу строки: Расход → только расходные статьи (+оба) и т.д.
+  const byType = favs.filter(f => {
+    if (!type) return true
+    if (type === 'out') return f.type === 'out' || f.type === 'both'
+    if (type === 'in') return f.type === 'in' || f.type === 'both'
+    return f.type === type
+  })
+  const filtered = byType.filter(f => !s || (f.code || '').toLowerCase().includes(s) || (f.label || '').toLowerCase().includes(s))
   const groups = ACT_ORDER.map(a => ({ a, title: ACT_TITLES[a], items: filtered.filter(f => (f.activity || 'operating') === a) })).filter(g => g.items.length)
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -307,9 +313,8 @@ function StatiaPicker({ favs, code, label, onPick }: { favs: any[]; code?: strin
 }
 
 // ─── Моделька строки: распределить по счетам / контрагент / документ ──────────
-function RowModal({ row, accounts, cags, expArticles, orgId, defAcc, onClose, onSaved, persist }: any) {
-  const [tab, setTab] = useState<'split' | 'cag' | 'doc' | 'exp'>('split')
-  const [expQ, setExpQ] = useState('')
+function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persist }: any) {
+  const [tab, setTab] = useState<'split' | 'cag' | 'doc'>('split')
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [total, setTotal] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
   const [q, setQ] = useState(''); const [docs, setDocs] = useState<any[]>([])
@@ -332,7 +337,6 @@ function RowModal({ row, accounts, cags, expArticles, orgId, defAcc, onClose, on
     await persist(row); onSaved()
   }
   async function pickCag(c: any) { row.contragentId = c.id; if (!row.who) row.who = c.name; await persist(row); onSaved() }
-  async function pickExp(e: any) { row.expenseArticleId = e.id; row.expCode = e.code; row.expName = e.name; await persist(row); onSaved() }
   async function pickDoc(d: any) { row.docId = d.id; row.who = d.contragent || d.number; if (d.contragentId || d.contragent) { /* привяжем контрагента если найден по имени */ } await persist(row); onSaved() }
 
   return (
@@ -341,7 +345,7 @@ function RowModal({ row, accounts, cags, expArticles, orgId, defAcc, onClose, on
         <h2 style={{ fontSize: 16, marginBottom: 2 }}>{row.article}{row.who ? ' — ' + row.who : ''}</h2>
         <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Тип: {typeName(row.type)} · распределите сумму, привяжите контрагента или документ</div>
         <div style={{ display: 'flex', borderBottom: '2px solid #d0d5db', marginBottom: 12 }}>
-          {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Документ'], ...(row.type === 'out' ? [['exp', 'Статья расходов']] : [])] as [string, string][]).map(([k, l]) => (
+          {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Документ']] as [string, string][]).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k as any)} style={{ border: 0, background: 'none', padding: '8px 14px', fontWeight: 600, color: tab === k ? '#1c2430' : '#6b7686', borderBottom: `2px solid ${tab === k ? '#1c2430' : 'transparent'}`, marginBottom: -2, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
           ))}
         </div>
@@ -389,19 +393,6 @@ function RowModal({ row, accounts, cags, expArticles, orgId, defAcc, onClose, on
           </table>
         </div>}
 
-        {tab === 'exp' && <div>
-          <div style={{ fontSize: 13, color: '#6b7686', marginBottom: 8 }}>Статья затрат (на что расход) — бухгалтерская, поверх статьи ДДС.</div>
-          <input value={expQ} onChange={e => setExpQ(e.target.value)} placeholder="Поиск статьи расходов…" style={{ width: '100%', border: '1px solid #8f99a6', borderRadius: 6, padding: '8px 10px', marginBottom: 8, boxSizing: 'border-box' }} />
-          {row.expName && <div style={{ fontSize: 13, marginBottom: 8 }}>Текущая: <b>{row.expCode} {row.expName}</b> <button onClick={async () => { row.expenseArticleId = null; row.expCode = null; row.expName = null; await persist(row); onSaved() }} style={{ ...btn, marginLeft: 8, fontSize: 12 }}>убрать</button></div>}
-          <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
-            {(expArticles || []).filter((e: any) => { const s = expQ.trim().toLowerCase(); return !s || (e.name || '').toLowerCase().includes(s) || (e.code || '').toLowerCase().includes(s) }).map((e: any) => (
-              <div key={e.id} onClick={() => pickExp(e)} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 10px', cursor: 'pointer', borderTop: '1px solid #f4f5f7', background: e.id === row.expenseArticleId ? '#eef4ff' : '#fff' }}>
-                <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 12, width: 40 }}>{e.code}</span>
-                <span style={{ fontSize: 13 }}>{e.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>}
       </div>
     </div>
   )
