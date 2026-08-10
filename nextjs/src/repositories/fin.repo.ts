@@ -57,6 +57,31 @@ export const insertFavorites = (vals: typeof finFavorites.$inferInsert[]) => val
 
 export const insertPayment = (val: typeof payments.$inferInsert) => db.insert(payments).values(val)
 
+// Отчёт ДДС: обороты по статьям за период (перемещения/служебные исключены).
+export const ddsRows = (orgId: string, from: string, to: string) =>
+  sqlClient`
+    with rt as (
+      select r.id, r.code, r.article, coalesce(f.activity, 'operating') activity,
+        (select coalesce(sum(a.amount),0) from fin_row_amounts a where a.row_id=r.id)::float total
+      from fin_rows r
+      left join fin_favorites f on f.org_id=r.org_id and f.code=r.code
+      where r.org_id=${orgId} and r.status='posted' and r.date between ${from} and ${to}
+        and r.type not in ('mv','service')
+    )
+    select activity, code, article,
+      sum(case when total>0 then total else 0 end)::float inflow,
+      sum(case when total<0 then -total else 0 end)::float outflow
+    from rt group by activity, code, article
+    having sum(case when total>0 then total else 0 end)<>0 or sum(case when total<0 then -total else 0 end)<>0
+    order by activity, code` as unknown as Promise<Array<{ activity: string; code: string | null; article: string; inflow: number; outflow: number }>>
+
+// Оборот по счёту за период (для конечного остатка).
+export const periodNetByAccount = (orgId: string, from: string, to: string) =>
+  sqlClient`select a.account_id::text id, coalesce(sum(a.amount),0)::float amt
+    from fin_row_amounts a join fin_rows r on r.id=a.row_id
+    where r.org_id=${orgId} and r.status='posted' and r.date between ${from} and ${to}
+    group by a.account_id` as unknown as Promise<Array<{ id: string; amt: number }>>
+
 // Поиск документов для привязки в строке (номер/контрагент).
 export const docSearch = (orgId: string, q: string) =>
   sqlClient`select d.id::text, d.number, d.type, d.total::float total, d.date::text, c.name contragent

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch } from '@/lib/api/finmoney'
+import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch, finDds } from '@/lib/api/finmoney'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', both: 'Приход/Расход', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
@@ -43,6 +43,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [toast, setToast] = useState('')
   const [modalRow, setModalRow] = useState<any | null>(null)
   const [favOpen, setFavOpen] = useState(false)
+  const [view, setView] = useState<'sheet' | 'dds'>('sheet')
   const timers = useRef<Record<string, any>>({})
 
   const load = useCallback(async () => {
@@ -102,8 +103,18 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '4px 6px', fontSize: 13 }
   const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace' }
 
+  const viewTabs = (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <button onClick={() => setView('sheet')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === 'sheet' ? COLORS.primary : '#fff', color: view === 'sheet' ? '#fff' : COLORS.textMuted, boxShadow: view === 'sheet' ? 'none' : '0 0 0 1.5px #e6e2dc' }}>💵 Лист</button>
+      <button onClick={() => setView('dds')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === 'dds' ? COLORS.primary : '#fff', color: view === 'dds' ? '#fff' : COLORS.textMuted, boxShadow: view === 'dds' ? 'none' : '0 0 0 1.5px #e6e2dc' }}>📊 Отчёт ДДС</button>
+    </div>
+  )
+
+  if (view === 'dds') return <div>{viewTabs}<DdsReport /></div>
+
   return (
     <div>
+      {viewTabs}
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
@@ -398,3 +409,74 @@ const btn: React.CSSProperties = { padding: '7px 13px', border: '1px solid #8f99
 const btnDark: React.CSSProperties = { padding: '7px 13px', border: '1px solid #1c2430', borderRadius: 6, background: '#1c2430', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const miniBtn: React.CSSProperties = { border: 0, background: 'none', color: '#6b7686', padding: '2px 4px', fontSize: 13, cursor: 'pointer' }
 const splitInp: React.CSSProperties = { border: '1px solid #8f99a6', borderRadius: 6, padding: '7px 9px', textAlign: 'right', fontFamily: 'Consolas, monospace', width: '100%' }
+
+// ─── Отчёт ДДС: свод по деятельностям (Поступления/Платежи) за период ──────────
+function DdsReport() {
+  const monthStart = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01` }
+  const [from, setFrom] = useState(monthStart())
+  const [to, setTo] = useState(todayStr())
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { setLoading(true); finDds(from, to).then(setData).finally(() => setLoading(false)) }, [from, to])
+  const accs: any[] = data?.accounts || []
+  const dInp: React.CSSProperties = { padding: '6px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', outline: 'none' }
+  const line = (code: string | null, label: string, sum: number, color: string) => (
+    <div key={(code || '') + label} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 10px 5px 28px', borderTop: '1px solid #f4f5f7', fontSize: 13 }}>
+      {code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11 }}>{code}</span>}
+      <span>{label}</span><span style={{ marginLeft: 'auto', fontFamily: 'Consolas, monospace', fontWeight: 600, color }}>{fmt(sum)}</span>
+    </div>
+  )
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>📊 Отчёт ДДС</span>
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted, marginLeft: 6 }}>период:</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={dInp} />
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>—</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={dInp} />
+        <button onClick={() => { setFrom(monthStart()); setTo(todayStr()) }} style={{ ...dInp, cursor: 'pointer', fontWeight: 600 }}>Текущий месяц</button>
+      </div>
+
+      {loading ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : !data ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Нет данных</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Остатки по счетам */}
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+            <div style={{ padding: '9px 14px', background: '#eef0f3', fontWeight: 700, fontSize: 13 }}>Остаток денег по счетам</div>
+            <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
+              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}><th style={{ textAlign: 'left', padding: '6px 12px' }}>Счёт</th><th style={{ textAlign: 'right', padding: '6px 12px' }}>На начало</th><th style={{ textAlign: 'right', padding: '6px 12px' }}>На конец</th></tr></thead>
+              <tbody>
+                {accs.map(a => <tr key={a.id} style={{ borderTop: '1px solid #f4f5f7' }}><td style={{ padding: '6px 12px' }}>{a.name}</td><td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{fmt(data.opening[a.id] || 0)}</td><td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{fmt(data.closing[a.id] || 0)}</td></tr>)}
+                <tr style={{ borderTop: '2px solid #d0d5db', fontWeight: 800, background: '#fbf7ff' }}><td style={{ padding: '7px 12px' }}>Итого</td><td style={{ padding: '7px 12px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{fmt(accs.reduce((s, a) => s + (data.opening[a.id] || 0), 0))}</td><td style={{ padding: '7px 12px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{fmt(accs.reduce((s, a) => s + (data.closing[a.id] || 0), 0))}</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+
+          {/* Деятельности */}
+          {data.activities.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc' }}>За период движений нет</div>
+            : data.activities.map((act: any) => (
+              <div key={act.key} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+                <div style={{ padding: '9px 14px', background: '#1c2430', color: '#fff', fontWeight: 700, fontSize: 14 }}>{act.title}</div>
+                {act.inflows.length > 0 && <>
+                  <div style={{ padding: '6px 14px', fontWeight: 700, fontSize: 12.5, color: '#0f7b3d', background: '#f4faf6' }}>📁 Поступления</div>
+                  {act.inflows.map((x: any) => line(x.code, x.label, x.sum, '#0f7b3d'))}
+                  <div style={{ display: 'flex', padding: '6px 14px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #eee' }}><span>Итого поступления</span><span style={{ marginLeft: 'auto', color: '#0f7b3d', fontFamily: 'Consolas, monospace' }}>{fmt(act.inTotal)}</span></div>
+                </>}
+                {act.outflows.length > 0 && <>
+                  <div style={{ padding: '6px 14px', fontWeight: 700, fontSize: 12.5, color: '#b3261e', background: '#fdf5f4' }}>📁 Платежи</div>
+                  {act.outflows.map((x: any) => line(x.code, x.label, x.sum, '#b3261e'))}
+                  <div style={{ display: 'flex', padding: '6px 14px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #eee' }}><span>Итого платежи</span><span style={{ marginLeft: 'auto', color: '#b3261e', fontFamily: 'Consolas, monospace' }}>{fmt(act.outTotal)}</span></div>
+                </>}
+              </div>
+            ))}
+
+          {/* Итоги */}
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '14px 16px', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: '#0f7b3d' }}>↑ Итого поступления: {fmt(data.totalIn)}</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: '#b3261e' }}>↓ Итого платежи: {fmt(data.totalOut)}</span>
+            <span style={{ fontWeight: 800, fontSize: 15, marginLeft: 'auto', color: data.netFlow >= 0 ? '#0f7b3d' : '#b3261e' }}>Чистый денежный поток: {fmt(data.netFlow)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

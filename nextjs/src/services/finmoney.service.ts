@@ -70,6 +70,27 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
 export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q || '')
 export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
 
+// Отчёт ДДС за период: деятельности → Поступления/Платежи по статьям + остатки по счетам.
+const ACT_TITLES: Record<string, string> = { operating: 'Операционная деятельность', financial: 'Финансовая деятельность', investing: 'Инвестиционная деятельность' }
+export async function ddsReport(orgId: string, from: string, to: string) {
+  const [rows, accts, opening, net] = await Promise.all([
+    fin.ddsRows(orgId, from, to), fin.accounts(orgId), fin.openingByAccount(orgId, from), fin.periodNetByAccount(orgId, from, to),
+  ])
+  const activities = Object.keys(ACT_TITLES).map(key => {
+    const items = rows.filter(r => r.activity === key)
+    const inflows = items.filter(r => r.inflow > 0).map(r => ({ code: r.code, label: r.article, sum: r.inflow }))
+    const outflows = items.filter(r => r.outflow > 0).map(r => ({ code: r.code, label: r.article, sum: r.outflow }))
+    return { key, title: ACT_TITLES[key], inflows, outflows, inTotal: inflows.reduce((s, x) => s + x.sum, 0), outTotal: outflows.reduce((s, x) => s + x.sum, 0) }
+  }).filter(a => a.inflows.length || a.outflows.length)
+
+  const totalIn = activities.reduce((s, a) => s + a.inTotal, 0)
+  const totalOut = activities.reduce((s, a) => s + a.outTotal, 0)
+  const openMap: Record<string, number> = {}; accts.forEach(a => openMap[a.id] = 0); opening.forEach(o => openMap[o.id] = o.amt)
+  const netMap: Record<string, number> = {}; net.forEach(o => netMap[o.id] = o.amt)
+  const closeMap: Record<string, number> = {}; accts.forEach(a => closeMap[a.id] = (openMap[a.id] || 0) + (netMap[a.id] || 0))
+  return { activities, totalIn, totalOut, netFlow: totalIn - totalOut, accounts: accts, opening: openMap, closing: closeMap }
+}
+
 export async function saveFinFavorites(orgId: string, favs: any[]) {
   await fin.clearFavorites(orgId)
   const vals = (favs || []).map((f: any, i: number) => ({ orgId, code: f.code || null, label: f.label || '', type: f.type || 'etc', activity: f.activity || null, contragentId: f.contragentId || null, defaultAccountId: f.defaultAccountId || null, sortOrder: i }))
