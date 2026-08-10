@@ -84,6 +84,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   async function postAll() { const res: any = await finPost(date); show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load() }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }
+  async function setType(r: any, t: string) { r.type = t; setRows(p => [...p]); await persist(r) }
+  async function applyStatia(r: any, fav: any) {
+    r.type = fav.type; r.code = fav.code || null; r.article = fav.label || ''
+    if (fav.contragentId && !r.contragentId) { r.contragentId = fav.contragentId; const c = cags.find((x: any) => x.id === fav.contragentId); if (c && !r.who) r.who = c.name }
+    setRows(p => [...p]); await persist(r)
+  }
 
   function setCell(r: any, accId: string, val: string) {
     const n = calc(val); if (n == null) return
@@ -141,8 +147,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                 return (
                   <tr key={r.id || i} style={{ background: isPosted ? '#fff' : '#fffdf2' }}>
                     <td style={tdNum}>{i + 1}</td>
-                    <td style={td}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)}</span>{isPosted && <span style={{ color: '#0f7b3d', fontWeight: 700, marginLeft: 4 }}>✓</span>}</td>
-                    <td style={td}>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</td>
+                    <td style={td}>{isPosted
+                      ? <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)} ✓</span>
+                      : <select value={r.type} onChange={e => setType(r, e.target.value)} style={{ border: `1px solid ${tc.c}33`, borderRadius: 4, padding: '3px 4px', fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.c, fontFamily: 'inherit', cursor: 'pointer' }}>{Object.entries(TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}
+                    </td>
+                    <td style={td}>{isPosted
+                      ? <span>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</span>
+                      : <StatiaPicker favs={data?.favorites || []} code={r.code} label={r.article} onPick={(fav: any) => applyStatia(r, fav)} />}
+                    </td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {isPosted
@@ -196,6 +208,48 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
 const actBtn: React.CSSProperties = { border: 0, background: 'none', color: '#b7bfc9', fontSize: 13, padding: '1px 3px', cursor: 'pointer' }
 const ov: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(20,26,34,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '36px 14px', overflow: 'auto', zIndex: 1300 }
 const modalBox: React.CSSProperties = { background: '#fff', borderRadius: 10, maxWidth: 600, width: '100%', padding: 18 }
+
+// ─── Выбор статьи ДДС прямо в строке (сгруппировано, с поиском) ────────────────
+const STAT_ICON = (t: string) => t === 'in' ? { i: '↑', c: '#0f7b3d' } : t === 'out' ? { i: '↓', c: '#b3261e' } : t === 'both' ? { i: '↕', c: '#8a6d00' } : t === 'mv' ? { i: '⇄', c: '#1a56b0' } : { i: '•', c: '#6b7686' }
+const ACT_TITLES: Record<string, string> = { operating: 'Операционная', financial: 'Финансовая', investing: 'Инвестиционная', transfer: 'Перемещения', service: 'Служебные' }
+const ACT_ORDER = ['operating', 'financial', 'investing', 'transfer', 'service']
+
+function StatiaPicker({ favs, code, label, onPick }: { favs: any[]; code?: string; label?: string; onPick: (f: any) => void }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { function h(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) } document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
+  const s = q.trim().toLowerCase()
+  const filtered = favs.filter(f => !s || (f.code || '').toLowerCase().includes(s) || (f.label || '').toLowerCase().includes(s))
+  const groups = ACT_ORDER.map(a => ({ a, title: ACT_TITLES[a], items: filtered.filter(f => (f.activity || 'operating') === a) })).filter(g => g.items.length)
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid transparent', borderRadius: 4, padding: '3px 5px', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, width: '100%', textAlign: 'left' }}>
+        {code || label ? <>{code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11 }}>{code}</span>} <span>{label}</span></> : <span style={{ color: '#9a938a' }}>— выбрать статью —</span>}
+        <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 60, width: 330, maxHeight: 340, overflowY: 'auto', background: '#fff', border: '1px solid #d0d5db', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', marginTop: 2 }}>
+          <div style={{ padding: 6, position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #eee' }}>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск статьи…" style={{ width: '100%', border: '1px solid #d0d5db', borderRadius: 6, padding: '6px 8px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          {groups.length === 0 ? <div style={{ padding: 12, color: '#9a938a', fontSize: 13, textAlign: 'center' }}>Не найдено</div> : groups.map(g => (
+            <div key={g.a}>
+              <div style={{ padding: '5px 10px', background: '#f4f5f7', fontWeight: 700, fontSize: 11, color: '#6b7686' }}>{g.title}</div>
+              {g.items.map((f, k) => { const ic = STAT_ICON(f.type); return (
+                <div key={(f.code || '') + f.label + k} onClick={() => { onPick(f); setOpen(false); setQ('') }} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 10px', cursor: 'pointer', fontSize: 13 }} onMouseEnter={e => (e.currentTarget.style.background = '#eef4ff')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                  <span style={{ color: ic.c, fontWeight: 800, width: 12 }}>{ic.i}</span>
+                  {f.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11 }}>{f.code}</span>}
+                  <span>{f.label}</span>
+                </div>
+              ) })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Моделька строки: распределить по счетам / контрагент / документ ──────────
 function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persist }: any) {
