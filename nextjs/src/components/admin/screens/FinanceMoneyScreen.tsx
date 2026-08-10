@@ -30,7 +30,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, amt }
+  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -66,7 +66,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const posted = rows.filter(r => r.status === 'posted').length
 
   function payload(r: any) {
-    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
+    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
   }
   async function persist(r: any) { const res: any = await finSaveRow(payload(r)); if (res?.data?.id && !r.id) setRows(p => p.map(x => x === r ? { ...x, id: res.data.id } : x)); return res?.data?.id || r.id }
   function scheduleSave(r: any) { const k = r.id || 'new'; clearTimeout(timers.current[k]); timers.current[k] = setTimeout(() => persist(r), 500) }
@@ -187,6 +187,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                           : <WhoInput row={r} cags={cags} onText={(t: string) => { r.who = t; setRows(p => [...p]); scheduleSave(r) }} onPick={(c: any) => { r.contragentId = c.id; r.who = c.name; setRows(p => [...p]); persist(r) }} />}
                         {r.docNumber && <span style={{ fontSize: 11, color: '#1a56b0', whiteSpace: 'nowrap' }} title={r.docNumber}>📄</span>}
                         {r.contragentId && <span style={{ fontSize: 11 }} title={r.contragent}>🏷</span>}
+                        {r.expName && <span style={{ fontSize: 11 }} title={`Статья расходов: ${r.expCode || ''} ${r.expName}`}>💠</span>}
                         {!isPosted && <button onClick={() => setModalRow(r)} title="Распределить / документ / контрагент" style={{ border: '1px solid #d0d5db', borderRadius: 4, background: '#fff', color: '#6b7686', fontWeight: 700, padding: '2px 6px', cursor: 'pointer' }}>⋯</button>}
                       </div>
                     </td>
@@ -235,7 +236,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
         </div>
       )}
 
-      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
+      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} expArticles={data?.expenseArticles || []} orgId={orgId} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
       {favOpen && <FavModal favs={favs} setFavs={setFavs} cags={cags} onApply={applyFavs} onClose={async () => { await finFavSave(favs); setFavOpen(false); await load() }} />}
     </div>
   )
@@ -306,8 +307,9 @@ function StatiaPicker({ favs, code, label, onPick }: { favs: any[]; code?: strin
 }
 
 // ─── Моделька строки: распределить по счетам / контрагент / документ ──────────
-function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persist }: any) {
-  const [tab, setTab] = useState<'split' | 'cag' | 'doc'>('split')
+function RowModal({ row, accounts, cags, expArticles, orgId, defAcc, onClose, onSaved, persist }: any) {
+  const [tab, setTab] = useState<'split' | 'cag' | 'doc' | 'exp'>('split')
+  const [expQ, setExpQ] = useState('')
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [total, setTotal] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
   const [q, setQ] = useState(''); const [docs, setDocs] = useState<any[]>([])
@@ -330,6 +332,7 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
     await persist(row); onSaved()
   }
   async function pickCag(c: any) { row.contragentId = c.id; if (!row.who) row.who = c.name; await persist(row); onSaved() }
+  async function pickExp(e: any) { row.expenseArticleId = e.id; row.expCode = e.code; row.expName = e.name; await persist(row); onSaved() }
   async function pickDoc(d: any) { row.docId = d.id; row.who = d.contragent || d.number; if (d.contragentId || d.contragent) { /* привяжем контрагента если найден по имени */ } await persist(row); onSaved() }
 
   return (
@@ -338,8 +341,8 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
         <h2 style={{ fontSize: 16, marginBottom: 2 }}>{row.article}{row.who ? ' — ' + row.who : ''}</h2>
         <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Тип: {typeName(row.type)} · распределите сумму, привяжите контрагента или документ</div>
         <div style={{ display: 'flex', borderBottom: '2px solid #d0d5db', marginBottom: 12 }}>
-          {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Документ']] as const).map(([k, l]) => (
-            <button key={k} onClick={() => setTab(k)} style={{ border: 0, background: 'none', padding: '8px 14px', fontWeight: 600, color: tab === k ? '#1c2430' : '#6b7686', borderBottom: `2px solid ${tab === k ? '#1c2430' : 'transparent'}`, marginBottom: -2, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
+          {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Документ'], ...(row.type === 'out' ? [['exp', 'Статья расходов']] : [])] as [string, string][]).map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k as any)} style={{ border: 0, background: 'none', padding: '8px 14px', fontWeight: 600, color: tab === k ? '#1c2430' : '#6b7686', borderBottom: `2px solid ${tab === k ? '#1c2430' : 'transparent'}`, marginBottom: -2, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
           ))}
         </div>
 
@@ -384,6 +387,20 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
                 </tr>)}
             </tbody>
           </table>
+        </div>}
+
+        {tab === 'exp' && <div>
+          <div style={{ fontSize: 13, color: '#6b7686', marginBottom: 8 }}>Статья затрат (на что расход) — бухгалтерская, поверх статьи ДДС.</div>
+          <input value={expQ} onChange={e => setExpQ(e.target.value)} placeholder="Поиск статьи расходов…" style={{ width: '100%', border: '1px solid #8f99a6', borderRadius: 6, padding: '8px 10px', marginBottom: 8, boxSizing: 'border-box' }} />
+          {row.expName && <div style={{ fontSize: 13, marginBottom: 8 }}>Текущая: <b>{row.expCode} {row.expName}</b> <button onClick={async () => { row.expenseArticleId = null; row.expCode = null; row.expName = null; await persist(row); onSaved() }} style={{ ...btn, marginLeft: 8, fontSize: 12 }}>убрать</button></div>}
+          <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #eee', borderRadius: 8 }}>
+            {(expArticles || []).filter((e: any) => { const s = expQ.trim().toLowerCase(); return !s || (e.name || '').toLowerCase().includes(s) || (e.code || '').toLowerCase().includes(s) }).map((e: any) => (
+              <div key={e.id} onClick={() => pickExp(e)} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 10px', cursor: 'pointer', borderTop: '1px solid #f4f5f7', background: e.id === row.expenseArticleId ? '#eef4ff' : '#fff' }}>
+                <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 12, width: 40 }}>{e.code}</span>
+                <span style={{ fontSize: 13 }}>{e.name}</span>
+              </div>
+            ))}
+          </div>
         </div>}
       </div>
     </div>

@@ -1,10 +1,14 @@
 // Финанс «Деньги»: дневной кассовый лист. Чтение — sqlClient, запись — drizzle.
 import { db, sqlClient } from '../lib/db'
-import { finRows, finRowAmounts, finFavorites, payments } from '../db/schema'
+import { finRows, finRowAmounts, finFavorites, finExpenseArticles, payments } from '../db/schema'
 import { eq, inArray } from 'drizzle-orm'
 
 export const accounts = (orgId: string) =>
   sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false order by kind desc, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
+
+// Справочник статей затрат (для расходных строк).
+export const expenseArticles = (orgId: string) =>
+  sqlClient`select id::text, code, name, sort_order "sortOrder" from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Promise<any[]>
 
 // Начальный остаток на дату = сумма проведённых сумм по счёту за дни ДО date.
 export const openingByAccount = (orgId: string, date: string) =>
@@ -16,14 +20,16 @@ export const openingByAccount = (orgId: string, date: string) =>
 export const rowsForDay = (orgId: string, date: string) =>
   sqlClient`select r.id::text, r.type, r.code, r.article, r.who, r.status, r.sort_order "sortOrder",
       r.contragent_id::text "contragentId", r.doc_id::text "docId",
+      r.expense_article_id::text "expenseArticleId", ea.code "expCode", ea.name "expName",
       c.name "contragent", d.number "docNumber", d.type "docType",
       coalesce(json_agg(json_build_object('accountId', am.account_id::text, 'amount', am.amount::float)) filter (where am.id is not null), '[]') amounts
     from fin_rows r
     left join contragents c on c.id=r.contragent_id
     left join documents d on d.id=r.doc_id
+    left join fin_expense_articles ea on ea.id=r.expense_article_id
     left join fin_row_amounts am on am.row_id=r.id
     where r.org_id=${orgId} and r.date=${date}
-    group by r.id, c.name, d.number, d.type
+    group by r.id, c.name, d.number, d.type, ea.code, ea.name
     order by r.sort_order, r.created_at` as unknown as Promise<any[]>
 
 export const datesForOrg = (orgId: string) =>
@@ -54,6 +60,9 @@ export const setSort = (id: string, sort: number) => db.update(finRows).set({ so
 
 export const clearFavorites = (orgId: string) => db.delete(finFavorites).where(eq(finFavorites.orgId, orgId))
 export const insertFavorites = (vals: typeof finFavorites.$inferInsert[]) => vals.length ? db.insert(finFavorites).values(vals) : Promise.resolve()
+
+export const archiveExpenseArticles = (orgId: string) => db.update(finExpenseArticles).set({ archived: true }).where(eq(finExpenseArticles.orgId, orgId))
+export const insertExpenseArticles = (vals: typeof finExpenseArticles.$inferInsert[]) => vals.length ? db.insert(finExpenseArticles).values(vals) : Promise.resolve()
 
 export const insertPayment = (val: typeof payments.$inferInsert) => db.insert(payments).values(val)
 

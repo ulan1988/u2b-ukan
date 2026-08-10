@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
     case 'favApply': res = await svc.applyFavorites(org, b.date); break
     case 'docSearch': res = await svc.searchDocs(org, b.q || ''); break
     case 'favList': res = await svc.listFinFavorites(org); break
+    case 'expList': res = await svc.listExpenseArticles(org); break
+    case 'expSave': res = await svc.saveExpenseArticles(org, b.items || []); break
     default: return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 })
   }
   await pushSignal()

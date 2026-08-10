@@ -11,3 +11,5 @@ export const finFavApply = (date: string) => post('/api/finance/money', { action
 export const finDocSearch = (q: string) => post('/api/finance/money', { action: 'docSearch', q })
 export const finFavList = () => post('/api/finance/money', { action: 'favList' })
 export const finDds = (from: string, to: string) => getObj<any>(`/api/finance/dds?from=${from}&to=${to}`, null as any)
+export const finExpList = () => post('/api/finance/money', { action: 'expList' })
+export const finExpSave = (items: any[]) => post('/api/finance/money', { action: 'expSave', items })

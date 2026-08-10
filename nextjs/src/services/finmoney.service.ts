@@ -6,8 +6,8 @@ const sumAmounts = (amts: any[]) => (amts || []).reduce((s, a) => s + num(a.amou
 
 // Полный день: счета, начальный/конечный остаток по счетам, строки, список дней, избранные.
 export async function financeDay(orgId: string, date: string) {
-  const [accts, opening, rows, dates, favs] = await Promise.all([
-    fin.accounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId),
+  const [accts, opening, rows, dates, favs, expArticles] = await Promise.all([
+    fin.accounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId),
   ])
   const open: Record<string, number> = {}
   for (const a of accts) open[a.id] = 0
@@ -16,13 +16,13 @@ export async function financeDay(orgId: string, date: string) {
   for (const r of rows) for (const am of (r.amounts || [])) closing[am.accountId] = (closing[am.accountId] || 0) + num(am.amount)
   const dl = dates.map(d => d.date)
   if (!dl.includes(date)) dl.unshift(date)
-  return { accounts: accts, opening: open, closing, rows, dates: dl, favorites: favs }
+  return { accounts: accts, opening: open, closing, rows, dates: dl, favorites: favs, expenseArticles: expArticles }
 }
 
 // Создать/обновить строку + её суммы по счетам. Правка только черновика.
 export async function saveFinRow(orgId: string, input: any) {
   let id: string = input.id
-  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', contragentId: input.contragentId || null, docId: input.docId || null }
+  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', contragentId: input.contragentId || null, docId: input.docId || null, expenseArticleId: input.expenseArticleId || null }
   if (id) {
     await fin.updateRowFields(id, fields)
   } else {
@@ -69,6 +69,13 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
 
 export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q || '')
 export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
+export const listExpenseArticles = (orgId: string) => fin.expenseArticles(orgId)
+export async function saveExpenseArticles(orgId: string, items: any[]) {
+  await fin.archiveExpenseArticles(orgId)   // мягко: старые id остаются валидны для прошлых строк
+  const vals = (items || []).map((x: any, i: number) => ({ orgId, code: x.code || null, name: x.name || '', sortOrder: i, archived: false }))
+  await fin.insertExpenseArticles(vals as any)
+  return { ok: true }
+}
 
 // Отчёт ДДС за период: деятельности → Поступления/Платежи по статьям + остатки по счетам.
 const ACT_TITLES: Record<string, string> = { operating: 'Операционная деятельность', financial: 'Финансовая деятельность', investing: 'Инвестиционная деятельность' }

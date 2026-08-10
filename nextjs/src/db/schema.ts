@@ -380,6 +380,17 @@ export const dailyReportRows = pgTable('daily_report_rows', {
 }, t => ({ byReport: index('daily_report_rows_report_idx').on(t.reportId) }))
 
 // ─── Финанс «Деньги»: дневной кассовый лист (универсальный, всё в БД по ID) ───
+
+// Справочник статей затрат (бухгалтерский, 7100/7200/7400) — для расходных строк.
+export const finExpenseArticles = pgTable('fin_expense_articles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  code: text('code'),                                     // 7100/7200/7400
+  name: text('name').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+  archived: boolean('archived').notNull().default(false),
+}, t => ({ byOrg: index('fin_expense_articles_org_idx').on(t.orgId) }))
+
 // Строка операции дня. Суммы по счетам — в fin_row_amounts (динамические счета).
 export const finRows = pgTable('fin_rows', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -387,6 +398,7 @@ export const finRows = pgTable('fin_rows', {
   date: date('date').notNull(),                            // день листа
   type: text('type').notNull().default('etc'),            // in|out|mv|service
   code: text('code'),                                      // код статьи ДДС (ОП-01, ПЛ-01…)
+  expenseArticleId: uuid('expense_article_id').references(() => finExpenseArticles.id), // статья затрат (для расходов, 7100/7200/7400)
   article: text('article').notNull().default(''),         // статья (Кристалл, Зарплата, Аренда…)
   contragentId: uuid('contragent_id').references(() => contragents.id),  // если завязано на контрагента
   docId: uuid('doc_id').references(() => documents.id),    // подобранный документ (накладная/счёт)
