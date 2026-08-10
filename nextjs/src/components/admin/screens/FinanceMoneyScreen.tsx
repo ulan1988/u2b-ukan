@@ -8,7 +8,8 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch } from '@/lib/api/finmoney'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
-const typeName = (t: string) => TYPES[t] || 'Прочее'
+const KNOWN_TYPE = (t: string) => t in TYPES
+const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
 const TYPE_COLOR: Record<string, { bg: string; c: string }> = {
   in: { bg: '#e8f5ec', c: '#0f7b3d' }, out: { bg: '#fbeae9', c: '#b3261e' },
   mv: { bg: '#e9f0fb', c: '#1a56b0' }, service: { bg: '#eceff2', c: '#6b7686' },
@@ -136,7 +137,8 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                 <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (opening[a.id] || 0), 0))}</td><td style={td}></td>
               </tr>
               {rows.map((r, i) => {
-                const isPosted = r.status === 'posted'; const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#eceff2', c: '#6b7686' }
+                // Неизвестный тип не роняет рендер, но подсвечивается красным (аномалия видна).
+                const isPosted = r.status === 'posted'; const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#fbeae9', c: '#b3261e' }
                 return (
                   <tr key={r.id || i} style={{ background: isPosted ? '#fff' : '#fffdf2' }}>
                     <td style={tdNum}>{i + 1}</td>
@@ -186,7 +188,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
         </div>
       )}
 
-      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
+      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
       {favOpen && <FavModal favs={favs} setFavs={setFavs} cags={cags} onApply={applyFavs} onClose={async () => { await finFavSave(favs); setFavOpen(false); await load() }} />}
     </div>
   )
@@ -197,7 +199,7 @@ const ov: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba
 const modalBox: React.CSSProperties = { background: '#fff', borderRadius: 10, maxWidth: 600, width: '100%', padding: 18 }
 
 // ─── Моделька строки: распределить по счетам / контрагент / документ ──────────
-function RowModal({ row, accounts, cags, orgId, onClose, onSaved, persist }: any) {
+function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persist }: any) {
   const [tab, setTab] = useState<'split' | 'cag' | 'doc'>('split')
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [total, setTotal] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
@@ -207,6 +209,12 @@ function RowModal({ row, accounts, cags, orgId, onClose, onSaved, persist }: any
   const left = parseCell(total) - done
 
   useEffect(() => { if (tab === 'doc') finDocSearch(q).then((r: any) => setDocs(r?.data || r || [])) }, [tab, q])
+  // Автоподстановка: если у статьи есть счёт по умолчанию и вручную ничего не распределено —
+  // введённая «Сумма всего» кладётся на этот счёт автоматически.
+  useEffect(() => {
+    const t = parseCell(total); const any = accounts.some((a: any) => parseCell(vals[a.id]) !== 0)
+    if (t > 0 && !any && defAcc) setVals(v => ({ ...v, [defAcc]: String(t) }))
+  }, [total, defAcc]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function okSplit() {
     if (row.type === 'mv') { onClose(); return }

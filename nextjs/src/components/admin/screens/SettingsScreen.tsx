@@ -429,12 +429,13 @@ function ProjectsPanel({ orgId }: { orgId: string }) {
 function StatiPanel({ orgId }: { orgId: string }) {
   const [list, setList] = useState<any[]>([])
   const [cags, setCags] = useState<any[]>([])
+  const [accs, setAccs] = useState<any[]>([])
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(true)
   useEffect(() => { (async () => {
-    const [r, c] = await Promise.all([finFavList(), listContragents(true)])
-    setList((((r as any)?.data) || []).map((f: any) => ({ code: f.code || '', label: f.label, type: f.type, activity: f.activity || 'operating', contragentId: f.contragentId || null })))
-    setCags(c as any[]); setLoading(false)
+    const [r, c, refs] = await Promise.all([finFavList(), listContragents(true), fetchRefs()])
+    setList((((r as any)?.data) || []).map((f: any) => ({ code: f.code || '', label: f.label, type: f.type, activity: f.activity || 'operating', contragentId: f.contragentId || null, defaultAccountId: f.defaultAccountId || '' })))
+    setCags(c as any[]); setAccs(((refs as any)?.cashAccounts || []).filter((a: any) => !a.archived)); setLoading(false)
   })() }, [])
   const upd = (i: number, patch: any) => setList(l => l.map((x, j) => j === i ? { ...x, ...patch } : x))
   const move = (i: number, d: number) => setList(l => { const n = [...l]; const j = i + d; if (j < 0 || j >= n.length) return n;[n[i], n[j]] = [n[j], n[i]]; return n })
@@ -455,7 +456,7 @@ function StatiPanel({ orgId }: { orgId: string }) {
       <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>Тип задаёт знак: Приход (+), Расход (−), Перемещение (между счетами). Контрагент (для приходов/долгов/датаций) — при проведении оплата уйдёт ему в акт сверки.</div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
-          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', 'Код', 'Статья', 'Тип', 'Группа', 'Контрагент (необяз.)', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', 'Код', 'Статья', 'Тип', 'Группа', 'Контрагент (необяз.)', 'Счёт по умолч.', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>)}</tr></thead>
           <tbody>
             {list.map((f, i) => (
               <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
@@ -465,6 +466,7 @@ function StatiPanel({ orgId }: { orgId: string }) {
                 <td style={{ padding: '6px 8px' }}><select value={f.type} onChange={e => upd(i, { type: e.target.value })} style={{ ...inp, padding: '6px 9px', width: 140 }}>{STATI_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
                 <td style={{ padding: '6px 8px' }}><select value={f.activity || 'operating'} onChange={e => upd(i, { activity: e.target.value })} style={{ ...inp, padding: '6px 9px', width: 150 }}>{STATI_ACTIVITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
                 <td style={{ padding: '6px 8px', minWidth: 230 }}><ContragentPicker contragents={cags} value={f.contragentId} onPick={(c: any) => upd(i, { contragentId: c.id })} placeholder="— без контрагента —" /></td>
+                <td style={{ padding: '6px 8px' }}><select value={f.defaultAccountId || ''} onChange={e => upd(i, { defaultAccountId: e.target.value || null })} style={{ ...inp, padding: '6px 9px', width: 120 }}><option value="">— любой —</option>{accs.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></td>
                 <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{f.contragentId && <button onClick={() => upd(i, { contragentId: null })} title="Отвязать" style={miniB}>⊘</button>} <button onClick={() => setList(l => l.filter((_, j) => j !== i))} title="Удалить" style={{ ...miniB, color: '#c1121c' }}>✕</button></td>
               </tr>
             ))}

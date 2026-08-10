@@ -413,5 +413,6 @@ export const finFavorites = pgTable('fin_favorites', {
   type: text('type').notNull().default('etc'),           // in|out|mv|service
   activity: text('activity'),                            // operating|financial|investing|transfer|service
   contragentId: uuid('contragent_id').references(() => contragents.id),
+  defaultAccountId: uuid('default_account_id').references(() => cashAccounts.id),  // счёт по умолчанию (автоподстановка)
   sortOrder: integer('sort_order').notNull().default(0),
 }, t => ({ byOrg: index('fin_favorites_org_idx').on(t.orgId) }))

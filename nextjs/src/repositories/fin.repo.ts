@@ -30,7 +30,7 @@ export const datesForOrg = (orgId: string) =>
   sqlClient`select distinct date::text as date from fin_rows where org_id=${orgId} order by date desc` as unknown as Promise<Array<{ date: string }>>
 
 export const favorites = (orgId: string) =>
-  sqlClient`select id::text, code, label, type, activity, contragent_id::text "contragentId", sort_order "sortOrder"
+  sqlClient`select id::text, code, label, type, activity, contragent_id::text "contragentId", default_account_id::text "defaultAccountId", sort_order "sortOrder"
     from fin_favorites where org_id=${orgId} order by sort_order, label` as unknown as Promise<any[]>
 
 export const rowById = (id: string) =>

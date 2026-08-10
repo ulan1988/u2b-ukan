@@ -72,7 +72,7 @@ export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
 
 export async function saveFinFavorites(orgId: string, favs: any[]) {
   await fin.clearFavorites(orgId)
-  const vals = (favs || []).map((f: any, i: number) => ({ orgId, code: f.code || null, label: f.label || '', type: f.type || 'etc', activity: f.activity || null, contragentId: f.contragentId || null, sortOrder: i }))
+  const vals = (favs || []).map((f: any, i: number) => ({ orgId, code: f.code || null, label: f.label || '', type: f.type || 'etc', activity: f.activity || null, contragentId: f.contragentId || null, defaultAccountId: f.defaultAccountId || null, sortOrder: i }))
   await fin.insertFavorites(vals as any)
   return { ok: true }
 }
