@@ -58,6 +58,40 @@ export async function contragentLedger(orgId: string, contragentId: string, open
   }
 }
 
+// Акт сверки (ведомость взаиморасчётов) по контрагенту, как в 1С:
+// Документ движения | Начальный остаток | Увеличение долга | Уменьшение долга | Конечный остаток.
+// «+» (увеличение долга контрагента нам): продажа, возврат поставщику, оплата поставщику.
+// «−» (уменьшение): приход от него, возврат от клиента, оплата от клиента.
+// Начальный остаток на дату `from` = нач.остаток справочника + сумма движений ДО from.
+export async function contragentReconciliation(orgId: string, contragentId: string, from?: string, to?: string) {
+  const [docs, pays, opening0] = await Promise.all([
+    finRepo.contragentDocs(orgId, contragentId),
+    finRepo.contragentPayments(orgId, contragentId),
+    finRepo.contragentOpening(orgId, contragentId),
+  ])
+  const docTitle: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
+  const inc = (t: string) => t === 'sale' || t === 'return_out'
+  const mv = [
+    ...docs.map(d => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total })),
+    ...pays.map(p => ({ date: p.date, title: (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику'), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0 })),
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
+  let running = opening0
+  for (const m of mv) { if (from && m.date < from) running += m.inc - m.dec }
+  const opening = running
+  const rows: any[] = []
+  let sumInc = 0, sumDec = 0
+  for (const m of mv) {
+    if (from && m.date < from) continue
+    if (to && m.date > to) continue
+    const start = running
+    running += m.inc - m.dec
+    sumInc += m.inc; sumDec += m.dec
+    rows.push({ date: m.date, title: m.title, opening: start, inc: m.inc, dec: m.dec, balance: running })
+  }
+  return { opening, rows, totals: { opening, inc: sumInc, dec: sumDec, closing: running }, currency: '₸' }
+}
+
 // Рентабельность: по каждой продаже выручка − себестоимость = прибыль, маржа %.
 export async function profit(orgId: string) {
   const rows = await finRepo.profitReport(orgId)

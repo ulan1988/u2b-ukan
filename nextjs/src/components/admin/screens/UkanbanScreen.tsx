@@ -5,11 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { listPurchases, listSales, listReturns, updateDocument } from '@/lib/api/docs'
+import { listContragents, reconcile } from '@/lib/api/refs'
+import ContragentPicker from '@/components/ContragentPicker'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import RouteModal from '@/components/admin/RouteModal'
 
 const MODES = [
   { key: 'invoices', label: '🧾 Накладные', ready: true },
+  { key: 'reconcile', label: '📄 Акт сверки', ready: true },
   { key: 'finance', label: '💰 Финанс', ready: false },
   { key: 'deals', label: '📋 Сделки', ready: false },
 ]
@@ -33,7 +36,8 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
       </div>
 
       {mode === 'invoices' && <InvoicesMode orgId={orgId} />}
-      {mode !== 'invoices' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
+      {mode === 'reconcile' && <ReconcileMode />}
+      {mode !== 'invoices' && mode !== 'reconcile' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
   )
 }
@@ -167,6 +171,84 @@ function InvoicesMode({ orgId }: { orgId: string }) {
 
       {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={load} />}
       {routeDocId && <RouteModal docId={routeDocId} onClose={() => setRouteDocId(null)} />}
+    </div>
+  )
+}
+
+// ─── Режим «Акт сверки»: ведомость взаиморасчётов по контрагенту с нарастающим сальдо ───
+const thL: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', whiteSpace: 'nowrap', fontWeight: 700 }
+const thR: React.CSSProperties = { textAlign: 'right', padding: '8px 10px', whiteSpace: 'nowrap', fontWeight: 700 }
+const tdL: React.CSSProperties = { textAlign: 'left', padding: '7px 10px' }
+const tdR: React.CSSProperties = { textAlign: 'right', padding: '7px 10px', whiteSpace: 'nowrap' }
+const emptyBox: React.CSSProperties = { padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }
+const dInp = (v: string): React.CSSProperties => ({ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${v ? COLORS.primary : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none' })
+
+function ReconcileMode() {
+  const [cags, setCags] = useState<any[]>([])
+  const [cid, setCid] = useState('')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => { listContragents(true).then(r => setCags(r as any[])) }, [])
+  useEffect(() => {
+    if (!cid) { setData(null); return }
+    setLoading(true)
+    reconcile(cid, from || undefined, to || undefined).then(d => setData(d)).finally(() => setLoading(false))
+  }, [cid, from, to])
+
+  const cag = cags.find(c => c.id === cid)
+  const num = (n: any) => Number(n || 0) ? fmtMoney(Number(n)) : ''
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>Контрагент:</span>
+        <ContragentPicker contragents={cags} value={cid} onPick={(c: any) => setCid(c.id)} style={{ minWidth: 260 }} />
+        <span style={{ fontSize: 12.5, color: '#5f5952', marginLeft: 6 }}>📅 от</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={dInp(from)} />
+        <span style={{ fontSize: 12.5, color: '#5f5952' }}>до</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={dInp(to)} />
+        {(from || to) && <button onClick={() => { setFrom(''); setTo('') }} title="Сбросить" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer' }}>×</button>}
+      </div>
+
+      {!cid ? <div style={emptyBox}>Выберите контрагента — появится акт сверки со всеми движениями и нарастающим сальдо.</div>
+        : loading ? <div style={emptyBox}>Загрузка…</div>
+          : !data ? <div style={emptyBox}>Нет данных</div>
+            : (
+              <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
+                    <thead>
+                      <tr style={{ background: '#faf8f6', color: COLORS.textMuted, fontSize: 11 }}>
+                        <th style={thL}>Дата</th><th style={thL}>Документ движения</th>
+                        <th style={thR}>Начальный остаток</th><th style={thR}>Увеличение долга</th><th style={thR}>Уменьшение долга</th><th style={thR}>Конечный остаток</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderTop: '2px solid #eee', fontWeight: 800, background: '#fbf7ff' }}>
+                        <td style={tdL} colSpan={2}>{cag?.name || 'Контрагент'} · ИТОГО</td>
+                        <td style={tdR}>{num(data.totals.opening)}</td><td style={tdR}>{num(data.totals.inc)}</td><td style={tdR}>{num(data.totals.dec)}</td><td style={{ ...tdR, color: COLORS.primary }}>{fmtMoney(Number(data.totals.closing))}</td>
+                      </tr>
+                      {data.rows.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Движений в периоде нет</td></tr>
+                        : data.rows.map((r: any, i: number) => (
+                          <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
+                            <td style={tdL}>{fmtDate(r.date)}</td>
+                            <td style={tdL}>{r.title}</td>
+                            <td style={tdR}>{num(r.opening)}</td>
+                            <td style={{ ...tdR, color: r.inc ? '#2e8a5e' : '#ccc' }}>{num(r.inc)}</td>
+                            <td style={{ ...tdR, color: r.dec ? '#b4574c' : '#ccc' }}>{num(r.dec)}</td>
+                            <td style={{ ...tdR, fontWeight: 700 }}>{fmtMoney(Number(r.balance))}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding: '10px 14px', display: 'flex', gap: 16, borderTop: '1.5px solid #eee', fontSize: 13, flexWrap: 'wrap' }}>
+                  <span>Конечный остаток: <b style={{ color: data.totals.closing >= 0 ? '#b4574c' : '#2e8a5e' }}>{fmtMoney(Math.abs(Number(data.totals.closing)))} ₸</b> {data.totals.closing >= 0 ? '(нам должны)' : '(мы должны)'}</span>
+                </div>
+              </div>
+            )}
     </div>
   )
 }
