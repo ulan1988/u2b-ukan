@@ -177,7 +177,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
               </tr>
             </tbody>
           </table>
-          <button onClick={addRow} style={{ marginTop: 8, padding: '7px 13px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>+ Добавить строку в конец</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button onClick={addRow} style={{ padding: '7px 13px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>+ Добавить строку в конец</button>
+            <button onClick={applyFavs} style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#fff3d6', color: '#8a6d00', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>★ Заполнить статьями дня</button>
+          </div>
           <p style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8, maxWidth: 780 }}>В ячейке работает калькулятор: <b>4500+5500+1000</b> → Enter = <b>11 000</b> (и −, ×, ÷). <b>⧉</b> клонировать, <b>＋</b> вставить под строкой, <b>✕</b> убрать. Пока строки в черновике (кремовые) — ничего не проведено: сверьте жёлтые итоги и нажмите <b>✓ Провести платежи</b> — строки с контрагентом создадут оплату (акт сверки). Проведённую строку вернёте карандашом ✎.</p>
         </div>
       )}
