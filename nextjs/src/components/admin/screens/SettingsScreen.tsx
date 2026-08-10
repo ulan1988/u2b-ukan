@@ -7,8 +7,15 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { finFavList, finFavSave } from '@/lib/api/finmoney'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
-const STATI_TYPES: [string, string][] = [['in', 'Поступление (+)'], ['out', 'Платёж (−)'], ['mv', 'Перемещение (0)'], ['service', 'Служебное']]
-const STATI_ACTIVITIES: [string, string][] = [['operating', 'Операционная'], ['financial', 'Финансовая'], ['investing', 'Инвестиционная'], ['transfer', 'Перемещения'], ['service', 'Служебные']]
+const STATI_TYPES: [string, string][] = [['in', '↑ Поступление'], ['out', '↓ Платёж'], ['both', '↕ Приход/Расход'], ['mv', '⇄ Перемещение'], ['service', '• Служебное']]
+const STATI_ACTS: { key: string; title: string; badge: string; folders: boolean }[] = [
+  { key: 'operating', title: 'Операционная деятельность', badge: 'О', folders: true },
+  { key: 'financial', title: 'Финансовая деятельность', badge: 'Ф', folders: true },
+  { key: 'investing', title: 'Инвестиционная деятельность', badge: 'И', folders: true },
+  { key: 'transfer', title: 'Перемещения', badge: '⇄', folders: false },
+  { key: 'service', title: 'Служебные', badge: '•', folders: false },
+]
+const statiIcon = (t: string) => t === 'in' ? { i: '↑', c: '#0f7b3d' } : t === 'out' ? { i: '↓', c: '#b3261e' } : t === 'both' ? { i: '↕', c: '#8a6d00' } : t === 'mv' ? { i: '⇄', c: '#1a56b0' } : { i: '•', c: '#6b7686' }
 
 const ROLES = [
   { v: 'logist', l: 'Логист' }, { v: 'branch', l: 'Филиал' }, { v: 'client', l: 'Клиент' },
@@ -437,42 +444,73 @@ function StatiPanel({ orgId }: { orgId: string }) {
     setList((((r as any)?.data) || []).map((f: any) => ({ code: f.code || '', label: f.label, type: f.type, activity: f.activity || 'operating', contragentId: f.contragentId || null, defaultAccountId: f.defaultAccountId || '' })))
     setCags(c as any[]); setAccs(((refs as any)?.cashAccounts || []).filter((a: any) => !a.archived)); setLoading(false)
   })() }, [])
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const upd = (i: number, patch: any) => setList(l => l.map((x, j) => j === i ? { ...x, ...patch } : x))
-  const move = (i: number, d: number) => setList(l => { const n = [...l]; const j = i + d; if (j < 0 || j >= n.length) return n;[n[i], n[j]] = [n[j], n[i]]; return n })
+  const del = (i: number) => setList(l => l.filter((_, j) => j !== i))
+  const add = (activity: string, type: string) => setList(l => [...l, { code: '', label: 'Новая статья', type, activity, contragentId: null, defaultAccountId: '' }])
   async function save() { const r: any = await finFavSave(list); setMsg(r?.ok ? '✓ Сохранено' : '⚠ Ошибка'); setTimeout(() => setMsg(''), 2000) }
-  const miniB: React.CSSProperties = { border: '1px solid #e6e2dc', background: '#fff', borderRadius: 6, color: '#6b655b', padding: '2px 7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
+  const miniB: React.CSSProperties = { border: '1px solid #e6e2dc', background: '#fff', borderRadius: 6, color: '#6b655b', padding: '2px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
+  const cell: React.CSSProperties = { ...inp, padding: '5px 7px', fontSize: 12.5 }
   if (loading) return <div style={{ padding: 30, color: COLORS.textMuted }}>Загрузка…</div>
+
+  // Редактируемая строка-статья (по индексу в list).
+  const Row = (i: number, indent: number) => {
+    const f = list[i]; const ic = statiIcon(f.type)
+    return (
+      <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 8px', paddingLeft: indent, borderTop: '1px solid #f4f5f7' }}>
+        <span style={{ color: ic.c, fontWeight: 800, width: 14, textAlign: 'center' }}>{ic.i}</span>
+        <input value={f.code || ''} onChange={e => upd(i, { code: e.target.value })} placeholder="код" style={{ ...cell, width: 66, fontFamily: 'Consolas, monospace' }} />
+        <input value={f.label} onChange={e => upd(i, { label: e.target.value })} style={{ ...cell, flex: '1 1 150px', minWidth: 110 }} />
+        <select value={f.type} onChange={e => upd(i, { type: e.target.value })} style={{ ...cell, width: 118 }}>{STATI_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        <div style={{ width: 160 }}><ContragentPicker contragents={cags} value={f.contragentId} onPick={(c: any) => upd(i, { contragentId: c.id })} placeholder="— контрагент —" /></div>
+        <select value={f.defaultAccountId || ''} onChange={e => upd(i, { defaultAccountId: e.target.value || null })} title="Счёт по умолчанию" style={{ ...cell, width: 92 }}><option value="">счёт</option>{accs.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+        <button onClick={() => del(i)} title="Удалить" style={{ ...miniB, color: '#c1121c' }}>✕</button>
+      </div>
+    )
+  }
+  const folderHead = (name: string, onAdd: () => void) => (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 8px', paddingLeft: 30, fontWeight: 600, color: '#6b655b', fontSize: 13 }}>
+      📁 {name} <button onClick={onAdd} style={{ ...miniB, fontSize: 11 }}>+ статья</button>
+    </div>
+  )
+
   return (
-    <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 0 0 1px #e6e2dc' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Статьи (ДДС) — шаблон строк «Деньги»</div>
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>{list.length} шт.</span>
+    <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', flexWrap: 'wrap', borderBottom: '1px solid #eee' }}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>Статьи ДДС</div>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>{list.length} шт. · Деятельность → Поступления/Платежи → статья</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {msg && <span style={{ fontSize: 13, color: msg[0] === '✓' ? '#2e8a5e' : '#b03020' }}>{msg}</span>}
-          <button onClick={() => setList(l => [...l, { code: '', label: 'Новая статья', type: 'out', activity: 'operating', contragentId: null }])} style={miniB}>+ Статья</button>
           <button onClick={save} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Сохранить</button>
         </div>
       </div>
-      <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>Тип задаёт знак: Приход (+), Расход (−), Перемещение (между счетами). Контрагент (для приходов/долгов/датаций) — при проведении оплата уйдёт ему в акт сверки.</div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
-          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', 'Код', 'Статья', 'Тип', 'Группа', 'Контрагент (необяз.)', 'Счёт по умолч.', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>)}</tr></thead>
-          <tbody>
-            {list.map((f, i) => (
-              <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
-                <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}><button onClick={() => move(i, -1)} style={miniB}>▲</button> <button onClick={() => move(i, 1)} style={miniB}>▼</button></td>
-                <td style={{ padding: '6px 8px' }}><input value={f.code || ''} onChange={e => upd(i, { code: e.target.value })} placeholder="ОП-01" style={{ ...inp, padding: '6px 9px', width: 80, fontFamily: 'Consolas, monospace' }} /></td>
-                <td style={{ padding: '6px 8px' }}><input value={f.label} onChange={e => upd(i, { label: e.target.value })} style={{ ...inp, padding: '6px 9px' }} /></td>
-                <td style={{ padding: '6px 8px' }}><select value={f.type} onChange={e => upd(i, { type: e.target.value })} style={{ ...inp, padding: '6px 9px', width: 140 }}>{STATI_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
-                <td style={{ padding: '6px 8px' }}><select value={f.activity || 'operating'} onChange={e => upd(i, { activity: e.target.value })} style={{ ...inp, padding: '6px 9px', width: 150 }}>{STATI_ACTIVITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
-                <td style={{ padding: '6px 8px', minWidth: 230 }}><ContragentPicker contragents={cags} value={f.contragentId} onPick={(c: any) => upd(i, { contragentId: c.id })} placeholder="— без контрагента —" /></td>
-                <td style={{ padding: '6px 8px' }}><select value={f.defaultAccountId || ''} onChange={e => upd(i, { defaultAccountId: e.target.value || null })} style={{ ...inp, padding: '6px 9px', width: 120 }}><option value="">— любой —</option>{accs.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></td>
-                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{f.contragentId && <button onClick={() => upd(i, { contragentId: null })} title="Отвязать" style={miniB}>⊘</button>} <button onClick={() => setList(l => l.filter((_, j) => j !== i))} title="Удалить" style={{ ...miniB, color: '#c1121c' }}>✕</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div style={{ overflowX: 'auto' }}><div style={{ minWidth: 700 }}>
+        {STATI_ACTS.map(act => {
+          const items = list.map((f, i) => ({ f, i })).filter(x => (x.f.activity || 'operating') === act.key)
+          const isCol = collapsed.has(act.key)
+          return (
+            <div key={act.key}>
+              <div onClick={() => setCollapsed(s => { const n = new Set(s); n.has(act.key) ? n.delete(act.key) : n.add(act.key); return n })}
+                style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#eef0f3', padding: '9px 12px', cursor: 'pointer', fontWeight: 700, borderTop: '1px solid #d0d5db' }}>
+                <span style={{ width: 12 }}>{isCol ? '▸' : '▾'}</span>
+                {act.badge && <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#1c2430', color: '#fff', fontSize: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{act.badge}</span>}
+                {act.title}<span style={{ marginLeft: 'auto', fontSize: 12, color: COLORS.textMuted, fontWeight: 400 }}>{items.length}</span>
+              </div>
+              {!isCol && (act.folders ? <>
+                {folderHead('Поступления', () => add(act.key, 'in'))}
+                {items.filter(x => x.f.type === 'in').map(x => Row(x.i, 50))}
+                {folderHead('Платежи', () => add(act.key, 'out'))}
+                {items.filter(x => x.f.type === 'out').map(x => Row(x.i, 50))}
+                {items.filter(x => x.f.type === 'both' || x.f.type === 'mv' || x.f.type === 'service').map(x => Row(x.i, 30))}
+                <div style={{ padding: '5px 8px', paddingLeft: 30 }}><button onClick={() => add(act.key, 'both')} style={{ ...miniB, fontSize: 11 }}>+ статья (без папки)</button></div>
+              </> : <>
+                {items.map(x => Row(x.i, 30))}
+                <div style={{ padding: '5px 8px', paddingLeft: 30 }}><button onClick={() => add(act.key, act.key === 'transfer' ? 'mv' : 'service')} style={{ ...miniB, fontSize: 11 }}>+ статья</button></div>
+              </>)}
+            </div>
+          )
+        })}
+      </div></div>
     </div>
   )
 }

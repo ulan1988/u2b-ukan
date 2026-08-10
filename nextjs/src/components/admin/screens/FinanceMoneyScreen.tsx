@@ -7,11 +7,10 @@ import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch } from '@/lib/api/finmoney'
 
-const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
-const KNOWN_TYPE = (t: string) => t in TYPES
+const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', both: 'Приход/Расход', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
 const TYPE_COLOR: Record<string, { bg: string; c: string }> = {
-  in: { bg: '#e8f5ec', c: '#0f7b3d' }, out: { bg: '#fbeae9', c: '#b3261e' },
+  in: { bg: '#e8f5ec', c: '#0f7b3d' }, out: { bg: '#fbeae9', c: '#b3261e' }, both: { bg: '#fff3d6', c: '#8a6d00' },
   mv: { bg: '#e9f0fb', c: '#1a56b0' }, service: { bg: '#eceff2', c: '#6b7686' },
 }
 const todayStr = () => new Date().toISOString().slice(0, 10)
