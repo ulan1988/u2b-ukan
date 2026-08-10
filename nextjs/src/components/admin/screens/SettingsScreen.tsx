@@ -7,7 +7,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { finFavList, finFavSave } from '@/lib/api/finmoney'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
 
-const STATI_TYPES: [string, string][] = [['in', '↑ Поступление'], ['out', '↓ Платёж'], ['both', '↕ Приход/Расход'], ['mv', '⇄ Перемещение'], ['service', '• Служебное']]
+const STATI_TYPES: [string, string][] = [['in', '↑ Поступление'], ['out', '↓ Платёж'], ['mv', '⇄ Перемещение'], ['service', '• Служебное']]
 const STATI_ACTS: { key: string; title: string; badge: string; folders: boolean }[] = [
   { key: 'operating', title: 'Операционная деятельность', badge: 'О', folders: true },
   { key: 'financial', title: 'Финансовая деятельность', badge: 'Ф', folders: true },
@@ -501,8 +501,7 @@ function StatiPanel({ orgId }: { orgId: string }) {
                 {items.filter(x => x.f.type === 'in').map(x => Row(x.i, 50))}
                 {folderHead('Платежи', () => add(act.key, 'out'))}
                 {items.filter(x => x.f.type === 'out').map(x => Row(x.i, 50))}
-                {items.filter(x => x.f.type === 'both' || x.f.type === 'mv' || x.f.type === 'service').map(x => Row(x.i, 30))}
-                <div style={{ padding: '5px 8px', paddingLeft: 30 }}><button onClick={() => add(act.key, 'both')} style={{ ...miniB, fontSize: 11 }}>+ статья (без папки)</button></div>
+                {items.filter(x => x.f.type === 'mv' || x.f.type === 'service').map(x => Row(x.i, 30))}
               </> : <>
                 {items.map(x => Row(x.i, 30))}
                 <div style={{ padding: '5px 8px', paddingLeft: 30 }}><button onClick={() => add(act.key, act.key === 'transfer' ? 'mv' : 'service')} style={{ ...miniB, fontSize: 11 }}>+ статья</button></div>

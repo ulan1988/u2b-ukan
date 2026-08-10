@@ -7,7 +7,7 @@ import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch, finDds } from '@/lib/api/finmoney'
 
-const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', both: 'Приход/Расход', mv: 'Перемещение', service: 'Служебное' }
+const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
 const TYPE_COLOR: Record<string, { bg: string; c: string }> = {
   in: { bg: '#e8f5ec', c: '#0f7b3d' }, out: { bg: '#fbeae9', c: '#b3261e' }, both: { bg: '#fff3d6', c: '#8a6d00' },
@@ -275,12 +275,7 @@ function StatiaPicker({ favs, type, code, label, onPick }: { favs: any[]; type?:
   useEffect(() => { function h(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) } document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
   const s = q.trim().toLowerCase()
   // Фильтр по выбранному типу строки: Расход → только расходные статьи (+оба) и т.д.
-  const byType = favs.filter(f => {
-    if (!type) return true
-    if (type === 'out') return f.type === 'out' || f.type === 'both'
-    if (type === 'in') return f.type === 'in' || f.type === 'both'
-    return f.type === type
-  })
+  const byType = favs.filter(f => !type || f.type === type)
   const filtered = byType.filter(f => !s || (f.code || '').toLowerCase().includes(s) || (f.label || '').toLowerCase().includes(s))
   const groups = ACT_ORDER.map(a => ({ a, title: ACT_TITLES[a], items: filtered.filter(f => (f.activity || 'operating') === a) })).filter(g => g.items.length)
   return (
