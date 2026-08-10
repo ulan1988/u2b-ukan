@@ -4,7 +4,10 @@ import { COLORS } from '@/lib/colors'
 import { listUsers, createUser, editUser, deleteUser, deleteCabinet } from '@/lib/api/auth'
 import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject, listContragents, addContragent, editContragent } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
+import { finFavList, finFavSave } from '@/lib/api/finmoney'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
+
+const STATI_TYPES: [string, string][] = [['in', 'Приход'], ['out', 'Расход'], ['dolg', 'Долг'], ['vozv', 'Возврат'], ['mv', 'Перемещ.'], ['etc', 'Прочее']]
 
 const ROLES = [
   { v: 'logist', l: 'Логист' }, { v: 'branch', l: 'Филиал' }, { v: 'client', l: 'Клиент' },
@@ -16,7 +19,7 @@ const roleLabel = (v: string) => ROLES.find(r => r.v === v)?.l || v
 const inp: React.CSSProperties = { padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 14, outline: 'none', width: '100%' }
 
 export default function SettingsScreen({ orgId }: { orgId: string }) {
-  const [tab, setTab] = useState<'users' | 'contragents' | 'autofill' | 'projects'>('users')
+  const [tab, setTab] = useState<'users' | 'contragents' | 'autofill' | 'projects' | 'stati'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'logist', orgId })
@@ -69,12 +72,12 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
     <div style={{ maxWidth: 1200 }}>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['users', 'Пользователи'], ['contragents', 'Контрагенты'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
+        {([['users', 'Пользователи'], ['contragents', 'Контрагенты'], ['stati', 'Статьи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
 
-      {tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : tab === 'contragents' ? <ContragentsPanel orgId={orgId} /> : (
+      {tab === 'stati' ? <StatiPanel orgId={orgId} /> : tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : tab === 'contragents' ? <ContragentsPanel orgId={orgId} /> : (
       <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 16 }}>Пользователи</div>
@@ -416,6 +419,54 @@ function ProjectsPanel({ orgId }: { orgId: string }) {
           <div><button onClick={addSpec} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Создать спецпроект</button></div>
           <div style={{ marginTop: 10 }}>{(data.specProjects || []).map((s: any) => <div key={s.id} style={{ padding: '5px 0', borderTop: '1px solid #f6f3f0', fontSize: 14 }}>{s.name} <span style={{ color: COLORS.textMuted, fontSize: 12 }}>({(s.items || []).length} поз.)</span></div>)}</div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Статьи ДДС — справочник строк для листа «Деньги» (fin_favorites).
+function StatiPanel({ orgId }: { orgId: string }) {
+  const [list, setList] = useState<any[]>([])
+  const [cags, setCags] = useState<any[]>([])
+  const [msg, setMsg] = useState('')
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { (async () => {
+    const [r, c] = await Promise.all([finFavList(), listContragents(true)])
+    setList((((r as any)?.data) || []).map((f: any) => ({ label: f.label, type: f.type, contragentId: f.contragentId || null })))
+    setCags(c as any[]); setLoading(false)
+  })() }, [])
+  const upd = (i: number, patch: any) => setList(l => l.map((x, j) => j === i ? { ...x, ...patch } : x))
+  const move = (i: number, d: number) => setList(l => { const n = [...l]; const j = i + d; if (j < 0 || j >= n.length) return n;[n[i], n[j]] = [n[j], n[i]]; return n })
+  async function save() { const r: any = await finFavSave(list); setMsg(r?.ok ? '✓ Сохранено' : '⚠ Ошибка'); setTimeout(() => setMsg(''), 2000) }
+  const miniB: React.CSSProperties = { border: '1px solid #e6e2dc', background: '#fff', borderRadius: 6, color: '#6b655b', padding: '2px 7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
+  if (loading) return <div style={{ padding: 30, color: COLORS.textMuted }}>Загрузка…</div>
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 0 0 1px #e6e2dc' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>Статьи (ДДС) — шаблон строк «Деньги»</div>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>{list.length} шт.</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {msg && <span style={{ fontSize: 13, color: msg[0] === '✓' ? '#2e8a5e' : '#b03020' }}>{msg}</span>}
+          <button onClick={() => setList(l => [...l, { label: 'Новая статья', type: 'etc', contragentId: null }])} style={miniB}>+ Статья</button>
+          <button onClick={save} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Сохранить</button>
+        </div>
+      </div>
+      <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>Тип задаёт знак: Приход (+), Расход (−), Перемещение (между счетами). Контрагент (для приходов/долгов/датаций) — при проведении оплата уйдёт ему в акт сверки.</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
+          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', 'Статья', 'Тип', 'Контрагент (необяз.)', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {list.map((f, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
+                <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}><button onClick={() => move(i, -1)} style={miniB}>▲</button> <button onClick={() => move(i, 1)} style={miniB}>▼</button></td>
+                <td style={{ padding: '6px 8px' }}><input value={f.label} onChange={e => upd(i, { label: e.target.value })} style={{ ...inp, padding: '6px 9px' }} /></td>
+                <td style={{ padding: '6px 8px' }}><select value={f.type} onChange={e => upd(i, { type: e.target.value })} style={{ ...inp, padding: '6px 9px', width: 130 }}>{STATI_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
+                <td style={{ padding: '6px 8px', minWidth: 230 }}><ContragentPicker contragents={cags} value={f.contragentId} onPick={(c: any) => upd(i, { contragentId: c.id })} placeholder="— без контрагента —" /></td>
+                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{f.contragentId && <button onClick={() => upd(i, { contragentId: null })} title="Отвязать" style={miniB}>⊘</button>} <button onClick={() => setList(l => l.filter((_, j) => j !== i))} title="Удалить" style={{ ...miniB, color: '#c1121c' }}>✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )

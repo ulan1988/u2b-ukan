@@ -68,6 +68,7 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
 }
 
 export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q || '')
+export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
 
 export async function saveFinFavorites(orgId: string, favs: any[]) {
   await fin.clearFavorites(orgId)
