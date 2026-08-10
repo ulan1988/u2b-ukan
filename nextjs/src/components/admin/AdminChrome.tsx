@@ -23,6 +23,7 @@ export const NAV: NavItem[] = [
   { key: 'filter', label: 'Фильтр', icon: '🔍' },
   { key: 'accounting', label: 'У-Канбан', icon: '🗂' },
   { key: 'bookkeeping', label: 'Бухгалтерия', icon: '📒' },
+  { key: 'money', label: 'Деньги', icon: '💵' },
   { key: 'invoice_in', label: 'Приходные накладные', icon: '🧾' },
   { key: 'invoice_out', label: 'Расходные накладные', icon: '📄' },
   { key: 'archive', label: 'Архив', icon: '🗂' },
