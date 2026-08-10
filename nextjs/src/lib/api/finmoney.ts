@@ -9,6 +9,7 @@ export const finPost = (date: string) => post('/api/finance/money', { action: 'p
 export const finFavSave = (favs: any[]) => post('/api/finance/money', { action: 'favSave', favs })
 export const finFavApply = (date: string) => post('/api/finance/money', { action: 'favApply', date })
 export const finDocSearch = (q: string) => post('/api/finance/money', { action: 'docSearch', q })
+export const finOpenInvoices = (contragentId: string, dir: string) => post('/api/finance/money', { action: 'openInvoices', contragentId, dir })
 export const finFavList = () => post('/api/finance/money', { action: 'favList' })
 export const finDds = (from: string, to: string) => getObj<any>(`/api/finance/dds?from=${from}&to=${to}`, null as any)
 export const finExpList = () => post('/api/finance/money', { action: 'expList' })

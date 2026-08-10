@@ -33,6 +33,12 @@ export async function saveFinRow(orgId: string, input: any) {
   await fin.deleteAmounts(id)
   const vals = (input.amounts || []).filter((a: any) => num(a.amount)).map((a: any) => ({ rowId: id, accountId: a.accountId, amount: String(num(a.amount)) }))
   await fin.insertAmounts(vals as any)
+  // Погашение накладных (пусто = предоплата/аванс).
+  if (Array.isArray(input.alloc)) {
+    await fin.deleteAlloc(id)
+    const av = input.alloc.filter((a: any) => a.docId && num(a.amount)).map((a: any) => ({ rowId: id, docId: a.docId, amount: String(num(a.amount)) }))
+    await fin.insertAlloc(av as any)
+  }
   return { ok: true, id }
 }
 
@@ -52,14 +58,20 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
   let paid = 0
   for (const r of drafts) {
     const total = sumAmounts(r.amounts)
-    if (r.type !== 'mv' && r.type !== 'service' && r.contragentId && total !== 0) {
-      // счёт оплаты = где сумма по модулю максимальная
-      const acc = (r.amounts || []).slice().sort((a: any, b: any) => Math.abs(num(b.amount)) - Math.abs(num(a.amount)))[0]
-      await fin.insertPayment({
-        orgId, contragentId: r.contragentId, direction: total >= 0 ? 'in' : 'out',
-        amount: String(Math.abs(total)), date, cashAccountId: acc?.accountId || null,
-        comment: `Деньги · ${r.article}${r.who ? ' · ' + r.who : ''}`, createdBy: actorId || null,
-      } as any)
+    if (r.type === 'mv' || r.type === 'service' || !r.contragentId || total === 0) continue
+    const dir = total >= 0 ? 'in' : 'out'
+    const acc = (r.amounts || []).slice().sort((a: any, b: any) => Math.abs(num(b.amount)) - Math.abs(num(a.amount)))[0]
+    const allocs = (r.alloc || []).filter((a: any) => num(a.amount))
+    if (allocs.length) {
+      // Погашение конкретных накладных: платёж на каждую + рост paid_sum документа.
+      for (const a of allocs) {
+        await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(num(a.amount))), date, cashAccountId: acc?.accountId || null, documentId: a.docId, comment: `Деньги · погашение ${a.number || ''}`.trim(), createdBy: actorId || null } as any)
+        await fin.bumpPaidSum(a.docId, Math.abs(num(a.amount)))
+        paid++
+      }
+    } else {
+      // Предоплата / общий платёж (аванс).
+      await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(total)), date, cashAccountId: acc?.accountId || null, comment: `Деньги · ${r.article}${r.who ? ' · ' + r.who : ''}`, createdBy: actorId || null } as any)
       paid++
     }
   }
@@ -68,6 +80,9 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
 }
 
 export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q || '')
+// Открытые накладные контрагента для погашения: kind out→ поставщику (приходные), in→ от клиента (расходные).
+export const openInvoices = (orgId: string, contragentId: string, dir: string) =>
+  fin.contragentOpenInvoices(orgId, contragentId, dir === 'in' ? 'sale' : 'purchase')
 export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
 export const listExpenseArticles = (orgId: string) => fin.expenseArticles(orgId)
 export async function saveExpenseArticles(orgId: string, items: any[]) {

@@ -408,6 +408,15 @@ export const finRows = pgTable('fin_rows', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrgDate: index('fin_rows_org_date_idx').on(t.orgId, t.date) }))
 
+// Погашение накладных строкой-платежом: сколько строка гасит по каждой накладной.
+// Пусто = предоплата (аванс). Есть строки = гашение конкретных накладных.
+export const finRowAlloc = pgTable('fin_row_alloc', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  rowId: uuid('row_id').notNull().references(() => finRows.id, { onDelete: 'cascade' }),
+  docId: uuid('doc_id').notNull().references(() => documents.id),
+  amount: money('amount').notNull().default('0'),
+}, t => ({ byRow: index('fin_row_alloc_row_idx').on(t.rowId) }))
+
 // Сумма строки по конкретному счёту (QR/Gold/Наличка…). Знак: расход/возврат — минус.
 export const finRowAmounts = pgTable('fin_row_amounts', {
   id: uuid('id').defaultRandom().primaryKey(),

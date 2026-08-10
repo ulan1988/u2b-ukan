@@ -1,7 +1,20 @@
 // Финанс «Деньги»: дневной кассовый лист. Чтение — sqlClient, запись — drizzle.
 import { db, sqlClient } from '../lib/db'
-import { finRows, finRowAmounts, finFavorites, finExpenseArticles, payments } from '../db/schema'
-import { eq, inArray } from 'drizzle-orm'
+import { finRows, finRowAmounts, finRowAlloc, finFavorites, finExpenseArticles, payments, documents } from '../db/schema'
+import { eq, inArray, sql as dsql } from 'drizzle-orm'
+
+// Неоплаченные накладные контрагента (для погашения платежом).
+// Оплата поставщику гасит приходные (наши закупы у него); от клиента — расходные.
+export const contragentOpenInvoices = (orgId: string, contragentId: string, kind: 'purchase' | 'sale') =>
+  sqlClient`select id::text, number, date::text, total::float total, paid_sum::float paid,
+      (total - paid_sum)::float outstanding
+    from documents
+    where org_id=${orgId} and contragent_id=${contragentId} and type=${kind} and status<>'cancelled'
+      and (total - paid_sum) > 0
+    order by date, created_at` as unknown as Promise<any[]>
+
+export const bumpPaidSum = (docId: string, delta: number) =>
+  db.update(documents).set({ paidSum: dsql`${documents.paidSum} + ${String(delta)}`, updatedAt: new Date() }).where(eq(documents.id, docId))
 
 export const accounts = (orgId: string) =>
   sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false order by kind desc, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
@@ -22,6 +35,7 @@ export const rowsForDay = (orgId: string, date: string) =>
       r.contragent_id::text "contragentId", r.doc_id::text "docId",
       r.expense_article_id::text "expenseArticleId", ea.code "expCode", ea.name "expName",
       c.name "contragent", d.number "docNumber", d.type "docType",
+      coalesce((select json_agg(json_build_object('docId', al.doc_id::text, 'number', dd.number, 'amount', al.amount::float)) from fin_row_alloc al join documents dd on dd.id=al.doc_id where al.row_id=r.id), '[]') alloc,
       coalesce(json_agg(json_build_object('accountId', am.account_id::text, 'amount', am.amount::float)) filter (where am.id is not null), '[]') amounts
     from fin_rows r
     left join contragents c on c.id=r.contragent_id
@@ -55,6 +69,11 @@ export const updateRowFields = (id: string, patch: Partial<typeof finRows.$infer
 export const deleteRow = (id: string) => db.delete(finRows).where(eq(finRows.id, id))
 export const deleteAmounts = (rowId: string) => db.delete(finRowAmounts).where(eq(finRowAmounts.rowId, rowId))
 export const insertAmounts = (vals: typeof finRowAmounts.$inferInsert[]) => vals.length ? db.insert(finRowAmounts).values(vals) : Promise.resolve()
+
+export const deleteAlloc = (rowId: string) => db.delete(finRowAlloc).where(eq(finRowAlloc.rowId, rowId))
+export const insertAlloc = (vals: typeof finRowAlloc.$inferInsert[]) => vals.length ? db.insert(finRowAlloc).values(vals) : Promise.resolve()
+export const allocForRow = (rowId: string) =>
+  sqlClient`select a.doc_id::text "docId", a.amount::float amount, d.number from fin_row_alloc a join documents d on d.id=a.doc_id where a.row_id=${rowId}` as unknown as Promise<any[]>
 export const setPosted = (ids: string[]) => ids.length ? db.update(finRows).set({ status: 'posted' }).where(inArray(finRows.id, ids)) : Promise.resolve()
 export const setSort = (id: string, sort: number) => db.update(finRows).set({ sortOrder: sort }).where(eq(finRows.id, id))
 

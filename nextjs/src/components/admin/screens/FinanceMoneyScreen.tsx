@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch, finDds } from '@/lib/api/finmoney'
+import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices } from '@/lib/api/finmoney'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
@@ -30,7 +30,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, amt }
+  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -66,7 +66,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const posted = rows.filter(r => r.status === 'posted').length
 
   function payload(r: any) {
-    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
+    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, alloc: r.alloc || [], amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
   }
   async function persist(r: any) { const res: any = await finSaveRow(payload(r)); if (res?.data?.id && !r.id) setRows(p => p.map(x => x === r ? { ...x, id: res.data.id } : x)); return res?.data?.id || r.id }
   function scheduleSave(r: any) { const k = r.id || 'new'; clearTimeout(timers.current[k]); timers.current[k] = setTimeout(() => persist(r), 500) }
@@ -312,12 +312,15 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
   const [tab, setTab] = useState<'split' | 'cag' | 'doc'>('split')
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [total, setTotal] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
-  const [q, setQ] = useState(''); const [docs, setDocs] = useState<any[]>([])
   const sign = row.type === 'out' ? -1 : 1
   const done = accounts.reduce((s: number, a: any) => s + parseCell(vals[a.id]), 0)
   const left = parseCell(total) - done
+  const rowTotal = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0)
+  const [inv, setInv] = useState<any[]>([])
+  const [alloc, setAlloc] = useState<Record<string, string>>(() => { const a: any = {}; (row.alloc || []).forEach((x: any) => a[x.docId] = String(x.amount)); return a })
+  const allocTotal = Object.values(alloc).reduce((s: number, v: any) => s + parseCell(v), 0)
 
-  useEffect(() => { if (tab === 'doc') finDocSearch(q).then((r: any) => setDocs(r?.data || r || [])) }, [tab, q])
+  useEffect(() => { if (tab === 'doc' && row.contragentId) finOpenInvoices(row.contragentId, row.type).then((r: any) => setInv(r?.data || [])) }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
   // Автоподстановка: если у статьи есть счёт по умолчанию и вручную ничего не распределено —
   // введённая «Сумма всего» кладётся на этот счёт автоматически.
   useEffect(() => {
@@ -332,15 +335,17 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
     await persist(row); onSaved()
   }
   async function pickCag(c: any) { row.contragentId = c.id; if (!row.who) row.who = c.name; await persist(row); onSaved() }
-  async function pickDoc(d: any) { row.docId = d.id; row.who = d.contragent || d.number; if (d.contragentId || d.contragent) { /* привяжем контрагента если найден по имени */ } await persist(row); onSaved() }
+  // Авто-распределение суммы строки по накладным (FIFO — старые первыми).
+  function autoFill() { let leftAmt = rowTotal; const a: any = {}; for (const d of inv) { if (leftAmt <= 0.001) break; const take = Math.min(d.outstanding, leftAmt); if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take } } setAlloc(a) }
+  async function applyPay() { row.alloc = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) })); await persist(row); onSaved() }
 
   return (
     <div style={ov} onClick={onClose}>
       <div style={modalBox} onClick={e => e.stopPropagation()}>
         <h2 style={{ fontSize: 16, marginBottom: 2 }}>{row.article}{row.who ? ' — ' + row.who : ''}</h2>
-        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Тип: {typeName(row.type)} · распределите сумму, привяжите контрагента или документ</div>
+        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Тип: {typeName(row.type)} · распределите сумму, привяжите контрагента или погасите накладные (иначе — предоплата)</div>
         <div style={{ display: 'flex', borderBottom: '2px solid #d0d5db', marginBottom: 12 }}>
-          {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Документ']] as [string, string][]).map(([k, l]) => (
+          {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Погашение накладных']] as [string, string][]).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k as any)} style={{ border: 0, background: 'none', padding: '8px 14px', fontWeight: 600, color: tab === k ? '#1c2430' : '#6b7686', borderBottom: `2px solid ${tab === k ? '#1c2430' : 'transparent'}`, marginBottom: -2, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
           ))}
         </div>
@@ -372,21 +377,38 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
           {row.contragentId && <div style={{ marginTop: 10, fontSize: 13 }}>Текущий: <b>{row.contragent || cags.find((c: any) => c.id === row.contragentId)?.name}</b> <button onClick={async () => { row.contragentId = null; await persist(row); onSaved() }} style={{ ...btn, marginLeft: 8, fontSize: 12 }}>убрать</button></div>}
         </div>}
 
-        {tab === 'doc' && <div>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск: номер, контрагент…" style={{ width: '100%', border: '1px solid #8f99a6', borderRadius: 6, padding: '8px 10px', marginBottom: 8 }} />
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead><tr>{['Номер', 'Дата', 'Контрагент', 'Сумма'].map(h => <th key={h} style={{ border: '1px solid #d0d5db', padding: '5px 8px', background: '#eef0f3', textAlign: h === 'Сумма' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {docs.length === 0 ? <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: '#6b7686' }}>Ничего не найдено</td></tr>
-                : docs.map(d => <tr key={d.id} onClick={() => pickDoc(d)} style={{ cursor: 'pointer' }}>
-                  <td style={{ border: '1px solid #d0d5db', padding: '5px 8px' }}>{d.number}</td>
-                  <td style={{ border: '1px solid #d0d5db', padding: '5px 8px' }}>{(d.date || '').split('-').reverse().join('.')}</td>
-                  <td style={{ border: '1px solid #d0d5db', padding: '5px 8px' }}>{d.contragent || '—'}</td>
-                  <td style={{ border: '1px solid #d0d5db', padding: '5px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{fmt(Number(d.total))}</td>
-                </tr>)}
-            </tbody>
-          </table>
-        </div>}
+        {tab === 'doc' && (!row.contragentId
+          ? <div style={{ fontSize: 13, color: '#6b7686', padding: '10px 0' }}>Сначала укажите контрагента (в поле «Кто» или на вкладке «Контрагент») — появятся его неоплаченные накладные для погашения.</div>
+          : <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 13 }}>Контрагент: <b>{row.contragent || row.who}</b> · сумма строки: <b>{fmt(rowTotal)}</b></div>
+              <button onClick={autoFill} style={{ ...btn, marginLeft: 'auto', fontSize: 12.5 }}>↕ Распределить авто (FIFO)</button>
+            </div>
+            {inv.length === 0 ? <div style={{ padding: 14, textAlign: 'center', color: '#6b7686', fontSize: 13 }}>Нет неоплаченных накладных — это будет предоплата (аванс).</div>
+              : <><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead><tr>{['Накладная', 'Дата', 'Остаток', 'Погасить'].map(h => <th key={h} style={{ border: '1px solid #d0d5db', padding: '5px 8px', background: '#eef0f3', textAlign: h === 'Накладная' || h === 'Дата' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {inv.map((d: any) => (
+                    <tr key={d.id}>
+                      <td style={{ border: '1px solid #d0d5db', padding: '4px 8px', fontFamily: 'Consolas, monospace' }}>{d.number}</td>
+                      <td style={{ border: '1px solid #d0d5db', padding: '4px 8px' }}>{(d.date || '').split('-').reverse().join('.')}</td>
+                      <td style={{ border: '1px solid #d0d5db', padding: '4px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{fmt(d.outstanding)}</td>
+                      <td style={{ border: '1px solid #d0d5db', padding: '2px 4px', width: 110 }}>
+                        <input value={alloc[d.id] || ''} inputMode="decimal" placeholder="0" onChange={e => { const v = Math.min(parseCell(e.target.value), d.outstanding); setAlloc(a => ({ ...a, [d.id]: v ? String(v) : '' })) }}
+                          style={{ width: '100%', border: '1px solid #e6e2dc', borderRadius: 4, padding: '4px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 12.5, boxSizing: 'border-box' }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                  <span style={{ fontSize: 13 }}>Распределено: <b style={{ color: Math.abs(allocTotal - rowTotal) < 1e-9 ? '#0f7b3d' : '#8a6d00' }}>{fmt(allocTotal)}</b> из {fmt(rowTotal)}</span>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setAlloc({}); row.alloc = []; persist(row).then(onSaved) }} style={btn}>Сбросить (предоплата)</button>
+                    <button onClick={applyPay} style={btnDark}>Применить погашение</button>
+                  </div>
+                </div></>}
+          </div>)}
 
       </div>
     </div>
