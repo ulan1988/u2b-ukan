@@ -122,6 +122,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
         <span style={{ borderRadius: 12, padding: '2px 10px', fontWeight: 600, background: '#e8f5ec', color: '#0f7b3d' }}>Проведено: {posted} стр.</span>
         <span>Итоги внизу — расчётные (с черновиком): сверьте с реальными остатками и проводите.</span>
       </div>
+      {/* Раздельные итоги дня: приход / расход / чистый */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        {(() => { const din = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t > 0 ? t : 0) }, 0); const dout = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t < 0 ? -t : 0) }, 0); return <>
+          <span style={{ borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: 13, background: '#e8f5ec', color: '#0f7b3d' }}>↑ Приход за день: {fmt(din)}</span>
+          <span style={{ borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: 13, background: '#fbeae9', color: '#b3261e' }}>↓ Расход за день: {fmt(dout)}</span>
+          <span style={{ borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: 13, background: '#eef0f3', color: '#1c2430' }}>Чистый: {fmt(din - dout)}</span>
+        </> })()}
+      </div>
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
         <div style={{ overflowX: 'auto' }}>
