@@ -14,7 +14,7 @@ export const openingByAccount = (orgId: string, date: string) =>
     group by a.account_id` as unknown as Promise<Array<{ id: string; amt: number }>>
 
 export const rowsForDay = (orgId: string, date: string) =>
-  sqlClient`select r.id::text, r.type, r.article, r.who, r.status, r.sort_order "sortOrder",
+  sqlClient`select r.id::text, r.type, r.code, r.article, r.who, r.status, r.sort_order "sortOrder",
       r.contragent_id::text "contragentId", r.doc_id::text "docId",
       c.name "contragent", d.number "docNumber", d.type "docType",
       coalesce(json_agg(json_build_object('accountId', am.account_id::text, 'amount', am.amount::float)) filter (where am.id is not null), '[]') amounts
@@ -30,7 +30,7 @@ export const datesForOrg = (orgId: string) =>
   sqlClient`select distinct date::text as date from fin_rows where org_id=${orgId} order by date desc` as unknown as Promise<Array<{ date: string }>>
 
 export const favorites = (orgId: string) =>
-  sqlClient`select id::text, label, type, contragent_id::text "contragentId", sort_order "sortOrder"
+  sqlClient`select id::text, code, label, type, activity, contragent_id::text "contragentId", sort_order "sortOrder"
     from fin_favorites where org_id=${orgId} order by sort_order, label` as unknown as Promise<any[]>
 
 export const rowById = (id: string) =>

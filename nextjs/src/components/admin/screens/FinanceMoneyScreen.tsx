@@ -7,10 +7,11 @@ import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDocSearch } from '@/lib/api/finmoney'
 
-const TYPES: Record<string, string> = { in: 'Приход', out: 'Расход', dolg: 'Долг', vozv: 'Возврат', mv: 'Перемещ.', etc: 'Прочее' }
+const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
+const typeName = (t: string) => TYPES[t] || 'Прочее'
 const TYPE_COLOR: Record<string, { bg: string; c: string }> = {
-  in: { bg: '#e8f5ec', c: '#0f7b3d' }, out: { bg: '#fbeae9', c: '#b3261e' }, dolg: { bg: '#fff3d6', c: '#8a6d00' },
-  vozv: { bg: '#f3e8fb', c: '#7b2fa3' }, mv: { bg: '#e9f0fb', c: '#1a56b0' }, etc: { bg: '#eceff2', c: '#6b7686' },
+  in: { bg: '#e8f5ec', c: '#0f7b3d' }, out: { bg: '#fbeae9', c: '#b3261e' },
+  mv: { bg: '#e9f0fb', c: '#1a56b0' }, service: { bg: '#eceff2', c: '#6b7686' },
 }
 const todayStr = () => new Date().toISOString().slice(0, 10)
 const fmt = (n: number) => !n ? '0' : n.toLocaleString('ru-RU', { minimumFractionDigits: Math.abs(n % 1) > 1e-9 ? 2 : 0, maximumFractionDigits: 2 })
@@ -29,7 +30,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, type: r.type, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, amt }
+  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -64,12 +65,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const posted = rows.filter(r => r.status === 'posted').length
 
   function payload(r: any) {
-    return { id: r.id, date, type: r.type, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
+    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
   }
   async function persist(r: any) { const res: any = await finSaveRow(payload(r)); if (res?.data?.id && !r.id) setRows(p => p.map(x => x === r ? { ...x, id: res.data.id } : x)); return res?.data?.id || r.id }
   function scheduleSave(r: any) { const k = r.id || 'new'; clearTimeout(timers.current[k]); timers.current[k] = setTimeout(() => persist(r), 500) }
 
-  async function addRow() { const r = { id: '', type: 'etc', article: 'Прочие', who: '', status: 'draft', contragentId: null, docId: null, amt: {} }; setRows(p => [...p, r]); await persist(r); await load() }
+  async function addRow() { const r = { id: '', type: 'out', code: 'ПЛ-13', article: 'Прочие платежи', who: '', status: 'draft', contragentId: null, docId: null, amt: {} }; setRows(p => [...p, r]); await persist(r); await load() }
   async function cloneRow(i: number) {
     const src = rows[i]; const cp = { ...src, id: '', status: 'draft', amt: { ...src.amt } }
     const id = await persist(cp); const ids = rows.map(r => r.id); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
@@ -139,8 +140,8 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                 return (
                   <tr key={r.id || i} style={{ background: isPosted ? '#fff' : '#fffdf2' }}>
                     <td style={tdNum}>{i + 1}</td>
-                    <td style={td}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{TYPES[r.type]}</span>{isPosted && <span style={{ color: '#0f7b3d', fontWeight: 700, marginLeft: 4 }}>✓</span>}</td>
-                    <td style={td}>{r.article}</td>
+                    <td style={td}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)}</span>{isPosted && <span style={{ color: '#0f7b3d', fontWeight: 700, marginLeft: 4 }}>✓</span>}</td>
+                    <td style={td}>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {isPosted
@@ -201,7 +202,7 @@ function RowModal({ row, accounts, cags, orgId, onClose, onSaved, persist }: any
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [total, setTotal] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
   const [q, setQ] = useState(''); const [docs, setDocs] = useState<any[]>([])
-  const sign = (row.type === 'out' || row.type === 'vozv') ? -1 : 1
+  const sign = row.type === 'out' ? -1 : 1
   const done = accounts.reduce((s: number, a: any) => s + parseCell(vals[a.id]), 0)
   const left = parseCell(total) - done
 
@@ -220,7 +221,7 @@ function RowModal({ row, accounts, cags, orgId, onClose, onSaved, persist }: any
     <div style={ov} onClick={onClose}>
       <div style={modalBox} onClick={e => e.stopPropagation()}>
         <h2 style={{ fontSize: 16, marginBottom: 2 }}>{row.article}{row.who ? ' — ' + row.who : ''}</h2>
-        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Тип: {TYPES[row.type]} · распределите сумму, привяжите контрагента или документ</div>
+        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Тип: {typeName(row.type)} · распределите сумму, привяжите контрагента или документ</div>
         <div style={{ display: 'flex', borderBottom: '2px solid #d0d5db', marginBottom: 12 }}>
           {([['split', 'Распределить по счетам'], ['cag', 'Контрагент'], ['doc', 'Документ']] as const).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ border: 0, background: 'none', padding: '8px 14px', fontWeight: 600, color: tab === k ? '#1c2430' : '#6b7686', borderBottom: `2px solid ${tab === k ? '#1c2430' : 'transparent'}`, marginBottom: -2, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
@@ -243,7 +244,7 @@ function RowModal({ row, accounts, cags, orgId, onClose, onSaved, persist }: any
               <div>Распределено: {fmt(done)}</div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, color: '#6b7686' }}>{sign < 0 ? `Тип «${TYPES[row.type]}» — запишется с минусом` : 'Запишется с плюсом'}</span>
+              <span style={{ fontSize: 12, color: '#6b7686' }}>{sign < 0 ? `Тип «${typeName(row.type)}» — запишется с минусом` : 'Запишется с плюсом'}</span>
               <div style={{ display: 'flex', gap: 8 }}><button onClick={onClose} style={btn}>Отмена</button><button onClick={okSplit} style={btnDark}>ОК — записать</button></div>
             </div>
           </>)}

@@ -385,7 +385,8 @@ export const finRows = pgTable('fin_rows', {
   id: uuid('id').defaultRandom().primaryKey(),
   orgId: uuid('org_id').notNull().references(() => organizations.id),
   date: date('date').notNull(),                            // день листа
-  type: text('type').notNull().default('etc'),            // in|out|dolg|vozv|mv|etc
+  type: text('type').notNull().default('etc'),            // in|out|mv|service
+  code: text('code'),                                      // код статьи ДДС (ОП-01, ПЛ-01…)
   article: text('article').notNull().default(''),         // статья (Кристалл, Зарплата, Аренда…)
   contragentId: uuid('contragent_id').references(() => contragents.id),  // если завязано на контрагента
   docId: uuid('doc_id').references(() => documents.id),    // подобранный документ (накладная/счёт)
@@ -407,8 +408,10 @@ export const finRowAmounts = pgTable('fin_row_amounts', {
 export const finFavorites = pgTable('fin_favorites', {
   id: uuid('id').defaultRandom().primaryKey(),
   orgId: uuid('org_id').notNull().references(() => organizations.id),
+  code: text('code'),                                     // код статьи ДДС (ОП-01…)
   label: text('label').notNull().default(''),
-  type: text('type').notNull().default('etc'),
+  type: text('type').notNull().default('etc'),           // in|out|mv|service
+  activity: text('activity'),                            // operating|financial|investing|transfer|service
   contragentId: uuid('contragent_id').references(() => contragents.id),
   sortOrder: integer('sort_order').notNull().default(0),
 }, t => ({ byOrg: index('fin_favorites_org_idx').on(t.orgId) }))

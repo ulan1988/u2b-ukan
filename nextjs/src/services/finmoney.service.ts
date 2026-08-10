@@ -22,7 +22,7 @@ export async function financeDay(orgId: string, date: string) {
 // Создать/обновить строку + её суммы по счетам. Правка только черновика.
 export async function saveFinRow(orgId: string, input: any) {
   let id: string = input.id
-  const fields = { type: input.type || 'etc', article: input.article || '', who: input.who || '', contragentId: input.contragentId || null, docId: input.docId || null }
+  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', contragentId: input.contragentId || null, docId: input.docId || null }
   if (id) {
     await fin.updateRowFields(id, fields)
   } else {
@@ -52,7 +52,7 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
   let paid = 0
   for (const r of drafts) {
     const total = sumAmounts(r.amounts)
-    if (r.type !== 'mv' && r.contragentId && total !== 0) {
+    if (r.type !== 'mv' && r.type !== 'service' && r.contragentId && total !== 0) {
       // счёт оплаты = где сумма по модулю максимальная
       const acc = (r.amounts || []).slice().sort((a: any, b: any) => Math.abs(num(b.amount)) - Math.abs(num(a.amount)))[0]
       await fin.insertPayment({
@@ -72,7 +72,7 @@ export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
 
 export async function saveFinFavorites(orgId: string, favs: any[]) {
   await fin.clearFavorites(orgId)
-  const vals = (favs || []).map((f: any, i: number) => ({ orgId, label: f.label || '', type: f.type || 'etc', contragentId: f.contragentId || null, sortOrder: i }))
+  const vals = (favs || []).map((f: any, i: number) => ({ orgId, code: f.code || null, label: f.label || '', type: f.type || 'etc', activity: f.activity || null, contragentId: f.contragentId || null, sortOrder: i }))
   await fin.insertFavorites(vals as any)
   return { ok: true }
 }
@@ -86,7 +86,7 @@ export async function applyFavorites(orgId: string, date: string) {
   for (const f of favs) {
     if (have.has(f.label)) continue
     base++
-    await fin.insertRow({ orgId, date, sortOrder: base, status: 'draft', type: f.type || 'etc', article: f.label || '', who: '', contragentId: f.contragentId || null } as any)
+    await fin.insertRow({ orgId, date, sortOrder: base, status: 'draft', type: f.type || 'etc', code: f.code || null, article: f.label || '', who: '', contragentId: f.contragentId || null } as any)
     added++
   }
   return { ok: true, added }
