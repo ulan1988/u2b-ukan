@@ -93,16 +93,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   }
   async function revertRow(r: any) { r.status = 'draft'; setRows(p => [...p]); await persist(r); await load() }
   async function postAll() {
-    // Досохраняем все суммы (снимаем debounce), чтобы сервер увидел их до проведения — иначе гонка.
     Object.values(timers.current).forEach((t: any) => clearTimeout(t)); timers.current = {}
+    // Отправляем строки прямо в запрос проведения — сервер сохранит и проведёт в одном запросе (без гонки).
     const draftRows = rows.filter(r => r.status !== 'posted' && hasAmt(r))
-    await Promise.all(draftRows.map(r => persist(r)))
-    let res: any = await finPost(date)
-    // Страховка: если сервер вернул 0, но черновики с суммами есть — досохранить и повторить один раз.
-    if ((res?.data?.posted || 0) === 0 && draftRows.length > 0) {
-      await Promise.all(draftRows.map(r => persist(r)))
-      res = await finPost(date)
-    }
+    const res: any = await finPost(date, draftRows.map(r => payload(r)))
     show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load()
   }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
@@ -152,9 +146,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
       {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}{tabBtn('journal', '📋 Документы')}
       {view === 'sheet' && <>
         <div style={{ flex: 1 }} />
-        <select value={date} onChange={e => setDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit', fontSize: 13 }}>
-          {(data?.dates || [date]).map((d: string) => <option key={d} value={d}>{d.split('-').reverse().join('.')}</option>)}
-        </select>
+        <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} title="Выбрать день" style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }} />
         <button onClick={newDay} style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Новый день →</button>
         <button onClick={saveAsFavorites} title="Сохранить статьи текущего листа как избранное (без сумм)" style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#8a6d00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>★ В избранное</button>
         <button onClick={postAll} disabled={!drafts} style={{ padding: '6px 14px', border: 'none', borderRadius: 6, background: drafts ? '#0f7b3d' : '#a9c9b5', color: '#fff', fontWeight: 700, cursor: drafts ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13 }}>✓ Провести{drafts ? ` (${drafts})` : ''}</button>
@@ -475,9 +467,9 @@ const btnDark: React.CSSProperties = { padding: '7px 13px', border: '1px solid #
 const miniBtn: React.CSSProperties = { border: 0, background: 'none', color: '#6b7686', padding: '2px 4px', fontSize: 13, cursor: 'pointer' }
 const splitInp: React.CSSProperties = { border: '1px solid #8f99a6', borderRadius: 6, padding: '7px 9px', textAlign: 'right', fontFamily: 'Consolas, monospace', width: '100%' }
 const dInpJ: React.CSSProperties = { padding: '6px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }
-const jth: React.CSSProperties = { textAlign: 'left', padding: '7px 10px', whiteSpace: 'nowrap', borderBottom: '1px solid #d0d5db' }
-const jtd: React.CSSProperties = { textAlign: 'left', padding: '6px 10px' }
-const jtdNum: React.CSSProperties = { textAlign: 'right', padding: '6px 10px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap' }
+const jth: React.CSSProperties = { textAlign: 'left', padding: '7px 10px', whiteSpace: 'nowrap', border: '1px solid #d0d5db' }
+const jtd: React.CSSProperties = { textAlign: 'left', padding: '6px 10px', border: '1px solid #e6e2dc' }
+const jtdNum: React.CSSProperties = { textAlign: 'right', padding: '6px 10px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', border: '1px solid #e6e2dc' }
 const fInp: React.CSSProperties = { padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' }
 
 // ─── Вкладка «Документы»: журнал операций + поиск по всем параметрам ──────────
@@ -514,8 +506,8 @@ function JournalMode({ cags, favs }: { cags: any[]; favs: any[] }) {
             </tr></thead>
             <tbody>
               {filtered.length === 0 ? <tr><td colSpan={6 + accounts.length} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Нет документов</td></tr>
-                : filtered.map((r: any) => { const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#eceff2', c: '#6b7686' }; return (
-                  <tr key={r.id} onClick={() => setOpenDoc(r)} style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                : filtered.map((r: any, i: number) => { const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#eceff2', c: '#6b7686' }; const zebra = i % 2 ? '#f4f5f7' : '#fff'; return (
+                  <tr key={r.id} onClick={() => setOpenDoc(r)} style={{ cursor: 'pointer', background: zebra }} onMouseEnter={e => (e.currentTarget.style.background = '#eaf1fb')} onMouseLeave={e => (e.currentTarget.style.background = zebra)}>
                     <td style={jtd}>{(r.date || '').split('-').reverse().join('.')}</td>
                     <td style={jtd}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)}</span></td>
                     <td style={jtd}>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</td>

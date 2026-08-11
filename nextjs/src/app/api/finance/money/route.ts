@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
     case 'save': res = await svc.saveFinRow(org, b.row); break
     case 'delete': res = await svc.deleteFinRow(b.id); break
     case 'reorder': res = await svc.reorderDay(b.ids || []); break
-    case 'post': res = await svc.postFinDay(org, b.date, s.id); break
+    case 'post':
+      // Сохраняем присланные строки и сразу проводим — в одном запросе, без гонки «сохранение↔чтение».
+      if (Array.isArray(b.rows)) { for (const row of b.rows) await svc.saveFinRow(org, row) }
+      res = await svc.postFinDay(org, b.date, s.id); break
     case 'favSave': res = await svc.saveFinFavorites(org, b.favs || []); break
     case 'favApply': res = await svc.applyFavorites(org, b.date); break
     case 'docSearch': res = await svc.searchDocs(org, b.q || ''); break
