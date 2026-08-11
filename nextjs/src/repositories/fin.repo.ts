@@ -49,6 +49,17 @@ export const rowsForDay = (orgId: string, date: string) =>
 export const datesForOrg = (orgId: string) =>
   sqlClient`select distinct date::text as date from fin_rows where org_id=${orgId} order by date desc` as unknown as Promise<Array<{ date: string }>>
 
+// Журнал документов: все проведённые операции за период (для вкладки «Документы»).
+export const journalRows = (orgId: string, from: string, to: string) =>
+  sqlClient`select r.id::text, r.date::text, r.type, r.code, r.article, r.who, r.comment, r.status,
+      r.contragent_id::text "contragentId", c.name "contragent",
+      coalesce((select json_agg(json_build_object('accountId', al.account_id::text, 'amount', al.amount::float)) from fin_row_amounts al where al.row_id=r.id), '[]') amounts
+    from fin_rows r left join contragents c on c.id=r.contragent_id
+    where r.org_id=${orgId} and r.status='posted' and r.date between ${from} and ${to}
+    order by r.date desc, r.created_at desc limit 500` as unknown as Promise<any[]>
+
+export const deletePaymentsForRow = (rowId: string) => db.delete(payments).where(eq(payments.finRowId, rowId))
+
 export const favorites = (orgId: string) =>
   sqlClient`select id::text, code, label, type, activity, contragent_id::text "contragentId", default_account_id::text "defaultAccountId", sort_order "sortOrder"
     from fin_favorites where org_id=${orgId} order by sort_order, label` as unknown as Promise<any[]>

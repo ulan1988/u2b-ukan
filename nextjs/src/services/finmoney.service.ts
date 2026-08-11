@@ -24,7 +24,7 @@ export async function saveFinRow(orgId: string, input: any) {
   let id: string = input.id
   const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', comment: input.comment ?? null, contragentId: input.contragentId || null, docId: input.docId || null, expenseArticleId: input.expenseArticleId || null }
   if (id) {
-    await fin.updateRowFields(id, fields)
+    await fin.updateRowFields(id, input.date ? { ...fields, date: input.date } : fields)
   } else {
     const sort = (await fin.maxSort(orgId, input.date)) + 1
     const [r] = await fin.insertRow({ orgId, date: input.date, sortOrder: input.sortOrder ?? sort, status: 'draft', ...fields } as any)
@@ -56,25 +56,7 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
   const rows = await fin.rowsForDay(orgId, date)
   const drafts = rows.filter(r => r.status !== 'posted' && sumAmounts(r.amounts) !== 0)
   let paid = 0
-  for (const r of drafts) {
-    const total = sumAmounts(r.amounts)
-    if (r.type === 'mv' || r.type === 'service' || !r.contragentId || total === 0) continue
-    const dir = total >= 0 ? 'in' : 'out'
-    const acc = (r.amounts || []).slice().sort((a: any, b: any) => Math.abs(num(b.amount)) - Math.abs(num(a.amount)))[0]
-    const allocs = (r.alloc || []).filter((a: any) => num(a.amount))
-    if (allocs.length) {
-      // Погашение конкретных накладных: платёж на каждую + рост paid_sum документа.
-      for (const a of allocs) {
-        await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(num(a.amount))), date, cashAccountId: acc?.accountId || null, documentId: a.docId, comment: `Деньги · погашение ${a.number || ''}`.trim(), createdBy: actorId || null } as any)
-        await fin.bumpPaidSum(a.docId, Math.abs(num(a.amount)))
-        paid++
-      }
-    } else {
-      // Предоплата / общий платёж (аванс).
-      await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(total)), date, cashAccountId: acc?.accountId || null, comment: `Деньги · ${r.article}${r.who ? ' · ' + r.who : ''}`, createdBy: actorId || null } as any)
-      paid++
-    }
-  }
+  for (const r of drafts) paid += await applyRowPayments(orgId, r, date, actorId)
   await fin.setPosted(drafts.map(r => r.id))
   return { ok: true, posted: drafts.length, payments: paid }
 }
@@ -111,6 +93,59 @@ export async function ddsReport(orgId: string, from: string, to: string) {
   const netMap: Record<string, number> = {}; net.forEach(o => netMap[o.id] = o.amt)
   const closeMap: Record<string, number> = {}; accts.forEach(a => closeMap[a.id] = (openMap[a.id] || 0) + (netMap[a.id] || 0))
   return { activities, totalIn, totalOut, netFlow: totalIn - totalOut, accounts: accts, opening: openMap, closing: closeMap }
+}
+
+// Создать платежи по строке (провести): mv/service/без контрагента — не платят.
+async function applyRowPayments(orgId: string, r: any, date: string, actorId?: string) {
+  const total = sumAmounts(r.amounts)
+  if (r.type === 'mv' || r.type === 'service' || !r.contragentId || total === 0) return 0
+  const dir = total >= 0 ? 'in' : 'out'
+  const acc = (r.amounts || []).slice().sort((a: any, b: any) => Math.abs(num(b.amount)) - Math.abs(num(a.amount)))[0]
+  const allocs = (r.alloc || []).filter((a: any) => num(a.amount))
+  if (allocs.length) {
+    for (const a of allocs) {
+      await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(num(a.amount))), date, cashAccountId: acc?.accountId || null, documentId: a.docId, finRowId: r.id, comment: `Деньги · погашение ${a.number || ''}`.trim(), createdBy: actorId || null } as any)
+      await fin.bumpPaidSum(a.docId, Math.abs(num(a.amount)))
+    }
+    return allocs.length
+  }
+  await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(total)), date, cashAccountId: acc?.accountId || null, finRowId: r.id, comment: `Деньги · ${r.article}${r.who ? ' · ' + r.who : ''}`, createdBy: actorId || null } as any)
+  return 1
+}
+
+// Сторно эффектов проведённой строки: откат paid_sum по погашениям + удаление её платежей.
+async function revertRowEffects(rowId: string) {
+  const allocs = await fin.allocForRow(rowId)
+  for (const a of allocs) await fin.bumpPaidSum(a.docId, -num(a.amount))
+  await fin.deletePaymentsForRow(rowId)
+}
+
+// Журнал документов (проведённые операции за период) + счета для колонок.
+export async function financeJournal(orgId: string, from: string, to: string) {
+  const [rows, accts] = await Promise.all([fin.journalRows(orgId, from, to), fin.accounts(orgId)])
+  return { rows, accounts: accts }
+}
+
+// Правка документа: если был проведён — сторнируем эффекты, применяем правки, проводим заново.
+export async function editDoc(orgId: string, id: string, input: any, actorId?: string) {
+  const [old] = await fin.rowById(id)
+  if (!old) return { ok: false, error: 'Строка не найдена' }
+  const wasPosted = old.status === 'posted'
+  if (wasPosted) await revertRowEffects(id)
+  await saveFinRow(orgId, { ...input, id })
+  if (wasPosted) {
+    const [nr] = await fin.rowById(id)
+    const alloc = await fin.allocForRow(id)
+    await applyRowPayments(orgId, { ...nr, id, alloc }, input.date || old.date, actorId)
+  }
+  return { ok: true }
+}
+
+// Удаление документа: сторно эффектов + удаление строки (каскадом суммы/погашения).
+export async function deleteDocFull(id: string) {
+  await revertRowEffects(id)
+  await fin.deleteRow(id)
+  return { ok: true }
 }
 
 export async function saveFinFavorites(orgId: string, favs: any[]) {

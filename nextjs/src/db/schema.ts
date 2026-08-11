@@ -159,6 +159,7 @@ export const payments = pgTable('payments', {
   date: date('date').notNull(),
   cashAccountId: uuid('cash_account_id').references(() => cashAccounts.id),
   documentId: uuid('document_id').references(() => documents.id), // что гасит (или null = общий баланс)
+  finRowId: uuid('fin_row_id'),                           // строка «Финанс», породившая платёж (для правки/сторно) — без FK-объявления, чтобы не циклить с finRows
   comment: text('comment'),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),

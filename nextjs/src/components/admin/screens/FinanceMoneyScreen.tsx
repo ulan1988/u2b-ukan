@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices } from '@/lib/api/finmoney'
+import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc } from '@/lib/api/finmoney'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
@@ -43,7 +43,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [toast, setToast] = useState('')
   const [modalRow, setModalRow] = useState<any | null>(null)
   const [favOpen, setFavOpen] = useState(false)
-  const [view, setView] = useState<'sheet' | 'dds'>('sheet')
+  const [view, setView] = useState<'sheet' | 'dds' | 'journal'>('sheet')
   const [showComment, setShowComment] = useState(false)   // колонка «Комментарий» со шторкой
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
@@ -124,14 +124,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '1px 6px', fontSize: 13 }
   const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace', fontSize: 15.5, fontWeight: 700 }
 
-  const tabBtn = (v: 'sheet' | 'dds', label: string) => (
+  const tabBtn = (v: 'sheet' | 'dds' | 'journal', label: string) => (
     <button onClick={() => setView(v)} style={{ padding: '6px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === v ? COLORS.primary : '#fff', color: view === v ? '#fff' : COLORS.textMuted, boxShadow: view === v ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
   )
   const dayIn = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t > 0 ? t : 0) }, 0)
   const dayOut = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t < 0 ? -t : 0) }, 0)
   const headerBar = (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}
+      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}{tabBtn('journal', '📋 Документы')}
       {view === 'sheet' && <>
         <div style={{ flex: 1 }} />
         <select value={date} onChange={e => setDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit', fontSize: 13 }}>
@@ -146,6 +146,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   )
 
   if (view === 'dds') return <div style={{ marginTop: -12 }}>{headerBar}<DdsReport /></div>
+  if (view === 'journal') return <div style={{ marginTop: -12 }}>{headerBar}<JournalMode cags={cags} favs={data?.favorites || []} /></div>
 
   return (
     <div style={{ marginTop: -12 }}>
@@ -467,6 +468,107 @@ const btn: React.CSSProperties = { padding: '7px 13px', border: '1px solid #8f99
 const btnDark: React.CSSProperties = { padding: '7px 13px', border: '1px solid #1c2430', borderRadius: 6, background: '#1c2430', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const miniBtn: React.CSSProperties = { border: 0, background: 'none', color: '#6b7686', padding: '2px 4px', fontSize: 13, cursor: 'pointer' }
 const splitInp: React.CSSProperties = { border: '1px solid #8f99a6', borderRadius: 6, padding: '7px 9px', textAlign: 'right', fontFamily: 'Consolas, monospace', width: '100%' }
+const dInpJ: React.CSSProperties = { padding: '6px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }
+const jth: React.CSSProperties = { textAlign: 'left', padding: '7px 10px', whiteSpace: 'nowrap', borderBottom: '1px solid #d0d5db' }
+const jtd: React.CSSProperties = { textAlign: 'left', padding: '6px 10px' }
+const jtdNum: React.CSSProperties = { textAlign: 'right', padding: '6px 10px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap' }
+const fInp: React.CSSProperties = { padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' }
+
+// ─── Вкладка «Документы»: журнал операций + поиск по всем параметрам ──────────
+function JournalMode({ cags, favs }: { cags: any[]; favs: any[] }) {
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const [q, setQ] = useState('')
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [openDoc, setOpenDoc] = useState<any | null>(null)
+  const load = useCallback(async () => { setLoading(true); const r: any = await finJournal(from || '2000-01-01', to || '2100-01-01'); setData(r?.data || { rows: [], accounts: [] }); setLoading(false) }, [from, to])
+  useEffect(() => { load() }, [load])
+  const accounts: any[] = data?.accounts || []
+  const rows: any[] = data?.rows || []
+  const rowTotal = (r: any) => (r.amounts || []).reduce((s: number, a: any) => s + Number(a.amount || 0), 0)
+  const amtOf = (r: any, accId: string) => { const a = (r.amounts || []).find((x: any) => x.accountId === accId); return a ? Number(a.amount) : 0 }
+  const s = q.trim().toLowerCase()
+  const filtered = s ? rows.filter((r: any) => `${r.date} ${typeName(r.type)} ${r.code || ''} ${r.article} ${r.contragent || ''} ${r.who || ''} ${r.comment || ''} ${rowTotal(r)}`.toLowerCase().includes(s)) : rows
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>📋 Документы</span>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: статья, контрагент, комментарий, сумма, дата…" style={{ flex: '1 1 300px', minWidth: 220, maxWidth: 480, padding: '8px 12px', border: '1.5px solid #e6e2dc', borderRadius: 8, outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>от</span><input type="date" value={from} onChange={e => setFrom(e.target.value)} style={dInpJ} />
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>до</span><input type="date" value={to} onChange={e => setTo(e.target.value)} style={dInpJ} />
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>{filtered.length} док.</span>
+      </div>
+      {loading ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
+        <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 780 }}>
+            <thead><tr style={{ background: '#eef0f3', color: COLORS.textMuted, fontSize: 11 }}>
+              <th style={jth}>Дата</th><th style={jth}>Тип</th><th style={jth}>Статья</th><th style={jth}>Контрагент</th>
+              {accounts.map((a: any) => <th key={a.id} style={{ ...jth, textAlign: 'right' }}>{a.name}</th>)}
+              <th style={{ ...jth, textAlign: 'right' }}>Общий</th><th style={jth}>Комментарий</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length === 0 ? <tr><td colSpan={6 + accounts.length} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Нет документов</td></tr>
+                : filtered.map((r: any) => { const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#eceff2', c: '#6b7686' }; return (
+                  <tr key={r.id} onClick={() => setOpenDoc(r)} style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                    <td style={jtd}>{(r.date || '').split('-').reverse().join('.')}</td>
+                    <td style={jtd}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)}</span></td>
+                    <td style={jtd}>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</td>
+                    <td style={jtd}>{r.contragent || r.who || ''}</td>
+                    {accounts.map((a: any) => { const v = amtOf(r, a.id); return <td key={a.id} style={{ ...jtdNum, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td> })}
+                    <td style={{ ...jtdNum, fontWeight: 700 }}>{fmt(tot)}</td>
+                    <td style={{ ...jtd, color: '#6b7686', fontSize: 12 }}>{r.comment || ''}</td>
+                  </tr>
+                ) })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {openDoc && <DocEditModal doc={openDoc} accounts={accounts} cags={cags} favs={favs} onClose={() => setOpenDoc(null)} onDone={async () => { setOpenDoc(null); await load() }} />}
+    </div>
+  )
+}
+
+function DocEditModal({ doc, accounts, cags, favs, onClose, onDone }: any) {
+  const [d, setD] = useState<any>(() => ({ date: doc.date, type: doc.type, code: doc.code, article: doc.article, contragentId: doc.contragentId, who: doc.who, comment: doc.comment || '', amt: Object.fromEntries((doc.amounts || []).map((a: any) => [a.accountId, Number(a.amount)])) }))
+  const [busy, setBusy] = useState(false)
+  const total = accounts.reduce((s: number, a: any) => s + (Number(d.amt[a.id]) || 0), 0)
+  async function save() {
+    setBusy(true)
+    const row = { date: d.date, type: d.type, code: d.code || null, article: d.article, who: d.who || '', comment: d.comment || '', contragentId: d.contragentId || null, amounts: accounts.map((a: any) => ({ accountId: a.id, amount: Number(d.amt[a.id]) || 0 })) }
+    const r: any = await finEditDoc(doc.id, row); setBusy(false)
+    if (r?.ok) onDone(); else alert(r?.error || 'Ошибка')
+  }
+  async function del() { if (!confirm('Удалить документ безвозвратно?')) return; setBusy(true); await finDeleteDoc(doc.id); setBusy(false); onDone() }
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={{ ...modalBox, maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontSize: 16, marginBottom: 10 }}>Документ · {(doc.date || '').split('-').reverse().join('.')} <span style={{ fontSize: 12, color: '#6b7686', fontWeight: 400 }}>исправьте счёт/сумму/статью</span></h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+          <label style={{ fontWeight: 600 }}>Дата</label><input type="date" value={d.date} onChange={e => setD({ ...d, date: e.target.value })} style={fInp} />
+          <label style={{ fontWeight: 600 }}>Тип</label><select value={d.type} onChange={e => setD({ ...d, type: e.target.value })} style={fInp}>{Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          <label style={{ fontWeight: 600 }}>Статья</label><div style={{ border: '1.5px solid #e6e2dc', borderRadius: 7, padding: '2px 4px' }}><StatiaPicker favs={favs} type={d.type} code={d.code} label={d.article} onPick={(f: any) => setD({ ...d, type: f.type, code: f.code, article: f.label })} /></div>
+          <label style={{ fontWeight: 600 }}>Контрагент</label><ContragentPicker contragents={cags} value={d.contragentId} onPick={(c: any) => setD({ ...d, contragentId: c.id, who: d.who || c.name })} placeholder="— без контрагента —" />
+          <label style={{ fontWeight: 600 }}>Комментарий</label><input value={d.comment} onChange={e => setD({ ...d, comment: e.target.value })} style={fInp} placeholder="…" />
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7686', marginBottom: 6 }}>СУММЫ ПО СЧЕТАМ (расход — с минусом)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+          {accounts.map((a: any) => <div key={a.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <label style={{ flex: 1, fontSize: 13 }}>{a.name}</label>
+            <input value={d.amt[a.id] ?? ''} inputMode="decimal" onChange={e => { const v = parseCell(e.target.value); setD((s: any) => ({ ...s, amt: { ...s.amt, [a.id]: v } })) }} style={{ ...fInp, width: 130, textAlign: 'right', fontFamily: 'Consolas, monospace' }} />
+          </div>)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontWeight: 700 }}>Общий: {fmt(total)}</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={del} disabled={busy} style={{ ...btn, color: '#b3261e', borderColor: '#e6c4bf' }}>Удалить</button>
+            <button onClick={onClose} style={btn}>Отмена</button>
+            <button onClick={save} disabled={busy} style={btnDark}>Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Отчёт ДДС: свод по деятельностям (Поступления/Платежи) за период ──────────
 function DdsReport() {

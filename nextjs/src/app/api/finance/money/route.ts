@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
     case 'favApply': res = await svc.applyFavorites(org, b.date); break
     case 'docSearch': res = await svc.searchDocs(org, b.q || ''); break
     case 'openInvoices': res = await svc.openInvoices(org, b.contragentId, b.dir || 'out'); break
+    case 'journal': res = await svc.financeJournal(org, b.from || '2000-01-01', b.to || '2100-01-01'); break
+    case 'editDoc': res = await svc.editDoc(org, b.id, b.row, s.id); break
+    case 'deleteDoc': res = await svc.deleteDocFull(b.id); break
     case 'favList': res = await svc.listFinFavorites(org); break
     case 'expList': res = await svc.listExpenseArticles(org); break
     case 'expSave': res = await svc.saveExpenseArticles(org, b.items || []); break
