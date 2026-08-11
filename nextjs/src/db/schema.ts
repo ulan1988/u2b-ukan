@@ -65,6 +65,15 @@ export const products = pgTable('products', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name) }))
 
+// Справочник единиц измерения (для номенклатуры). Глобальный, как products.
+export const units = pgTable('units', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  isDefault: boolean('is_default').notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+  archived: boolean('archived').notNull().default(false),
+})
+
 export const warehouses = pgTable('warehouses', {
   id: uuid('id').defaultRandom().primaryKey(),
   orgId: uuid('org_id').notNull().references(() => organizations.id),

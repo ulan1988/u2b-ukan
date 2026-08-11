@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { NOM_CATALOG_TREE as TREE } from '@/lib/nomCatalog'
-import { listProducts, addProduct, editProduct, archiveProduct } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits } from '@/lib/api/refs'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number }
 
@@ -23,7 +23,9 @@ export default function NomenclatureScreen() {
   const [editItem, setEditItem] = useState<NomItem | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ name: '', unit: 'шт', group: '', cat: '', subgroup: '' })
+  const [units, setUnits] = useState<any[]>([])
   const [toast, setToast] = useState('')
+  useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
   const [priceEdit, setPriceEdit] = useState(false)
   const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string }>>({})
 
@@ -200,7 +202,7 @@ export default function NomenclatureScreen() {
                       {filtered.map(item => (
                         <tr key={item.id} style={{ borderTop: '1px solid #f1efec' }}>
                           <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{editItem?.id === item.id ? <input style={{ ...INP, fontSize: 13 }} value={editItem.name} onChange={e => setEditItem(p => p ? { ...p, name: e.target.value } : p)} autoFocus /> : item.name}</td>
-                          <td style={{ padding: '9px 14px', width: 70 }}>{editItem?.id === item.id ? <input style={{ ...INP, fontSize: 13, width: 55 }} value={editItem.unit} onChange={e => setEditItem(p => p ? { ...p, unit: e.target.value } : p)} /> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span>}</td>
+                          <td style={{ padding: '9px 14px', width: 80 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13, width: 70, padding: '6px 6px' }} value={editItem.unit} onChange={e => setEditItem(p => p ? { ...p, unit: e.target.value } : p)}>{!units.some((u: any) => u.name === editItem.unit) && editItem.unit && <option value={editItem.unit}>{editItem.unit}</option>}{units.map((u: any) => <option key={u.id} value={u.name}>{u.name}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span>}</td>
                           <td style={{ padding: '9px 14px', width: 130 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.group} onChange={e => setEditItem(p => p ? { ...p, group: e.target.value, cat: '', subgroup: '' } : p)}><option value="">—</option>{Object.keys(TREE).map(g => <option key={g} value={g}>{g}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span>}</td>
                           <td style={{ padding: '9px 14px', width: 160 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.cat} onChange={e => setEditItem(p => p ? { ...p, cat: e.target.value, subgroup: '' } : p)}><option value="">—</option>{editItem.group && Object.keys(TREE[editItem.group] || {}).map(c => <option key={c} value={c}>{c}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span>}</td>
                           <td style={{ padding: '9px 14px', width: 140 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.subgroup} onChange={e => setEditItem(p => p ? { ...p, subgroup: e.target.value } : p)}><option value="">—</option>{editItem.cat && (TREE[editItem.group]?.[editItem.cat] || []).map(s => <option key={s} value={s}>{s}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span>}</td>
@@ -224,7 +226,7 @@ export default function NomenclatureScreen() {
             <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>+ Добавить позицию</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><label style={LBL}>НАИМЕНОВАНИЕ *</label><input style={INP} value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))} placeholder="Название товара..." autoFocus /></div>
-              <div><label style={LBL}>ЕД. ИЗМЕРЕНИЯ</label><input style={INP} value={newItem.unit} onChange={e => setNewItem(p => ({ ...p, unit: e.target.value }))} placeholder="шт" /></div>
+              <div><label style={LBL}>ЕД. ИЗМЕРЕНИЯ</label><select style={INP} value={newItem.unit} onChange={e => setNewItem(p => ({ ...p, unit: e.target.value }))}>{!units.some((u: any) => u.name === newItem.unit) && newItem.unit && <option value={newItem.unit}>{newItem.unit}</option>}{units.map((u: any) => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
               <div><label style={LBL}>ГРУППА</label><select style={INP} value={newItem.group} onChange={e => setNewItem(p => ({ ...p, group: e.target.value, cat: '', subgroup: '' }))}><option value="">— без группы —</option>{Object.keys(TREE).map(g => <option key={g} value={g}>{g}</option>)}</select></div>
               {newItem.group && Object.keys(TREE[newItem.group] || {}).length > 0 && <div><label style={LBL}>КАТЕГОРИЯ</label><select style={INP} value={newItem.cat} onChange={e => setNewItem(p => ({ ...p, cat: e.target.value, subgroup: '' }))}><option value="">—</option>{Object.keys(TREE[newItem.group]).map(c => <option key={c} value={c}>{c}</option>)}</select></div>}
               {newItem.cat && (TREE[newItem.group]?.[newItem.cat] || []).length > 0 && <div><label style={LBL}>ПОДГРУППА</label><select style={INP} value={newItem.subgroup} onChange={e => setNewItem(p => ({ ...p, subgroup: e.target.value }))}><option value="">—</option>{(TREE[newItem.group][newItem.cat] || []).map(s => <option key={s} value={s}>{s}</option>)}</select></div>}

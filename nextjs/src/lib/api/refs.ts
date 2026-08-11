@@ -9,6 +9,9 @@ export const editProduct = (id: string, b: any) => patch(`/api/products/${id}`, 
 export const archiveProduct = (id: string) => patch(`/api/products/${id}`, { archived: true })
 
 export const listContragents = (all = false) => getArray(`/api/contragents${all ? '?all=1' : ''}`)
+// Справочник единиц измерения.
+export const listUnits = () => getArray('/api/units')
+export const saveUnits = (items: any[]) => post('/api/units', items)
 // Акт сверки по контрагенту (нарастающее сальдо, с датами).
 export const reconcile = (contragentId: string, from?: string, to?: string) =>
   getObj(`/api/finance/reconcile?contragentId=${contragentId}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`, null as any)

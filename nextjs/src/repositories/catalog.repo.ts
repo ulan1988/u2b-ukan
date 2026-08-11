@@ -1,7 +1,12 @@
 // Справочники: создание, правка, список с архивом (только Drizzle).
 import { db } from '../lib/db'
-import { products, contragents, warehouses, cashAccounts } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { products, contragents, warehouses, cashAccounts, units } from '../db/schema'
+import { eq, asc } from 'drizzle-orm'
+
+// Справочник единиц измерения (глобальный). products.unit хранит текст — правка единиц не ломает товары.
+export const listUnits = () => db.select().from(units).where(eq(units.archived, false)).orderBy(asc(units.sortOrder))
+export const clearUnits = () => db.delete(units)
+export const insertUnits = (vals: typeof units.$inferInsert[]) => vals.length ? db.insert(units).values(vals) : Promise.resolve()
 
 export const createProduct = (v: typeof products.$inferInsert) => db.insert(products).values(v).returning()
 export const createContragent = (v: typeof contragents.$inferInsert) => db.insert(contragents).values(v).returning()
