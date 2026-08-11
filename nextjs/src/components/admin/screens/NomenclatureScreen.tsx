@@ -3,7 +3,7 @@
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder } from '@/lib/api/refs'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number }
 
@@ -25,6 +25,7 @@ export default function NomenclatureScreen() {
   const [units, setUnits] = useState<any[]>([])
   const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string }[]>([])
   const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const [moveSrc, setMoveSrc] = useState<{ grp: string; cat: string; sub: string; label: string } | null>(null)
   const [toast, setToast] = useState('')
   useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
   const reloadFolders = useCallback(async () => { const f = await listFolders(); setFolders((f as any) || []) }, [])
@@ -142,6 +143,12 @@ export default function NomenclatureScreen() {
     const r = await deleteFolder({ grp, cat, sub }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
     await reloadFolders(); showMsg('✓ Папка удалена')
   }
+  async function doMove(dst: { grp: string; cat: string; sub: string }) {
+    if (!moveSrc) return
+    const r = await moveFolder({ src: { grp: moveSrc.grp, cat: moveSrc.cat, sub: moveSrc.sub }, dst })
+    if (!r.ok) { showMsg(r.error || 'Ошибка переноса'); return }
+    setMoveSrc(null); await reloadFolders(); await load(); showMsg('✓ Папка перенесена')
+  }
   const ICO: React.CSSProperties = { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '0 3px', lineHeight: 1, color: '#5f5952' }
 
   return (
@@ -191,6 +198,7 @@ export default function NomenclatureScreen() {
                     {hoverKey === g
                       ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                           <button title="+ категория" onClick={() => createCat(g)} style={ICO}>＋</button>
+                          <button title="перенести папку" onClick={() => setMoveSrc({ grp: g, cat: '', sub: '', label: g })} style={ICO}>⇄</button>
                           <button title="переименовать" onClick={() => renameFolderUI(g, '', '', g)} style={ICO}>✎</button>
                           <button title="удалить папку" onClick={() => deleteFolderUI(g, '', '')} style={ICO}>🗑</button>
                         </span>
@@ -209,6 +217,7 @@ export default function NomenclatureScreen() {
                           {hoverKey === `${g}/${cat}`
                             ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                                 <button title="+ подгруппа" onClick={() => createSub(g, cat)} style={ICO}>＋</button>
+                                <button title="перенести папку" onClick={() => setMoveSrc({ grp: g, cat, sub: '', label: cat })} style={ICO}>⇄</button>
                                 <button title="переименовать" onClick={() => renameFolderUI(g, cat, '', cat)} style={ICO}>✎</button>
                                 <button title="удалить папку" onClick={() => deleteFolderUI(g, cat, '')} style={ICO}>🗑</button>
                               </span>
@@ -224,6 +233,7 @@ export default function NomenclatureScreen() {
                               <span style={{ flex: 1, fontSize: 13, fontWeight: isSelS ? 700 : 400, color: isSelS ? COLORS.primary : '#6b655b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
                               {hoverKey === `${g}/${cat}/${sub}`
                                 ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                    <button title="перенести папку" onClick={() => setMoveSrc({ grp: g, cat, sub, label: sub })} style={ICO}>⇄</button>
                                     <button title="переименовать" onClick={() => renameFolderUI(g, cat, sub, sub)} style={ICO}>✎</button>
                                     <button title="удалить папку" onClick={() => deleteFolderUI(g, cat, sub)} style={ICO}>🗑</button>
                                   </span>
@@ -302,6 +312,34 @@ export default function NomenclatureScreen() {
           </div>
         </div>
       )}
+
+      {moveSrc && (() => {
+        const srcCh = [moveSrc.grp, moveSrc.cat, moveSrc.sub].filter(Boolean)
+        const isDesc = (tc: string[]) => tc.length >= srcCh.length && srcCh.every((s, i) => s === tc[i])
+        const isParent = (tc: string[]) => tc.length === srcCh.length - 1 && tc.every((s, i) => s === srcCh[i])
+        const opts: { label: string; dst: { grp: string; cat: string; sub: string } }[] = [{ label: '⬆  На верхний уровень (сделать группой)', dst: { grp: '', cat: '', sub: '' } }]
+        for (const g of groups) {
+          if (!isDesc([g]) && !isParent([g])) opts.push({ label: `📁  ${g}`, dst: { grp: g, cat: '', sub: '' } })
+          for (const c of Object.keys(TREE[g])) if (!isDesc([g, c]) && !isParent([g, c])) opts.push({ label: `📂  ${g} › ${c}`, dst: { grp: g, cat: c, sub: '' } })
+        }
+        return (
+          <div onClick={() => setMoveSrc(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 4 }}>⇄ Перенести «{moveSrc.label}»</div>
+              <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 14 }}>Куда вложить папку? (макс. 3 уровня)</div>
+              <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {opts.map((o, i) => (
+                  <button key={i} onClick={() => doMove(o.dst)} style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fff8f5')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>{o.label}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                <button onClick={() => setMoveSrc(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

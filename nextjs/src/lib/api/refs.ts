@@ -13,6 +13,7 @@ export const listFolders = () => getArray('/api/folders')
 export const createFolder = (b: { grp: string; cat?: string; sub?: string }) => post('/api/folders', b)
 export const renameFolder = (b: { grp: string; cat?: string; sub?: string; name: string }) => send('/api/folders', 'PATCH', b)
 export const deleteFolder = (b: { grp: string; cat?: string; sub?: string }) => send('/api/folders', 'DELETE', b)
+export const moveFolder = (b: { src: { grp: string; cat: string; sub: string }; dst: { grp: string; cat: string; sub: string } }) => send('/api/folders', 'PUT', b)
 
 export const listContragents = (all = false) => getArray(`/api/contragents${all ? '?all=1' : ''}`)
 // Справочник единиц измерения.
