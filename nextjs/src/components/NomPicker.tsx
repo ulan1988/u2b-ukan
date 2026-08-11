@@ -1,10 +1,9 @@
 'use client'
 // Каталог-модалка — портирована из Улкана 1:1 (RAL-круги, категории, производители,
 // уровни-слова, длина, клавиатура количества). API → /api/products?all=1.
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
-import { overlayFor, producersFor } from '@/lib/nomTree'
+import { overlayFor } from '@/lib/nomTree'
 import { RAL_COLORS, RAL_BY_CODE, RalDot, extractRal } from '@/lib/ral'
 
 const PRIMARY = '#d4613a'
@@ -20,8 +19,10 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [allItems, setAllItems] = useState<NomFull[]>([])
   const [loaded, setLoaded] = useState(false)
   const [color, setColor] = useState('')
-  const [catKey, setCatKey] = useState('')
-  const [producerKey, setProducerKey] = useState('')
+  const [selG, setSelG] = useState('')      // группа
+  const [selC, setSelC] = useState('')      // папка (категория)
+  const [selS, setSelS] = useState('')      // подпапка (подгруппа)
+  const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string }[]>([])
   const [sel, setSel] = useState<Record<string, string>>({})
   const [cm, setCm] = useState('')
   const [text, setText] = useState('')
@@ -29,12 +30,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [pad, setPad] = useState<null | { name1c: string; oral: string; unit: string; digits: string }>(null)
   const padRef = useRef(pad); padRef.current = pad
 
-  const activeCat = CATALOG_CATEGORIES.find(c => c.key === catKey)
-  const groupName = activeCat?.group || ''
-  const catName = activeCat?.cat || ''
-  const overlays = overlayFor(catName || groupName)
-  const producers = producersFor(catName)
-  const selectedProducer = producers.find(p => p.key === producerKey)
+  const overlays = overlayFor(selC || selG)   // накладки-слова (толщина/покрытие) — по выбранной папке
 
   useEffect(() => {
     setMounted(true)
@@ -42,6 +38,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
       setAllItems(Array.isArray(d) ? d.map(x => ({ id: x.id, name: x.name || '', unit: x.unit || 'шт', group: x.group || '', cat: x.cat || '', subgroup: x.subgroup || '' })) : [])
       setLoaded(true)
     }).catch(() => setLoaded(true))
+    fetch('/api/folders').then(r => r.ok ? r.json() : []).then((f: any[]) => setFolders(Array.isArray(f) ? f : [])).catch(() => {})
   }, [])
 
   const cEntry = color && color !== NOCOLOR ? RAL_BY_CODE[color] : undefined
@@ -71,7 +68,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
 
   function asIsName(): string {
     const parts: string[] = []
-    if (selectedProducer) parts.push(selectedProducer.label)
+    if (selS) parts.push(selS)
     selItems.filter(i => !i.measure).forEach(i => parts.push(i.label))
     if (measureItem) parts.push(measureItem.terms?.[0] || 'Изделие')
     if (colorLabel) parts.push(colorLabel)
@@ -85,14 +82,27 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const inCat = (i: NomFull, g: string, c: string) => (norm(i.group) === norm(g) && norm(i.cat) === norm(c)) || (norm(i.group) === norm(c) && norm(i.cat) === norm(g))
   const countGroup = (g: string) => allItems.filter(i => inGroup(i, g)).length
   const countCat = (g: string, c: string) => allItems.filter(i => inCat(i, g, c)).length
+  const countSub = (g: string, c: string, s: string) => allItems.filter(i => inCat(i, g, c) && norm(i.subgroup) === norm(s)).length
+
+  // Дерево пикера: папки (nom_folders) + фактические пути товаров. Показываем только непустые группы.
+  const tree = useMemo(() => {
+    const t: Record<string, Record<string, string[]>> = {}
+    const eG = (g: string) => { if (g && !t[g]) t[g] = {} }
+    const eC = (g: string, c: string) => { eG(g); if (c && t[g] && !t[g][c]) t[g][c] = [] }
+    const eS = (g: string, c: string, s: string) => { eC(g, c); if (s && t[g]?.[c] && !t[g][c].includes(s)) t[g][c].push(s) }
+    for (const f of folders) { if (f.sub) eS(f.grp, f.cat, f.sub); else if (f.cat) eC(f.grp, f.cat); else if (f.grp) eG(f.grp) }
+    for (const i of allItems) { if (i.group) { eG(i.group); if (i.cat) { eC(i.group, i.cat); if (i.subgroup) eS(i.group, i.cat, i.subgroup) } } }
+    return t
+  }, [folders, allItems])
+  const groups = Object.keys(tree).filter(g => countGroup(g) > 0)
 
   let base = allItems
-  if (catName) base = base.filter(i => inCat(i, groupName, catName))
-  else if (groupName) base = base.filter(i => inGroup(i, groupName))
-  if (selectedProducer) base = base.filter(i => norm(i.subgroup) === norm(selectedProducer.subgroup))
+  if (selS) base = base.filter(i => inCat(i, selG, selC) && norm(i.subgroup) === norm(selS))
+  else if (selC) base = base.filter(i => inCat(i, selG, selC))
+  else if (selG) base = base.filter(i => inGroup(i, selG))
 
   const mustWords = words.flatMap(t => t.toLowerCase().split(/[^а-яёa-z0-9]+/i)).filter(w => w.length >= 1)
-  const anySelection = !!(groupName || catName || producerKey || words.join(' ').trim() || color || thickItem)
+  const anySelection = !!(selG || selC || selS || words.join(' ').trim() || color || thickItem)
   const loading = !loaded
   const shown: NomHit[] = !anySelection ? [] : base
     .filter(i => !excludes.some(w => i.name.toLowerCase().includes(w.toLowerCase())))
@@ -104,9 +114,9 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit }))
 
   function pickColor(c: string) { setColor(prev => prev === c ? '' : c) }
-  function pickCategory(key: string) { setCatKey(prev => prev === key ? '' : key); setProducerKey(''); setSel({}); setCm('') }
-  const catCount = (c: { group: string; cat: string }) => c.cat ? countCat(c.group, c.cat) : countGroup(c.group)
-  function pickProducer(k: string) { setProducerKey(prev => prev === k ? '' : k) }
+  function pickGroup(g: string) { setSelG(prev => prev === g ? '' : g); setSelC(''); setSelS(''); setSel({}); setCm('') }
+  function pickCat(c: string) { setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
+  function pickSub(s: string) { setSelS(prev => prev === s ? '' : s) }
   function pickItem(levelKey: string, itemKey: string, isMeasure: boolean) {
     setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else next[levelKey] = itemKey; return next })
     if (!isMeasure) setCm('')
@@ -132,8 +142,9 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const totalUnits = rows.reduce((s, r) => s + r.qty, 0)
 
   const crumbs: React.ReactNode[] = []
-  if (activeCat) crumbs.push(<span key="p" style={{ fontWeight: 700 }}>{activeCat.label}</span>)
-  if (selectedProducer) crumbs.push(<span key="prod">{selectedProducer.label}</span>)
+  if (selG) crumbs.push(<span key="p" style={{ fontWeight: 700 }}>{selG}</span>)
+  if (selC) crumbs.push(<span key="c2">{selC}</span>)
+  if (selS) crumbs.push(<span key="s2">{selS}</span>)
   selItems.forEach(it => crumbs.push(<span key={it.key}>«{it.measure ? (cm ? `Изделие · ${cm} см` : 'Изделие') : it.label}»</span>))
   if (cEntry) crumbs.push(<span key="c"><b style={{ color: PRIMARY }}>{colorLabel}</b> ({cEntry.name.toLowerCase()})</span>)
   else if (color === NOCOLOR) crumbs.push(<span key="c">без цвета</span>)
@@ -174,12 +185,18 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
           </div>
           <div>
             <div style={LBL}>КАТЕГОРИЯ</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{CATALOG_CATEGORIES.map(c => <button key={c.key} onClick={() => pickCategory(c.key)} style={pill(catKey === c.key)}>{c.label}{loaded && <span style={cnt(catKey === c.key)}>{catCount(c)}</span>}</button>)}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{groups.map(g => <button key={g} onClick={() => pickGroup(g)} style={pill(selG === g)}>{g}{loaded && <span style={cnt(selG === g)}>{countGroup(g)}</span>}</button>)}</div>
           </div>
-          {producers.length > 0 && (
+          {selG && Object.keys(tree[selG] || {}).length > 0 && (
             <div>
-              <div style={LBL}>ПРОИЗВОДИТЕЛЬ</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{producers.map(p => { const on = producerKey === p.key; return <button key={p.key} onClick={() => pickProducer(p.key)} style={{ ...pill(on), flexDirection: 'column', alignItems: 'center', gap: 1, padding: '6px 14px' }}><span style={{ fontWeight: on ? 800 : 700 }}>{p.label}</span><span style={{ fontSize: 11, fontWeight: 500, color: on ? 'rgba(255,255,255,.75)' : '#6b645b' }}>{p.hint}</span></button> })}</div>
+              <div style={LBL}>ПАПКА</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{Object.keys(tree[selG]).map(c => <button key={c} onClick={() => pickCat(c)} style={pill(selC === c)}>{c}{loaded && <span style={cnt(selC === c)}>{countCat(selG, c)}</span>}</button>)}</div>
+            </div>
+          )}
+          {selG && selC && (tree[selG]?.[selC] || []).length > 0 && (
+            <div>
+              <div style={LBL}>ПОДПАПКА</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{(tree[selG][selC]).map(s => <button key={s} onClick={() => pickSub(s)} style={pill(selS === s)}>{s}{loaded && <span style={cnt(selS === s)}>{countSub(selG, selC, s)}</span>}</button>)}</div>
             </div>
           )}
           {overlays.map(lv => (
