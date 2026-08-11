@@ -92,7 +92,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const ids = nr.map(r => r.id).filter(Boolean); if (ids.length) await finReorder(ids)
   }
   async function revertRow(r: any) { r.status = 'draft'; setRows(p => [...p]); await persist(r); await load() }
-  async function postAll() { const res: any = await finPost(date); show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load() }
+  async function postAll() {
+    // Досохраняем все суммы (снимаем debounce), чтобы сервер увидел их до проведения — иначе гонка.
+    Object.values(timers.current).forEach((t: any) => clearTimeout(t)); timers.current = {}
+    await Promise.all(rows.filter(r => hasAmt(r)).map(r => persist(r)))
+    const res: any = await finPost(date); show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load()
+  }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }
   // Сохранить текущие строки листа как избранное (шаблон), без сумм.
