@@ -266,7 +266,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
         </div>
       )}
 
-      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
+      {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} date={date} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
       {favOpen && <FavModal favs={favs} setFavs={setFavs} cags={cags} onApply={applyFavs} onClose={async () => { await finFavSave(favs); setFavOpen(false); await load() }} />}
     </div>
   )
@@ -340,7 +340,7 @@ function StatiaPicker({ favs, type, code, label, onPick }: { favs: any[]; type?:
 }
 
 // ─── Моделька строки: распределить по счетам / контрагент / документ ──────────
-function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persist }: any) {
+function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, persist }: any) {
   const [tab, setTab] = useState<'split' | 'cag' | 'doc'>('split')
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [total, setTotal] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
@@ -381,17 +381,27 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
     }
     setAlloc(a)
   }
-  async function applyPay() {
+  // Выбор накладной кликом/галочкой (как в 1С): сумма подставляется сама (остаток в пределах суммы платежа).
+  function toggleInv(d: any) {
+    setAlloc(a => {
+      const n: any = { ...a }
+      if (n[d.id]) { delete n[d.id]; return n }
+      let used = 0; for (const v of Object.values(n)) used += parseCell(v)
+      const t = parseCell(payTarget)
+      const take = t > 0 ? Math.min(Number(d.outstanding) || 0, Math.max(0, t - used)) : (Number(d.outstanding) || 0)
+      if (take > 0) n[d.id] = String(Math.round(take * 100) / 100)
+      return n
+    })
+  }
+  async function applyPay(alsoPost: boolean) {
     const items = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) }))
     row.alloc = items
     // Сумма платежа = введённая (или сумма отобранных). Ставим её на счёт (дефолтный статьи, иначе первый).
     const amount = parseCell(payTarget) || items.reduce((s: number, x: any) => s + x.amount, 0)
-    if (amount > 0 && accounts.length) {
-      const accId = defAcc || accounts[0].id
-      const sign = row.type === 'out' ? -1 : 1
-      row.amt = { [accId]: sign * amount }
-    }
-    await persist(row); onSaved()
+    if (amount > 0 && accounts.length) { row.amt = { [defAcc || accounts[0].id]: sign * amount } }
+    await persist(row)
+    if (alsoPost) await finPost(date)   // провести сразу (как «Провести и закрыть» в 1С)
+    onSaved()
   }
 
   return (
@@ -442,20 +452,19 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
               <button onClick={autoFill} style={{ ...btnDark, marginLeft: 'auto', fontSize: 12.5, padding: '7px 12px' }}>↕ Распределить авто</button>
             </div>
             {inv.length === 0 ? <div style={{ padding: 14, textAlign: 'center', color: '#6b7686', fontSize: 13 }}>Нет неоплаченных накладных — это будет предоплата (аванс).</div>
-              : <><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                <thead><tr>{['Накладная', 'Дата', 'Остаток', 'Погасить'].map(h => <th key={h} style={{ border: '1px solid #d0d5db', padding: '5px 8px', background: '#eef0f3', textAlign: h === 'Накладная' || h === 'Дата' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
+              : <><div style={{ fontSize: 12, color: '#6b7686', marginBottom: 4 }}>Кликните по накладной, чтобы выбрать её для погашения (сумма подставится сама):</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead><tr>{['', 'Накладная', 'Дата', 'Остаток', 'Погасить'].map((h, i) => <th key={i} style={{ border: '1px solid #d0d5db', padding: '5px 8px', background: '#eef0f3', textAlign: i >= 3 ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {inv.map((d: any) => (
-                    <tr key={d.id}>
+                  {inv.map((d: any) => { const sel = !!alloc[d.id]; return (
+                    <tr key={d.id} onClick={() => toggleInv(d)} style={{ cursor: 'pointer', background: sel ? '#eef4ff' : '#fff' }}>
+                      <td style={{ border: '1px solid #d0d5db', padding: '4px 8px', textAlign: 'center' }}><input type="checkbox" checked={sel} readOnly style={{ cursor: 'pointer', width: 15, height: 15 }} /></td>
                       <td style={{ border: '1px solid #d0d5db', padding: '4px 8px', fontFamily: 'Consolas, monospace' }}>{d.number}</td>
                       <td style={{ border: '1px solid #d0d5db', padding: '4px 8px' }}>{(d.date || '').split('-').reverse().join('.')}</td>
                       <td style={{ border: '1px solid #d0d5db', padding: '4px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{fmt(d.outstanding)}</td>
-                      <td style={{ border: '1px solid #d0d5db', padding: '2px 4px', width: 110 }}>
-                        <input value={alloc[d.id] || ''} inputMode="decimal" placeholder="0" onChange={e => { const v = Math.min(parseCell(e.target.value), d.outstanding); setAlloc(a => ({ ...a, [d.id]: v ? String(v) : '' })) }}
-                          style={{ width: '100%', border: '1px solid #e6e2dc', borderRadius: 4, padding: '4px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 12.5, boxSizing: 'border-box' }} />
-                      </td>
+                      <td style={{ border: '1px solid #d0d5db', padding: '4px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700, color: sel ? '#0f7b3d' : '#c9cdd2' }}>{sel ? fmt(parseCell(alloc[d.id])) : '—'}</td>
                     </tr>
-                  ))}
+                  ) })}
                 </tbody>
               </table>
                 {(() => { const selected = inv.filter((d: any) => parseCell(alloc[d.id]) > 0); return selected.length > 0 ? (
@@ -474,8 +483,9 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                   <span style={{ fontSize: 13 }}>Распределено: <b style={{ color: Math.abs(allocTotal - parseCell(payTarget)) < 1e-9 ? '#0f7b3d' : '#8a6d00' }}>{fmt(allocTotal)}</b> из {fmt(parseCell(payTarget))}</span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setAlloc({}); row.alloc = []; persist(row).then(onSaved) }} style={btn}>Сбросить (предоплата)</button>
-                    <button onClick={applyPay} style={btnDark}>Применить погашение</button>
+                    <button onClick={() => { setAlloc({}); row.alloc = []; persist(row).then(onSaved) }} style={btn}>Сбросить</button>
+                    <button onClick={() => applyPay(false)} style={btn}>Применить</button>
+                    <button onClick={() => applyPay(true)} style={btnDark}>Применить и провести</button>
                   </div>
                 </div></>}
           </div>)}
