@@ -65,6 +65,16 @@ export const products = pgTable('products', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name) }))
 
+// Дерево папок номенклатуры (динамическое). Путь = grp/cat/sub; пустая папка живёт здесь,
+// даже без товаров. products.group/cat/subgroup хранят текст этого же пути.
+export const nomFolders = pgTable('nom_folders', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  grp: text('grp').notNull().default(''),
+  cat: text('cat').notNull().default(''),
+  sub: text('sub').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+})
+
 // Справочник единиц измерения (для номенклатуры). Глобальный, как products.
 export const units = pgTable('units', {
   id: uuid('id').defaultRandom().primaryKey(),

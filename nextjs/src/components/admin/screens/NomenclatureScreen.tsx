@@ -1,10 +1,9 @@
 'use client'
 // Номенклатура — портирован из Улкана 1:1 (дерево групп/категорий/подгрупп,
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
-import { NOM_CATALOG_TREE as TREE } from '@/lib/nomCatalog'
-import { listProducts, addProduct, editProduct, archiveProduct, listUnits } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder } from '@/lib/api/refs'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number }
 
@@ -24,8 +23,12 @@ export default function NomenclatureScreen() {
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ name: '', unit: 'шт', group: '', cat: '', subgroup: '' })
   const [units, setUnits] = useState<any[]>([])
+  const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string }[]>([])
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
   const [toast, setToast] = useState('')
   useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
+  const reloadFolders = useCallback(async () => { const f = await listFolders(); setFolders((f as any) || []) }, [])
+  useEffect(() => { reloadFolders() }, [reloadFolders])
   const [priceEdit, setPriceEdit] = useState(false)
   const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string }>>({})
 
@@ -101,7 +104,45 @@ export default function NomenclatureScreen() {
     setShowAdd(true)
   }
 
+  // Дерево строится из папок (nom_folders) + фактических путей товаров — ничто не пропадает.
+  const TREE = useMemo(() => {
+    const t: Record<string, Record<string, string[]>> = {}
+    const eG = (g: string) => { if (g && !t[g]) t[g] = {} }
+    const eC = (g: string, c: string) => { eG(g); if (c && t[g] && !t[g][c]) t[g][c] = [] }
+    const eS = (g: string, c: string, s: string) => { eC(g, c); if (s && t[g]?.[c] && !t[g][c].includes(s)) t[g][c].push(s) }
+    for (const f of folders) { if (f.sub) eS(f.grp, f.cat, f.sub); else if (f.cat) eC(f.grp, f.cat); else if (f.grp) eG(f.grp) }
+    for (const i of items) { if (i.group) { eG(i.group); if (i.cat) { eC(i.group, i.cat); if (i.subgroup) eS(i.group, i.cat, i.subgroup) } } }
+    return t
+  }, [folders, items])
   const groups = Object.keys(TREE)
+
+  // ── Управление папками ───────────────────────────────────────────────
+  async function createGroup() {
+    const n = prompt('Название новой группы:')?.trim(); if (!n) return
+    const r = await createFolder({ grp: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    await reloadFolders(); setOpenGroups(p => ({ ...p, [n]: true })); showMsg('✓ Группа создана')
+  }
+  async function createCat(g: string) {
+    const n = prompt(`Новая категория в «${g}»:`)?.trim(); if (!n) return
+    const r = await createFolder({ grp: g, cat: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    await reloadFolders(); setOpenGroups(p => ({ ...p, [g]: true })); showMsg('✓ Категория создана')
+  }
+  async function createSub(g: string, c: string) {
+    const n = prompt(`Новая подгруппа в «${c}»:`)?.trim(); if (!n) return
+    const r = await createFolder({ grp: g, cat: c, sub: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    await reloadFolders(); setOpenCats(p => ({ ...p, [`${g}/${c}`]: true })); showMsg('✓ Подгруппа создана')
+  }
+  async function renameFolderUI(grp: string, cat: string, sub: string, cur: string) {
+    const n = prompt('Новое имя папки:', cur)?.trim(); if (!n || n === cur) return
+    const r = await renameFolder({ grp, cat, sub, name: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    await reloadFolders(); await load(); showMsg('✓ Переименовано')
+  }
+  async function deleteFolderUI(grp: string, cat: string, sub: string) {
+    if (!confirm('Удалить папку?')) return
+    const r = await deleteFolder({ grp, cat, sub }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    await reloadFolders(); showMsg('✓ Папка удалена')
+  }
+  const ICO: React.CSSProperties = { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '0 3px', lineHeight: 1, color: '#5f5952' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 130px)', overflow: 'hidden' }}>
@@ -128,7 +169,10 @@ export default function NomenclatureScreen() {
       <div style={{ display: 'flex', gap: 16, flex: 1, overflow: 'hidden' }}>
         {/* Дерево групп */}
         <div style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '10px 14px', background: '#f8f6f3', borderBottom: '1px solid #e6e2dc', fontSize: 12, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em' }}>ГРУППЫ</div>
+          <div style={{ padding: '8px 10px 8px 14px', background: '#f8f6f3', borderBottom: '1px solid #e6e2dc', fontSize: 12, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>ГРУППЫ</span>
+            <button onClick={createGroup} title="Новая группа" style={{ border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', borderRadius: 6, fontSize: 13, lineHeight: 1, padding: '3px 8px', color: COLORS.primary, fontWeight: 700 }}>＋ папка</button>
+          </div>
           <div style={{ overflowY: 'auto', flex: 1 }}>
             <div onClick={() => { setSelGroup(null); setSelCat(null); setSelSubgroup(null); setSearch('') }}
               style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, fontWeight: !selGroup && !search ? 700 : 400, color: !selGroup && !search ? COLORS.primary : '#26231f', background: !selGroup && !search ? '#fff8f5' : '#fff', borderLeft: `3px solid ${!selGroup && !search ? COLORS.primary : 'transparent'}`, display: 'flex', justifyContent: 'space-between' }}>
@@ -138,32 +182,52 @@ export default function NomenclatureScreen() {
               const cats = Object.keys(TREE[g]); const isOpen = openGroups[g]; const isSelG = selGroup === g && !selCat
               return (
                 <div key={g}>
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: isSelG ? '#fff8f5' : '#fff', borderLeft: `3px solid ${isSelG ? COLORS.primary : 'transparent'}` }}
+                  <div onMouseEnter={() => setHoverKey(g)} onMouseLeave={() => setHoverKey(k => k === g ? null : k)}
+                    style={{ display: 'flex', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: isSelG ? '#fff8f5' : '#fff', borderLeft: `3px solid ${isSelG ? COLORS.primary : 'transparent'}` }}
                     onClick={() => { setSelGroup(g); setSelCat(null); setSelSubgroup(null); setSearch('') }}>
                     <span onClick={e => { e.stopPropagation(); setOpenGroups(p => ({ ...p, [g]: !p[g] })) }} style={{ marginRight: 6, fontSize: 12, color: '#5f5952', width: 14, textAlign: 'center', flexShrink: 0 }}>{cats.length > 0 ? (isOpen ? '▼' : '▶') : ''}</span>
                     <span style={{ fontSize: 14, marginRight: 6 }}>📁</span>
                     <span style={{ flex: 1, fontSize: 14, fontWeight: isSelG ? 700 : 400, color: isSelG ? COLORS.primary : '#26231f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</span>
-                    <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countGroup(g)}</span>
+                    {hoverKey === g
+                      ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                          <button title="+ категория" onClick={() => createCat(g)} style={ICO}>＋</button>
+                          <button title="переименовать" onClick={() => renameFolderUI(g, '', '', g)} style={ICO}>✎</button>
+                          <button title="удалить папку" onClick={() => deleteFolderUI(g, '', '')} style={ICO}>🗑</button>
+                        </span>
+                      : <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countGroup(g)}</span>}
                   </div>
                   {isOpen && cats.map(cat => {
                     const subgroups = TREE[g][cat]; const isCatOpen = openCats[`${g}/${cat}`]; const isSelC = selGroup === g && selCat === cat && !selSubgroup
                     return (
                       <div key={cat}>
-                        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px 8px 28px', cursor: 'pointer', background: isSelC ? '#fff8f5' : '#fff', borderLeft: `3px solid ${isSelC ? COLORS.primary : 'transparent'}` }}
+                        <div onMouseEnter={() => setHoverKey(`${g}/${cat}`)} onMouseLeave={() => setHoverKey(k => k === `${g}/${cat}` ? null : k)}
+                          style={{ display: 'flex', alignItems: 'center', padding: '8px 14px 8px 28px', cursor: 'pointer', background: isSelC ? '#fff8f5' : '#fff', borderLeft: `3px solid ${isSelC ? COLORS.primary : 'transparent'}` }}
                           onClick={() => { setSelGroup(g); setSelCat(cat); setSelSubgroup(null); setSearch('') }}>
                           <span onClick={e => { e.stopPropagation(); setOpenCats(p => ({ ...p, [`${g}/${cat}`]: !p[`${g}/${cat}`] })) }} style={{ marginRight: 6, fontSize: 12, color: '#5f5952', width: 12, textAlign: 'center', flexShrink: 0 }}>{subgroups.length > 0 ? (isCatOpen ? '▼' : '▶') : ''}</span>
                           <span style={{ fontSize: 14, marginRight: 6 }}>📂</span>
                           <span style={{ flex: 1, fontSize: 13, fontWeight: isSelC ? 700 : 400, color: isSelC ? COLORS.primary : '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</span>
-                          <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countCat(g, cat)}</span>
+                          {hoverKey === `${g}/${cat}`
+                            ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                <button title="+ подгруппа" onClick={() => createSub(g, cat)} style={ICO}>＋</button>
+                                <button title="переименовать" onClick={() => renameFolderUI(g, cat, '', cat)} style={ICO}>✎</button>
+                                <button title="удалить папку" onClick={() => deleteFolderUI(g, cat, '')} style={ICO}>🗑</button>
+                              </span>
+                            : <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countCat(g, cat)}</span>}
                         </div>
                         {isCatOpen && subgroups.map(sub => {
                           const isSelS = selGroup === g && selCat === cat && selSubgroup === sub
                           return (
                             <div key={sub} onClick={() => { setSelGroup(g); setSelCat(cat); setSelSubgroup(sub); setSearch('') }}
+                              onMouseEnter={() => setHoverKey(`${g}/${cat}/${sub}`)} onMouseLeave={() => setHoverKey(k => k === `${g}/${cat}/${sub}` ? null : k)}
                               style={{ display: 'flex', alignItems: 'center', padding: '7px 14px 7px 46px', cursor: 'pointer', background: isSelS ? '#fff8f5' : '#fff', borderLeft: `3px solid ${isSelS ? COLORS.primary : 'transparent'}` }}>
                               <span style={{ fontSize: 13, marginRight: 6 }}>📄</span>
                               <span style={{ flex: 1, fontSize: 13, fontWeight: isSelS ? 700 : 400, color: isSelS ? COLORS.primary : '#6b655b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
-                              <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countSubgroup(g, cat, sub)}</span>
+                              {hoverKey === `${g}/${cat}/${sub}`
+                                ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                    <button title="переименовать" onClick={() => renameFolderUI(g, cat, sub, sub)} style={ICO}>✎</button>
+                                    <button title="удалить папку" onClick={() => deleteFolderUI(g, cat, sub)} style={ICO}>🗑</button>
+                                  </span>
+                                : <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countSubgroup(g, cat, sub)}</span>}
                             </div>
                           )
                         })}
