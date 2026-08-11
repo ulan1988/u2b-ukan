@@ -89,8 +89,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }
   // Сохранить текущие строки листа как избранное (шаблон), без сумм.
+  // Пропускаем пустые/«Новая статья» и дубли (по коду или названию).
   async function saveAsFavorites() {
-    const favs = rows.map((r: any) => { const ex = (data?.favorites || []).find((f: any) => f.code === r.code); return { code: r.code || null, label: r.article, type: r.type, activity: ex?.activity || 'operating', contragentId: r.contragentId || null, defaultAccountId: ex?.defaultAccountId || null } })
+    const seen = new Set<string>()
+    const favs = rows
+      .filter((r: any) => (r.article || '').trim() && r.article !== 'Новая статья' && r.article !== 'Прочие')
+      .filter((r: any) => { const k = r.code || r.article; if (seen.has(k)) return false; seen.add(k); return true })
+      .map((r: any) => { const ex = (data?.favorites || []).find((f: any) => f.code === r.code); return { code: r.code || null, label: r.article, type: r.type, activity: ex?.activity || 'operating', contragentId: r.contragentId || null, defaultAccountId: ex?.defaultAccountId || null } })
     const res: any = await finFavSave(favs)
     show(res?.ok ? `★ Сохранено в избранное: ${favs.length} статей` : '⚠ Ошибка сохранения')
   }
