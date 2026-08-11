@@ -2,8 +2,9 @@
 // Каталог-пикер товара с фильтром по группам/подгруппам и RAL-кругами (из Улкана).
 import { useState, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
-import { catalogGroups, catalogCats } from '@/lib/nomCatalog'
 import { RalDot, extractRal } from '@/lib/ral'
+
+const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
 
 export default function NomInline({ products, value, onPick }: {
   products: any[]; value?: string; onPick: (product: any) => void
@@ -14,9 +15,17 @@ export default function NomInline({ products, value, onPick }: {
 
   const selected = products.find(p => p.id === value)
 
+  // Группы — динамически из реальных товаров (а не из статичного каталога), чтобы новые
+  // папки (Изделие и т.п.) тоже были в фильтре.
+  const groups = useMemo(
+    () => Array.from(new Set(products.map(p => (p.group || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru')),
+    [products]
+  )
+
   const list = useMemo(() => {
     let base = products
-    if (group) base = base.filter(p => (p.group || '') === group)
+    // group совпадает с полем group ИЛИ cat (устойчиво к перепутанным полям 1С).
+    if (group) base = base.filter(p => norm(p.group) === norm(group) || norm(p.cat) === norm(group))
     if (q.trim()) { const s = q.toLowerCase(); base = base.filter(p => (p.name || '').toLowerCase().includes(s)) }
     return base.slice(0, 200)
   }, [products, group, q])
@@ -32,7 +41,7 @@ export default function NomInline({ products, value, onPick }: {
         <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 400, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.16)', width: 340, border: '1.5px solid #e6e2dc' }}>
           <div style={{ padding: 10, display: 'flex', gap: 6, borderBottom: '1px solid #f1efec' }}>
             <select style={{ ...inp, flex: 1 }} value={group} onChange={e => setGroup(e.target.value)}>
-              <option value="">Все группы</option>{catalogGroups().map(g => <option key={g} value={g}>{g}</option>)}
+              <option value="">Все группы</option>{groups.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
             <input style={{ ...inp, flex: 1 }} placeholder="Поиск…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
           </div>
