@@ -118,49 +118,44 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     setRows(p => [...p]); scheduleSave(r)
   }
 
-  const th: React.CSSProperties = { background: '#eef0f3', fontWeight: 600, textAlign: 'center', padding: 7, border: '1px solid #d0d5db', fontSize: 12.5 }
+  const th: React.CSSProperties = { background: '#eef0f3', fontWeight: 600, textAlign: 'center', padding: '5px 6px', border: '1px solid #d0d5db', fontSize: 12 }
   const thNum = { ...th, textAlign: 'right' as const }
-  const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '4px 6px', fontSize: 13 }
+  const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '2px 6px', fontSize: 13 }
   const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace' }
 
-  const viewTabs = (
-    <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-      <button onClick={() => setView('sheet')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === 'sheet' ? COLORS.primary : '#fff', color: view === 'sheet' ? '#fff' : COLORS.textMuted, boxShadow: view === 'sheet' ? 'none' : '0 0 0 1.5px #e6e2dc' }}>💵 Лист</button>
-      <button onClick={() => setView('dds')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === 'dds' ? COLORS.primary : '#fff', color: view === 'dds' ? '#fff' : COLORS.textMuted, boxShadow: view === 'dds' ? 'none' : '0 0 0 1.5px #e6e2dc' }}>📊 Отчёт ДДС</button>
+  const tabBtn = (v: 'sheet' | 'dds', label: string) => (
+    <button onClick={() => setView(v)} style={{ padding: '6px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === v ? COLORS.primary : '#fff', color: view === v ? '#fff' : COLORS.textMuted, boxShadow: view === v ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
+  )
+  const dayIn = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t > 0 ? t : 0) }, 0)
+  const dayOut = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t < 0 ? -t : 0) }, 0)
+  const headerBar = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}
+      {view === 'sheet' && <>
+        <div style={{ flex: 1 }} />
+        <select value={date} onChange={e => setDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit', fontSize: 13 }}>
+          {(data?.dates || [date]).map((d: string) => <option key={d} value={d}>{d.split('-').reverse().join('.')}</option>)}
+        </select>
+        <button onClick={newDay} style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Новый день →</button>
+        <button onClick={saveAsFavorites} title="Сохранить статьи текущего листа как избранное (без сумм)" style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#8a6d00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>★ В избранное</button>
+        <button onClick={postAll} disabled={!drafts} style={{ padding: '6px 14px', border: 'none', borderRadius: 6, background: drafts ? '#0f7b3d' : '#a9c9b5', color: '#fff', fontWeight: 700, cursor: drafts ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13 }}>✓ Провести{drafts ? ` (${drafts})` : ''}</button>
+      </>}
     </div>
   )
 
-  if (view === 'dds') return <div>{viewTabs}<DdsReport /></div>
+  if (view === 'dds') return <div>{headerBar}<DdsReport /></div>
 
   return (
     <div>
-      {viewTabs}
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{toast}</div>}
+      {headerBar}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
-        <div style={{ fontSize: 19, fontWeight: 800 }}>💵 Деньги <span style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: 400 }}>· калькулятор → «Провести платежи»</span></div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button onClick={saveAsFavorites} title="Сохранить статьи текущего листа как избранное (без сумм)" style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#8a6d00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>★ Сохранить в избранное</button>
-          <button onClick={() => setFavOpen(true)} title="Редактировать список избранного" style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#fff3d6', color: '#8a6d00', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>✎ Избранные</button>
-          <select value={date} onChange={e => setDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit' }}>
-            {(data?.dates || [date]).map((d: string) => <option key={d} value={d}>{d.split('-').reverse().join('.')}</option>)}
-          </select>
-          <button onClick={newDay} style={{ padding: '7px 13px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Новый день →</button>
-          <button onClick={postAll} disabled={!drafts} style={{ padding: '8px 16px', border: 'none', borderRadius: 6, background: drafts ? '#0f7b3d' : '#a9c9b5', color: '#fff', fontWeight: 700, cursor: drafts ? 'pointer' : 'default', fontFamily: 'inherit' }}>✓ Провести платежи{drafts ? ` (${drafts})` : ''}</button>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 12.5, color: COLORS.textMuted, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={{ borderRadius: 12, padding: '2px 10px', fontWeight: 600, background: '#fff3d6', color: '#8a6d00' }}>Черновик: {drafts} стр.</span>
-        <span style={{ borderRadius: 12, padding: '2px 10px', fontWeight: 600, background: '#e8f5ec', color: '#0f7b3d' }}>Проведено: {posted} стр.</span>
-        <span>Итоги внизу — расчётные (с черновиком): сверьте с реальными остатками и проводите.</span>
-      </div>
-      {/* Раздельные итоги дня: приход / расход / чистый */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-        {(() => { const din = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t > 0 ? t : 0) }, 0); const dout = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t < 0 ? -t : 0) }, 0); return <>
-          <span style={{ borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: 13, background: '#e8f5ec', color: '#0f7b3d' }}>↑ Приход за день: {fmt(din)}</span>
-          <span style={{ borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: 13, background: '#fbeae9', color: '#b3261e' }}>↓ Расход за день: {fmt(dout)}</span>
-          <span style={{ borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: 13, background: '#eef0f3', color: '#1c2430' }}>Чистый: {fmt(din - dout)}</span>
-        </> })()}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, fontSize: 12.5 }}>
+        <span style={{ borderRadius: 12, padding: '2px 10px', fontWeight: 600, background: '#fff3d6', color: '#8a6d00' }}>Черновик {drafts}</span>
+        <span style={{ borderRadius: 12, padding: '2px 10px', fontWeight: 600, background: '#e8f5ec', color: '#0f7b3d' }}>Проведено {posted}</span>
+        <span style={{ fontWeight: 700, color: '#0f7b3d' }}>↑ Приход {fmt(dayIn)}</span>
+        <span style={{ fontWeight: 700, color: '#b3261e' }}>↓ Расход {fmt(dayOut)}</span>
+        <span style={{ fontWeight: 700 }}>Чистый {fmt(dayIn - dayOut)}</span>
       </div>
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
@@ -242,11 +237,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
               </tr>
             </tbody>
           </table>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <button onClick={addRow} style={{ padding: '7px 13px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>+ Добавить строку в конец</button>
-            <button onClick={applyFavs} style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#fff3d6', color: '#8a6d00', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>★ Заполнить статьями дня</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <button onClick={addRow} style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>+ Добавить строку</button>
           </div>
-          <p style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8, maxWidth: 780 }}>В ячейке работает калькулятор: <b>4500+5500+1000</b> → Enter = <b>11 000</b> (и −, ×, ÷). <b>⧉</b> клонировать, <b>＋</b> вставить под строкой, <b>✕</b> убрать. Пока строки в черновике (кремовые) — ничего не проведено: сверьте жёлтые итоги и нажмите <b>✓ Провести платежи</b> — строки с контрагентом создадут оплату (акт сверки). Проведённую строку вернёте карандашом ✎.</p>
+          <p style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 6 }}>Калькулятор в ячейке (4500+5500 → Enter). ⧉ клон · ＋ вставить · ✕ убрать · ✎ вернуть в черновик.</p>
         </div>
       )}
 
