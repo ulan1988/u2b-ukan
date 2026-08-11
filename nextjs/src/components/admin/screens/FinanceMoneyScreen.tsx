@@ -16,6 +16,8 @@ const TYPE_COLOR: Record<string, { bg: string; c: string }> = {
 const todayStr = () => new Date().toISOString().slice(0, 10)
 const fmt = (n: number) => !n ? '0' : n.toLocaleString('ru-RU', { minimumFractionDigits: Math.abs(n % 1) > 1e-9 ? 2 : 0, maximumFractionDigits: 2 })
 const nextDay = (d: string) => { const dt = new Date(d); dt.setDate(dt.getDate() + 1); return dt.toISOString().slice(0, 10) }
+// Зебра строк листа: проведённые — бело-серые, черновики — кремово-чередующиеся.
+const rowBg = (posted: boolean, i: number) => posted ? (i % 2 ? '#f4f5f7' : '#fff') : (i % 2 ? '#fbf7e8' : '#fffdf2')
 
 // Калькулятор в ячейке: "4500+5500" -> 10000
 function calc(v: any): number | null {
@@ -193,7 +195,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                 // Неизвестный тип не роняет рендер, но подсвечивается красным (аномалия видна).
                 const isPosted = r.status === 'posted'; const tot = rowTotal(r); const tc = TYPE_COLOR[r.type] || { bg: '#fbeae9', c: '#b3261e' }
                 return (
-                  <tr key={r.id || i} style={{ background: isPosted ? '#fff' : '#fffdf2' }}>
+                  <tr key={r.id || i} style={{ background: rowBg(isPosted, i) }} onMouseEnter={e => (e.currentTarget.style.background = '#eaf1fb')} onMouseLeave={e => (e.currentTarget.style.background = rowBg(isPosted, i))}>
                     <td style={tdNum}>{i + 1}</td>
                     <td style={td}>{isPosted
                       ? <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)} ✓</span>
