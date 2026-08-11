@@ -45,12 +45,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [favOpen, setFavOpen] = useState(false)
   const [view, setView] = useState<'sheet' | 'dds'>('sheet')
   const timers = useRef<Record<string, any>>({})
+  const didInit = useRef(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    if (!didInit.current) setLoading(true)   // «Загрузка…» только при первом открытии — без мигания на каждом обновлении
     const d = await finDay(date)
     setData(d); setRows((d?.rows || []).map(mapRow)); setFavs(d?.favorites || [])
-    setLoading(false)
+    didInit.current = true; setLoading(false)
   }, [date])
   useEffect(() => { load() }, [load])
   useEffect(() => { listContragents(true).then(r => setCags(r as any[])) }, [])
