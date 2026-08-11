@@ -49,7 +49,9 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
 
   const load = useCallback(async () => {
     if (!didInit.current) setLoading(true)   // «Загрузка…» только при первом открытии — без мигания на каждом обновлении
-    const d = await finDay(date)
+    let d = await finDay(date)
+    // Пустой день + есть избранное → сразу подставляем статьи из избранного («первым откроется избранное»).
+    if ((d?.rows || []).length === 0 && (d?.favorites || []).length > 0) { await finFavApply(date); d = await finDay(date) }
     setData(d); setRows((d?.rows || []).map(mapRow)); setFavs(d?.favorites || [])
     didInit.current = true; setLoading(false)
   }, [date])
@@ -86,6 +88,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   async function postAll() { const res: any = await finPost(date); show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load() }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }
+  // Сохранить текущие строки листа как избранное (шаблон), без сумм.
+  async function saveAsFavorites() {
+    const favs = rows.map((r: any) => { const ex = (data?.favorites || []).find((f: any) => f.code === r.code); return { code: r.code || null, label: r.article, type: r.type, activity: ex?.activity || 'operating', contragentId: r.contragentId || null, defaultAccountId: ex?.defaultAccountId || null } })
+    const res: any = await finFavSave(favs)
+    show(res?.ok ? `★ Сохранено в избранное: ${favs.length} статей` : '⚠ Ошибка сохранения')
+  }
   async function setType(r: any, t: string) { r.type = t; setRows(p => [...p]); await persist(r) }
   async function applyStatia(r: any, fav: any) {
     r.type = fav.type; r.code = fav.code || null; r.article = fav.label || ''
@@ -127,7 +135,8 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
         <div style={{ fontSize: 19, fontWeight: 800 }}>💵 Деньги <span style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: 400 }}>· калькулятор → «Провести платежи»</span></div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button onClick={() => setFavOpen(true)} style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#fff3d6', color: '#8a6d00', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>★ Избранные</button>
+          <button onClick={saveAsFavorites} title="Сохранить статьи текущего листа как избранное (без сумм)" style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#8a6d00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>★ Сохранить в избранное</button>
+          <button onClick={() => setFavOpen(true)} title="Редактировать список избранного" style={{ padding: '7px 13px', border: '1px solid #8a6d00', borderRadius: 6, background: '#fff3d6', color: '#8a6d00', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>✎ Избранные</button>
           <select value={date} onChange={e => setDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit' }}>
             {(data?.dates || [date]).map((d: string) => <option key={d} value={d}>{d.split('-').reverse().join('.')}</option>)}
           </select>
