@@ -127,7 +127,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   function setCell(r: any, accId: string, val: string) {
     const n = calc(val); if (n == null) return
     if (n === 0) delete r.amt[accId]; else r.amt[accId] = n
-    setRows(p => [...p]); scheduleSave(r)
+    setRows(p => [...p]); persist(r)   // сохраняем сразу (без задержки) — чтобы к «Провести» сумма уже была в базе
   }
 
   const th: React.CSSProperties = { background: '#eef0f3', fontWeight: 600, textAlign: 'center', padding: '5px 6px', border: '1px solid #d0d5db', fontSize: 12 }
