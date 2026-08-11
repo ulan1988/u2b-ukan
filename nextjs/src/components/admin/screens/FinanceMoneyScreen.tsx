@@ -95,8 +95,15 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   async function postAll() {
     // Досохраняем все суммы (снимаем debounce), чтобы сервер увидел их до проведения — иначе гонка.
     Object.values(timers.current).forEach((t: any) => clearTimeout(t)); timers.current = {}
-    await Promise.all(rows.filter(r => hasAmt(r)).map(r => persist(r)))
-    const res: any = await finPost(date); show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load()
+    const draftRows = rows.filter(r => r.status !== 'posted' && hasAmt(r))
+    await Promise.all(draftRows.map(r => persist(r)))
+    let res: any = await finPost(date)
+    // Страховка: если сервер вернул 0, но черновики с суммами есть — досохранить и повторить один раз.
+    if ((res?.data?.posted || 0) === 0 && draftRows.length > 0) {
+      await Promise.all(draftRows.map(r => persist(r)))
+      res = await finPost(date)
+    }
+    show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load()
   }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }
