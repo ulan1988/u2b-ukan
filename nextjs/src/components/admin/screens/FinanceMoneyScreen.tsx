@@ -347,10 +347,11 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
   const sign = row.type === 'out' ? -1 : 1
   const done = accounts.reduce((s: number, a: any) => s + parseCell(vals[a.id]), 0)
   const left = parseCell(total) - done
-  const rowTotal = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0)
   const [inv, setInv] = useState<any[]>([])
   const [alloc, setAlloc] = useState<Record<string, string>>(() => { const a: any = {}; (row.alloc || []).forEach((x: any) => a[x.docId] = String(x.amount)); return a })
   const allocTotal = Object.values(alloc).reduce((s: number, v: any) => s + parseCell(v), 0)
+  // Сумма платежа для погашения (своё поле): по умолчанию = сумма строки.
+  const [payTarget, setPayTarget] = useState(() => { const t = accounts.reduce((s: number, a: any) => s + Math.abs(row.amt[a.id] || 0), 0); return t ? String(t) : '' })
 
   useEffect(() => { if (tab === 'doc' && row.contragentId) finOpenInvoices(row.contragentId, row.type).then((r: any) => setInv(r?.data || [])) }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
   // Автоподстановка: если у статьи есть счёт по умолчанию и вручную ничего не распределено —
@@ -369,29 +370,27 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
   async function pickCag(c: any) { row.contragentId = c.id; if (!row.who) row.who = c.name; await persist(row); onSaved() }
   // Авто-распределение суммы строки по накладным (FIFO — старые первыми).
   function autoFill() {
-    const target = accounts.reduce((s: number, a: any) => s + Math.abs(Number(row.amt[a.id]) || 0), 0)
+    const target = parseCell(payTarget)   // распределяем ровно введённую сумму платежа
     const a: any = {}
-    if (target <= 0.001) {
-      // Сумма строки не задана — берём все долги полностью (сумма придёт из отобранных, как в 1С).
-      for (const d of inv) { const out = Number(d.outstanding) || 0; if (out > 0) a[d.id] = String(out) }
-    } else {
-      let leftAmt = target
-      for (const d of inv) {
-        if (leftAmt <= 0.001) break
-        const out = Number(d.outstanding) || 0
-        const take = Math.min(out, leftAmt)
-        if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take }
-      }
+    let leftAmt = target
+    for (const d of inv) {
+      if (leftAmt <= 0.001) break
+      const out = Number(d.outstanding) || 0
+      const take = Math.min(out, leftAmt)
+      if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take }
     }
     setAlloc(a)
   }
   async function applyPay() {
     const items = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) }))
     row.alloc = items
-    const allocSum = items.reduce((s: number, x: any) => s + x.amount, 0)
-    const curTotal = accounts.reduce((s: number, a: any) => s + Math.abs(Number(row.amt[a.id]) || 0), 0)
-    // Если сумма строки не задана — проставляем её из отобранных долгов (на первый счёт, знак по типу).
-    if (curTotal < 0.001 && allocSum > 0 && accounts.length) { const sign = row.type === 'out' ? -1 : 1; row.amt = { [accounts[0].id]: sign * allocSum } }
+    // Сумма платежа = введённая (или сумма отобранных). Ставим её на счёт (дефолтный статьи, иначе первый).
+    const amount = parseCell(payTarget) || items.reduce((s: number, x: any) => s + x.amount, 0)
+    if (amount > 0 && accounts.length) {
+      const accId = defAcc || accounts[0].id
+      const sign = row.type === 'out' ? -1 : 1
+      row.amt = { [accId]: sign * amount }
+    }
     await persist(row); onSaved()
   }
 
@@ -436,9 +435,11 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
         {tab === 'doc' && (!row.contragentId
           ? <div style={{ fontSize: 13, color: '#6b7686', padding: '10px 0' }}>Сначала укажите контрагента (в поле «Кто» или на вкладке «Контрагент») — появятся его неоплаченные накладные для погашения.</div>
           : <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 13 }}>Контрагент: <b>{row.contragent || row.who}</b> · сумма строки: <b>{fmt(rowTotal)}</b></div>
-              <button onClick={autoFill} style={{ ...btn, marginLeft: 'auto', fontSize: 12.5 }}>↕ Распределить авто (FIFO)</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13 }}>Контрагент: <b>{row.contragent || row.who}</b></span>
+              <label style={{ fontSize: 13, marginLeft: 6, fontWeight: 600 }}>Сумма платежа:</label>
+              <input value={payTarget} onChange={e => setPayTarget(e.target.value)} inputMode="decimal" placeholder="0" style={{ width: 140, border: '1.5px solid #8f99a6', borderRadius: 6, padding: '6px 9px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 13, fontWeight: 700 }} />
+              <button onClick={autoFill} style={{ ...btnDark, marginLeft: 'auto', fontSize: 12.5, padding: '7px 12px' }}>↕ Распределить авто</button>
             </div>
             {inv.length === 0 ? <div style={{ padding: 14, textAlign: 'center', color: '#6b7686', fontSize: 13 }}>Нет неоплаченных накладных — это будет предоплата (аванс).</div>
               : <><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -471,7 +472,7 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
                   </div>
                 ) : null })()}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-                  <span style={{ fontSize: 13 }}>Распределено: <b style={{ color: Math.abs(allocTotal - rowTotal) < 1e-9 ? '#0f7b3d' : '#8a6d00' }}>{fmt(allocTotal)}</b> из {fmt(rowTotal)}</span>
+                  <span style={{ fontSize: 13 }}>Распределено: <b style={{ color: Math.abs(allocTotal - parseCell(payTarget)) < 1e-9 ? '#0f7b3d' : '#8a6d00' }}>{fmt(allocTotal)}</b> из {fmt(parseCell(payTarget))}</span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                     <button onClick={() => { setAlloc({}); row.alloc = []; persist(row).then(onSaved) }} style={btn}>Сбросить (предоплата)</button>
                     <button onClick={applyPay} style={btnDark}>Применить погашение</button>
