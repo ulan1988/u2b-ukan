@@ -30,7 +30,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
+  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -44,6 +44,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [modalRow, setModalRow] = useState<any | null>(null)
   const [favOpen, setFavOpen] = useState(false)
   const [view, setView] = useState<'sheet' | 'dds'>('sheet')
+  const [showComment, setShowComment] = useState(false)   // колонка «Комментарий» со шторкой
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
 
@@ -69,7 +70,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const posted = rows.filter(r => r.status === 'posted').length
 
   function payload(r: any) {
-    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, alloc: r.alloc || [], amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
+    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, comment: r.comment || '', contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, alloc: r.alloc || [], amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
   }
   async function persist(r: any) { const res: any = await finSaveRow(payload(r)); if (res?.data?.id && !r.id) setRows(p => p.map(x => x === r ? { ...x, id: res.data.id } : x)); return res?.data?.id || r.id }
   function scheduleSave(r: any) { const k = r.id || 'new'; clearTimeout(timers.current[k]); timers.current[k] = setTimeout(() => persist(r), 500) }
@@ -137,6 +138,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
           {(data?.dates || [date]).map((d: string) => <option key={d} value={d}>{d.split('-').reverse().join('.')}</option>)}
         </select>
         <button onClick={newDay} style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Новый день →</button>
+        <button onClick={() => setShowComment(v => !v)} title="Показать/скрыть колонку «Комментарий»" style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: showComment ? '#eef0f3' : '#fff', color: showComment ? '#1c2430' : COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>💬 Коммент {showComment ? '✓' : ''}</button>
         <button onClick={saveAsFavorites} title="Сохранить статьи текущего листа как избранное (без сумм)" style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#8a6d00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>★ В избранное</button>
         <button onClick={postAll} disabled={!drafts} style={{ padding: '6px 14px', border: 'none', borderRadius: 6, background: drafts ? '#0f7b3d' : '#a9c9b5', color: '#fff', fontWeight: 700, cursor: drafts ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13 }}>✓ Провести{drafts ? ` (${drafts})` : ''}</button>
       </>}
@@ -168,13 +170,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
               <th style={{ ...th, width: '17%' }}>Контрагент / документ</th>
               {accounts.map(a => <th key={a.id} style={thNum}>{a.name}</th>)}
               <th style={thNum}>Общий</th>
+              {showComment && <th style={{ ...th, textAlign: 'left', minWidth: 150 }}>Комментарий</th>}
               <th style={{ ...th, width: '8%' }}></th>
             </tr></thead>
             <tbody>
               <tr style={{ background: '#f4f5f7', fontWeight: 700 }}>
                 <td style={td}></td><td style={td} colSpan={2}>На начало дня</td><td style={td}></td>
                 {accounts.map(a => <td key={a.id} style={tdNum}>{fmt(opening[a.id] || 0)}</td>)}
-                <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (opening[a.id] || 0), 0))}</td><td style={td}></td>
+                <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (opening[a.id] || 0), 0))}</td>{showComment && <td style={td}></td>}<td style={td}></td>
               </tr>
               {rows.map((r, i) => {
                 // Неизвестный тип не роняет рендер, но подсвечивается красным (аномалия видна).
@@ -219,6 +222,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                         style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 15.5, fontWeight: 700, background: 'transparent' }} /></td>
                     })}
                     <td style={{ ...tdNum, color: tot > 0 ? '#0f7b3d' : tot < 0 ? '#b3261e' : undefined, fontWeight: 600 }}>{tot ? fmt(tot) : '0'}</td>
+                    {showComment && <td style={td}>{isPosted
+                      ? <span style={{ fontSize: 12.5 }}>{r.comment}</span>
+                      : <input value={r.comment || ''} onChange={e => { r.comment = e.target.value; setRows(p => [...p]); scheduleSave(r) }} placeholder="…" style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', fontSize: 12.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />}
+                    </td>}
                     <td style={td}><div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                       {isPosted ? <button onClick={() => revertRow(r)} title="Вернуть в черновик" style={actBtn}>✎</button>
                         : <>
@@ -233,7 +240,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
               <tr style={{ background: '#ffe94d', fontWeight: 700 }}>
                 <td style={td}></td><td style={td} colSpan={2}>На конец дня (расчёт)</td><td style={td}></td>
                 {accounts.map(a => <td key={a.id} style={tdNum}>{fmt(closing[a.id] || 0)}</td>)}
-                <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (closing[a.id] || 0), 0))}</td><td style={td}></td>
+                <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (closing[a.id] || 0), 0))}</td>{showComment && <td style={td}></td>}<td style={td}></td>
               </tr>
             </tbody>
           </table>

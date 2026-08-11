@@ -79,6 +79,7 @@ export const cashAccounts = pgTable('cash_accounts', {
   name: text('name').notNull(),
   kind: text('kind').notNull().default('cash'),           // cash | bank
   currency: text('currency').notNull().default('KZT'),
+  sortOrder: integer('sort_order').notNull().default(0),  // порядок колонок в листе «Финанс»
   archived: boolean('archived').notNull().default(false),
 }, t => ({ byOrg: index('cash_accounts_org_idx').on(t.orgId) }))
 
@@ -398,6 +399,7 @@ export const finRows = pgTable('fin_rows', {
   date: date('date').notNull(),                            // день листа
   type: text('type').notNull().default('etc'),            // in|out|mv|service
   code: text('code'),                                      // код статьи ДДС (ОП-01, ПЛ-01…)
+  comment: text('comment'),                                // комментарий к строке (колонка со шторкой)
   expenseArticleId: uuid('expense_article_id').references(() => finExpenseArticles.id), // статья затрат (для расходов, 7100/7200/7400)
   article: text('article').notNull().default(''),         // статья (Кристалл, Зарплата, Аренда…)
   contragentId: uuid('contragent_id').references(() => contragents.id),  // если завязано на контрагента

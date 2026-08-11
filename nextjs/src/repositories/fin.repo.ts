@@ -17,7 +17,7 @@ export const bumpPaidSum = (docId: string, delta: number) =>
   db.update(documents).set({ paidSum: dsql`${documents.paidSum} + ${String(delta)}`, updatedAt: new Date() }).where(eq(documents.id, docId))
 
 export const accounts = (orgId: string) =>
-  sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false order by kind desc, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
+  sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
 
 // Справочник статей затрат (для расходных строк).
 export const expenseArticles = (orgId: string) =>
@@ -31,7 +31,7 @@ export const openingByAccount = (orgId: string, date: string) =>
     group by a.account_id` as unknown as Promise<Array<{ id: string; amt: number }>>
 
 export const rowsForDay = (orgId: string, date: string) =>
-  sqlClient`select r.id::text, r.type, r.code, r.article, r.who, r.status, r.sort_order "sortOrder",
+  sqlClient`select r.id::text, r.type, r.code, r.article, r.who, r.comment, r.status, r.sort_order "sortOrder",
       r.contragent_id::text "contragentId", r.doc_id::text "docId",
       r.expense_article_id::text "expenseArticleId", ea.code "expCode", ea.name "expName",
       c.name "contragent", d.number "docNumber", d.type "docType",

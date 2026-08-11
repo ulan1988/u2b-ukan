@@ -22,7 +22,7 @@ export async function financeDay(orgId: string, date: string) {
 // Создать/обновить строку + её суммы по счетам. Правка только черновика.
 export async function saveFinRow(orgId: string, input: any) {
   let id: string = input.id
-  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', contragentId: input.contragentId || null, docId: input.docId || null, expenseArticleId: input.expenseArticleId || null }
+  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', comment: input.comment ?? null, contragentId: input.contragentId || null, docId: input.docId || null, expenseArticleId: input.expenseArticleId || null }
   if (id) {
     await fin.updateRowFields(id, fields)
   } else {
