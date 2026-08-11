@@ -85,6 +85,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const id = await persist(nr); const ids = rows.map(r => r.id); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
   }
   async function removeRow(i: number) { const r = rows[i]; if (r.id) await finDeleteRow(r.id); await load() }
+  // Поменять местами строки (вверх/вниз) + сохранить порядок.
+  async function moveRow(i: number, dir: number) {
+    const j = i + dir; if (j < 0 || j >= rows.length) return
+    const nr = [...rows];[nr[i], nr[j]] = [nr[j], nr[i]]; setRows(nr)
+    const ids = nr.map(r => r.id).filter(Boolean); if (ids.length) await finReorder(ids)
+  }
   async function revertRow(r: any) { r.status = 'draft'; setRows(p => [...p]); await persist(r); await load() }
   async function postAll() { const res: any = await finPost(date); show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load() }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
@@ -226,7 +232,11 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                       ? <span style={{ fontSize: 12.5 }}>{r.comment}</span>
                       : <input value={r.comment || ''} onChange={e => { r.comment = e.target.value; setRows(p => [...p]); scheduleSave(r) }} placeholder="…" style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', fontSize: 12.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />}
                     </td>}
-                    <td style={td}><div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                    <td style={td}><div style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+                        <button onClick={() => moveRow(i, -1)} title="Вверх" style={arrowBtn}>▲</button>
+                        <button onClick={() => moveRow(i, 1)} title="Вниз" style={arrowBtn}>▼</button>
+                      </div>
                       {isPosted ? <button onClick={() => revertRow(r)} title="Вернуть в черновик" style={actBtn}>✎</button>
                         : <>
                           <button onClick={() => cloneRow(i)} title="Клонировать" style={actBtn}>⧉</button>
@@ -258,6 +268,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
 }
 
 const actBtn: React.CSSProperties = { border: 0, background: 'none', color: '#b7bfc9', fontSize: 13, padding: '1px 3px', cursor: 'pointer' }
+const arrowBtn: React.CSSProperties = { border: 0, background: 'none', color: '#9aa3ad', fontSize: 8, padding: 0, cursor: 'pointer', lineHeight: 0.9, height: 10 }
 const ov: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(20,26,34,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '36px 14px', overflow: 'auto', zIndex: 1300 }
 const modalBox: React.CSSProperties = { background: '#fff', borderRadius: 10, maxWidth: 600, width: '100%', padding: 18 }
 
