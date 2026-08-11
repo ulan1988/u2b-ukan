@@ -138,7 +138,6 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
           {(data?.dates || [date]).map((d: string) => <option key={d} value={d}>{d.split('-').reverse().join('.')}</option>)}
         </select>
         <button onClick={newDay} style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Новый день →</button>
-        <button onClick={() => setShowComment(v => !v)} title="Показать/скрыть колонку «Комментарий»" style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: showComment ? '#eef0f3' : '#fff', color: showComment ? '#1c2430' : COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>💬 Коммент {showComment ? '✓' : ''}</button>
         <button onClick={saveAsFavorites} title="Сохранить статьи текущего листа как избранное (без сумм)" style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#8a6d00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>★ В избранное</button>
         <button onClick={postAll} disabled={!drafts} style={{ padding: '6px 14px', border: 'none', borderRadius: 6, background: drafts ? '#0f7b3d' : '#a9c9b5', color: '#fff', fontWeight: 700, cursor: drafts ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13 }}>✓ Провести{drafts ? ` (${drafts})` : ''}</button>
       </>}
@@ -172,7 +171,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
               {accounts.map(a => <th key={a.id} style={thNum}>{a.name}</th>)}
               <th style={thNum}>Общий</th>
               {showComment && <th style={{ ...th, textAlign: 'left', minWidth: 150 }}>Комментарий</th>}
-              <th style={{ ...th, width: '8%' }}></th>
+              <th style={{ ...th, width: '8%' }}><button onClick={() => setShowComment(v => !v)} title={showComment ? 'Скрыть «Комментарий»' : 'Показать «Комментарий»'} style={{ border: showComment ? '1px solid #8f99a6' : '1px solid #d0d5db', background: showComment ? '#dfe4ea' : '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 14, padding: '2px 7px', lineHeight: 1 }}>👁</button></th>
             </tr></thead>
             <tbody>
               <tr style={{ background: '#f4f5f7', fontWeight: 700 }}>
