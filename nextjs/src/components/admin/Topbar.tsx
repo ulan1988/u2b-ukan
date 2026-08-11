@@ -34,9 +34,9 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg }: {
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, hideOrderInfo }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
-  orgs?: { id: string; name: string; kind?: string }[]; orgId?: string; onOrg?: (id: string) => void
+  orgs?: { id: string; name: string; kind?: string }[]; orgId?: string; onOrg?: (id: string) => void; hideOrderInfo?: boolean
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -56,11 +56,11 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
         <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
         <div style={{ fontSize: 12, color: '#5f5952' }}>{new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginLeft: 20, flexWrap: 'wrap' }}>
+      {!hideOrderInfo && <div style={{ display: 'flex', gap: 8, marginLeft: 20, flexWrap: 'wrap' }}>
         {pills.map(({ label, bg, color }) => (
           <span key={label} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: bg, color, fontWeight: 600 }}>{label}</span>
         ))}
-      </div>
+      </div>}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
         {orgs.length > 1 && onOrg && (
           <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
@@ -68,7 +68,7 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
             {orgs.map(o => <option key={o.id} value={o.id}>🏢 {o.name}</option>)}
           </select>
         )}
-        <input style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />
+        {!hideOrderInfo && <input style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
         <Bell />
       </div>
     </div>

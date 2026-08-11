@@ -120,8 +120,8 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
 
   const th: React.CSSProperties = { background: '#eef0f3', fontWeight: 600, textAlign: 'center', padding: '5px 6px', border: '1px solid #d0d5db', fontSize: 12 }
   const thNum = { ...th, textAlign: 'right' as const }
-  const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '2px 6px', fontSize: 13 }
-  const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace' }
+  const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '1px 6px', fontSize: 13 }
+  const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace', fontSize: 15.5, fontWeight: 700 }
 
   const tabBtn = (v: 'sheet' | 'dds', label: string) => (
     <button onClick={() => setView(v)} style={{ padding: '6px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === v ? COLORS.primary : '#fff', color: view === v ? '#fff' : COLORS.textMuted, boxShadow: view === v ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
@@ -143,10 +143,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     </div>
   )
 
-  if (view === 'dds') return <div>{headerBar}<DdsReport /></div>
+  if (view === 'dds') return <div style={{ marginTop: -12 }}>{headerBar}<DdsReport /></div>
 
   return (
-    <div>
+    <div style={{ marginTop: -12 }}>
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{toast}</div>}
       {headerBar}
 
@@ -184,7 +184,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                     <td style={tdNum}>{i + 1}</td>
                     <td style={td}>{isPosted
                       ? <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)} ✓</span>
-                      : <select value={r.type} onChange={e => setType(r, e.target.value)} style={{ border: `1px solid ${tc.c}33`, borderRadius: 4, padding: '3px 4px', fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.c, fontFamily: 'inherit', cursor: 'pointer' }}>{Object.entries(TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}
+                      : <select value={r.type} onChange={e => setType(r, e.target.value)} style={{ border: `1px solid ${tc.c}33`, borderRadius: 4, padding: '1px 3px', fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.c, fontFamily: 'inherit', cursor: 'pointer' }}>{Object.entries(TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}
                     </td>
                     <td style={td}>{isPosted
                       ? <span>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</span>
@@ -211,12 +211,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                             <option value="">—</option><option value="from">от</option><option value="to">к</option>
                           </select>
                           <input value={v ? String(Math.abs(v)) : ''} inputMode="decimal" placeholder="0" onChange={e => setMv(r, a.id, dir || 'to', parseCell(e.target.value))}
-                            style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '5px 4px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 13, background: 'transparent' }} />
+                            style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 15, fontWeight: 700, background: 'transparent' }} />
                         </div></td>
                       }
                       return <td key={a.id} style={td}><input defaultValue={v != null && v !== 0 ? v : ''} key={(r.id || i) + a.id + (v || 0)} inputMode="decimal"
                         onBlur={e => setCell(r, a.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
-                        style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '5px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 13, background: 'transparent' }} /></td>
+                        style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontSize: 15.5, fontWeight: 700, background: 'transparent' }} /></td>
                     })}
                     <td style={{ ...tdNum, color: tot > 0 ? '#0f7b3d' : tot < 0 ? '#b3261e' : undefined, fontWeight: 600 }}>{tot ? fmt(tot) : '0'}</td>
                     <td style={td}><div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
@@ -262,7 +262,7 @@ function WhoInput({ row, cags, onText, onPick }: { row: any; cags: any[]; onText
   return (
     <div style={{ position: 'relative', flex: 1, minWidth: 40 }}>
       <input value={row.who || ''} onChange={e => onText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 150)} placeholder="контрагент…"
-        style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '4px 6px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: row.contragentId ? '#f0f8f2' : 'transparent' }} />
+        style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: row.contragentId ? '#f0f8f2' : 'transparent' }} />
       {matches.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 70, minWidth: 200, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d0d5db', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', marginTop: 2 }}>
           {matches.map(c => <div key={c.id} onMouseDown={() => onPick(c)} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }} onMouseEnter={e => (e.currentTarget.style.background = '#eef4ff')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>{c.name}</div>)}
@@ -289,7 +289,7 @@ function StatiaPicker({ favs, type, code, label, onPick }: { favs: any[]; type?:
   const groups = ACT_ORDER.map(a => ({ a, title: ACT_TITLES[a], items: filtered.filter(f => (f.activity || 'operating') === a) })).filter(g => g.items.length)
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid transparent', borderRadius: 4, padding: '3px 5px', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, width: '100%', textAlign: 'left' }}>
+      <button onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid transparent', borderRadius: 4, padding: '1px 5px', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, width: '100%', textAlign: 'left', lineHeight: 1.15 }}>
         {code || label ? <>{code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11 }}>{code}</span>} <span>{label}</span></> : <span style={{ color: '#9a938a' }}>— выбрать статью —</span>}
         <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 10 }}>▾</span>
       </button>
