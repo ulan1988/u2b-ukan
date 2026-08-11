@@ -365,16 +365,30 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
   // Авто-распределение суммы строки по накладным (FIFO — старые первыми).
   function autoFill() {
     const target = accounts.reduce((s: number, a: any) => s + Math.abs(Number(row.amt[a.id]) || 0), 0)
-    let leftAmt = target; const a: any = {}
-    for (const d of inv) {
-      if (leftAmt <= 0.001) break
-      const out = Number(d.outstanding) || 0
-      const take = Math.min(out, leftAmt)
-      if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take }
+    const a: any = {}
+    if (target <= 0.001) {
+      // Сумма строки не задана — берём все долги полностью (сумма придёт из отобранных, как в 1С).
+      for (const d of inv) { const out = Number(d.outstanding) || 0; if (out > 0) a[d.id] = String(out) }
+    } else {
+      let leftAmt = target
+      for (const d of inv) {
+        if (leftAmt <= 0.001) break
+        const out = Number(d.outstanding) || 0
+        const take = Math.min(out, leftAmt)
+        if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take }
+      }
     }
     setAlloc(a)
   }
-  async function applyPay() { row.alloc = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) })); await persist(row); onSaved() }
+  async function applyPay() {
+    const items = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) }))
+    row.alloc = items
+    const allocSum = items.reduce((s: number, x: any) => s + x.amount, 0)
+    const curTotal = accounts.reduce((s: number, a: any) => s + Math.abs(Number(row.amt[a.id]) || 0), 0)
+    // Если сумма строки не задана — проставляем её из отобранных долгов (на первый счёт, знак по типу).
+    if (curTotal < 0.001 && allocSum > 0 && accounts.length) { const sign = row.type === 'out' ? -1 : 1; row.amt = { [accounts[0].id]: sign * allocSum } }
+    await persist(row); onSaved()
+  }
 
   return (
     <div style={ov} onClick={onClose}>
