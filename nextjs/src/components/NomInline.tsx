@@ -9,8 +9,8 @@ import { RalDot, extractRal } from '@/lib/ral'
 
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
 
-export default function NomInline({ products, value, onPick }: {
-  products: any[]; value?: string; onPick: (product: any) => void
+export default function NomInline({ products, value, name, onPick }: {
+  products: any[]; value?: string; name?: string; onPick: (product: any) => void
 }) {
   const [open, setOpen] = useState(false)
   const [group, setGroup] = useState('')
@@ -19,6 +19,8 @@ export default function NomInline({ products, value, onPick }: {
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
 
   const selected = products.find(p => p.id === value)
+  // Показываем товар по id ИЛИ по имени (name1c) — товар из каталога-модельки приходит по имени, без id (как в кабинете).
+  const shownName = selected?.name || (name || '').trim()
 
   // Группы — динамически из реальных товаров (а не из статичного каталога), чтобы новые
   // папки (Изделие и т.п.) тоже были в фильтре.
@@ -58,7 +60,7 @@ export default function NomInline({ products, value, onPick }: {
   return (
     <div style={{ position: 'relative' }}>
       <button ref={btnRef} type="button" onClick={() => setOpen(o => !o)} style={{ ...inp, width: '100%', textAlign: 'left', cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
-        {selected ? <><RalDot code={extractRal(selected.name)} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.name}</span></> : <span style={{ color: '#9a938a' }}>— товар из каталога —</span>}
+        {shownName ? <><RalDot code={extractRal(shownName)} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shownName}</span></> : <span style={{ color: '#9a938a' }}>— товар из каталога —</span>}
       </button>
       {open && pos && createPortal(
         <>
