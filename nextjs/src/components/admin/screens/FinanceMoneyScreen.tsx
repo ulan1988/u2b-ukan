@@ -363,7 +363,17 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
   }
   async function pickCag(c: any) { row.contragentId = c.id; if (!row.who) row.who = c.name; await persist(row); onSaved() }
   // Авто-распределение суммы строки по накладным (FIFO — старые первыми).
-  function autoFill() { let leftAmt = rowTotal; const a: any = {}; for (const d of inv) { if (leftAmt <= 0.001) break; const take = Math.min(d.outstanding, leftAmt); if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take } } setAlloc(a) }
+  function autoFill() {
+    const target = accounts.reduce((s: number, a: any) => s + Math.abs(Number(row.amt[a.id]) || 0), 0)
+    let leftAmt = target; const a: any = {}
+    for (const d of inv) {
+      if (leftAmt <= 0.001) break
+      const out = Number(d.outstanding) || 0
+      const take = Math.min(out, leftAmt)
+      if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take }
+    }
+    setAlloc(a)
+  }
   async function applyPay() { row.alloc = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) })); await persist(row); onSaved() }
 
   return (
@@ -428,6 +438,19 @@ function RowModal({ row, accounts, cags, orgId, defAcc, onClose, onSaved, persis
                   ))}
                 </tbody>
               </table>
+                {(() => { const selected = inv.filter((d: any) => parseCell(alloc[d.id]) > 0); return selected.length > 0 ? (
+                  <div style={{ marginTop: 10, border: '1px solid #cfe3d3', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ background: '#e8f5ec', padding: '5px 10px', fontWeight: 700, fontSize: 12.5, color: '#0f7b3d' }}>Отобранные долги · {selected.length}</div>
+                    {selected.map((d: any) => (
+                      <div key={d.id} style={{ display: 'flex', gap: 8, padding: '4px 10px', borderTop: '1px solid #eef4f0', fontSize: 12.5 }}>
+                        <span style={{ fontFamily: 'Consolas, monospace' }}>{d.number}</span>
+                        <span style={{ color: '#6b7686' }}>{(d.date || '').split('-').reverse().join('.')}</span>
+                        <span style={{ marginLeft: 'auto', fontFamily: 'Consolas, monospace', fontWeight: 700, color: '#0f7b3d' }}>{fmt(parseCell(alloc[d.id]))}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', padding: '5px 10px', borderTop: '1px solid #cfe3d3', fontWeight: 800, background: '#f4faf6' }}><span>Итого распределено</span><span style={{ marginLeft: 'auto', fontFamily: 'Consolas, monospace' }}>{fmt(allocTotal)}</span></div>
+                  </div>
+                ) : null })()}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                   <span style={{ fontSize: 13 }}>Распределено: <b style={{ color: Math.abs(allocTotal - rowTotal) < 1e-9 ? '#0f7b3d' : '#8a6d00' }}>{fmt(allocTotal)}</b> из {fmt(rowTotal)}</span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
