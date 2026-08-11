@@ -140,10 +140,10 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     setNewLoading(true)
     try {
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
-      const r = await createClientOrder({ comment: newText, positions })
-      if (r.ok) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); load() }
+      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, positions })
+      if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); load() }
       else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))
-    } catch { setToast('⚠ Ошибка сети — попробуйте ещё раз') }
+    } catch (err: any) { setToast('⚠ Ошибка: ' + (err?.message || 'сеть недоступна')) }
     finally { setNewLoading(false) }
   }
   async function openChat(cardId: string) { setChat(prev => ({ ...prev, [cardId]: [] })); setChat(prev => ({ ...prev })); const m = await listMessages(cardId); setChat(prev => ({ ...prev, [cardId]: m })) }
