@@ -57,7 +57,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
 
   // Организация: админ может переключаться между головной и филиалами (localStorage).
   const [orgId, setOrg] = useState<string>(user.orgId)
-  const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
+  const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string; color?: string }[]>([])
   useEffect(() => {
     fetchRefs().then((r: any) => {
       const os = r.organizations || []; setOrgs(os)
@@ -65,6 +65,11 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
     })
   }, [])
   function switchOrg(id: string) { persistOrg(id); setOrg(id) }
+  const orgColor = orgs.find(o => o.id === orgId)?.color || '#6b7280'   // цвет текущей орг — сквозной индикатор
+  async function changeOrgColor(id: string, color: string) {
+    setOrgs(prev => prev.map(o => o.id === id ? { ...o, color } : o))
+    try { const { setOrgColor } = await import('@/lib/api/refs'); await setOrgColor(id, color) } catch {}
+  }
 
   const load = useCallback(async () => { setOrders(await fetchOrders(orgId)); setLoading(false) }, [orgId])
   // Живое обновление: поллинг-страховка + при возврате на вкладку (из Улкана).
@@ -105,8 +110,10 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         open={sideOpen} onClose={() => setSideOpen(false)} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Сквозная цветная полоса = цвет текущей орг/филиала (видна на всех экранах, чтобы не путать книги) */}
+        {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} />}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} />}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}

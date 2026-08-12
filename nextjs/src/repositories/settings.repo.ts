@@ -14,6 +14,8 @@ export const setOrgDefaultLogist = (orgId: string, userId: string | null) =>
   db.update(organizations).set({ defaultLogistId: userId }).where(eq(organizations.id, orgId))
 export const setOrgDefaultContragent = (orgId: string, contragentId: string | null) =>
   db.update(organizations).set({ defaultContragentId: contragentId }).where(eq(organizations.id, orgId))
+export const setOrgColor = (orgId: string, color: string) =>
+  db.update(organizations).set({ color }).where(eq(organizations.id, orgId))
 
 // Поставщики = контрагенты kind supplier|both (не архивные) организации.
 export const suppliers = (orgId: string) =>

@@ -34,9 +34,10 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, hideOrderInfo }: {
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
-  orgs?: { id: string; name: string; kind?: string }[]; orgId?: string; onOrg?: (id: string) => void; hideOrderInfo?: boolean
+  orgs?: { id: string; name: string; kind?: string; color?: string }[]; orgId?: string; onOrg?: (id: string) => void
+  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -63,10 +64,17 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
       </div>}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
         {orgs.length > 1 && onOrg && (
-          <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
-            style={{ ...INP, width: 'auto', fontWeight: 700, cursor: 'pointer' }}>
-            {orgs.map(o => <option key={o.id} value={o.id}>🏢 {o.name}</option>)}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 2px 8px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}` }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
+            <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
+              style={{ ...INP, width: 'auto', fontWeight: 700, cursor: 'pointer', border: 'none', background: 'transparent', color: orgColor, padding: '6px 4px' }}>
+              {orgs.map(o => <option key={o.id} value={o.id} style={{ color: '#26231f' }}>🏢 {o.name}</option>)}
+            </select>
+            {onOrgColor && orgId && (
+              <input type="color" value={orgColor} onChange={e => onOrgColor(orgId, e.target.value)} title="Цвет этой организации"
+                style={{ width: 22, height: 22, padding: 0, border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0 }} />
+            )}
+          </div>
         )}
         {!hideOrderInfo && <input style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
         <Bell />

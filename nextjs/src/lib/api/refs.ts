@@ -45,6 +45,7 @@ export const categoryRules = (orgId: string) => getArray(`/api/settings/category
 export const saveCategoryRule = (b: any) => send('/api/settings/category-rules', 'PUT', b)
 export const setDefaultLogist = (orgId: string, defaultLogistId: string) => send('/api/settings', 'PATCH', { orgId, defaultLogistId })
 export const setDefaultContragent = (orgId: string, defaultContragentId: string) => send('/api/settings', 'PATCH', { orgId, defaultContragentId })
+export const setOrgColor = (orgId: string, color: string) => send('/api/settings', 'PATCH', { orgId, color })
 
 export const createProject = (b: any) => post('/api/projects', b)
 export const createSpecProject = (b: any) => post('/api/spec-projects', b)

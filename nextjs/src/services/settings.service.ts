@@ -27,3 +27,4 @@ export async function settingsBundle(orgId: string) {
 
 export const setDefaultLogist = (orgId: string, userId: string | null) => repo.setOrgDefaultLogist(orgId, userId || null)
 export const setDefaultContragent = (orgId: string, contragentId: string | null) => repo.setOrgDefaultContragent(orgId, contragentId || null)
+export const setOrgColor = (orgId: string, color: string) => repo.setOrgColor(orgId, color)
