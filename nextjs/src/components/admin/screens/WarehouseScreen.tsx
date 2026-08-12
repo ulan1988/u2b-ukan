@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { stockOverview, stockMovements, stockIncome, fetchRefs } from '@/lib/api/refs'
 import { createTransfer } from '@/lib/api/docs'
+import NomInline from '@/components/NomInline'
 
 interface StockItem { id: string; name: string; unit: string; qty: number; reserved: number; cat?: string }
 interface Movement { id: string; type: 'income' | 'reserve' | 'expense'; name: string; qty: number; unit: string; cardId?: string; createdAt: string }
@@ -29,28 +30,27 @@ function fmtTime(iso: string): string {
   if (diff < 2880) return 'вчера'; return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
 }
 
-function IncomeModal({ items, onClose, onSubmit }: { items: StockItem[]; onClose: () => void; onSubmit: (name: string, qty: number, unit: string) => Promise<void> }) {
-  const [selId, setSelId] = useState(''); const [customName, setCustomName] = useState(''); const [qty, setQty] = useState(''); const [unit, setUnit] = useState('шт'); const [loading, setLoading] = useState(false)
-  const selItem = items.find(i => i.id === selId)
-  useEffect(() => { if (selItem) setUnit(selItem.unit) }, [selItem])
-  async function handle() { const name = selItem?.name || customName; if (!name || !qty) return; setLoading(true); await onSubmit(name, Number(qty), unit); setLoading(false); onClose() }
+function IncomeModal({ products, onClose, onSubmit }: { products: any[]; onClose: () => void; onSubmit: (name: string, qty: number, unit: string) => Promise<void> }) {
+  const [pid, setPid] = useState(''); const [pname, setPname] = useState(''); const [qty, setQty] = useState(''); const [unit, setUnit] = useState('шт'); const [loading, setLoading] = useState(false)
+  async function handle() { const name = pname.trim(); if (!name || !qty) return; setLoading(true); await onSubmit(name, Number(qty), unit); setLoading(false); onClose() }
   const INP: React.CSSProperties = { width: '100%', padding: '9px 13px', borderRadius: 7, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit' }
+  const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 440 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 460 }}>
         <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>📥 Приход на склад</div>
         <div style={{ fontSize: 14, color: '#5f5952', marginBottom: 20 }}>Центр-Склад · ручной приход</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div><label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }}>НОМЕНКЛАТУРА</label><select style={INP} value={selId} onChange={e => { setSelId(e.target.value); setCustomName('') }}><option value="">— выбрать из номенклатуры —</option>{items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}</select></div>
-          {!selId && <div><label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }}>ИЛИ ВВЕДИТЕ ВРУЧНУЮ</label><input style={INP} value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Название товара..." /></div>}
+          <div><label style={LBL}>ТОВАР ИЗ НОМЕНКЛАТУРЫ</label><NomInline products={products} value={pid} name={pid ? pname : ''} onPick={p => { setPid(p.id); setPname(p.name); setUnit(p.unit || 'шт') }} /></div>
+          <div><label style={LBL}>ИЛИ ВВЕДИТЕ ВРУЧНУЮ</label><input style={INP} value={pid ? '' : pname} onChange={e => { setPid(''); setPname(e.target.value) }} placeholder="название товара..." /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
-            <div><label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }}>КОЛИЧЕСТВО *</label><input style={INP} type="number" value={qty} onChange={e => setQty(e.target.value)} placeholder="0" min="0.01" step="0.01" /></div>
-            <div><label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }}>ЕД.</label><input style={INP} value={unit} onChange={e => setUnit(e.target.value)} placeholder="шт" /></div>
+            <div><label style={LBL}>КОЛИЧЕСТВО *</label><input style={INP} type="number" value={qty} onChange={e => setQty(e.target.value)} placeholder="0" min="0.01" step="0.01" /></div>
+            <div><label style={LBL}>ЕД.</label><input style={INP} value={unit} onChange={e => setUnit(e.target.value)} placeholder="шт" /></div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
-          <button onClick={handle} disabled={loading || (!selId && !customName) || !qty} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: loading ? .6 : 1 }}>{loading ? 'Добавляю...' : '+ Добавить на склад'}</button>
+          <button onClick={handle} disabled={loading || !pname.trim() || !qty} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: loading ? .6 : 1 }}>{loading ? 'Добавляю...' : '+ Добавить на склад'}</button>
         </div>
       </div>
     </div>
@@ -58,17 +58,17 @@ function IncomeModal({ items, onClose, onSubmit }: { items: StockItem[]; onClose
 }
 
 // Перемещение товара на склад филиала (напр. головной шлёт листы филиалу-производителю).
-function TransferModal({ srcWh, dests, orgs, stock, onClose, onDone }: { srcWh: any; dests: any[]; orgs: any[]; stock: StockItem[]; onClose: () => void; onDone: (msg: string) => void }) {
+function TransferModal({ srcWh, dests, orgs, products, stock, onClose, onDone }: { srcWh: any; dests: any[]; orgs: any[]; products: any[]; stock: StockItem[]; onClose: () => void; onDone: (msg: string) => void }) {
   const [toWh, setToWh] = useState(dests[0]?.id || '')
-  const [rows, setRows] = useState<{ productId: string; qty: string }[]>([{ productId: '', qty: '' }])
+  const [rows, setRows] = useState<{ productId: string; qty: string; unit: string }[]>([{ productId: '', qty: '', unit: '' }])
   const [loading, setLoading] = useState(false)
   const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit' }
   const orgOf = (whId: string) => { const w = dests.find(d => d.id === whId); const o = orgs.find(x => x.id === w?.orgId); return { name: o?.name || '', color: o?.color || '#6b7280', whName: w?.name || '' } }
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
-  const onStock = stock.filter(s => Math.max(0, s.qty - s.reserved) > 0)
+  const availOf = (pid: string) => { const s = stock.find(x => x.id === pid); return s ? Math.max(0, s.qty - s.reserved) : 0 }
   const valid = !!toWh && rows.some(r => r.productId && Number(r.qty) > 0)
   async function submit() {
-    const lines = rows.filter(r => r.productId && Number(r.qty) > 0).map(r => { const s = stock.find(x => x.id === r.productId); return { productId: r.productId, qty: Number(r.qty), unit: s?.unit || 'шт', price: 0 } })
+    const lines = rows.filter(r => r.productId && Number(r.qty) > 0).map(r => ({ productId: r.productId, qty: Number(r.qty), unit: r.unit || 'шт', price: 0 }))
     if (!lines.length) return
     setLoading(true)
     const r: any = await createTransfer({ fromWarehouseId: srcWh.id, toWarehouseId: toWh, lines })
@@ -90,21 +90,22 @@ function TransferModal({ srcWh, dests, orgs, stock, onClose, onDone }: { srcWh: 
         <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 6, letterSpacing: '.04em' }}>ЧТО ОТПРАВЛЯЕМ (из остатков)</div>
         <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {rows.map((r, i) => {
-            const s = stock.find(x => x.id === r.productId); const avail = s ? Math.max(0, s.qty - s.reserved) : 0
+            const avail = availOf(r.productId); const over = !!r.productId && Number(r.qty) > avail
+            const pname = products.find(p => p.id === r.productId)?.name || ''
             return (
-              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <select style={{ ...INP, flex: 1 }} value={r.productId} onChange={e => setRow(i, { productId: e.target.value })}>
-                  <option value="">— товар со склада —</option>
-                  {onStock.map(x => <option key={x.id} value={x.id}>{x.name} (дост. {Math.max(0, x.qty - x.reserved)} {x.unit})</option>)}
-                </select>
-                <input style={{ ...INP, width: 90, textAlign: 'right' }} type="number" placeholder="кол-во" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} />
-                <span style={{ fontSize: 12, color: avail && Number(r.qty) > avail ? '#b03020' : '#837c72', width: 46, flexShrink: 0 }}>{s?.unit || ''}</span>
-                <button onClick={() => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs)} style={{ border: 'none', background: 'none', color: '#b03020', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>×</button>
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <NomInline products={products} value={r.productId} name={pname} onPick={p => setRow(i, { productId: p.id, unit: p.unit || 'шт' })} />
+                  {r.productId && <div style={{ fontSize: 11, color: over ? '#b03020' : '#837c72', marginTop: 2 }}>на складе: {avail} {r.unit}{over ? ' — больше, чем есть!' : ''}</div>}
+                </div>
+                <input style={{ ...INP, width: 84, textAlign: 'right' }} type="number" placeholder="кол-во" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} />
+                <span style={{ fontSize: 12, color: '#837c72', width: 40, flexShrink: 0, paddingTop: 9 }}>{r.unit}</span>
+                <button onClick={() => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs)} style={{ border: 'none', background: 'none', color: '#b03020', fontSize: 16, cursor: 'pointer', flexShrink: 0, paddingTop: 6 }}>×</button>
               </div>
             )
           })}
         </div>
-        <button onClick={() => setRows(rs => [...rs, { productId: '', qty: '' }])} style={{ marginTop: 8, alignSelf: 'flex-start', border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Ещё позиция</button>
+        <button onClick={() => setRows(rs => [...rs, { productId: '', qty: '', unit: '' }])} style={{ marginTop: 8, alignSelf: 'flex-start', border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Ещё позиция</button>
         <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
           <button onClick={submit} disabled={!valid || loading} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: valid ? COLORS.primary : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: loading ? .6 : 1 }}>{loading ? 'Отправляю...' : '🚚 Отправить →'}</button>
@@ -124,8 +125,9 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   const [showTransfer, setShowTransfer] = useState(false)
   const [whs, setWhs] = useState<any[]>([])
   const [orgs, setOrgs] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
   const [toast, setToast] = useState('')
-  useEffect(() => { fetchRefs().then((r: any) => { setWhs(r.warehouses || []); setOrgs(r.organizations || []) }) }, [])
+  useEffect(() => { fetchRefs().then((r: any) => { setWhs(r.warehouses || []); setOrgs(r.organizations || []); setProducts(r.products || []) }) }, [])
   const srcWh = whs.find(w => w.orgId === orgId && w.isCentral) || whs.find(w => w.orgId === orgId)
   const dests = whs.filter(w => w.orgId !== orgId)   // склады других орг/филиалов
 
@@ -156,8 +158,8 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   return (
     <div className="anim-fade">
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
-      {showIncome && <IncomeModal items={filteredStock} onClose={() => setShowIncome(false)} onSubmit={handleIncome} />}
-      {showTransfer && srcWh && <TransferModal srcWh={srcWh} dests={dests} orgs={orgs} stock={stock} onClose={() => setShowTransfer(false)} onDone={msg => { showMsg(msg); load() }} />}
+      {showIncome && <IncomeModal products={products} onClose={() => setShowIncome(false)} onSubmit={handleIncome} />}
+      {showTransfer && srcWh && <TransferModal srcWh={srcWh} dests={dests} orgs={orgs} products={products} stock={stock} onClose={() => setShowTransfer(false)} onDone={msg => { showMsg(msg); load() }} />}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
