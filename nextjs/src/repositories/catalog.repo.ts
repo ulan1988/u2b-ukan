@@ -51,6 +51,17 @@ export async function renameFolder(grp: string, cat: string, sub: string, name: 
   return { ok: true }
 }
 
+// Скрыть/показать папку в каталоге-модельке (и её потомков). В номенклатуре папка остаётся видна.
+export async function setFolderHidden(grp: string, cat: string, sub: string, hidden: boolean) {
+  grp = (grp || '').trim(); cat = (cat || '').trim(); sub = (sub || '').trim()
+  if (!grp) return { ok: false, error: 'Не выбрана папка' }
+  const conds = [eq(nomFolders.grp, grp)]
+  if (cat) conds.push(eq(nomFolders.cat, cat))
+  if (sub) conds.push(eq(nomFolders.sub, sub))
+  await db.update(nomFolders).set({ hidden: !!hidden }).where(and(...conds))
+  return { ok: true }
+}
+
 // Перенести папку в другую (или на верхний уровень). Переписывает пути папок-потомков
 // и всех товаров внутри — без сирот. Ограничение дерева: максимум 3 уровня.
 export async function moveFolder(src: { grp: string; cat: string; sub: string }, dst: { grp: string; cat: string; sub: string }) {

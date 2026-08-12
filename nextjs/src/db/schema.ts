@@ -73,6 +73,7 @@ export const nomFolders = pgTable('nom_folders', {
   cat: text('cat').notNull().default(''),
   sub: text('sub').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
+  hidden: boolean('hidden').notNull().default(false),     // скрыть из каталога-модельки (в номенклатуре видна)
 })
 
 // Справочник единиц измерения (для номенклатуры). Глобальный, как products.

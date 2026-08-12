@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listFolders, createFolder, renameFolder, deleteFolder, moveFolder } from '@/repositories/catalog.repo'
+import { listFolders, createFolder, renameFolder, deleteFolder, moveFolder, setFolderHidden } from '@/repositories/catalog.repo'
 import { sessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
@@ -17,11 +17,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(await createFolder(b.grp || '', b.cat || '', b.sub || ''))
 }
 
-// Переименовать папку. b = { grp, cat?, sub?, name }.
+// Переименовать папку { grp, cat?, sub?, name } ИЛИ скрыть/показать { grp, cat?, sub?, hidden }.
 export async function PATCH(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
+  if (typeof b.hidden === 'boolean') return NextResponse.json(await setFolderHidden(b.grp || '', b.cat || '', b.sub || '', b.hidden))
   return NextResponse.json(await renameFolder(b.grp || '', b.cat || '', b.sub || '', b.name || ''))
 }
 

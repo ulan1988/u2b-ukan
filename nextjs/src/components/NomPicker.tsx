@@ -84,13 +84,22 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const countCat = (g: string, c: string) => allItems.filter(i => inCat(i, g, c)).length
   const countSub = (g: string, c: string, s: string) => allItems.filter(i => inCat(i, g, c) && norm(i.subgroup) === norm(s)).length
 
-  // Дерево пикера: папки (nom_folders) + фактические пути товаров. Показываем только непустые группы.
+  // Дерево пикера: папки (nom_folders) + фактические пути товаров. Скрытые (hidden) папки и их
+  // потомки в каталог НЕ попадают (в номенклатуре остаются). Показываем только непустые группы.
   const tree = useMemo(() => {
+    const hidG = new Set<string>(), hidC = new Set<string>(), hidS = new Set<string>()
+    for (const f of folders as any[]) {
+      if (!f.hidden) continue
+      if (f.sub) hidS.add(`${f.grp}||${f.cat}||${f.sub}`); else if (f.cat) hidC.add(`${f.grp}||${f.cat}`); else if (f.grp) hidG.add(f.grp)
+    }
+    const okG = (g: string) => !hidG.has(g)
+    const okC = (g: string, c: string) => okG(g) && !hidC.has(`${g}||${c}`)
+    const okS = (g: string, c: string, s: string) => okC(g, c) && !hidS.has(`${g}||${c}||${s}`)
     const t: Record<string, Record<string, string[]>> = {}
-    const eG = (g: string) => { if (g && !t[g]) t[g] = {} }
-    const eC = (g: string, c: string) => { eG(g); if (c && t[g] && !t[g][c]) t[g][c] = [] }
-    const eS = (g: string, c: string, s: string) => { eC(g, c); if (s && t[g]?.[c] && !t[g][c].includes(s)) t[g][c].push(s) }
-    for (const f of folders) { if (f.sub) eS(f.grp, f.cat, f.sub); else if (f.cat) eC(f.grp, f.cat); else if (f.grp) eG(f.grp) }
+    const eG = (g: string) => { if (g && okG(g) && !t[g]) t[g] = {} }
+    const eC = (g: string, c: string) => { eG(g); if (c && okC(g, c) && t[g] && !t[g][c]) t[g][c] = [] }
+    const eS = (g: string, c: string, s: string) => { eC(g, c); if (s && okS(g, c, s) && t[g]?.[c] && !t[g][c].includes(s)) t[g][c].push(s) }
+    for (const f of folders as any[]) { if (f.hidden) continue; if (f.sub) eS(f.grp, f.cat, f.sub); else if (f.cat) eC(f.grp, f.cat); else if (f.grp) eG(f.grp) }
     for (const i of allItems) { if (i.group) { eG(i.group); if (i.cat) { eC(i.group, i.cat); if (i.subgroup) eS(i.group, i.cat, i.subgroup) } } }
     return t
   }, [folders, allItems])

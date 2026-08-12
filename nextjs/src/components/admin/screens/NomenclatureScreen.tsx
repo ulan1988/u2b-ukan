@@ -3,7 +3,7 @@
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder } from '@/lib/api/refs'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number }
 
@@ -23,7 +23,7 @@ export default function NomenclatureScreen() {
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ name: '', unit: 'шт', group: '', cat: '', subgroup: '' })
   const [units, setUnits] = useState<any[]>([])
-  const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string }[]>([])
+  const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string; hidden?: boolean }[]>([])
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   const [moveSrc, setMoveSrc] = useState<{ grp: string; cat: string; sub: string; label: string } | null>(null)
   const [toast, setToast] = useState('')
@@ -149,6 +149,13 @@ export default function NomenclatureScreen() {
     if (!r.ok) { showMsg(r.error || 'Ошибка переноса'); return }
     setMoveSrc(null); await reloadFolders(); await load(); showMsg('✓ Папка перенесена')
   }
+  // Скрытые из каталога папки (в номенклатуре видны, помечены).
+  const hiddenSet = new Set(folders.filter(f => f.hidden).map(f => [f.grp, f.cat, f.sub].filter(Boolean).join('||')))
+  const isHidden = (g: string, c = '', s = '') => hiddenSet.has([g, c, s].filter(Boolean).join('||'))
+  async function toggleHideUI(grp: string, cat: string, sub: string, cur: boolean) {
+    const r = await hideFolder({ grp, cat, sub, hidden: !cur }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    await reloadFolders(); showMsg(!cur ? '✓ Скрыто из каталога' : '✓ Показано в каталоге')
+  }
   const ICO: React.CSSProperties = { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '0 3px', lineHeight: 1, color: '#5f5952' }
 
   return (
@@ -186,7 +193,7 @@ export default function NomenclatureScreen() {
               <span>Все</span><span style={{ fontSize: 12, color: '#5f5952' }}>{items.length}</span>
             </div>
             {groups.map(g => {
-              const cats = Object.keys(TREE[g]); const isOpen = openGroups[g]; const isSelG = selGroup === g && !selCat
+              const cats = Object.keys(TREE[g]); const isOpen = openGroups[g]; const isSelG = selGroup === g && !selCat; const gHidden = isHidden(g)
               return (
                 <div key={g}>
                   <div onMouseEnter={() => setHoverKey(g)} onMouseLeave={() => setHoverKey(k => k === g ? null : k)}
@@ -194,10 +201,11 @@ export default function NomenclatureScreen() {
                     onClick={() => { setSelGroup(g); setSelCat(null); setSelSubgroup(null); setSearch('') }}>
                     <span onClick={e => { e.stopPropagation(); setOpenGroups(p => ({ ...p, [g]: !p[g] })) }} style={{ marginRight: 6, fontSize: 12, color: '#5f5952', width: 14, textAlign: 'center', flexShrink: 0 }}>{cats.length > 0 ? (isOpen ? '▼' : '▶') : ''}</span>
                     <span style={{ fontSize: 14, marginRight: 6 }}>📁</span>
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: isSelG ? 700 : 400, color: isSelG ? COLORS.primary : '#26231f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</span>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: isSelG ? 700 : 400, color: isSelG ? COLORS.primary : '#26231f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: gHidden ? 0.45 : 1 }}>{g}{gHidden && <span style={{ fontSize: 10, color: '#b03020', marginLeft: 4 }}>скрыто</span>}</span>
                     {hoverKey === g
                       ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                           <button title="+ категория" onClick={() => createCat(g)} style={ICO}>＋</button>
+                          <button title={gHidden ? 'показать в каталоге' : 'скрыть из каталога'} onClick={() => toggleHideUI(g, '', '', gHidden)} style={ICO}>{gHidden ? '🙈' : '👁'}</button>
                           <button title="перенести папку" onClick={() => setMoveSrc({ grp: g, cat: '', sub: '', label: g })} style={ICO}>⇄</button>
                           <button title="переименовать" onClick={() => renameFolderUI(g, '', '', g)} style={ICO}>✎</button>
                           <button title="удалить папку" onClick={() => deleteFolderUI(g, '', '')} style={ICO}>🗑</button>
@@ -205,7 +213,7 @@ export default function NomenclatureScreen() {
                       : <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countGroup(g)}</span>}
                   </div>
                   {isOpen && cats.map(cat => {
-                    const subgroups = TREE[g][cat]; const isCatOpen = openCats[`${g}/${cat}`]; const isSelC = selGroup === g && selCat === cat && !selSubgroup
+                    const subgroups = TREE[g][cat]; const isCatOpen = openCats[`${g}/${cat}`]; const isSelC = selGroup === g && selCat === cat && !selSubgroup; const cHidden = isHidden(g, cat)
                     return (
                       <div key={cat}>
                         <div onMouseEnter={() => setHoverKey(`${g}/${cat}`)} onMouseLeave={() => setHoverKey(k => k === `${g}/${cat}` ? null : k)}
@@ -213,10 +221,11 @@ export default function NomenclatureScreen() {
                           onClick={() => { setSelGroup(g); setSelCat(cat); setSelSubgroup(null); setSearch('') }}>
                           <span onClick={e => { e.stopPropagation(); setOpenCats(p => ({ ...p, [`${g}/${cat}`]: !p[`${g}/${cat}`] })) }} style={{ marginRight: 6, fontSize: 12, color: '#5f5952', width: 12, textAlign: 'center', flexShrink: 0 }}>{subgroups.length > 0 ? (isCatOpen ? '▼' : '▶') : ''}</span>
                           <span style={{ fontSize: 14, marginRight: 6 }}>📂</span>
-                          <span style={{ flex: 1, fontSize: 13, fontWeight: isSelC ? 700 : 400, color: isSelC ? COLORS.primary : '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</span>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: isSelC ? 700 : 400, color: isSelC ? COLORS.primary : '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: cHidden ? 0.45 : 1 }}>{cat}{cHidden && <span style={{ fontSize: 10, color: '#b03020', marginLeft: 4 }}>скрыто</span>}</span>
                           {hoverKey === `${g}/${cat}`
                             ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                                 <button title="+ подгруппа" onClick={() => createSub(g, cat)} style={ICO}>＋</button>
+                                <button title={cHidden ? 'показать в каталоге' : 'скрыть из каталога'} onClick={() => toggleHideUI(g, cat, '', cHidden)} style={ICO}>{cHidden ? '🙈' : '👁'}</button>
                                 <button title="перенести папку" onClick={() => setMoveSrc({ grp: g, cat, sub: '', label: cat })} style={ICO}>⇄</button>
                                 <button title="переименовать" onClick={() => renameFolderUI(g, cat, '', cat)} style={ICO}>✎</button>
                                 <button title="удалить папку" onClick={() => deleteFolderUI(g, cat, '')} style={ICO}>🗑</button>
@@ -224,15 +233,16 @@ export default function NomenclatureScreen() {
                             : <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{countCat(g, cat)}</span>}
                         </div>
                         {isCatOpen && subgroups.map(sub => {
-                          const isSelS = selGroup === g && selCat === cat && selSubgroup === sub
+                          const isSelS = selGroup === g && selCat === cat && selSubgroup === sub; const sHidden = isHidden(g, cat, sub)
                           return (
                             <div key={sub} onClick={() => { setSelGroup(g); setSelCat(cat); setSelSubgroup(sub); setSearch('') }}
                               onMouseEnter={() => setHoverKey(`${g}/${cat}/${sub}`)} onMouseLeave={() => setHoverKey(k => k === `${g}/${cat}/${sub}` ? null : k)}
                               style={{ display: 'flex', alignItems: 'center', padding: '7px 14px 7px 46px', cursor: 'pointer', background: isSelS ? '#fff8f5' : '#fff', borderLeft: `3px solid ${isSelS ? COLORS.primary : 'transparent'}` }}>
                               <span style={{ fontSize: 13, marginRight: 6 }}>📄</span>
-                              <span style={{ flex: 1, fontSize: 13, fontWeight: isSelS ? 700 : 400, color: isSelS ? COLORS.primary : '#6b655b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
+                              <span style={{ flex: 1, fontSize: 13, fontWeight: isSelS ? 700 : 400, color: isSelS ? COLORS.primary : '#6b655b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: sHidden ? 0.45 : 1 }}>{sub}{sHidden && <span style={{ fontSize: 10, color: '#b03020', marginLeft: 4 }}>скрыто</span>}</span>
                               {hoverKey === `${g}/${cat}/${sub}`
                                 ? <span style={{ display: 'flex', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                    <button title={sHidden ? 'показать в каталоге' : 'скрыть из каталога'} onClick={() => toggleHideUI(g, cat, sub, sHidden)} style={ICO}>{sHidden ? '🙈' : '👁'}</button>
                                     <button title="перенести папку" onClick={() => setMoveSrc({ grp: g, cat, sub, label: sub })} style={ICO}>⇄</button>
                                     <button title="переименовать" onClick={() => renameFolderUI(g, cat, sub, sub)} style={ICO}>✎</button>
                                     <button title="удалить папку" onClick={() => deleteFolderUI(g, cat, sub)} style={ICO}>🗑</button>
