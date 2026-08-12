@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { listPurchases, listSales, listReturns, updateDocument } from '@/lib/api/docs'
-import { listContragents, reconcile, financeSummary } from '@/lib/api/refs'
+import { listContragents, reconcile, financeSummary, listProducts, productMoves } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
+import NomInline from '@/components/NomInline'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import RouteModal from '@/components/admin/RouteModal'
 
@@ -14,6 +15,7 @@ const MODES = [
   { key: 'invoices', label: '🧾 Накладные', ready: true },
   { key: 'reconcile', label: '📄 Акт сверки', ready: true },
   { key: 'debts', label: '💸 Долги', ready: true },
+  { key: 'moves', label: '📦 Движение товара', ready: true },
   { key: 'finance', label: '💰 Финанс', ready: false },
   { key: 'deals', label: '📋 Сделки', ready: false },
 ]
@@ -39,8 +41,9 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
 
       {mode === 'invoices' && <InvoicesMode orgId={orgId} />}
       {mode === 'debts' && <DebtsMode orgId={orgId} onOpen={cid => { setRecCid(cid); setMode('reconcile') }} />}
+      {mode === 'moves' && <StockMode orgId={orgId} />}
       {mode === 'reconcile' && <ReconcileMode initialCid={recCid} />}
-      {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
+      {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && mode !== 'moves' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
   )
 }
@@ -328,6 +331,88 @@ function DebtsMode({ orgId, onOpen }: { orgId: string; onOpen: (cid: string) => 
                 </table>
               </div>
               <div style={{ padding: '10px 14px', borderTop: '1.5px solid #eee', fontSize: 12.5, color: COLORS.textMuted }}>Контрагентов: <b style={{ color: COLORS.text }}>{rows.length}</b> · клик по строке — акт сверки</div>
+            </div>
+          )}
+    </div>
+  )
+}
+
+// ─── Режим «Движение товара»: приход/расход/возвраты по выбранному товару + остаток ───
+function StockMode({ orgId }: { orgId: string }) {
+  const [products, setProducts] = useState<any[]>([])
+  const [pid, setPid] = useState('')
+  const [pname, setPname] = useState('')
+  const [moves, setMoves] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [period, setPeriod] = useState<DPeriod>('all')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+
+  useEffect(() => { listProducts().then(p => setProducts(p as any[])) }, [])
+  useEffect(() => {
+    if (!pid) { setMoves([]); return }
+    setLoading(true)
+    productMoves(orgId, pid).then(m => setMoves(m as any[])).finally(() => setLoading(false))
+  }, [orgId, pid])
+
+  const qf = (n: number) => Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 3 })
+  // Остаток нарастающим по ВСЕМ движениям, показываем строки только за период.
+  const rows = useMemo(() => {
+    let bal = 0
+    return moves.map(m => { bal += Number(m.signed); return { ...m, balance: bal } })
+      .filter(m => matchDate(m.date, period, from, to))
+  }, [moves, period, from, to])
+  const totalIn = rows.filter(m => m.signed > 0).reduce((s, m) => s + m.signed, 0)
+  const totalOut = rows.filter(m => m.signed < 0).reduce((s, m) => s + Math.abs(m.signed), 0)
+  const unit = moves[0]?.unit || ''
+  const badge = (t: string) => t === 'purchase' ? { txt: 'Приход', c: '#7a3aaa' } : t === 'sale' ? { txt: 'Расход', c: '#2e8a5e' } : t === 'return_in' ? { txt: '↩ от клиента', c: '#b4574c' } : t === 'return_out' ? { txt: '↩ поставщику', c: '#b4574c' } : { txt: t, c: '#837c72' }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>Товар:</span>
+        <div style={{ minWidth: 280 }}><NomInline products={products} value={pid} name={pname} onPick={(p: any) => { setPid(p.id); setPname(p.name) }} /></div>
+        <span style={{ fontSize: 12.5, color: '#5f5952', marginLeft: 6 }}>📅</span>
+        {([['all', 'Всё'], ['today', 'Сегодня'], ['yesterday', 'Вчера'], ['month', 'Месяц']] as [DPeriod, string][]).map(([p, l]) => (
+          <button key={p} onClick={() => { setPeriod(p); setFrom(''); setTo('') }} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', fontSize: 12.5, fontWeight: (!from && !to && period === p) ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: (!from && !to && period === p) ? COLORS.primary : '#f1efec', color: (!from && !to && period === p) ? '#fff' : '#6b655b' }}>{l}</button>
+        ))}
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={dInp(from)} />
+        <span style={{ fontSize: 12.5, color: '#5f5952' }}>–</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={dInp(to)} />
+        {(from || to) && <button onClick={() => { setFrom(''); setTo('') }} title="Сбросить" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer' }}>×</button>}
+      </div>
+
+      {!pid ? <div style={emptyBox}>Выберите товар — увидите все его движения (приход/расход/возвраты) по накладным за период, с остатком.</div>
+        : loading ? <div style={emptyBox}>Загрузка…</div>
+          : (
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', gap: 16, padding: '12px 14px', borderBottom: '1.5px solid #f1efec', flexWrap: 'wrap', fontSize: 13 }}>
+                <span>Приход: <b style={{ color: '#2e8a5e' }}>+{qf(totalIn)} {unit}</b></span>
+                <span>Расход: <b style={{ color: '#b4574c' }}>−{qf(totalOut)} {unit}</b></span>
+                <span>Остаток на конец: <b style={{ color: COLORS.primary }}>{qf(rows.length ? rows[rows.length - 1].balance : 0)} {unit}</b></span>
+                <span style={{ marginLeft: 'auto', color: COLORS.textMuted }}>движений: {rows.length}</span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
+                  <thead>
+                    <tr style={{ background: '#faf8f6', color: COLORS.textMuted, fontSize: 11 }}>
+                      <th style={thL}>Дата</th><th style={thL}>Документ</th><th style={thL}>Контрагент</th><th style={thR}>Приход</th><th style={thR}>Расход</th><th style={thR}>Остаток</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Движений в периоде нет</td></tr>
+                      : rows.map((m: any, i: number) => { const b = badge(m.type); return (
+                        <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
+                          <td style={tdL}>{fmtDate(m.date)}</td>
+                          <td style={tdL}><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: b.c }}>{m.number}</span> <span style={{ fontSize: 11, color: b.c }}>{b.txt}</span></td>
+                          <td style={tdL}>{m.contragent || '—'}</td>
+                          <td style={{ ...tdR, color: m.signed > 0 ? '#2e8a5e' : '#ccc', fontWeight: m.signed > 0 ? 700 : 400 }}>{m.signed > 0 ? `+${qf(m.signed)}` : '—'}</td>
+                          <td style={{ ...tdR, color: m.signed < 0 ? '#b4574c' : '#ccc', fontWeight: m.signed < 0 ? 700 : 400 }}>{m.signed < 0 ? `−${qf(Math.abs(m.signed))}` : '—'}</td>
+                          <td style={{ ...tdR, fontWeight: 700 }}>{qf(m.balance)} {m.unit}</td>
+                        </tr>
+                      ) })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
     </div>

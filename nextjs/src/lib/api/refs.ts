@@ -34,6 +34,8 @@ export const addCashAccount = (b: any) => post('/api/cash-accounts', b)
 export const stock = (orgId: string, warehouseId: string) => getArray(`/api/stock?orgId=${orgId}&warehouseId=${warehouseId}`)
 export const stockOverview = (orgId: string) => getArray(`/api/stock?orgId=${orgId}&overview=1`)
 export const stockMovements = (orgId: string) => getArray(`/api/stock/movements?orgId=${orgId}`)
+// Движение одного товара по всем накладным (приход/расход/возвраты) — «Движение товара».
+export const productMoves = (orgId: string, productId: string) => getArray(`/api/stock/product-moves?orgId=${orgId}&productId=${productId}`)
 export const stockIncome = (b: { name: string; qty: number; unit: string }) => post('/api/stock/income', b)
 
 export const settings = (orgId: string) => getObj(`/api/settings?orgId=${orgId}`, { suppliers: [], projects: [], specProjects: [] })
