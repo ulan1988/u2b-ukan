@@ -109,8 +109,9 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         onLogout={async () => { await logout(); location.href = '/login' }}
         open={sideOpen} onClose={() => setSideOpen(false)} />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Сквозная цветная полоса = цвет текущей орг/филиала (видна на всех экранах, чтобы не путать книги) */}
+      {/* Весь фон рабочей области = оттенок цвета текущей орг/филиала (чтобы не путать книги) */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: orgs.length > 1 ? orgColor + '1f' : COLORS.bg, transition: 'background .25s' }}>
+        {/* Сквозная цветная полоса сверху = насыщенный цвет орг */}
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
         {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} />}
