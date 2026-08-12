@@ -14,7 +14,7 @@ const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#5f595
 const OPS_IN = [{ v: 'receipt', l: 'Поступление от поставщика' }, { v: 'return', l: 'Возврат поставщику' }]
 const OPS_OUT = [{ v: 'shipment', l: 'Продажа покупателю' }, { v: 'return', l: 'Возврат от покупателя' }]
 
-export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onClose: () => void; onSaved?: () => void }) {
+export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { id: string; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
   const [data, setData] = useState<any>(null)
   const [tab, setTab] = useState<'goods' | 'pay'>('goods')
   const [f, setF] = useState<any>({})            // редактируемая шапка
@@ -55,8 +55,12 @@ export default function InvoiceForm({ id, onClose, onSaved }: { id: string; onCl
   const isSale = o?.type === 'sale'
   const OPS = isSale ? OPS_OUT : OPS_IN
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 16px', overflowY: 'auto' }}>
-      <div onClick={e => e.stopPropagation()} className="anim-pop" style={{ width: 820, maxWidth: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+    <div onClick={onClose} style={drawer
+      ? { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }
+      : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 16px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} className="anim-pop" style={drawer
+        ? { width: 580, maxWidth: '100%', height: '100vh', background: '#fff', boxShadow: '-12px 0 48px rgba(0,0,0,.25)', overflowY: 'auto' }
+        : { width: 820, maxWidth: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)', overflow: 'hidden' }}>
         {!data ? <div style={{ padding: 48, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
           <>
             {/* Шапка */}

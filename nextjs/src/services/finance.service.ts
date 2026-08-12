@@ -72,8 +72,8 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
   const docTitle: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
   const inc = (t: string) => t === 'sale' || t === 'return_out'
   const mv = [
-    ...docs.map(d => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total })),
-    ...pays.map(p => ({ date: p.date, title: (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику'), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0 })),
+    ...docs.map(d => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total, docId: d.id as string | null, type: d.type })),
+    ...pays.map(p => ({ date: p.date, title: (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику'), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0, docId: null as string | null, type: 'pay' })),
   ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
   let running = opening0
@@ -87,7 +87,7 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
     const start = running
     running += m.inc - m.dec
     sumInc += m.inc; sumDec += m.dec
-    rows.push({ date: m.date, title: m.title, opening: start, inc: m.inc, dec: m.dec, balance: running })
+    rows.push({ date: m.date, title: m.title, opening: start, inc: m.inc, dec: m.dec, balance: running, docId: m.docId, type: m.type })
   }
   return { opening, rows, totals: { opening, inc: sumInc, dec: sumDec, closing: running }, currency: '₸' }
 }

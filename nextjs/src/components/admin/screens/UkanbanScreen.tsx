@@ -175,7 +175,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
         ))}
       </div>
 
-      {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={load} />}
+      {openDocId && <InvoiceForm id={openDocId} drawer onClose={() => setOpenDocId(null)} onSaved={load} />}
       {routeDocId && <RouteModal docId={routeDocId} onClose={() => setRouteDocId(null)} />}
     </div>
   )
@@ -195,6 +195,8 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [openDoc, setOpenDoc] = useState<string | null>(null)   // документ в правой панели
+  const [refresh, setRefresh] = useState(0)
 
   useEffect(() => { listContragents(true).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [])   // без архивных дублей
   useEffect(() => { if (initialCid) setCid(initialCid) }, [initialCid])
@@ -202,7 +204,7 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
     if (!cid) { setData(null); return }
     setLoading(true)
     reconcile(cid, from || undefined, to || undefined).then(d => setData(d)).finally(() => setLoading(false))
-  }, [cid, from, to])
+  }, [cid, from, to, refresh])
 
   const cag = cags.find(c => c.id === cid)
   const num = (n: any) => Number(n || 0) ? fmtMoney(Number(n)) : ''
@@ -223,9 +225,9 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
         : loading ? <div style={emptyBox}>Загрузка…</div>
           : !data ? <div style={emptyBox}>Нет данных</div>
             : (
-              <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+              <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', maxWidth: 1040 }}>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
                     <thead>
                       <tr style={{ background: '#faf8f6', color: COLORS.textMuted, fontSize: 11 }}>
                         <th style={thL}>Дата</th><th style={thL}>Документ движения</th>
@@ -239,9 +241,11 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
                       </tr>
                       {data.rows.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Движений в периоде нет</td></tr>
                         : data.rows.map((r: any, i: number) => (
-                          <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
+                          <tr key={i} onClick={() => r.docId && setOpenDoc(r.docId)} title={r.docId ? 'Открыть документ справа' : ''}
+                            style={{ borderTop: '1px solid #f1efec', cursor: r.docId ? 'pointer' : 'default', background: openDoc === r.docId ? '#fff8f5' : 'transparent' }}
+                            onMouseEnter={e => { if (r.docId) e.currentTarget.style.background = '#faf8f6' }} onMouseLeave={e => { e.currentTarget.style.background = openDoc === r.docId ? '#fff8f5' : 'transparent' }}>
                             <td style={tdL}>{fmtDate(r.date)}</td>
-                            <td style={tdL}>{r.title}</td>
+                            <td style={tdL}>{r.docId ? <span style={{ color: COLORS.primary, fontWeight: 600 }}>{r.title} <span style={{ fontSize: 11 }}>›</span></span> : r.title}</td>
                             <td style={tdR}>{num(r.opening)}</td>
                             <td style={{ ...tdR, color: r.inc ? '#2e8a5e' : '#ccc' }}>{num(r.inc)}</td>
                             <td style={{ ...tdR, color: r.dec ? '#b4574c' : '#ccc' }}>{num(r.dec)}</td>
@@ -256,6 +260,9 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
                 </div>
               </div>
             )}
+
+      {/* Правая выезжающая панель с данными документа (клик по строке-накладной) */}
+      {openDoc && <InvoiceForm id={openDoc} drawer onClose={() => setOpenDoc(null)} onSaved={() => setRefresh(x => x + 1)} />}
     </div>
   )
 }
