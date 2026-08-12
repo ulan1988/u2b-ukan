@@ -70,10 +70,6 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
               style={{ ...INP, width: 'auto', fontWeight: 700, cursor: 'pointer', border: 'none', background: 'transparent', color: orgColor, padding: '6px 4px' }}>
               {orgs.map(o => <option key={o.id} value={o.id} style={{ color: '#26231f' }}>🏢 {o.name}</option>)}
             </select>
-            {onOrgColor && orgId && (
-              <input type="color" value={orgColor} onChange={e => onOrgColor(orgId, e.target.value)} title="Цвет этой организации"
-                style={{ width: 22, height: 22, padding: 0, border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0 }} />
-            )}
           </div>
         )}
         {!hideOrderInfo && <input style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
