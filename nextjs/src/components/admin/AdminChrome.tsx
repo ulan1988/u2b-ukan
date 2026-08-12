@@ -105,7 +105,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         open={sideOpen} onClose={() => setSideOpen(false)} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {screen !== 'money' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} />}
+        {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} />}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
