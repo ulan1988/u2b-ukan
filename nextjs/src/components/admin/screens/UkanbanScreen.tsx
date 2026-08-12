@@ -190,7 +190,7 @@ function ReconcileMode() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => { listContragents(true).then(r => setCags(r as any[])) }, [])
+  useEffect(() => { listContragents(true).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [])   // без архивных дублей
   useEffect(() => {
     if (!cid) { setData(null); return }
     setLoading(true)
