@@ -20,6 +20,9 @@ export const listContragents = (all = false) => getArray(`/api/contragents${all 
 export const listUnits = () => getArray('/api/units')
 export const saveUnits = (items: any[]) => post('/api/units', items)
 // Акт сверки по контрагенту (нарастающее сальдо, с датами).
+// Финансовая сводка по орг: дебиторка/кредиторка + долги по каждому контрагенту.
+export const financeSummary = (orgId: string) =>
+  getObj(`/api/finance?orgId=${orgId}`, { receivable: 0, payable: 0, cash: 0, stockValue: 0, contragents: [] as any[] })
 export const reconcile = (contragentId: string, from?: string, to?: string) =>
   getObj(`/api/finance/reconcile?contragentId=${contragentId}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`, null as any)
 export const addContragent = (b: any) => post('/api/contragents', b)

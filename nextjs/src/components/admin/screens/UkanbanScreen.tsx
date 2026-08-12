@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { listPurchases, listSales, listReturns, updateDocument } from '@/lib/api/docs'
-import { listContragents, reconcile } from '@/lib/api/refs'
+import { listContragents, reconcile, financeSummary } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import RouteModal from '@/components/admin/RouteModal'
@@ -13,12 +13,14 @@ import RouteModal from '@/components/admin/RouteModal'
 const MODES = [
   { key: 'invoices', label: '🧾 Накладные', ready: true },
   { key: 'reconcile', label: '📄 Акт сверки', ready: true },
+  { key: 'debts', label: '💸 Долги', ready: true },
   { key: 'finance', label: '💰 Финанс', ready: false },
   { key: 'deals', label: '📋 Сделки', ready: false },
 ]
 
 export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId: string; onAction?: (id: string, a: string) => void; onOpen?: (o: any) => void }) {
   const [mode, setMode] = useState('invoices')
+  const [recCid, setRecCid] = useState('')   // предвыбранный контрагент для акта сверки (клик из «Долги»)
 
   return (
     <div>
@@ -36,8 +38,9 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
       </div>
 
       {mode === 'invoices' && <InvoicesMode orgId={orgId} />}
-      {mode === 'reconcile' && <ReconcileMode />}
-      {mode !== 'invoices' && mode !== 'reconcile' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
+      {mode === 'debts' && <DebtsMode orgId={orgId} onOpen={cid => { setRecCid(cid); setMode('reconcile') }} />}
+      {mode === 'reconcile' && <ReconcileMode initialCid={recCid} />}
+      {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
   )
 }
@@ -183,14 +186,15 @@ const tdR: React.CSSProperties = { textAlign: 'right', padding: '7px 10px', whit
 const emptyBox: React.CSSProperties = { padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }
 const dInp = (v: string): React.CSSProperties => ({ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${v ? COLORS.primary : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none' })
 
-function ReconcileMode() {
+function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
   const [cags, setCags] = useState<any[]>([])
-  const [cid, setCid] = useState('')
+  const [cid, setCid] = useState(initialCid)
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => { listContragents(true).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [])   // без архивных дублей
+  useEffect(() => { if (initialCid) setCid(initialCid) }, [initialCid])
   useEffect(() => {
     if (!cid) { setData(null); return }
     setLoading(true)
@@ -249,6 +253,83 @@ function ReconcileMode() {
                 </div>
               </div>
             )}
+    </div>
+  )
+}
+
+// ─── Режим «Долги»: сальдо по контрагентам с выборками Нам должны / Наши долги ───
+function DebtsMode({ orgId, onOpen }: { orgId: string; onOpen: (cid: string) => void }) {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [side, setSide] = useState<'all' | 'they' | 'we'>('all')
+  const [q, setQ] = useState('')
+
+  useEffect(() => { setLoading(true); financeSummary(orgId).then(d => setData(d)).finally(() => setLoading(false)) }, [orgId])
+
+  const rows = useMemo(() => {
+    let list = (data?.contragents || []) as any[]
+    if (side === 'they') list = list.filter(c => c.theyOwe > 0.001)
+    else if (side === 'we') list = list.filter(c => c.weOwe > 0.001)
+    const s = q.trim().toLowerCase()
+    if (s) list = list.filter(c => (c.name || '').toLowerCase().includes(s))
+    const amt = (c: any) => side === 'we' ? c.weOwe : side === 'they' ? c.theyOwe : Math.max(c.theyOwe, c.weOwe)
+    return [...list].sort((a, b) => amt(b) - amt(a))
+  }, [data, side, q])
+
+  const sideBtn = (k: 'all' | 'they' | 'we', label: string, color: string) => (
+    <button onClick={() => setSide(k)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: side === k ? color : '#fff', color: side === k ? '#fff' : COLORS.textMuted, boxShadow: side === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
+  )
+
+  return (
+    <div>
+      {/* Итоги + выборки справа */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ background: '#e8f5ee', borderRadius: 10, padding: '8px 14px' }}>
+          <div style={{ fontSize: 11, color: '#2e8a5e', fontWeight: 700 }}>НАМ ДОЛЖНЫ (дебиторка)</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#2e8a5e' }}>{fmtMoney(Number(data?.receivable || 0))} ₸</div>
+        </div>
+        <div style={{ background: '#faeaea', borderRadius: 10, padding: '8px 14px' }}>
+          <div style={{ fontSize: 11, color: '#b4574c', fontWeight: 700 }}>НАШИ ДОЛГИ (кредиторка)</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#b4574c' }}>{fmtMoney(Number(data?.payable || 0))} ₸</div>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {sideBtn('all', 'Всё', '#7a3aaa')}
+          {sideBtn('they', '🟢 Нам должны', '#2e8a5e')}
+          {sideBtn('we', '🔴 Наши долги', '#b4574c')}
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Контрагент…" style={{ minWidth: 180, padding: '7px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', outline: 'none', fontFamily: 'inherit', fontSize: 13 }} />
+        </div>
+      </div>
+
+      {loading ? <div style={emptyBox}>Загрузка…</div>
+        : rows.length === 0 ? <div style={emptyBox}>{q || side !== 'all' ? 'Ничего не найдено по фильтру.' : 'Долгов нет — взаиморасчёты закрыты.'}</div>
+          : (
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
+                  <thead>
+                    <tr style={{ background: '#faf8f6', color: COLORS.textMuted, fontSize: 11 }}>
+                      <th style={thL}>Контрагент</th><th style={thR}>Нам должны</th><th style={thR}>Наши долги</th><th style={thR}>Сальдо</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((c: any) => {
+                      const net = c.theyOwe - c.weOwe
+                      return (
+                        <tr key={c.id} onClick={() => onOpen(c.id)} title="Открыть акт сверки" style={{ borderTop: '1px solid #f1efec', cursor: 'pointer' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#faf8f6')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                          <td style={tdL}>{c.name}</td>
+                          <td style={{ ...tdR, color: c.theyOwe > 0.001 ? '#2e8a5e' : '#ccc', fontWeight: c.theyOwe > 0.001 ? 700 : 400 }}>{c.theyOwe > 0.001 ? fmtMoney(c.theyOwe) : '—'}</td>
+                          <td style={{ ...tdR, color: c.weOwe > 0.001 ? '#b4574c' : '#ccc', fontWeight: c.weOwe > 0.001 ? 700 : 400 }}>{c.weOwe > 0.001 ? fmtMoney(c.weOwe) : '—'}</td>
+                          <td style={{ ...tdR, fontWeight: 800, color: net >= 0 ? '#2e8a5e' : '#b4574c' }}>{fmtMoney(Math.abs(net))} {net >= 0 ? '↑ нам' : '↓ мы'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: '10px 14px', borderTop: '1.5px solid #eee', fontSize: 12.5, color: COLORS.textMuted }}>Контрагентов: <b style={{ color: COLORS.text }}>{rows.length}</b> · клик по строке — акт сверки</div>
+            </div>
+          )}
     </div>
   )
 }
