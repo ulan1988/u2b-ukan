@@ -1,9 +1,9 @@
 'use client'
 // Склад — портирован из Улкана 1:1 (KPI, остатки с резервом + прогресс, движения
 // по вкладкам, ручной приход). API → /api/stock (overview/movements/income).
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
-import { stockOverview, stockMovements, stockIncome, fetchRefs } from '@/lib/api/refs'
+import { stockOverview, stockMovements, stockIncome, fetchRefs, listFolders } from '@/lib/api/refs'
 import { createTransfer } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
 
@@ -131,6 +131,41 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   const srcWh = whs.find(w => w.orgId === orgId && w.isCentral) || whs.find(w => w.orgId === orgId)
   const dests = whs.filter(w => w.orgId !== orgId)   // склады других орг/филиалов
 
+  // Дерево номенклатуры на складе: те же папки/группы, что в номенклатуре (товары общие),
+  // остатки — этой организации (склад отдельный).
+  const [folders, setFolders] = useState<any[]>([])
+  useEffect(() => { listFolders().then((f: any) => setFolders(f || [])) }, [])
+  const [selGroup, setSelGroup] = useState<string | null>(null)
+  const [selCat, setSelCat] = useState<string | null>(null)
+  const [selSub, setSelSub] = useState<string | null>(null)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({})
+  const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
+  const pMap = useMemo(() => new Map(products.map((p: any) => [p.id, p])), [products])
+  const inGroup = (g: string, x: any) => norm(x.group) === norm(g) || norm(x.cat) === norm(g)
+  const inCat = (g: string, c: string, x: any) => (norm(x.group) === norm(g) && norm(x.cat) === norm(c)) || (norm(x.group) === norm(c) && norm(x.cat) === norm(g))
+  const tree = useMemo(() => {
+    const t: Record<string, Record<string, string[]>> = {}
+    const eG = (g: string) => { if (g && !t[g]) t[g] = {} }
+    const eC = (g: string, c: string) => { eG(g); if (c && t[g] && !t[g][c]) t[g][c] = [] }
+    const eS = (g: string, c: string, s: string) => { eC(g, c); if (s && t[g]?.[c] && !t[g][c].includes(s)) t[g][c].push(s) }
+    for (const f of folders) { if (f.sub) eS(f.grp, f.cat, f.sub); else if (f.cat) eC(f.grp, f.cat); else if (f.grp) eG(f.grp) }
+    for (const p of products) { if (p.group) { eG(p.group); if (p.cat) { eC(p.group, p.cat); if (p.subgroup) eS(p.group, p.cat, p.subgroup) } } }
+    return t
+  }, [folders, products])
+  const groupsList = Object.keys(tree)
+  const stockRows = useMemo(() => stock.map(s => { const p: any = pMap.get(s.id); return { ...s, group: p?.group || '', cat: p?.cat || '', subgroup: p?.subgroup || '' } }), [stock, pMap])
+  const cGroup = (g: string) => stockRows.filter(s => inGroup(g, s)).length
+  const cCat = (g: string, c: string) => stockRows.filter(s => inCat(g, c, s)).length
+  const cSub = (g: string, c: string, sub: string) => stockRows.filter(s => inCat(g, c, s) && norm(s.subgroup) === norm(sub)).length
+  const filteredStock = stockRows.filter(s => {
+    if (search) return s.name.toLowerCase().includes(search.toLowerCase())
+    if (selSub) return inCat(selGroup!, selCat!, s) && norm(s.subgroup) === norm(selSub)
+    if (selCat) return inCat(selGroup!, selCat!, s)
+    if (selGroup) return inGroup(selGroup, s)
+    return true
+  })
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -146,7 +181,6 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
     if (r.ok) { showMsg(`✓ Приход: ${name} ${qty} ${unit}`); load() } else showMsg('Ошибка')
   }
 
-  const filteredStock = stock.filter(s => !search || s.name.toLowerCase().includes(search.toLowerCase()))
   const filteredMovements = movements.filter(m => movTab === 'all' || m.type === movTab)
   const totalItems = stock.length
   const reservedCount = stock.filter(s => s.reserved > 0).length
@@ -163,8 +197,8 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 20 }}>🏭 Центр-Склад</div>
-          <div style={{ fontSize: 13, color: '#5f5952', marginTop: 2 }}>Остатки и движение товаров</div>
+          <div style={{ fontWeight: 700, fontSize: 20 }}>🏭 {srcWh?.name || 'Склад'}</div>
+          <div style={{ fontSize: 13, color: '#5f5952', marginTop: 2 }}>Остатки по номенклатуре · движение товаров</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={load} style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳ Обновить</button>
@@ -188,15 +222,56 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20 }}>
-        {/* Остатки */}
+      <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: 16, alignItems: 'start' }}>
+        {/* Дерево номенклатуры (те же папки, что в номенклатуре) */}
+        <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+          <div style={{ padding: '9px 14px', background: '#f8f6f3', borderBottom: '1px solid #e6e2dc', fontSize: 12, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em' }}>ГРУППЫ</div>
+          <div style={{ maxHeight: 'calc(100vh - 330px)', overflowY: 'auto' }}>
+            <div onClick={() => { setSelGroup(null); setSelCat(null); setSelSub(null); setSearch('') }} style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, fontWeight: !selGroup && !search ? 700 : 400, color: !selGroup && !search ? COLORS.primary : '#26231f', display: 'flex', justifyContent: 'space-between', background: !selGroup && !search ? '#fff8f5' : '#fff' }}><span>Все</span><span style={{ fontSize: 12, color: '#5f5952' }}>{stockRows.length}</span></div>
+            {groupsList.map(g => {
+              const cats = Object.keys(tree[g]); const isOpen = openGroups[g]; const isSelG = selGroup === g && !selCat
+              return (
+                <div key={g}>
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', cursor: 'pointer', background: isSelG ? '#fff8f5' : '#fff' }} onClick={() => { setSelGroup(g); setSelCat(null); setSelSub(null); setSearch('') }}>
+                    <span onClick={e => { e.stopPropagation(); setOpenGroups(p => ({ ...p, [g]: !p[g] })) }} style={{ marginRight: 6, fontSize: 11, color: '#5f5952', width: 12, textAlign: 'center' }}>{cats.length ? (isOpen ? '▼' : '▶') : ''}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: isSelG ? 700 : 400, color: isSelG ? COLORS.primary : '#26231f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📁 {g}</span>
+                    <span style={{ fontSize: 12, color: '#5f5952' }}>{cGroup(g)}</span>
+                  </div>
+                  {isOpen && cats.map(cat => {
+                    const subs = tree[g][cat]; const isCatOpen = openCats[`${g}/${cat}`]; const isSelC = selGroup === g && selCat === cat && !selSub
+                    return (
+                      <div key={cat}>
+                        <div style={{ display: 'flex', alignItems: 'center', padding: '7px 14px 7px 26px', cursor: 'pointer', background: isSelC ? '#fff8f5' : '#fff' }} onClick={() => { setSelGroup(g); setSelCat(cat); setSelSub(null); setSearch('') }}>
+                          <span onClick={e => { e.stopPropagation(); setOpenCats(p => ({ ...p, [`${g}/${cat}`]: !p[`${g}/${cat}`] })) }} style={{ marginRight: 6, fontSize: 11, color: '#5f5952', width: 10, textAlign: 'center' }}>{subs.length ? (isCatOpen ? '▼' : '▶') : ''}</span>
+                          <span style={{ flex: 1, fontSize: 12.5, fontWeight: isSelC ? 700 : 400, color: isSelC ? COLORS.primary : '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📂 {cat}</span>
+                          <span style={{ fontSize: 12, color: '#5f5952' }}>{cCat(g, cat)}</span>
+                        </div>
+                        {isCatOpen && subs.map(sub => {
+                          const isSelS = selGroup === g && selCat === cat && selSub === sub
+                          return (
+                            <div key={sub} onClick={() => { setSelGroup(g); setSelCat(cat); setSelSub(sub); setSearch('') }} style={{ display: 'flex', alignItems: 'center', padding: '6px 14px 6px 42px', cursor: 'pointer', background: isSelS ? '#fff8f5' : '#fff' }}>
+                              <span style={{ flex: 1, fontSize: 12.5, fontWeight: isSelS ? 700 : 400, color: isSelS ? COLORS.primary : '#6b655b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {sub}</span>
+                              <span style={{ fontSize: 12, color: '#5f5952' }}>{cSub(g, cat, sub)}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Остатки выбранной папки */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Остатки</div>
-            <input style={{ padding: '6px 12px', borderRadius: 20, border: '1.5px solid #e6e2dc', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: 200 }} placeholder="🔍 Поиск..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Остатки{selGroup ? <span style={{ fontWeight: 400, color: '#5f5952' }}> · {selSub || selCat || selGroup}</span> : ''}</div>
+            <input style={{ padding: '6px 12px', borderRadius: 20, border: '1.5px solid #e6e2dc', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: 220 }} placeholder="🔍 Поиск по складу..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           {loading ? <div style={{ color: '#5f5952', fontSize: 14, padding: '20px 0' }}>Загрузка...</div>
-            : filteredStock.length === 0 ? <div style={{ color: '#5f5952', fontSize: 14, padding: '20px 0' }}>{search ? 'Ничего не найдено' : 'На складе пусто'}</div>
+            : filteredStock.length === 0 ? <div style={{ color: '#5f5952', fontSize: 14, padding: 20, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', textAlign: 'center' }}>{search ? 'Ничего не найдено' : (selGroup ? 'В этой папке остатков нет' : 'На складе пусто')}</div>
             : (
               <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -236,9 +311,10 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
               </div>
             )}
         </div>
+      </div>
 
-        {/* Движение */}
-        <div>
+      {/* Движение — под остатками, во всю ширину */}
+      <div style={{ marginTop: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Движение</div>
           <div style={{ display: 'flex', gap: 5, marginBottom: 12, flexWrap: 'wrap' }}>
             {([['all', `Все (${movements.length})`], ['income', `📥 Приход (${incomeCount})`], ['reserve', `🔒 Резервы (${movements.filter(m => m.type === 'reserve').length})`], ['expense', `📤 Расход (${expenseCount})`]] as const).map(([key, label]) => (
@@ -263,7 +339,6 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
               ))}
           </div>
         </div>
-      </div>
     </div>
   )
 }
