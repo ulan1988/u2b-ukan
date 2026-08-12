@@ -14,6 +14,7 @@ import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import FinanceMoneyScreen from '@/components/admin/screens/FinanceMoneyScreen'
 import InvoicesScreen from '@/components/admin/screens/InvoicesScreen'
 import WarehouseScreen from '@/components/admin/screens/WarehouseScreen'
+import ProductionScreen from '@/components/admin/screens/ProductionScreen'
 import NomenclatureScreen from '@/components/admin/screens/NomenclatureScreen'
 import SettingsScreen from '@/components/admin/screens/SettingsScreen'
 
@@ -37,6 +38,7 @@ export default function AdminScreenPage() {
     case 'invoice_out': return <InvoicesScreen kind="out" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'archive': return <ArchiveScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
     case 'warehouse': return <WarehouseScreen orgId={a.orgId} onOpenCard={id => a.openCard({ id })} />
+    case 'production': return <ProductionScreen orgId={a.orgId} />
     case 'nomenclature': return <NomenclatureScreen />
     case 'settings': return <SettingsScreen orgId={a.orgId} />
     default: return <div style={{ color: '#5f5952', padding: 20 }}>Раздел не найден</div>

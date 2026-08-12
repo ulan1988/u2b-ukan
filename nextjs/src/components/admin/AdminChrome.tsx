@@ -28,6 +28,7 @@ export const NAV: NavItem[] = [
   { key: 'invoice_out', label: 'Расходные накладные', icon: '📄' },
   { key: 'archive', label: 'Архив', icon: '🗂' },
   { key: 'warehouse', label: 'Склад', icon: '🏭' },
+  { key: 'production', label: 'Производство', icon: '🛠️' },
   { key: 'nomenclature', label: 'Номенклатура', icon: '📦' },
   { key: 'settings', label: 'Настройки', icon: '⚙️' },
 ]
