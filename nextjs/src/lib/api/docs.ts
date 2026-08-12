@@ -19,4 +19,7 @@ export const createPayment = (b: any) => post('/api/payments', b)
 export const listProduction = (orgId: string) => getArray(`/api/production?orgId=${orgId}`)
 export const createProduction = (b: any) => post('/api/production', b)
 
+export const listTransfers = (orgId: string) => getArray(`/api/transfer?orgId=${orgId}`)
+export const createTransfer = (b: any) => post('/api/transfer', b)
+
 export const cancelDocument = (id: string) => post(`/api/documents/${id}/cancel`)

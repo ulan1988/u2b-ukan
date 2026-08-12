@@ -123,7 +123,7 @@ export const linesWithProduct = (docId: string) =>
 export const contragentById = (id: string) =>
   db.select({ id: contragents.id, name: contragents.name }).from(contragents).where(eq(contragents.id, id)).limit(1)
 export const warehouseById = (id: string) =>
-  db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses).where(eq(warehouses.id, id)).limit(1)
+  db.select({ id: warehouses.id, name: warehouses.name, orgId: warehouses.orgId, isCentral: warehouses.isCentral }).from(warehouses).where(eq(warehouses.id, id)).limit(1)
 
 export const updateDoc = (id: string, patch: Partial<NewDoc>) =>
   db.update(documents).set({ ...patch, updatedAt: new Date() }).where(eq(documents.id, id)).returning()

@@ -3,7 +3,8 @@
 // по вкладкам, ручной приход). API → /api/stock (overview/movements/income).
 import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
-import { stockOverview, stockMovements, stockIncome } from '@/lib/api/refs'
+import { stockOverview, stockMovements, stockIncome, fetchRefs } from '@/lib/api/refs'
+import { createTransfer } from '@/lib/api/docs'
 
 interface StockItem { id: string; name: string; unit: string; qty: number; reserved: number; cat?: string }
 interface Movement { id: string; type: 'income' | 'reserve' | 'expense'; name: string; qty: number; unit: string; cardId?: string; createdAt: string }
@@ -56,6 +57,63 @@ function IncomeModal({ items, onClose, onSubmit }: { items: StockItem[]; onClose
   )
 }
 
+// Перемещение товара на склад филиала (напр. головной шлёт листы филиалу-производителю).
+function TransferModal({ srcWh, dests, orgs, stock, onClose, onDone }: { srcWh: any; dests: any[]; orgs: any[]; stock: StockItem[]; onClose: () => void; onDone: (msg: string) => void }) {
+  const [toWh, setToWh] = useState(dests[0]?.id || '')
+  const [rows, setRows] = useState<{ productId: string; qty: string }[]>([{ productId: '', qty: '' }])
+  const [loading, setLoading] = useState(false)
+  const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit' }
+  const orgOf = (whId: string) => { const w = dests.find(d => d.id === whId); const o = orgs.find(x => x.id === w?.orgId); return { name: o?.name || '', color: o?.color || '#6b7280', whName: w?.name || '' } }
+  const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
+  const onStock = stock.filter(s => Math.max(0, s.qty - s.reserved) > 0)
+  const valid = !!toWh && rows.some(r => r.productId && Number(r.qty) > 0)
+  async function submit() {
+    const lines = rows.filter(r => r.productId && Number(r.qty) > 0).map(r => { const s = stock.find(x => x.id === r.productId); return { productId: r.productId, qty: Number(r.qty), unit: s?.unit || 'шт', price: 0 } })
+    if (!lines.length) return
+    setLoading(true)
+    const r: any = await createTransfer({ fromWarehouseId: srcWh.id, toWarehouseId: toWh, lines })
+    setLoading(false)
+    if (r.ok || r.id) { onDone(`✓ Отправлено ${lines.length} поз. → «${orgOf(toWh).whName}»`); onClose() } else onDone('⚠ ' + (r.error || 'Ошибка перемещения'))
+  }
+  const dest = orgOf(toWh)
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>🚚 Отправить на склад филиала</div>
+        <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 16 }}>Со склада <b>«{srcWh?.name}»</b> — списание здесь, приход у филиала.</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }}>КУДА (ФИЛИАЛ / СКЛАД)</label>
+          <select style={{ ...INP, borderLeft: `4px solid ${dest.color}` }} value={toWh} onChange={e => setToWh(e.target.value)}>
+            {dests.map(d => { const o = orgs.find(x => x.id === d.orgId); return <option key={d.id} value={d.id}>{o?.name || ''} — {d.name}</option> })}
+          </select>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 6, letterSpacing: '.04em' }}>ЧТО ОТПРАВЛЯЕМ (из остатков)</div>
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {rows.map((r, i) => {
+            const s = stock.find(x => x.id === r.productId); const avail = s ? Math.max(0, s.qty - s.reserved) : 0
+            return (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select style={{ ...INP, flex: 1 }} value={r.productId} onChange={e => setRow(i, { productId: e.target.value })}>
+                  <option value="">— товар со склада —</option>
+                  {onStock.map(x => <option key={x.id} value={x.id}>{x.name} (дост. {Math.max(0, x.qty - x.reserved)} {x.unit})</option>)}
+                </select>
+                <input style={{ ...INP, width: 90, textAlign: 'right' }} type="number" placeholder="кол-во" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} />
+                <span style={{ fontSize: 12, color: avail && Number(r.qty) > avail ? '#b03020' : '#837c72', width: 46, flexShrink: 0 }}>{s?.unit || ''}</span>
+                <button onClick={() => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs)} style={{ border: 'none', background: 'none', color: '#b03020', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>×</button>
+              </div>
+            )
+          })}
+        </div>
+        <button onClick={() => setRows(rs => [...rs, { productId: '', qty: '' }])} style={{ marginTop: 8, alignSelf: 'flex-start', border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Ещё позиция</button>
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
+          <button onClick={submit} disabled={!valid || loading} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: valid ? COLORS.primary : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: loading ? .6 : 1 }}>{loading ? 'Отправляю...' : '🚚 Отправить →'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; onOpenCard?: (cardId: string) => void }) {
   const [stock, setStock] = useState<StockItem[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
@@ -63,7 +121,13 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   const [movTab, setMovTab] = useState<MovTab>('all')
   const [search, setSearch] = useState('')
   const [showIncome, setShowIncome] = useState(false)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [whs, setWhs] = useState<any[]>([])
+  const [orgs, setOrgs] = useState<any[]>([])
   const [toast, setToast] = useState('')
+  useEffect(() => { fetchRefs().then((r: any) => { setWhs(r.warehouses || []); setOrgs(r.organizations || []) }) }, [])
+  const srcWh = whs.find(w => w.orgId === orgId && w.isCentral) || whs.find(w => w.orgId === orgId)
+  const dests = whs.filter(w => w.orgId !== orgId)   // склады других орг/филиалов
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,6 +157,7 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
     <div className="anim-fade">
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
       {showIncome && <IncomeModal items={filteredStock} onClose={() => setShowIncome(false)} onSubmit={handleIncome} />}
+      {showTransfer && srcWh && <TransferModal srcWh={srcWh} dests={dests} orgs={orgs} stock={stock} onClose={() => setShowTransfer(false)} onDone={msg => { showMsg(msg); load() }} />}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
@@ -101,6 +166,7 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={load} style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳ Обновить</button>
+          {dests.length > 0 && srcWh && <button onClick={() => setShowTransfer(true)} style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить филиалу</button>}
           <button onClick={() => setShowIncome(true)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>+ Приход</button>
         </div>
       </div>

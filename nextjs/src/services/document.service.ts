@@ -288,6 +288,36 @@ export async function createProduction(input: CreateProductionInput) {
 
 export const listProduction = (orgId: string) => docRepo.listByType(orgId, 'production')
 
+// Перемещение товара между складами (головной → филиал-производитель и т.п.).
+// Один документ-перемещение (в книге склада-источника) + движения: −со склада-источника,
+// +на склад-получатель. Склады могут быть в разных орг (меж-орг перенос листов).
+export async function createTransfer(input: import('../dto/transfer.dto').CreateTransferInput) {
+  const [fromWh] = await docRepo.warehouseById(input.fromWarehouseId)
+  const [toWh] = await docRepo.warehouseById(input.toWarehouseId)
+  if (!fromWh || !toWh) return { ok: false as const, error: 'Склад не найден' }
+  if (fromWh.id === toWh.id) return { ok: false as const, error: 'Склад-источник и получатель совпадают' }
+  const fromOrg = (fromWh as any).orgId, toOrg = (toWh as any).orgId
+  const docId = randomUUID()
+  const date = input.date || today()
+  const count = await docRepo.countByType(fromOrg, 'transfer')
+  let total = 0
+  const lines: any[] = [], moves: any[] = []
+  for (const l of input.lines) {
+    const amount = l.qty * (l.price || 0); total += amount
+    lines.push({ id: randomUUID(), documentId: docId, productId: l.productId, role: 'main', qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price || 0), amount: String(amount) })
+    moves.push({ id: randomUUID(), orgId: fromOrg, warehouseId: input.fromWarehouseId, productId: l.productId, qty: String(-l.qty), documentId: docId, date })   // − источник
+    moves.push({ id: randomUUID(), orgId: toOrg, warehouseId: input.toWarehouseId, productId: l.productId, qty: String(l.qty), documentId: docId, date })          // + получатель
+  }
+  const doc = {
+    id: docId, orgId: fromOrg, type: 'transfer', number: docNumber('transfer', count),
+    warehouseId: input.fromWarehouseId, date, status: 'posted', total: String(total),
+    comment: input.comment || `Перемещение на «${(toWh as any).name}»`,
+  }
+  await docRepo.insertDocumentPosting(doc, lines, moves)
+  return { ok: true as const, id: docId, number: doc.number, total }
+}
+export const listTransfers = (orgId: string) => docRepo.listByType(orgId, 'transfer')
+
 // Сторно (отмена/удаление) документа — откатывает склад и связи, статус cancelled.
 export async function cancelDocument(docId: string) {
   await docRepo.cancelDocument(docId)
