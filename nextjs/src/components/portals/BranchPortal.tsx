@@ -66,10 +66,14 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Заказ на производство: карточка с позицией плеча-1 (филиал = изготовитель/поставщик), ещё не переданная логисту.
   const isProd = (o: any) => (o.positions || []).some((p: any) => Number(p.leg) === 1)
   const notForwarded = (o: any) => !['outgoing', 'accounting', 'bookkeeping', 'archive'].includes(o.screen)
+  // Плечо-заказ остаётся у филиала как «производство», пока не ЗАКРЫТ (bookkeeping/archive),
+  // даже если у ГОЛОВНОГО он ушёл в outgoing — это screen головного, а не «исходящее филиала».
+  // «Исходящее филиала» = филиал сам передал логисту (branchForward меняет leg 1→2 → isProd=false).
+  const notClosed = (o: any) => !['bookkeeping', 'archive'].includes(o.screen)
   // Заказы на производство — плечо-1, НЕ в производстве (новые на «В работу» + изготовленные на «К логисту»).
-  const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status !== 'Производство' && inDate(o))
+  const production = orders.filter(o => isProd(o) && !o.isCancelled && notClosed(o) && o.status !== 'Производство' && inDate(o))
   // Производство — мастер взял в работу (статус «Производство»): тут рабочий стол.
-  const producing = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status === 'Производство' && inDate(o))
+  const producing = orders.filter(o => isProd(o) && !o.isCancelled && notClosed(o) && o.status === 'Производство' && inDate(o))
   // Заказы мастера (ЗК-…) собираются во вкладке «Производство» пока не отправлены логисту
   // (после «Выполнено» уходят в Исходящие). В «Входящие» их не показываем.
   const custName = (o: any) => cags.find((c: any) => c.id === o.contactId)?.name || ''
@@ -78,9 +82,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
   // Списки не пересекаются (production — плечо isProd; incoming — не-плечо), у каждой карточки свой поток.
   const prodQueue = [...production, ...incoming].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-  const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
+  // Исходящие филиала — только НЕ плечо-производство (leg 1). Плечо-заказ, отправленный
+  // головным (screen=outgoing, leg 1), сюда НЕ попадает — он в «Заказы на производство».
+  const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && !isProd(o) && inDate(o))
   // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
-  const badgeCount = orders.filter(o => !o.isCancelled && ((isProd(o) && notForwarded(o)) || ['incoming', 'reception'].includes(o.screen))).length
+  const badgeCount = orders.filter(o => !o.isCancelled && ((isProd(o) && notClosed(o)) || ['incoming', 'reception'].includes(o.screen))).length
 
   async function openOrder(id: string) {
     if (selected === id) { setSelected(null); return }
