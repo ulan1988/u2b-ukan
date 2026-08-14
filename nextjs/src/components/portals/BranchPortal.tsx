@@ -55,7 +55,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   useEffect(() => { fetchRefs().then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [])
 
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders()); setLoading(false) }, [])
-  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat')
+  // Пауза live-обновления пока идёт правка: каталог, правка кол-ва, чат, заполнение прямого
+  // заказа мастера (showDirect) или открыта шторка — иначе перезагрузка списка сбрасывает ввод.
+  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { setSelected(null); setDetailTab('positions') }, [tab])
 
