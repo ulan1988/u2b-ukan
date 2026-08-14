@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import { docNumber, today } from '../lib/num'
+import { docNumber, prodOrderNumber, today } from '../lib/num'
 import * as repo from '../repositories/order.repo'
 import * as userRepo from '../repositories/user.repo'
 import * as refsRepo from '../repositories/refs.repo'
@@ -67,8 +67,10 @@ async function editBlocked(cardId: string, actor?: Session | null): Promise<stri
 }
 
 export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: Session | null) {
-  const count = await repo.countByKind(i.orgId, i.kind)
-  const id = docNumber(i.kind, count)                     // ЗП-/ПР-0001-DDMMYY
+  // Заказ мастера производства → продолжающийся код ЗК-NN-DDMMYY; иначе ЗП-/ПР-0001-DDMMYY.
+  const id = i.prodOrder
+    ? prodOrderNumber(await repo.nextProdSeq(i.orgId))
+    : docNumber(i.kind, await repo.countByKind(i.orgId, i.kind))
 
   const screen = i.screen || 'incoming'
   const order = {

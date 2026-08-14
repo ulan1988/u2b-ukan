@@ -31,6 +31,15 @@ export async function countByKind(orgId: string, kind: string) {
   return r[0]?.c ?? 0
 }
 
+// Продолжающийся номер заказа мастера: max NN из существующих ЗК-NN-… + 1 (устойчиво к удалению).
+export async function nextProdSeq(orgId: string) {
+  const rows = await db.select({ id: orders.id }).from(orders)
+    .where(and(eq(orders.orgId, orgId), sql`${orders.id} LIKE 'ЗК-%'`))
+  let max = 0
+  for (const r of rows as { id: string }[]) { const m = r.id.match(/^ЗК-(\d+)-/); if (m) max = Math.max(max, Number(m[1])) }
+  return max + 1
+}
+
 // Атомарно: карточка + позиции + запись истории.
 export function insertOrderPosting(
   order: typeof orders.$inferInsert,

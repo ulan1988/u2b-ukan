@@ -48,6 +48,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false)
+  const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
+  const isZK = (o: any) => /^ЗК-/.test(o.id || '')
+  const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
   useEffect(() => { fetchRefs().then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [])
 
@@ -64,7 +67,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status !== 'Производство' && inDate(o))
   // Производство — мастер взял в работу (статус «Производство»): тут рабочий стол.
   const producing = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status === 'Производство' && inDate(o))
-  const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && inDate(o))
+  // Заказы мастера (ЗК-…) собираются во вкладке «Производство»; в «Входящие» их не показываем.
+  const createdProd = orders.filter(o => isZK(o) && !o.isCancelled && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
   // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
   const badgeCount = orders.filter(o => !o.isCancelled && ((isProd(o) && notForwarded(o)) || ['incoming', 'reception'].includes(o.screen))).length
@@ -174,6 +179,34 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       {toast && <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
       {addCatalogFor && <NomPicker onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
 
+      {/* Шторка позиций заказа мастера (ЗК-…) */}
+      {drawerId && (() => {
+        const o = orders.find(x => x.id === drawerId); if (!o) return null
+        const pos = o.positions || []
+        return (
+          <div onClick={() => setDrawerId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,18,16,.4)', zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 'min(360px, 88vw)', height: '100%', background: '#fff', boxShadow: '-8px 0 30px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column', animation: 'none' }}>
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
+                <StatusBadge status={o.status} />
+                <button onClick={() => setDrawerId(null)} style={{ marginLeft: 'auto', border: 'none', background: '#f1efec', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 15, color: '#5f5952' }}>✕</button>
+              </div>
+              <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>ПОЗИЦИИ · {pos.length}</div>
+                {pos.length === 0 ? <div style={{ color: '#837c72', fontSize: 14, padding: 8 }}>Нет позиций</div>
+                  : pos.map((p: any) => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f6f3f0' }}>
+                      <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span>
+                      <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       <div style={{ background: '#211f1c', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -195,8 +228,21 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Рабочий стол мастера · 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материал = см изделий ÷ {SHEET_WIDTH_CM}.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
           {showDirect && <ProductionWorkbench order={null} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
-          {producing.length === 0 && !showDirect ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
+          {producing.length === 0 && !showDirect && createdProd.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
             : producing.map(o => <ProductionWorkbench key={o.id} order={o} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
+          {createdProd.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>СОЗДАННЫЕ ЗАКАЗЫ · {createdProd.length}</div>
+              {createdProd.map(o => (
+                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 12px', marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
+                  <StatusBadge status={o.status} />
+                  <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>{fmtDate(o.createdAt)}</span>
+                  <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: 'none', background: '#f1efec', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>📋 {(o.positions || []).length}</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>}
         {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
         {tab === 'new' && (

@@ -5,6 +5,16 @@ const PREFIX: Record<string, string> = {
   return_in: 'ВП', return_out: 'ВС',   // возврат от покупателя / поставщику
 }
 
+// Код заказа мастера производства: ЗК-NN-DDMMYY. seq — продолжающийся номер (01, 02…),
+// дата — сегодняшняя. Показываем как «ЗК 01 140826».
+export function prodOrderNumber(seq: number): string {
+  const d = new Date()
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yy = String(d.getFullYear()).slice(-2)
+  return `ЗК-${String(seq).padStart(2, '0')}-${dd}${mm}${yy}`
+}
+
 export function docNumber(type: string, count: number): string {
   const p = PREFIX[type] || 'ДК'
   const d = new Date()

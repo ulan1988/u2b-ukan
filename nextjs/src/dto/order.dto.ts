@@ -29,6 +29,7 @@ export const createOrderSchema = z.object({
   comment: z.string().optional().default(''),
   phone: z.string().optional(),
   deadline: z.string().optional(),
+  prodOrder: z.boolean().optional(),                       // заказ мастера производства → код ЗК-NN-DDMMYY
   positions: z.array(orderPositionInput).default([]),
 })
 
