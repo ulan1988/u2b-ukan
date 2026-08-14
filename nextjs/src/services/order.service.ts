@@ -89,6 +89,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
+    widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : 2,
     deadline: p.deadline ? new Date(p.deadline) : null,
@@ -266,6 +267,7 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.qty !== undefined) set.qty = String(patch.qty)
   if (patch.unit !== undefined) set.unit = patch.unit
   if (patch.price !== undefined) set.price = String(patch.price)
+  if (patch.widthCm !== undefined) set.widthCm = patch.widthCm != null && patch.widthCm !== '' ? String(patch.widthCm) : null
   if (patch.supplierId !== undefined) { set.supplierId = patch.supplierId || null; set.leg = await legForSupplier(patch.supplierId || null) }
   if (patch.respUserId !== undefined) set.respUserId = patch.respUserId || null
   if (patch.status !== undefined) set.status = patch.status
@@ -318,7 +320,8 @@ export async function addPosition(cardId: string, i: any, actor?: Session | null
   const [p] = await repo.insertPosition({
     id: `${cardId}-P${n + 1}`, cardId, productId: i.productId ?? null,
     name1c: i.name1c || '', oral: i.oral || i.name1c || '', qty: String(i.qty || 0), unit: i.unit || 'шт',
-    price: String(i.price || 0), supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null,
+    price: String(i.price || 0), widthCm: i.widthCm != null ? String(i.widthCm) : null,
+    supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null,
     leg: await legForSupplier(i.supplierId ?? null), status: 'В работе',
   })
   await repo.insertHistory({ cardId, action: 'addPos', detail: `Добавлена позиция: ${i.name1c || ''}`, userName: actor?.name || 'Система' })

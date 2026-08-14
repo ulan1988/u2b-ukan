@@ -7,6 +7,7 @@ export const orderPositionInput = z.object({
   qty: z.coerce.number().min(0).default(0),
   unit: z.string().optional().default('шт'),
   price: z.coerce.number().min(0).default(0),
+  widthCm: z.coerce.number().optional(),                   // ширина изделия в см (раскрой)
   respUserId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
   deadline: z.string().optional(),

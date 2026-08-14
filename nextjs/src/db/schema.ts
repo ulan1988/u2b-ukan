@@ -271,6 +271,7 @@ export const orderPositions = pgTable('order_positions', {
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),
   price: money('price').notNull().default('0'),
+  widthCm: qtyCol('width_cm'),                             // ширина изделия в см (раскрой у мастера-производителя)
   respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
   status: text('status').notNull().default('В работе'),   // В работе|Готово|В пути|Доставлено
