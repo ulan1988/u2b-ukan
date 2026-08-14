@@ -79,7 +79,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   // цвета нельзя резать под изделие другого.
   const pack = packByColor(rows.map(r => ({ color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })))
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
-  const valid = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
+  const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
+  const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика
+  const valid = hasPos && (!needCustomer || !!cid)
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -96,14 +98,15 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   }
 
   async function done() {
-    if (!valid) { showMsg('Добавьте хотя бы одну позицию'); return }
+    if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
+    if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
     setBusy(true)
     try {
       if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceDone'); showMsg('✓ Изготовлено — в «Заказы на производство»') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)) } })
-        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, positions }, uid)
+        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, positions }, uid)
         if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceDone'); showMsg('✓ Карточка создана и изготовлена') }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }
       }
@@ -122,8 +125,11 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЗАКАЗЧИК</label>
-          <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => setCid(c.id)} placeholder="— контрагент —" />
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЗАКАЗЧИК {needCustomer && <span style={{ color: '#c1121c' }}>*</span>}</label>
+          <div style={{ borderRadius: 8, boxShadow: needCustomer && !cid ? '0 0 0 1.5px #e6a6a6' : 'none' }}>
+            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => setCid(c.id)} placeholder="— выберите заказчика —" />
+          </div>
+          {needCustomer && !cid && <div style={{ fontSize: 11, color: '#c1121c', marginTop: 3 }}>Обязательно — без заказчика карточку не создать</div>}
         </div>
         <div style={{ width: 130 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЦЕНА ЗА СМ</label>

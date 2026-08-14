@@ -21,8 +21,11 @@ export async function POST(req: NextRequest) {
   // Кабинет: заявка всегда от имени клиента, продажа, во Входящие.
   // uid — админ создаёт «от имени» кабинета (resolveTarget), иначе сам пользователь.
   // Точная связка: если кабинет привязан к контрагенту — заявка идёт на него (contactId).
+  // Заказ мастера производства обязан иметь заказчика (запрет карточки без имени заказчика).
+  if (body?.prodOrder && !body?.contactId) return NextResponse.json({ error: 'Выберите заказчика' }, { status: 400 })
   const t = await resolveTarget(s, new URL(req.url).searchParams.get('uid'))
-  const parsed = createOrderSchema.safeParse({ ...body, orgId: t.orgId, kind: 'sale', source: 'cabinet', fromId: t.id, fromName: t.name, contactId: t.contragentId || undefined })
+  // Заказчик: явно выбранный в форме (body.contactId) важнее дефолтного контрагента кабинета.
+  const parsed = createOrderSchema.safeParse({ ...body, orgId: t.orgId, kind: 'sale', source: 'cabinet', fromId: t.id, fromName: t.name, contactId: body.contactId || t.contragentId || undefined })
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте позиции' }, { status: 400 })
   const res = await createOrder(parsed.data, s)
   await pushSignal()
