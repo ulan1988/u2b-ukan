@@ -19,7 +19,7 @@ import { SHEET_WIDTH_CM } from '@/lib/production'
 import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
-type Tab = 'in' | 'production' | 'produce' | 'out' | 'new' | 'finance'
+type Tab = 'production' | 'produce' | 'out' | 'new' | 'finance'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -37,7 +37,7 @@ const fmtTime = (d?: string | null) => { if (!d) return '—'; const dt = new Da
 export default function BranchPortal({ user }: { user: { id: string; name: string; orgId: string } }) {
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<Tab>('in')
+  const [tab, setTab] = useState<Tab>('production')
   const [toast, setToast] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'positions' | 'history' | 'chat'>('positions')
@@ -75,6 +75,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const custName = (o: any) => cags.find((c: any) => c.id === o.contactId)?.name || ''
   const createdProd = orders.filter(o => isZK(o) && !o.isCancelled && notForwarded(o) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
+  // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
+  // Списки не пересекаются (production — плечо isProd; incoming — не-плечо), у каждой карточки свой поток.
+  const prodQueue = [...production, ...incoming].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
   // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
   const badgeCount = orders.filter(o => !o.isCancelled && ((isProd(o) && notForwarded(o)) || ['incoming', 'reception'].includes(o.screen))).length
@@ -249,11 +252,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
 
       <div style={{ padding: '16px 62px 40px 12px' }}>
         {loading && orders.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>}
-        {tab === 'in' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{incoming.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📥</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет входящих</div></div> : incoming.map(o => <OrderCard key={o.id} o={o} showActions={true} />)}</div>}
         {tab === 'production' && <div>
-          <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📋 Новые заказы через плечо. Нажми «Принял» — заказ уйдёт в «Производство».</div>
+          <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📋 Входящие заказы на производство. Плечо → «🛠️ В работу», прочие → «✓ Принял».</div>
           <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-          {production.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : production.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={true} />)}
+          {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o)} />)}
         </div>}
         {tab === 'produce' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Рабочий стол мастера · 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материал = см изделий ÷ {SHEET_WIDTH_CM}.</div>
@@ -285,7 +287,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'new' && (
           <div>
             {newDone ? (
-              <div style={{ background: '#fff', borderRadius: 14, padding: 32, boxShadow: '0 0 0 1px #e6e2dc', textAlign: 'center' }}><div style={{ fontSize: 40, marginBottom: 12 }}>✅</div><div style={{ fontWeight: 700, fontSize: 20, color: '#2e8a5e', marginBottom: 8 }}>Заявка {newDone.id} создана!</div><button onClick={() => { setNewDone(null); setTab('in') }} style={{ marginTop: 8, padding: '10px 20px', background: PRIMARY, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>← К заявкам</button></div>
+              <div style={{ background: '#fff', borderRadius: 14, padding: 32, boxShadow: '0 0 0 1px #e6e2dc', textAlign: 'center' }}><div style={{ fontSize: 40, marginBottom: 12 }}>✅</div><div style={{ fontWeight: 700, fontSize: 20, color: '#2e8a5e', marginBottom: 8 }}>Заявка {newDone.id} создана!</div><button onClick={() => { setNewDone(null); setTab('production') }} style={{ marginTop: 8, padding: '10px 20px', background: PRIMARY, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>← К заказам</button></div>
             ) : (
               <div style={{ background: '#fff', borderRadius: 14, padding: 24, boxShadow: '0 0 0 1px #e6e2dc' }}>
                 <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 16 }}>Новая заявка</div>
@@ -307,7 +309,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'in' as Tab, icon: '📥', label: 'Входящие', badge: incoming.length }, { key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: production.length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}
