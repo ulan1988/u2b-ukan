@@ -150,6 +150,19 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: () => ({ screen: 'reception', block: 'processing', status: 'В обработке' }),
     history: () => 'Филиал вернул заявку',
   },
+  // Производитель: взял заказ в работу (рабочий стол мастера) — статус «Производство».
+  produceAccept: {
+    roles: [...ADMIN, 'branch'],
+    patch: () => ({ status: 'Производство' }),
+    history: () => 'Взято в производство',
+  },
+  // Производитель: изготовил — заказ уходит из стола мастера обратно в «Заказы на производство»
+  // (готов к передаче логисту). Статус «Изготовлено».
+  produceDone: {
+    roles: [...ADMIN, 'branch'],
+    patch: () => ({ status: 'Изготовлено' }),
+    history: () => 'Изготовлено',
+  },
   finalizePurchase: {
     roles: ADMIN,
     guard: c => (c.positions.length && c.positions.every(p => p.respUserId && p.supplierId) ? null : 'У всех позиций закупа должен быть логист и поставщик'),

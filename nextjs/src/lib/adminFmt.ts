@@ -29,6 +29,7 @@ const STATUS_MAP: Record<string, { bg: string; color: string }> = {
   'В ожидании': COLORS.status.waiting, 'Принят': COLORS.status.accepted, 'В обработке': COLORS.status.accepted,
   'В работе': COLORS.status.ready, 'К учёту': COLORS.status.delivered, 'В бухгалтерии': COLORS.status.delivered,
   'Отменён': COLORS.status.cancelled, 'Восстановлен': COLORS.status.accepted, 'Архив': COLORS.status.archive,
+  'Производство': { bg: '#f3eeff', color: '#7a3aaa' }, 'Изготовлено': COLORS.status.ready,
 }
 export function statusStyle(status: string): CSSProperties {
   const c = STATUS_MAP[status] || COLORS.status.draft

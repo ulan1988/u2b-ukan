@@ -12,9 +12,11 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
+import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
-import { productionCalc, SHEET_WIDTH_CM } from '@/lib/production'
+import { SHEET_WIDTH_CM } from '@/lib/production'
+import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
 type Tab = 'in' | 'production' | 'produce' | 'out' | 'new' | 'finance'
@@ -23,6 +25,7 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     'В работе': { bg: '#fff0ea', color: '#c0532a' }, 'В ожидании': { bg: '#eef2ff', color: '#4a5aaa' }, 'В обработке': { bg: '#fff0ea', color: '#c0532a' },
     'В пути': { bg: '#fdf8e1', color: '#8a6f00' }, 'Доставлено': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Принято филиалом': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Архив': { bg: '#efece8', color: '#6b655b' },
+    'Производство': { bg: '#f3eeff', color: '#7a3aaa' }, 'Изготовлено': { bg: '#e8f5ee', color: '#2e8a5e' },
   }
   const s = map[status] || { bg: '#efece8', color: '#6b655b' }
   return <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }}>{status}</span>
@@ -44,7 +47,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [newTo, setNewTo] = useState(''); const [newText, setNewText] = useState(''); const [newLoading, setNewLoading] = useState(false); const [newDone, setNewDone] = useState<any>(null)
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
+  const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false)
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
+  useEffect(() => { fetchRefs().then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [])
 
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders()); setLoading(false) }, [])
   const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat')
@@ -55,10 +60,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Заказ на производство: карточка с позицией плеча-1 (филиал = изготовитель/поставщик), ещё не переданная логисту.
   const isProd = (o: any) => (o.positions || []).some((p: any) => Number(p.leg) === 1)
   const notForwarded = (o: any) => !['outgoing', 'accounting', 'bookkeeping', 'archive'].includes(o.screen)
-  // Заказы на производство — плечо-1, ещё НЕ принято филиалом (очередь на принятие).
-  const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status !== 'Принято филиалом' && inDate(o))
-  // Производство — принято филиалом, идёт изготовление (тут расчёт материала).
-  const producing = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status === 'Принято филиалом' && inDate(o))
+  // Заказы на производство — плечо-1, НЕ в производстве (новые на «В работу» + изготовленные на «К логисту»).
+  const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status !== 'Производство' && inDate(o))
+  // Производство — мастер взял в работу (статус «Производство»): тут рабочий стол.
+  const producing = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status === 'Производство' && inDate(o))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && inDate(o))
   const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
   // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
@@ -98,7 +103,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
 
   const INP: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 
-  function OrderCard({ o, showActions }: { o: any; showActions: boolean }) {
+  function OrderCard({ o, showActions, prodFlow }: { o: any; showActions: boolean; prodFlow?: boolean }) {
     const pct = cardProgress(o); const isOpen = selected === o.id; const d = details[o.id]
     const positions = d?.positions || o.positions || []; const hist = d?.history || []; const chat = d?.messages
     const canEdit = !o.isCancelled && o.status !== 'Доставлено' && o.status !== 'Архив'
@@ -116,8 +121,16 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div style={{ borderTop: '1px solid #f1efec' }}>
             {showActions && (
               <div style={{ padding: '12px 16px', background: '#f8f6f3', borderBottom: '1px solid #f1efec', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {o.status !== 'Принято филиалом' && <button onClick={() => act(o.id, 'branchAccept', '✓ Принято — передайте логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1.5px solid #b8e0c8', background: '#e8f5ee', color: '#2e8a5e', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>✓ Принял</button>}
-                {o.status === 'Принято филиалом' && <button onClick={() => act(o.id, 'branchForward', '✓ Передано логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: PRIMARY, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>К логисту →</button>}
+                {prodFlow ? (
+                  o.status === 'Изготовлено'
+                    ? <button onClick={() => act(o.id, 'branchForward', '✓ Передано логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: PRIMARY, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>К логисту →</button>
+                    : <button onClick={() => act(o.id, 'produceAccept', '🛠️ Взято в производство')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: '#7a3aaa', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>🛠️ В работу</button>
+                ) : (
+                  <>
+                    {o.status !== 'Принято филиалом' && <button onClick={() => act(o.id, 'branchAccept', '✓ Принято — передайте логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1.5px solid #b8e0c8', background: '#e8f5ee', color: '#2e8a5e', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>✓ Принял</button>}
+                    {o.status === 'Принято филиалом' && <button onClick={() => act(o.id, 'branchForward', '✓ Передано логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: PRIMARY, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>К логисту →</button>}
+                  </>
+                )}
                 {o.screen === 'outgoing' && <button onClick={() => act(o.id, 'branchRecall', '✓ Возвращена')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1.5px solid #e6c9b8', background: '#fff0ea', color: '#c0532a', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>← Вернуть</button>}
               </div>
             )}
@@ -176,22 +189,14 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'production' && <div>
           <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📋 Новые заказы через плечо. Нажми «Принял» — заказ уйдёт в «Производство».</div>
           <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-          {production.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : production.map(o => <OrderCard key={o.id} o={o} showActions={true} />)}
+          {production.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : production.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={true} />)}
         </div>}
         {tab === 'produce' && <div>
-          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Мастер-стол: 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материала нужно = см изделий ÷ {SHEET_WIDTH_CM}.</div>
-          <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-          {producing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство».</div></div>
-            : producing.map(o => {
-              const cm = (o.positions || []).reduce((s: number, p: any) => s + (String(p.unit || '').includes('см') ? Number(p.qty) || 0 : 0), 0)
-              const calc = productionCalc([{ cm }])
-              return (
-                <div key={o.id}>
-                  {cm > 0 && <div style={{ background: '#fff', border: '1.5px solid #cfeadd', borderRadius: '10px 10px 0 0', padding: '8px 14px', fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: -6 }}>📐 Изделий: <b>{cm} см</b><span>→ материала ~<b style={{ color: '#2e8a5e' }}>{calc.sheets.toFixed(2)}</b> листа (целых {calc.sheetsCeil})</span></div>}
-                  <OrderCard o={o} showActions={true} />
-                </div>
-              )
-            })}
+          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Рабочий стол мастера · 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материал = см изделий ÷ {SHEET_WIDTH_CM}.</div>
+          <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
+          {showDirect && <ProductionWorkbench order={null} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
+          {producing.length === 0 && !showDirect ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
+            : producing.map(o => <ProductionWorkbench key={o.id} order={o} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
         </div>}
         {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
         {tab === 'new' && (
