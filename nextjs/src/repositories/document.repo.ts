@@ -121,7 +121,12 @@ export const linesWithProduct = (docId: string) =>
     .where(eq(documentLines.documentId, docId)).orderBy(asc(documentLines.id))
 
 export const contragentById = (id: string) =>
-  db.select({ id: contragents.id, name: contragents.name }).from(contragents).where(eq(contragents.id, id)).limit(1)
+  db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId }).from(contragents).where(eq(contragents.id, id)).limit(1)
+// Контрагент-мост: в книге orgId запись, указывающая (orgRefId) на refOrgId. Нужен для
+// зеркальной накладной между орг (напр. в книге филиала контрагент «U2B головной»).
+export const contragentByOrgRef = (orgId: string, refOrgId: string) =>
+  db.select({ id: contragents.id, name: contragents.name }).from(contragents)
+    .where(and(eq(contragents.orgId, orgId), eq(contragents.orgRefId, refOrgId), eq(contragents.archived, false))).limit(1)
 export const warehouseById = (id: string) =>
   db.select({ id: warehouses.id, name: warehouses.name, orgId: warehouses.orgId, isCentral: warehouses.isCentral }).from(warehouses).where(eq(warehouses.id, id)).limit(1)
 
