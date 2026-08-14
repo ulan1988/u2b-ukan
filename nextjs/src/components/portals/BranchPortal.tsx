@@ -25,6 +25,7 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     'В работе': { bg: '#fff0ea', color: '#c0532a' }, 'В ожидании': { bg: '#eef2ff', color: '#4a5aaa' }, 'В обработке': { bg: '#fff0ea', color: '#c0532a' },
     'В пути': { bg: '#fdf8e1', color: '#8a6f00' }, 'Доставлено': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Принято филиалом': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Архив': { bg: '#efece8', color: '#6b655b' },
+    'К выполнению': { bg: '#f3eeff', color: '#7a3aaa' }, 'Выполнено': { bg: '#e8f5ee', color: '#2e8a5e' },
     'Производство': { bg: '#f3eeff', color: '#7a3aaa' }, 'Изготовлено': { bg: '#e8f5ee', color: '#2e8a5e' },
   }
   const s = map[status] || { bg: '#efece8', color: '#6b655b' }
@@ -70,14 +71,18 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // даже если у ГОЛОВНОГО он ушёл в outgoing — это screen головного, а не «исходящее филиала».
   // «Исходящее филиала» = филиал сам передал логисту (branchForward меняет leg 1→2 → isProd=false).
   const notClosed = (o: any) => !['bookkeeping', 'archive'].includes(o.screen)
-  // Заказы на производство — плечо-1, НЕ в производстве (новые на «В работу» + изготовленные на «К логисту»).
-  const production = orders.filter(o => isProd(o) && !o.isCancelled && notClosed(o) && o.status !== 'Производство' && inDate(o))
-  // Производство — мастер взял в работу (статус «Производство»): тут рабочий стол.
-  const producing = orders.filter(o => isProd(o) && !o.isCancelled && notClosed(o) && o.status === 'Производство' && inDate(o))
-  // Заказы мастера (ЗК-…) собираются во вкладке «Производство» пока не отправлены логисту
-  // (после «Выполнено» уходят в Исходящие). В «Входящие» их не показываем.
+  // Поток производителя: [Заказы на производство] «🛠️ В работу» → [Производство: стол мастера,
+  // раскрой+гибка, статус «К выполнению»] «✓ Выполнено» → [готово, статус «Выполнено»] «К логисту» → Исходящие.
+  // Статусы производителя (со старыми названиями для совместимости):
+  const isWork = (o: any) => o.status === 'К выполнению' || o.status === 'Производство'   // стол мастера
+  const isDone = (o: any) => o.status === 'Выполнено' || o.status === 'Изготовлено'        // готово к логисту
   const custName = (o: any) => cags.find((c: any) => c.id === o.contactId)?.name || ''
-  const createdProd = orders.filter(o => isZK(o) && !o.isCancelled && notForwarded(o) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  // Заказы на производство — плечо-1, ещё НЕ взятые мастером (не К выполнению / Выполнено). ЗК тут нет.
+  const production = orders.filter(o => isProd(o) && !isZK(o) && !o.isCancelled && notClosed(o) && !isWork(o) && !isDone(o) && inDate(o))
+  // Стол мастера — взято к выполнению (раскрой+гибка). Плечо ИЛИ прямой заказ мастера (ЗК).
+  const producing = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && notClosed(o) && isWork(o) && inDate(o))
+  // Готово (Выполнено) — ждёт передачи логисту. Плечо ИЛИ ЗК. После «К логисту» уходит в Исходящие.
+  const readyProd = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && notForwarded(o) && isDone(o) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
   // Списки не пересекаются (production — плечо isProd; incoming — не-плечо), у каждой карточки свой поток.
@@ -102,17 +107,16 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       await load(); await refreshDetail(id); showMsg(okMsg)
     } catch { showMsg('⚠ Ошибка сети') }
   }
-  // Заказ мастера «Выполнено»: изготовлено → передан логисту (уходит в Исходящие).
-  async function produceComplete(id: string) {
+  // Готовый заказ (Выполнено) → передать логисту: уходит в Исходящие. Отдельный шаг после «Выполнено».
+  async function toLogist(id: string) {
     try {
-      const r1 = await orderAction(id, 'produceDone'); if (!r1.ok) { showMsg('⚠ ' + (r1.error || 'Не удалось')); return }
-      const r2 = await orderAction(id, 'branchForward'); if (!r2.ok) { showMsg('⚠ ' + (r2.error || 'Не удалось')); return }
-      setDrawerId(null); await load(); showMsg('✓ Выполнено — отправлено логисту')
+      const r = await orderAction(id, 'branchForward'); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+      setDrawerId(null); await load(); showMsg('✓ Передано логисту')
     } catch { showMsg('⚠ Ошибка сети') }
   }
-  // Отметить одну позицию изготовленной.
+  // Отметить одну позицию выполненной.
   async function posComplete(cardId: string, posId: string) {
-    await updatePosition(cardId, posId, { status: 'Изготовлено' }); await refreshDetail(cardId); await load(); showMsg('✓ Позиция выполнена')
+    await updatePosition(cardId, posId, { status: 'Выполнено' }); await refreshDetail(cardId); await load(); showMsg('✓ Позиция выполнена')
   }
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
@@ -154,9 +158,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             {showActions && (
               <div style={{ padding: '12px 16px', background: '#f8f6f3', borderBottom: '1px solid #f1efec', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 {prodFlow ? (
-                  o.status === 'Изготовлено'
+                  isDone(o)
                     ? <button onClick={() => act(o.id, 'branchForward', '✓ Передано логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: PRIMARY, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>К логисту →</button>
-                    : <button onClick={() => act(o.id, 'produceAccept', '🛠️ Взято в производство')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: '#7a3aaa', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>🛠️ В работу</button>
+                    : <button onClick={() => act(o.id, 'produceAccept', '🛠️ Взято к выполнению')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: '#7a3aaa', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>🛠️ В работу</button>
                 ) : (
                   <>
                     {o.status !== 'Принято филиалом' && <button onClick={() => act(o.id, 'branchAccept', '✓ Принято — передайте логисту')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1.5px solid #b8e0c8', background: '#e8f5ee', color: '#2e8a5e', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>✓ Принял</button>}
@@ -226,7 +230,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                 <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>ПОЗИЦИИ · {pos.length}</div>
                 {pos.length === 0 ? <div style={{ color: '#837c72', fontSize: 14, padding: 8 }}>Нет позиций</div>
                   : pos.map((p: any) => {
-                    const done = p.status === 'Изготовлено'
+                    const done = p.status === 'Выполнено' || p.status === 'Изготовлено'
                     return (
                       <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f6f3f0' }}>
                         <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
@@ -240,7 +244,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   })}
               </div>
               <div style={{ padding: '12px 16px', borderTop: '1px solid #f1efec' }}>
-                <button onClick={() => produceComplete(o.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>✓ Выполнено всё → к логисту</button>
+                <button onClick={() => toLogist(o.id)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>К логисту →</button>
               </div>
             </div>
           </div>
@@ -267,13 +271,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Рабочий стол мастера · 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материал = см изделий ÷ {SHEET_WIDTH_CM}.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
           {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
-          {producing.length === 0 && !showDirect && createdProd.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
+          {producing.length === 0 && !showDirect && readyProd.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
             : producing.map(o => <ProductionWorkbench key={o.id} order={o} uid={user.id} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
-          {createdProd.length > 0 && (
+          {readyProd.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>СОЗДАННЫЕ ЗАКАЗЫ · {createdProd.length}</div>
-              {createdProd.map(o => (
-                <div key={o.id} style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 12px', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>✅ ВЫПОЛНЕНО — ГОТОВО К ЛОГИСТУ · {readyProd.length}</div>
+              {readyProd.map(o => (
+                <div key={o.id} style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #cfeadd', padding: '10px 12px', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
                     <StatusBadge status={o.status} />
@@ -282,7 +286,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#5f5952' }}>📋 Позиции ({(o.positions || []).length})</button>
-                    <button onClick={() => produceComplete(o.id)} style={{ marginLeft: 'auto', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>✓ Выполнено → логисту</button>
+                    <button onClick={() => toLogist(o.id)} style={{ marginLeft: 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>К логисту →</button>
                   </div>
                 </div>
               ))}

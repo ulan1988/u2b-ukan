@@ -102,12 +102,12 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
     setBusy(true)
     try {
-      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceDone'); showMsg('✓ Изготовлено — в «Заказы на производство»') }
+      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceDone'); showMsg('✓ Выполнено — готово к логисту') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)) } })
         const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, positions }, uid)
-        if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceAccept'); showMsg('✓ Заказ создан — в производстве') }
+        if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceAccept'); showMsg('✓ Заказ создан — к выполнению') }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }
       }
       onDone()
@@ -120,7 +120,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>🔧 {order?.id || 'Прямой заказ'}</span>
-        <span style={{ fontSize: 11, background: '#f3eeff', color: '#7a3aaa', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>Производство</span>
+        <span style={{ fontSize: 11, background: '#f3eeff', color: '#7a3aaa', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{order ? (order.status || 'К выполнению') : 'Новый заказ'}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
