@@ -20,8 +20,8 @@ function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
 }
 
-export default function ProductionWorkbench({ order, contragents, products, onDone, showMsg }: {
-  order: any | null; contragents: any[]; products: any[]; onDone: () => void; showMsg: (m: string) => void
+export default function ProductionWorkbench({ order, uid, contragents, products, onDone, showMsg }: {
+  order: any | null; uid?: string; contragents: any[]; products: any[]; onDone: () => void; showMsg: (m: string) => void
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
   const [priceCm, setPriceCm] = useState('')
@@ -103,7 +103,7 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)) } })
-        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, positions })
+        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, positions }, uid)
         if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceDone'); showMsg('✓ Карточка создана и изготовлена') }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }
       }

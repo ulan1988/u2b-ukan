@@ -54,7 +54,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
   useEffect(() => { fetchRefs().then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [])
 
-  const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders()); setLoading(false) }, [])
+  // uid — если кабинет открыт админом «от имени» филиала, все запросы идут от этого филиала.
+  const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])
   // Пауза live-обновления пока идёт правка: каталог, правка кол-ва, чат, заполнение прямого
   // заказа мастера (showDirect) или открыта шторка — иначе перезагрузка списка сбрасывает ввод.
   const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null
@@ -101,7 +102,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     setNewLoading(true)
     try {
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
-      const r = await createClientOrder({ comment: newText, positions })
+      const r = await createClientOrder({ comment: newText, positions }, user.id)
       if (r.ok) { setNewDone({ id: r.data.id }); setNewTo(''); setNewText(''); setCatalogPos([]); load() }
       else showMsg('⚠ ' + (r.error || 'Не удалось отправить заявку'))
     } catch { showMsg('⚠ Ошибка сети — попробуйте ещё раз') }
@@ -229,9 +230,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'produce' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Рабочий стол мастера · 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материал = см изделий ÷ {SHEET_WIDTH_CM}.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
-          {showDirect && <ProductionWorkbench order={null} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
+          {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
           {producing.length === 0 && !showDirect && createdProd.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
-            : producing.map(o => <ProductionWorkbench key={o.id} order={o} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
+            : producing.map(o => <ProductionWorkbench key={o.id} order={o} uid={user.id} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
           {createdProd.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>СОЗДАННЫЕ ЗАКАЗЫ · {createdProd.length}</div>

@@ -19,8 +19,10 @@ export async function POST(req: NextRequest) {
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const body = await req.json().catch(() => ({}))
   // Кабинет: заявка всегда от имени клиента, продажа, во Входящие.
+  // uid — админ создаёт «от имени» кабинета (resolveTarget), иначе сам пользователь.
   // Точная связка: если кабинет привязан к контрагенту — заявка идёт на него (contactId).
-  const parsed = createOrderSchema.safeParse({ ...body, orgId: s.orgId, kind: 'sale', source: 'cabinet', fromId: s.id, fromName: s.name, contactId: (s as any).contragentId || undefined })
+  const t = await resolveTarget(s, new URL(req.url).searchParams.get('uid'))
+  const parsed = createOrderSchema.safeParse({ ...body, orgId: t.orgId, kind: 'sale', source: 'cabinet', fromId: t.id, fromName: t.name, contactId: t.contragentId || undefined })
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте позиции' }, { status: 400 })
   const res = await createOrder(parsed.data, s)
   await pushSignal()

@@ -69,7 +69,7 @@ async function editBlocked(cardId: string, actor?: Session | null): Promise<stri
 export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: Session | null) {
   // Заказ мастера производства → продолжающийся код ЗК-NN-DDMMYY; иначе ЗП-/ПР-0001-DDMMYY.
   const id = i.prodOrder
-    ? prodOrderNumber(await repo.nextProdSeq(i.orgId))
+    ? prodOrderNumber(await repo.nextProdSeq())
     : docNumber(i.kind, await repo.countByKind(i.orgId, i.kind))
 
   const screen = i.screen || 'incoming'
@@ -158,13 +158,15 @@ export async function listOrders(orgId: string, screen?: string) {
 // Карточки для кабинета филиала (правило двух плеч): те, где филиал — поставщик
 // (leg=1, «проходят через него»). Филиал в своей отдельной орг видит ещё и карточки
 // своей организации. Так поставщик-филиал получает карточку к себе.
-export async function listForBranch(session: Session) {
-  const ids = new Set<string>(await repo.orderIdsBySupplierName(session.name))
+// target — филиал «от имени» (resolveTarget): {name, orgId}. Так админ видит кабинет филиала
+// именно как этот филиал (его орг + его карточки), а не под своей HQ-сессией.
+export async function listForBranch(target: { name: string; orgId: string }) {
+  const ids = new Set<string>(await repo.orderIdsBySupplierName(target.name))
   const { db } = await import('../lib/db')
   const { organizations } = await import('../db/schema')
   const { eq } = await import('drizzle-orm')
-  const [org] = await db.select({ kind: organizations.kind }).from(organizations).where(eq(organizations.id, session.orgId)).limit(1)
-  if (org && org.kind !== 'hq') for (const o of await repo.listByOrg(session.orgId)) ids.add(o.id)
+  const [org] = await db.select({ kind: organizations.kind }).from(organizations).where(eq(organizations.id, target.orgId)).limit(1)
+  if (org && org.kind !== 'hq') for (const o of await repo.listByOrg(target.orgId)) ids.add(o.id)
   return withPositions(await repo.ordersByIds(Array.from(ids)))
 }
 
