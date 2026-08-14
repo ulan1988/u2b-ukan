@@ -70,8 +70,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status !== 'Производство' && inDate(o))
   // Производство — мастер взял в работу (статус «Производство»): тут рабочий стол.
   const producing = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status === 'Производство' && inDate(o))
-  // Заказы мастера (ЗК-…) собираются во вкладке «Производство»; в «Входящие» их не показываем.
-  const createdProd = orders.filter(o => isZK(o) && !o.isCancelled && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  // Заказы мастера (ЗК-…) собираются во вкладке «Производство» пока не отправлены логисту
+  // (после «Выполнено» уходят в Исходящие). В «Входящие» их не показываем.
+  const custName = (o: any) => cags.find((c: any) => c.id === o.contactId)?.name || ''
+  const createdProd = orders.filter(o => isZK(o) && !o.isCancelled && notForwarded(o) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
   // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
@@ -91,6 +93,19 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       await load(); await refreshDetail(id); showMsg(okMsg)
     } catch { showMsg('⚠ Ошибка сети') }
   }
+  // Заказ мастера «Выполнено»: изготовлено → передан логисту (уходит в Исходящие).
+  async function produceComplete(id: string) {
+    try {
+      const r1 = await orderAction(id, 'produceDone'); if (!r1.ok) { showMsg('⚠ ' + (r1.error || 'Не удалось')); return }
+      const r2 = await orderAction(id, 'branchForward'); if (!r2.ok) { showMsg('⚠ ' + (r2.error || 'Не удалось')); return }
+      setDrawerId(null); await load(); showMsg('✓ Выполнено — отправлено логисту')
+    } catch { showMsg('⚠ Ошибка сети') }
+  }
+  // Отметить одну позицию изготовленной.
+  async function posComplete(cardId: string, posId: string) {
+    await updatePosition(cardId, posId, { status: 'Изготовлено' }); await refreshDetail(cardId); await load(); showMsg('✓ Позиция выполнена')
+  }
+
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
   async function addToOrder(orderId: string, items: PickedPos[]) { setAddCatalogFor(null); if (!items.length) return; for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, supplierId: undefined }); await refreshDetail(orderId); showMsg(`✓ Добавлено: ${items.length}`) }
   async function sendChat(orderId: string) { const t = msg.trim(); if (!t) return; setMsg(''); await sendMessage(orderId, t); const m = await listMessages(orderId); setDetails(prev => ({ ...prev, [orderId]: { ...prev[orderId], messages: m } })) }
@@ -188,22 +203,35 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         const pos = o.positions || []
         return (
           <div onClick={() => setDrawerId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,18,16,.4)', zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: 'min(360px, 88vw)', height: '100%', background: '#fff', boxShadow: '-8px 0 30px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column', animation: 'none' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 'min(380px, 90vw)', height: '100%', background: '#fff', boxShadow: '-8px 0 30px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
                 <StatusBadge status={o.status} />
                 <button onClick={() => setDrawerId(null)} style={{ marginLeft: 'auto', border: 'none', background: '#f1efec', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 15, color: '#5f5952' }}>✕</button>
               </div>
               <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 14 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ЗАКАЗЧИК:</span>
+                  <b>{custName(o) || '—'}</b>
+                </div>
                 <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>ПОЗИЦИИ · {pos.length}</div>
                 {pos.length === 0 ? <div style={{ color: '#837c72', fontSize: 14, padding: 8 }}>Нет позиций</div>
-                  : pos.map((p: any) => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f6f3f0' }}>
-                      <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span>
-                      <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
-                    </div>
-                  ))}
+                  : pos.map((p: any) => {
+                    const done = p.status === 'Изготовлено'
+                    return (
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f6f3f0' }}>
+                        <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: done ? '#9a938a' : '#26231f', textDecoration: done ? 'line-through' : 'none' }}>{p.name1c || p.oral}</span>
+                        <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
+                        {done
+                          ? <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700, flexShrink: 0 }}>✓ готово</span>
+                          : <button onClick={() => posComplete(o.id, p.id)} style={{ border: '1.5px solid #b8e0c8', background: '#e8f5ee', color: '#2e8a5e', borderRadius: 7, padding: '4px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}>✓ Выполнено</button>}
+                      </div>
+                    )
+                  })}
+              </div>
+              <div style={{ padding: '12px 16px', borderTop: '1px solid #f1efec' }}>
+                <button onClick={() => produceComplete(o.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>✓ Выполнено всё → к логисту</button>
               </div>
             </div>
           </div>
@@ -237,11 +265,17 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>СОЗДАННЫЕ ЗАКАЗЫ · {createdProd.length}</div>
               {createdProd.map(o => (
-                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 12px', marginBottom: 8 }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
-                  <StatusBadge status={o.status} />
-                  <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>{fmtDate(o.createdAt)}</span>
-                  <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: 'none', background: '#f1efec', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>📋 {(o.positions || []).length}</button>
+                <div key={o.id} style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 12px', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
+                    <StatusBadge status={o.status} />
+                    {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
+                    <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>{fmtDate(o.createdAt)}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#5f5952' }}>📋 Позиции ({(o.positions || []).length})</button>
+                    <button onClick={() => produceComplete(o.id)} style={{ marginLeft: 'auto', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>✓ Выполнено → логисту</button>
+                  </div>
                 </div>
               ))}
             </div>

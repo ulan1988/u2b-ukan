@@ -107,7 +107,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)) } })
         const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, positions }, uid)
-        if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceDone'); showMsg('✓ Карточка создана и изготовлена') }
+        if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceAccept'); showMsg('✓ Заказ создан — в производстве') }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }
       }
       onDone()
