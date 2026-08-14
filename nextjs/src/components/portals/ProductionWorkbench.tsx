@@ -7,7 +7,7 @@ import { useState } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
 import { extractRal } from '@/lib/ral'
-import { productionCalc, SHEET_WIDTH_CM } from '@/lib/production'
+import { packSheets, SHEET_WIDTH_CM } from '@/lib/production'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
 
 const PRIMARY = '#d4613a'
@@ -31,7 +31,8 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
   const piecePrice = (r: Row) => { const auto = (Number(priceCm) || 0) * (Number(r.cm) || 0); return auto > 0 ? auto : (Number(r.price) || 0) }
   const rowSum = (r: Row) => (Number(r.qty) || 0) * piecePrice(r)
   const totalCm = rows.reduce((s, r) => s + (Number(r.cm) || 0) * (Number(r.qty) || 0), 0)
-  const calc = productionCalc([{ cm: totalCm }])
+  const pack = packSheets(rows.map(r => ({ cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })))   // минимальный раскрой
+  const remDist = (() => { const d: Record<number, number> = {}; for (const r of pack.remainders) d[r] = (d[r] || 0) + 1; return Object.entries(d).sort((a, b) => Number(a[0]) - Number(b[0])) })()
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const valid = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
 
@@ -84,6 +85,16 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
         </div>
       </div>
 
+      {/* Раскрой — сверху: минимальное число листов + остатки */}
+      {pack.sheets > 0 && (
+        <div style={{ background: '#eef7f1', border: '1.5px solid #cfeadd', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 15 }}>📐 Нужно листов: <b style={{ color: '#2e8a5e', fontSize: 18 }}>{pack.sheets}</b> <span style={{ color: '#837c72', fontSize: 12 }}>(по {SHEET_WIDTH_CM} см)</span></span>
+          <span>изделий {pack.usedCm} см · обрезь <b>{pack.wasteCm}</b> см</span>
+          {remDist.length > 0 && <span style={{ color: '#5f5952' }}>остатки: {remDist.map(([cm, n]) => `${cm}см×${n}`).join(', ')}</span>}
+          {pack.oversize > 0 && <span style={{ color: '#b03020', fontWeight: 700 }}>⚠ {pack.oversize} шт шире листа</span>}
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
           <thead><tr style={{ background: '#f8f6f3' }}>
@@ -111,7 +122,7 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
       <button onClick={() => setRows(rs => [...rs, blank()])} style={{ marginTop: 8, border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Добавить позицию</button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13 }}>📐 Материал: <b>{totalCm} см</b> ÷ {SHEET_WIDTH_CM} = ~<b style={{ color: '#2e8a5e' }}>{calc.sheets.toFixed(2)}</b> листа <span style={{ color: '#837c72' }}>(целых {calc.sheetsCeil})</span></span>
+        <span style={{ fontSize: 13, color: '#5f5952' }}>Листов: <b style={{ color: '#26231f' }}>{pack.sheets}</b> · всего {totalCm} см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
         <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#2e8a5e' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : (order?.id ? '✓ Выполнено' : '✓ Создать карточку')}</button>
       </div>

@@ -23,3 +23,29 @@ export function productionCalc(items: ProdItem[]) {
   const sheets = sheetsForCm(totalCm)
   return { totalCm, sheets, sheetsCeil: Math.ceil(sheets - 1e-9), sheetWidth: SHEET_WIDTH_CM }
 }
+
+// РАСКРОЙ (минимальный): куски изделий нельзя резать между листами, поэтому это задача
+// упаковки (bin-packing). Best-Fit-Decreasing: сорт по убыванию, каждый кусок — в лист с
+// наименьшим остатком, куда влезает; иначе новый лист. Возвращает минимальное число листов
+// и остаток (обрезь) по каждому листу. Пример: 36+36+36+15=123 → остаток 2 см на лист.
+export function packSheets(items: { cm: number; qty: number }[], sheetWidth = SHEET_WIDTH_CM) {
+  const pieces: number[] = []
+  let oversize = 0
+  for (const it of items) {
+    const w = Number(it.cm) || 0, n = Math.floor(Number(it.qty) || 0)
+    if (w <= 0 || n <= 0) continue
+    if (w > sheetWidth) { oversize += n; continue }   // шире листа — не режется
+    for (let i = 0; i < n; i++) pieces.push(w)
+  }
+  pieces.sort((a, b) => b - a)
+  const rem: number[] = []                            // остаток по каждому листу
+  for (const p of pieces) {
+    let best = -1, bestLeft = Infinity
+    for (let i = 0; i < rem.length; i++) if (rem[i] >= p - 1e-9 && rem[i] - p < bestLeft) { best = i; bestLeft = rem[i] - p }
+    if (best >= 0) rem[best] = Math.round((rem[best] - p) * 100) / 100
+    else rem.push(Math.round((sheetWidth - p) * 100) / 100)
+  }
+  const usedCm = pieces.reduce((s, p) => s + p, 0)
+  const wasteCm = rem.reduce((s, r) => s + r, 0)
+  return { sheets: rem.length, remainders: rem, usedCm, wasteCm, maxRem: rem.length ? Math.max(...rem) : 0, oversize, sheetWidth, piecesCount: pieces.length }
+}
