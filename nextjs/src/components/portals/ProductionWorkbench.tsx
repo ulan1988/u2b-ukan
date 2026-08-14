@@ -7,7 +7,8 @@ import { useState } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
-import { extractRal, RalDot } from '@/lib/ral'
+import { extractRal, RalDot, RAL_COLORS } from '@/lib/ral'
+import { overlayFor, NomItem } from '@/lib/nomTree'
 import { packByColor, SHEET_WIDTH_CM } from '@/lib/production'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
 
@@ -27,8 +28,36 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
   const [busy, setBusy] = useState(false)
   const [catalog, setCatalog] = useState(false)
+  const [showCalc, setShowCalc] = useState(false)          // расчёт раскроя — по умолчанию выкл
+  const [qColor, setQColor] = useState('')                 // наружная моделька: выбранный цвет
+  const [qKind, setQKind] = useState('')                   // …и вид из «Комплектующие»
+  const [qCm, setQCm] = useState('')                       // длина для «Изделие · см»
   function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
+
+  // Наружная моделька: сверху цвета, снизу виды из папки «Комплектующие» (Изделие/Нар.угол/H-профиль).
+  const ACC = overlayFor('комплектующие')[0]?.items || []
+  const accKind = ACC.find(k => k.key === qKind)
+  const inCompl = (p: any) => `${p.group || ''} ${p.cat || ''}`.toLowerCase().includes('комплект')
+  const norm = (s: string) => (s || '').toLowerCase().replace(/ё/g, 'е')
+  function findProd(kind: NomItem, colorCode: string) {
+    const words = kind.terms ?? [kind.label]
+    return products.filter(inCompl).filter(p => {
+      const n = norm(p.name)
+      if (!words.every(w => n.includes(norm(w)))) return false
+      if (!colorCode) return true
+      return colorCode === 'decor' ? /дерев|дуб|3d/i.test(p.name) : extractRal(p.name) === colorCode
+    }).sort((a, b) => a.name.length - b.name.length)[0]
+  }
+  function addQuick() {
+    if (!accKind) return
+    const prod = findProd(accKind, qColor)
+    const colorLabel = qColor ? (qColor === 'decor' ? 'дерево' : qColor) : ''
+    const name = prod?.name || [accKind.terms?.[0] || accKind.label, colorLabel].filter(Boolean).join(' ')
+    const row: Row = { productId: prod?.id || '', name, color: extractRal(name) || qColor, cm: accKind.measure ? qCm : '', qty: '1', price: '' }
+    setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), row])
+    setQCm('')
+  }
 
   // Выбор из каталога-модельки (NomPicker) → строки стола. Цвет и «· NN см» тянутся из имени.
   function addFromCatalog(items: PickedPos[]) {
@@ -82,6 +111,7 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
   }
 
   const th: React.CSSProperties = { padding: '6px 6px', fontSize: 11, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }
+  const qpill = (on: boolean): React.CSSProperties => ({ padding: '7px 13px', borderRadius: 20, border: 'none', fontSize: 13, fontWeight: on ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#4a4640' })
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -100,8 +130,43 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
         </div>
       </div>
 
-      {/* Раскрой — сверху: минимальное число листов, ОТДЕЛЬНО по каждому цвету листа */}
-      {pack.totalSheets > 0 && (
+      {/* Наружная моделька: сверху цвета, снизу виды из папки «Комплектующие» (Изделие/Нар.угол/H-профиль) */}
+      <div style={{ border: '1.5px solid #ece8e2', borderRadius: 12, padding: 12, marginBottom: 10, background: '#fcfbf9' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>ЦВЕТ</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9, marginBottom: 12 }}>
+          {RAL_COLORS.map(c => {
+            const on = qColor === c.code
+            return (
+              <button key={c.code} type="button" onClick={() => setQColor(on ? '' : c.code)} title={`${c.code} · ${c.name}`}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', width: 38 }}>
+                <span style={{ width: on ? 32 : 26, height: on ? 32 : 26, borderRadius: '50%', background: c.bg || c.hex, boxShadow: on ? '0 0 0 3px rgba(212,97,58,.3), inset 0 0 0 1.5px rgba(0,0,0,.12)' : 'inset 0 0 0 1.5px rgba(0,0,0,.14)', transition: 'all .12s' }} />
+                <span style={{ fontSize: 9, fontWeight: on ? 800 : 500, color: on ? PRIMARY : '#6b645b' }}>{c.code === 'decor' ? 'дерево' : c.code}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>КОМПЛЕКТУЮЩИЕ</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {ACC.map(k => <button key={k.key} type="button" onClick={() => setQKind(qKind === k.key ? '' : k.key)} style={qpill(qKind === k.key)}>{k.label}</button>)}
+        </div>
+        {accKind && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {accKind.measure && <><span style={{ fontSize: 13, color: '#5f5952' }}>Длина:</span><input style={{ ...inp, width: 80, textAlign: 'center' }} inputMode="numeric" value={qCm} onChange={e => setQCm(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="см" /><span style={{ fontSize: 13, color: '#5f5952' }}>см</span></>}
+            <button type="button" onClick={addQuick} style={{ border: 'none', borderRadius: 8, padding: '7px 16px', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>＋ Добавить{qColor ? ` · ${qColor === 'decor' ? 'дерево' : qColor}` : ''}</button>
+          </div>
+        )}
+      </div>
+
+      {/* Расчёт раскроя — тумблер, по умолчанию ВЫКЛ (включаем когда нужно) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <button type="button" onClick={() => setShowCalc(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1.5px solid #e6e2dc', borderRadius: 22, padding: '5px 13px', background: showCalc ? '#eef7f1' : '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#4a4640', fontFamily: 'inherit' }}>
+          <span style={{ width: 30, height: 17, borderRadius: 10, background: showCalc ? '#2e8a5e' : '#cfc9c0', position: 'relative', transition: 'background .15s', flexShrink: 0 }}>
+            <span style={{ position: 'absolute', top: 2, left: showCalc ? 15 : 2, width: 13, height: 13, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+          </span>
+          📐 Расчёт раскроя
+        </button>
+      </div>
+      {showCalc && pack.totalSheets > 0 && (
         <div style={{ background: '#eef7f1', border: '1.5px solid #cfeadd', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13 }}>
           <div style={{ fontSize: 15, marginBottom: 6 }}>
             📐 Нужно листов: <b style={{ color: '#2e8a5e', fontSize: 18 }}>{pack.totalSheets}</b> <span style={{ color: '#837c72', fontSize: 12 }}>(по {SHEET_WIDTH_CM} см)</span>
