@@ -14,9 +14,10 @@ import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
+import { productionCalc, SHEET_WIDTH_CM } from '@/lib/production'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
-type Tab = 'in' | 'production' | 'out' | 'new' | 'finance'
+type Tab = 'in' | 'production' | 'produce' | 'out' | 'new' | 'finance'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -54,10 +55,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Заказ на производство: карточка с позицией плеча-1 (филиал = изготовитель/поставщик), ещё не переданная логисту.
   const isProd = (o: any) => (o.positions || []).some((p: any) => Number(p.leg) === 1)
   const notForwarded = (o: any) => !['outgoing', 'accounting', 'bookkeeping', 'archive'].includes(o.screen)
-  const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && inDate(o))
+  // Заказы на производство — плечо-1, ещё НЕ принято филиалом (очередь на принятие).
+  const production = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status !== 'Принято филиалом' && inDate(o))
+  // Производство — принято филиалом, идёт изготовление (тут расчёт материала).
+  const producing = orders.filter(o => isProd(o) && !o.isCancelled && notForwarded(o) && o.status === 'Принято филиалом' && inDate(o))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && inDate(o))
   const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && inDate(o))
-  // Бейдж PWA: входящие + заказы на производство (без фильтра по дате).
+  // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
   const badgeCount = orders.filter(o => !o.isCancelled && ((isProd(o) && notForwarded(o)) || ['incoming', 'reception'].includes(o.screen))).length
 
   async function openOrder(id: string) {
@@ -170,9 +174,24 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {loading && orders.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>}
         {tab === 'in' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{incoming.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📥</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет входящих</div></div> : incoming.map(o => <OrderCard key={o.id} o={o} showActions={true} />)}</div>}
         {tab === 'production' && <div>
-          <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🛠️ Заказы через плечо — изготовить изделия, затем «Принял» → «К логисту».</div>
+          <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📋 Новые заказы через плечо. Нажми «Принял» — заказ уйдёт в «Производство».</div>
           <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-          {production.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🛠️</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : production.map(o => <OrderCard key={o.id} o={o} showActions={true} />)}
+          {production.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : production.map(o => <OrderCard key={o.id} o={o} showActions={true} />)}
+        </div>}
+        {tab === 'produce' && <div>
+          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Мастер-стол: 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материала нужно = см изделий ÷ {SHEET_WIDTH_CM}.</div>
+          <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
+          {producing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство».</div></div>
+            : producing.map(o => {
+              const cm = (o.positions || []).reduce((s: number, p: any) => s + (String(p.unit || '').includes('см') ? Number(p.qty) || 0 : 0), 0)
+              const calc = productionCalc([{ cm }])
+              return (
+                <div key={o.id}>
+                  {cm > 0 && <div style={{ background: '#fff', border: '1.5px solid #cfeadd', borderRadius: '10px 10px 0 0', padding: '8px 14px', fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: -6 }}>📐 Изделий: <b>{cm} см</b><span>→ материала ~<b style={{ color: '#2e8a5e' }}>{calc.sheets.toFixed(2)}</b> листа (целых {calc.sheetsCeil})</span></div>}
+                  <OrderCard o={o} showActions={true} />
+                </div>
+              )
+            })}
         </div>}
         {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
         {tab === 'new' && (
@@ -200,7 +219,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'in' as Tab, icon: '📥', label: 'Входящие', badge: incoming.length }, { key: 'production' as Tab, icon: '🛠️', label: 'Заказы на производство', badge: production.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'in' as Tab, icon: '📥', label: 'Входящие', badge: incoming.length }, { key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: production.length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}
