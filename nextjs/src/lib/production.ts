@@ -49,3 +49,26 @@ export function packSheets(items: { cm: number; qty: number }[], sheetWidth = SH
   const wasteCm = rem.reduce((s, r) => s + r, 0)
   return { sheets: rem.length, remainders: rem, usedCm, wasteCm, maxRem: rem.length ? Math.max(...rem) : 0, oversize, sheetWidth, piecesCount: pieces.length }
 }
+
+// Раскрой ПО ЦВЕТАМ: лист одного цвета нельзя резать под изделие другого цвета, поэтому
+// пакуем каждый цвет отдельно. Цвет берётся из изделия. Возвращает раскрой по каждому
+// цвету + суммарно листов/обрезь.
+export function packByColor(items: { color: string; cm: number; qty: number }[], sheetWidth = SHEET_WIDTH_CM) {
+  const groups = new Map<string, { cm: number; qty: number }[]>()
+  for (const it of items) {
+    if (!(Number(it.cm) > 0) || !(Number(it.qty) > 0)) continue
+    const c = (it.color || '').trim() || '—'
+    if (!groups.has(c)) groups.set(c, [])
+    groups.get(c)!.push({ cm: it.cm, qty: it.qty })
+  }
+  const byColor = Array.from(groups.entries())
+    .map(([color, its]) => ({ color, ...packSheets(its, sheetWidth) }))
+    .sort((a, b) => b.sheets - a.sheets)
+  return {
+    byColor,
+    totalSheets: byColor.reduce((s, g) => s + g.sheets, 0),
+    totalWasteCm: byColor.reduce((s, g) => s + g.wasteCm, 0),
+    totalUsedCm: byColor.reduce((s, g) => s + g.usedCm, 0),
+    oversize: byColor.reduce((s, g) => s + g.oversize, 0),
+  }
+}
