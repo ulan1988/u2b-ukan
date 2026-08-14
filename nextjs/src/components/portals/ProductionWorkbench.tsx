@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
+import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot } from '@/lib/ral'
 import { packByColor, SHEET_WIDTH_CM } from '@/lib/production'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
@@ -25,8 +26,21 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
   const [priceCm, setPriceCm] = useState('')
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
   const [busy, setBusy] = useState(false)
+  const [catalog, setCatalog] = useState(false)
   function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
+
+  // Выбор из каталога-модельки (NomPicker) → строки стола. Цвет и «· NN см» тянутся из имени.
+  function addFromCatalog(items: PickedPos[]) {
+    const add: Row[] = items.map(it => {
+      const nm = (it.name1c || it.oral || '').trim()
+      const cmM = nm.match(/(\d+)\s*см/)
+      const clean = nm.replace(/\s*·?\s*\d+\s*см\s*$/, '').trim() || nm
+      return { productId: '', name: clean, color: extractRal(clean), cm: cmM ? cmM[1] : '', qty: String(it.qty || 1), price: '' }
+    })
+    setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), ...add])
+    setCatalog(false)
+  }
   // тг за шт = цена_за_см × см (если заданы), иначе ручная цена
   const piecePrice = (r: Row) => { const auto = (Number(priceCm) || 0) * (Number(r.cm) || 0); return auto > 0 ? auto : (Number(r.price) || 0) }
   const rowSum = (r: Row) => (Number(r.qty) || 0) * piecePrice(r)
@@ -133,7 +147,11 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
           </tbody>
         </table>
       </div>
-      <button onClick={() => setRows(rs => [...rs, blank()])} style={{ marginTop: 8, border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Добавить позицию</button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => setCatalog(true)} style={{ border: 'none', borderRadius: 8, padding: '7px 16px', background: PRIMARY, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>📖 Каталог</button>
+        <button onClick={() => setRows(rs => [...rs, blank()])} style={{ border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Пустая строка</button>
+      </div>
+      {catalog && <NomPicker onPick={addFromCatalog} onClose={() => setCatalog(false)} />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: '#5f5952' }}>Листов: <b style={{ color: '#26231f' }}>{pack.totalSheets}</b> · всего {totalCm} см</span>
