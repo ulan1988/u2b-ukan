@@ -20,6 +20,15 @@ export const RAL_COLORS: RalColor[] = [
 
 export const RAL_BY_CODE: Record<string, RalColor> = Object.fromEntries(RAL_COLORS.map(c => [c.code, c]))
 
+// Избранные (ходовые) цвета — показываем всегда сверху; остальные прячем под «глазок».
+export const FAVORITE_RAL = ['9003', '7024', '7004', '8017', '1015', '2004']
+// Порядок цветов для модельки: сначала избранные, при showAll — дальше остальные.
+export function ralOrdered(showAll: boolean): RalColor[] {
+  const favs = FAVORITE_RAL.map(code => RAL_BY_CODE[code]).filter(Boolean)
+  if (!showAll) return favs
+  return [...favs, ...RAL_COLORS.filter(c => !FAVORITE_RAL.includes(c.code))]
+}
+
 // Извлечь RAL-код из имени: RAL 1234 или голый 4-значный код из палитры.
 export function extractRal(name: string): string {
   const m = (name || '').match(/RAL\s?(\d{4})/i)

@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { overlayFor } from '@/lib/nomTree'
-import { RAL_COLORS, RAL_BY_CODE, RalDot, extractRal } from '@/lib/ral'
+import { RAL_BY_CODE, RalDot, extractRal, ralOrdered } from '@/lib/ral'
 
 const PRIMARY = '#d4613a'
 const GLOW = '0 0 0 4px rgba(212,97,58,.25)'
@@ -19,6 +19,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [allItems, setAllItems] = useState<NomFull[]>([])
   const [loaded, setLoaded] = useState(false)
   const [color, setColor] = useState('')
+  const [showAllColors, setShowAllColors] = useState(false)   // избранные / все цвета (глазок)
   const [selG, setSelG] = useState('')      // группа
   const [selC, setSelC] = useState('')      // папка (категория)
   const [selS, setSelS] = useState('')      // подпапка (подгруппа)
@@ -172,7 +173,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
           <div>
             <div style={LBL}>ЦВЕТ</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-start' }}>
-              {RAL_COLORS.map(c => {
+              {ralOrdered(showAllColors).map(c => {
                 const on = color === c.code
                 return (
                   <button key={c.code} onClick={() => pickColor(c.code)} title={`${c.code} · ${c.name}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', width: 40 }}>
@@ -181,6 +182,10 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
                   </button>
                 )
               })}
+              <button key="more" onClick={() => setShowAllColors(v => !v)} title={showAllColors ? 'Скрыть' : 'Показать все цвета'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', width: 40 }}>
+                <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#f1efec', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,.1)' }}>{showAllColors ? '🙈' : '👁'}</span>
+                <span style={{ fontSize: 9.5, color: '#6b645b', textAlign: 'center', lineHeight: 1.1 }}>{showAllColors ? 'скрыть' : 'ещё'}</span>
+              </button>
               {(() => {
                 const on = color === NOCOLOR
                 return (

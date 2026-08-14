@@ -7,7 +7,7 @@ import { useState } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
-import { extractRal, RalDot, RAL_COLORS } from '@/lib/ral'
+import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { packByColor, SHEET_WIDTH_CM } from '@/lib/production'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
@@ -30,6 +30,7 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
   const [catalog, setCatalog] = useState(false)
   const [showCalc, setShowCalc] = useState(false)          // расчёт раскроя — по умолчанию выкл
   const [qColor, setQColor] = useState('')                 // наружная моделька: выбранный цвет
+  const [allColors, setAllColors] = useState(false)        // показать все цвета (глазок)
   const [qKind, setQKind] = useState('')                   // …и вид из «Комплектующие»
   const [qCm, setQCm] = useState('')                       // длина для «Изделие · см»
   function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
@@ -133,8 +134,8 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
       {/* Наружная моделька: сверху цвета, снизу виды из папки «Комплектующие» (Изделие/Нар.угол/H-профиль) */}
       <div style={{ border: '1.5px solid #ece8e2', borderRadius: 12, padding: 12, marginBottom: 10, background: '#fcfbf9' }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>ЦВЕТ</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9, marginBottom: 12 }}>
-          {RAL_COLORS.map(c => {
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9, marginBottom: 12, alignItems: 'flex-start' }}>
+          {ralOrdered(allColors).map(c => {
             const on = qColor === c.code
             return (
               <button key={c.code} type="button" onClick={() => setQColor(on ? '' : c.code)} title={`${c.code} · ${c.name}`}
@@ -144,6 +145,11 @@ export default function ProductionWorkbench({ order, contragents, products, onDo
               </button>
             )
           })}
+          <button type="button" onClick={() => setAllColors(v => !v)} title={allColors ? 'Скрыть' : 'Показать все цвета'}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', width: 38 }}>
+            <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#f1efec', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,.1)' }}>{allColors ? '🙈' : '👁'}</span>
+            <span style={{ fontSize: 9, color: '#6b645b' }}>{allColors ? 'скрыть' : 'ещё'}</span>
+          </button>
         </div>
         <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>КОМПЛЕКТУЮЩИЕ</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
