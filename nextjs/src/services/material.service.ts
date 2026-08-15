@@ -25,20 +25,31 @@ export async function editSpecType(id: string, i: { name?: string; widthCm?: num
 // ── Склад материала ──
 export const materialStock = (orgId: string) => repo.listMaterialPieces(orgId)
 
-// Приход листов (целых). Если такой кусок уже есть — увеличиваем кол-во.
+// Найти кусок-лист (для upsert по совпадению).
+async function findSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm: number; lengthCm: number }) {
+  return (await repo.listMaterialPieces(orgId)).find((p: any) =>
+    (p.productId || null) === (i.productId || null) && (p.color || '') === (i.color || '') &&
+    Number(p.widthCm) === Number(i.widthCm) && Number(p.lengthCm) === Number(i.lengthCm) &&
+    p.kind === 'sheet' && (p.warehouseId || null) === (i.warehouseId || null))
+}
+
+// Приход листов (целых) — из приходной накладной. Увеличивает кол-во. (Не UI-кнопка.)
 export async function addSheets(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
-  const widthCm = i.widthCm || SHEET_WIDTH_CM
-  const lengthCm = i.lengthCm || SHEET_LENGTH_CM
+  const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM
   const qty = Math.max(0, Math.round(Number(i.qty) || 0))
   if (qty <= 0) return { ok: false as const, error: 'Кол-во должно быть > 0' }
-  const same = (await repo.listMaterialPieces(orgId)).find((p: any) =>
-    (p.productId || null) === (i.productId || null) && (p.color || '') === (i.color || '') &&
-    Number(p.widthCm) === Number(widthCm) && Number(p.lengthCm) === Number(lengthCm) &&
-    p.kind === 'sheet' && (p.warehouseId || null) === (i.warehouseId || null))
+  const same = await findSheet(orgId, { ...i, widthCm, lengthCm })
   if (same) { const [u] = await repo.updateMaterialQty(same.id, Number(same.qty) + qty); return { ok: true as const, piece: u } }
-  const [p] = await repo.insertMaterialPiece({
-    orgId, warehouseId: i.warehouseId || null, productId: i.productId || null,
-    color: i.color || '', widthCm: String(widthCm), lengthCm: String(lengthCm), qty, kind: 'sheet',
-  })
+  const [p] = await repo.insertMaterialPiece({ orgId, warehouseId: i.warehouseId || null, productId: i.productId || null, color: i.color || '', widthCm: String(widthCm), lengthCm: String(lengthCm), qty, kind: 'sheet' })
+  return { ok: true as const, piece: p }
+}
+
+// РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
+export async function reviseSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
+  const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM
+  const qty = Math.max(0, Math.round(Number(i.qty) || 0))   // 0 допустим (обнуление при недостаче)
+  const same = await findSheet(orgId, { ...i, widthCm, lengthCm })
+  if (same) { const [u] = await repo.updateMaterialQty(same.id, qty); return { ok: true as const, piece: u } }
+  const [p] = await repo.insertMaterialPiece({ orgId, warehouseId: i.warehouseId || null, productId: i.productId || null, color: i.color || '', widthCm: String(widthCm), lengthCm: String(lengthCm), qty, kind: 'sheet' })
   return { ok: true as const, piece: p }
 }

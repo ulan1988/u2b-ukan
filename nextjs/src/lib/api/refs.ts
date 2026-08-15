@@ -61,7 +61,7 @@ export const listSpecTypes = (orgId: string) => getArray(`/api/spec-types?orgId=
 export const createSpecType = (b: any) => post('/api/spec-types', b)
 export const editSpecType = (id: string, b: any) => patch(`/api/spec-types/${id}`, b)
 export const materialStock = (orgId: string) => getArray(`/api/material?orgId=${orgId}`)
-export const addSheets = (b: any) => post('/api/material', b)
+export const reviseSheet = (b: any) => post('/api/material', b)   // ревизия склада материала (факт кол-ва)
 
 export const autoPrices = (productIds: string[], contragentId?: string) =>
   getObj(`/api/pricing?productIds=${productIds.join(',')}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})

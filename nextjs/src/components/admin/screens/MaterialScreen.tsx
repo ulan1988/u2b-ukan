@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { extractRal, RalDot } from '@/lib/ral'
 import { SHEET_WIDTH_CM, SHEET_LENGTH_CM, MIN_REMNANT_CM } from '@/lib/production'
-import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, addSheets } from '@/lib/api/refs'
+import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, reviseSheet } from '@/lib/api/refs'
 
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: `1.5px solid ${COLORS.border}`, background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 5, display: 'block', letterSpacing: '.04em' }
@@ -37,14 +37,14 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   }
   async function archiveType(id: string) { await editSpecType(id, { archived: true }); loadTypes(); showMsg('🗃 В архив') }
 
-  // ── Склад материала (приход листов) ──
+  // ── Склад материала: РЕВИЗИЯ (факт кол-ва). Обычный приход — из приходной накладной. ──
   const [mProd, setMProd] = useState(''); const [mQty, setMQty] = useState('')
-  async function addLists() {
+  async function reviseLists() {
     if (!mProd) { showMsg('Выберите лист'); return }
-    if (!num(mQty)) { showMsg('Кол-во листов > 0'); return }
+    if (mQty === '') { showMsg('Укажите фактическое кол-во'); return }
     const p = materials.find(x => x.id === mProd)
-    const r: any = await addSheets({ orgId, productId: mProd, color: extractRal(p?.name) || (p?.name || '').slice(0, 12), widthCm: SHEET_WIDTH_CM, lengthCm: SHEET_LENGTH_CM, qty: num(mQty) })
-    if (r.ok) { setMQty(''); showMsg(`✅ +${num(mQty)} листов`); loadStock() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
+    const r: any = await reviseSheet({ orgId, productId: mProd, color: extractRal(p?.name) || (p?.name || '').slice(0, 12), widthCm: SHEET_WIDTH_CM, lengthCm: SHEET_LENGTH_CM, qty: num(mQty) })
+    if (r.ok) { setMQty(''); showMsg(`✅ Ревизия: ${num(mQty)} листов`); loadStock() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
   // группировка склада по цвету
   const stockByColor: Record<string, any[]> = {}
@@ -54,6 +54,9 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   const [bindSearch, setBindSearch] = useState('')
   const inCompl = (p: any) => `${p.group || ''} ${p.cat || ''} ${p.subgroup || ''}`.toLowerCase().includes('комплект')
   const goods = products.filter((p: any) => p.category === 'goods' && !p.archived && inCompl(p))
+  // Базовые комплектующие (для выбора типа) — записи «Без цвета»; если их нет — все комплектующие.
+  const baseCompl = goods.filter((p: any) => /без\s*цвет/i.test(p.subgroup || ''))
+  const typeOptions = baseCompl.length ? baseCompl : goods
   const q = bindSearch.trim().toLowerCase()
   const bindList = (q ? goods.filter((p: any) => p.name.toLowerCase().includes(q)) : goods).slice(0, 60)
   async function bindType(productId: string, specTypeId: string) {
@@ -77,7 +80,13 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
         <div style={{ maxWidth: 760 }}>
           <div style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 180px' }}><label style={LBL}>ТИП ИЗДЕЛИЯ</label><input style={INP} value={tName} onChange={e => setTName(e.target.value)} placeholder="Н-профиль" /></div>
+              <div style={{ flex: '1 1 220px' }}>
+                <label style={LBL}>ТИП ИЗ НОМЕНКЛАТУРЫ (Комплектующие)</label>
+                <select value={tName} onChange={e => setTName(e.target.value)} style={{ ...INP, cursor: 'pointer' }}>
+                  <option value="">— выберите комплектующее —</option>
+                  {typeOptions.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                </select>
+              </div>
               <div style={{ width: 90 }}><label style={LBL}>ШИРИНА СМ</label><input style={INP} inputMode="decimal" value={tWidth} onChange={e => setTWidth(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="18" /></div>
               <div style={{ width: 90 }}><label style={LBL}>ДЛИНА СМ</label><input style={INP} inputMode="decimal" value={tLen} onChange={e => setTLen(e.target.value.replace(/[^0-9.,]/g, ''))} /></div>
               <div style={{ width: 100 }}><label style={LBL}>СТАВКА/ШТ</label><input style={INP} inputMode="decimal" value={tRate} onChange={e => setTRate(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="0" /></div>
@@ -106,7 +115,7 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
       {tab === 'stock' && (
         <div style={{ maxWidth: 760 }}>
           <div style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, padding: 16, marginBottom: 16 }}>
-            <label style={LBL}>ПРИХОД ЛИСТОВ ({SHEET_WIDTH_CM}×{SHEET_LENGTH_CM})</label>
+            <label style={LBL}>РЕВИЗИЯ ЛИСТОВ ({SHEET_WIDTH_CM}×{SHEET_LENGTH_CM}) — выставить факт</label>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 260px' }}>
                 <select value={mProd} onChange={e => setMProd(e.target.value)} style={{ ...INP, cursor: 'pointer' }}>
@@ -114,9 +123,10 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
                   {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
-              <div style={{ width: 110 }}><input style={INP} inputMode="numeric" value={mQty} onChange={e => setMQty(e.target.value.replace(/\D/g, ''))} placeholder="листов" /></div>
-              <button onClick={addLists} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>＋ Приход</button>
+              <div style={{ width: 130 }}><input style={INP} inputMode="numeric" value={mQty} onChange={e => setMQty(e.target.value.replace(/\D/g, ''))} placeholder="факт, листов" /></div>
+              <button onClick={reviseLists} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>Провести ревизию</button>
             </div>
+            <div style={{ fontSize: 12, color: COLORS.textLight, marginTop: 8 }}>Обычный приход листов идёт из приходной накладной. Здесь — только ревизия (списание/недостачи).</div>
           </div>
           {Object.keys(stockByColor).length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Склад материала пуст. Оприходуйте листы.</div>
             : Object.entries(stockByColor).map(([color, pieces]) => (
