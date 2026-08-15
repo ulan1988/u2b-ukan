@@ -9,10 +9,11 @@ import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
-import { packByColor, SHEET_WIDTH_CM } from '@/lib/production'
+import { optimizeCut, SHEET_WIDTH_CM } from '@/lib/production'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
 
 const PRIMARY = '#d4613a'
+const SEG = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7', '#e34948', '#008300']   // цвета сегментов реза
 interface Row { id?: string; productId: string; name: string; color: string; cm: string; qty: string; price: string }
 const inp: React.CSSProperties = { padding: '6px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
@@ -77,7 +78,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const totalCm = rows.reduce((s, r) => s + (Number(r.cm) || 0) * (Number(r.qty) || 0), 0)
   // Цвет берём из изделия (extractRal). Раскрой ОТДЕЛЬНО по каждому цвету — лист одного
   // цвета нельзя резать под изделие другого.
-  const pack = packByColor(rows.map(r => ({ color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })))
+  const pack = optimizeCut(rows.map(r => ({ name: r.name || 'Изделие', color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })), SHEET_WIDTH_CM)
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
   const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика
@@ -180,24 +181,38 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       </div>
       {showCalc && pack.totalSheets > 0 && (
         <div style={{ background: '#eef7f1', border: '1.5px solid #cfeadd', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13 }}>
-          <div style={{ fontSize: 15, marginBottom: 6 }}>
-            📐 Нужно листов: <b style={{ color: '#2e8a5e', fontSize: 18 }}>{pack.totalSheets}</b> <span style={{ color: '#837c72', fontSize: 12 }}>(по {SHEET_WIDTH_CM} см)</span>
-            {pack.byColor.length > 1 && <span style={{ color: '#837c72', fontSize: 12 }}> · {pack.byColor.length} цвета — считаются отдельно</span>}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 8 }}>
+            <span style={{ fontSize: 15 }}>📐 Листов: <b style={{ color: '#2e8a5e', fontSize: 18 }}>{pack.totalSheets}</b> <span style={{ color: '#837c72', fontSize: 12 }}>(по {pack.sheetWidth} см)</span></span>
+            <span>обрезь <b>{pack.totalWaste}</b> см</span>
+            <span>КПД <b style={{ color: pack.totalEff >= 90 ? '#2e8a5e' : '#b07a00' }}>{pack.totalEff}%</b></span>
+            {pack.oversize > 0 && <span style={{ color: '#b03020', fontWeight: 700 }}>⚠ {pack.oversize} шт шире листа</span>}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {pack.byColor.map(g => {
-              const d: Record<number, number> = {}; for (const rm of g.remainders) d[rm] = (d[rm] || 0) + 1
-              const rd = Object.entries(d).sort((a, b) => Number(a[0]) - Number(b[0]))
-              return (
-                <div key={g.color} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <RalDot code={g.color} /><b style={{ minWidth: 44 }}>{g.color}</b>
-                  <span><b style={{ color: '#2e8a5e' }}>{g.sheets}</b> лист · обрезь {g.wasteCm} см</span>
-                  {rd.length > 0 && <span style={{ color: '#837c72' }}>остатки: {rd.map(([cm, n]) => `${cm}см×${n}`).join(', ')}</span>}
-                  {g.oversize > 0 && <span style={{ color: '#b03020', fontWeight: 700 }}>⚠ {g.oversize} шире листа</span>}
+          {pack.byColor.map(g => {
+            const d: Record<number, number> = {}; for (const sh of g.sheets) if (sh.waste > 0) d[sh.waste] = (d[sh.waste] || 0) + 1
+            const rd = Object.entries(d).sort((a, b) => Number(a[0]) - Number(b[0]))
+            return (
+              <div key={g.color} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #d7ecdf' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
+                  <RalDot code={g.color} /><b>{g.color}</b>
+                  <span style={{ color: '#5f5952' }}>{g.count} лист · обрезь {g.waste} см · КПД {g.eff}%</span>
                 </div>
-              )
-            })}
-          </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {g.sheets.map((sh, si) => (
+                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10, color: '#9a938a', width: 42, flexShrink: 0 }}>Лист {si + 1}</span>
+                      <div style={{ flex: 1, height: 20, borderRadius: 4, background: '#eee', border: '1px solid #e0e0e0', overflow: 'hidden', display: 'flex' }}>
+                        {sh.segs.map((seg, gi) => (
+                          <div key={gi} title={`${seg.name} — ${seg.cm} см`} style={{ width: `${seg.cm / pack.sheetWidth * 100}%`, background: SEG[seg.ci % SEG.length], borderLeft: gi > 0 ? '1px solid rgba(255,255,255,.3)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', overflow: 'hidden', whiteSpace: 'nowrap' }}>{seg.cm / pack.sheetWidth > 0.06 ? seg.cm : ''}</div>
+                        ))}
+                        {sh.waste > 0 && <div title={`обрезь ${sh.waste} см`} style={{ width: `${sh.waste / pack.sheetWidth * 100}%`, background: '#fff0f0', color: '#e34948', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>{sh.waste / pack.sheetWidth > 0.05 ? sh.waste : ''}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {rd.length > 0 && <div style={{ marginTop: 5, color: '#837c72', fontSize: 12 }}>остатки: {rd.map(([cm, n]) => `${cm}см×${n}`).join(', ')}</div>}
+              </div>
+            )
+          })}
         </div>
       )}
 

@@ -72,3 +72,100 @@ export function packByColor(items: { color: string; cm: number; qty: number }[],
     oversize: byColor.reduce((s, g) => s + g.oversize, 0),
   }
 }
+
+// ── ОПТИМИЗАТОР РАСКРОЯ (порт cutting_calculator) ──────────────────────────────
+// Генерит все валидные паттерны реза для листа и жадно подбирает минимальный набор
+// листов на КАЖДЫЙ цвет. Даёт листы с сегментами (для визуализации), обрезь и КПД.
+export interface CutItemIn { name: string; color: string; cm: number; qty: number }
+export interface CutSeg { cm: number; name: string; ci: number }
+export interface CutSheet { segs: CutSeg[]; waste: number }
+export interface CutColor { color: string; sheets: CutSheet[]; count: number; waste: number; eff: number; items: { name: string; cm: number; qty: number }[] }
+
+// Все паттерны реза (мультимножества кусков, влезающие в лист SL с зазором GAP).
+// Одиночные паттерны добавляем всегда — гарантия полного покрытия даже при обрыве по cap.
+function genPatterns(items: { w: number }[], SL: number, GAP: number, cap = 200000) {
+  const n = items.length
+  const valid: { counts: number[]; waste: number }[] = []
+  const seen = new Set<string>()
+  let nodes = 0
+  const add = (cur: number[], rem: number) => {
+    const key = cur.join(',')
+    if (!seen.has(key) && cur.some(c => c > 0)) { seen.add(key); valid.push({ counts: [...cur], waste: Math.round(rem * 100) / 100 }) }
+  }
+  const gen = (i: number, rem: number, cur: number[]) => {
+    if (nodes++ > cap) return
+    add(cur, rem)
+    for (let j = i; j < n; j++) {
+      const cut = items[j].w + (cur.reduce((s, c) => s + c, 0) > 0 ? GAP : 0)
+      if (rem >= cut) { cur[j]++; gen(j, rem - cut, cur); cur[j]-- }
+    }
+  }
+  gen(0, SL, new Array(n).fill(0))
+  for (let i = 0; i < n; i++) { const cur = new Array(n).fill(0); cur[i] = 1; add(cur, SL - items[i].w) }
+  return valid
+}
+
+// Жадный подбор паттернов под нужные количества (минимум обрези).
+function solveGroup(items: { w: number; q: number }[], SL: number, GAP: number) {
+  const patterns = genPatterns(items, SL, GAP)
+  const n = items.length
+  const remaining = items.map(it => it.q)
+  const used: { counts: number[]; waste: number }[] = []
+  const sorted = [...patterns].sort((a, b) => a.waste - b.waste)
+  let guard = 0
+  while (remaining.some(r => r > 0) && guard++ < 100000) {
+    let best: { p: { counts: number[]; waste: number }; times: number } | null = null, bestScore = -1
+    for (const p of sorted) {
+      let useful = false
+      for (let i = 0; i < n; i++) if (p.counts[i] > 0 && remaining[i] > 0) { useful = true; break }
+      if (!useful) continue
+      let times = Infinity
+      for (let i = 0; i < n; i++) if (p.counts[i] > 0) times = Math.min(times, Math.ceil(remaining[i] / p.counts[i]))
+      times = Math.max(1, times)
+      let covered = 0
+      for (let i = 0; i < n; i++) covered += Math.min(p.counts[i] * times, remaining[i]) * items[i].w
+      const score = covered / (p.waste + 0.1)
+      if (score > bestScore) { bestScore = score; best = { p, times } }
+    }
+    if (!best) break
+    let maxT = Infinity
+    for (let i = 0; i < n; i++) if (best.p.counts[i] > 0) maxT = Math.min(maxT, Math.ceil(remaining[i] / best.p.counts[i]))
+    for (let t = 0; t < Math.max(1, maxT); t++) {
+      used.push({ counts: [...best.p.counts], waste: best.p.waste })
+      for (let i = 0; i < n; i++) remaining[i] = Math.max(0, remaining[i] - best.p.counts[i])
+    }
+  }
+  return used
+}
+
+export function optimizeCut(items: CutItemIn[], sheetWidth = SHEET_WIDTH_CM, gap = 0) {
+  const groups = new Map<string, CutItemIn[]>()
+  let oversize = 0
+  for (const it of items) {
+    const w = Number(it.cm) || 0, q = Math.floor(Number(it.qty) || 0)
+    if (w <= 0 || q <= 0) continue
+    if (w > sheetWidth) { oversize += q; continue }
+    const c = (it.color || '').trim() || '—'
+    if (!groups.has(c)) groups.set(c, [])
+    groups.get(c)!.push({ name: it.name, color: c, cm: w, qty: q })
+  }
+  const byColor: CutColor[] = []
+  let totalSheets = 0, totalWaste = 0
+  for (const [color, its] of Array.from(groups.entries())) {
+    const used = solveGroup(its.map(it => ({ w: it.cm, q: it.qty })), sheetWidth, gap)
+    const sheets: CutSheet[] = used.map(p => {
+      const segs: CutSeg[] = []
+      its.forEach((it, ii) => { for (let k = 0; k < p.counts[ii]; k++) segs.push({ cm: it.cm, name: it.name, ci: ii }) })
+      return { segs, waste: p.waste }
+    })
+    const count = sheets.length
+    const waste = Math.round(sheets.reduce((s, sh) => s + sh.waste, 0) * 100) / 100
+    const eff = count ? Math.round((1 - waste / (count * sheetWidth)) * 100) : 0
+    totalSheets += count; totalWaste += waste
+    byColor.push({ color, sheets, count, waste, eff, items: its.map(it => ({ name: it.name, cm: it.cm, qty: it.qty })) })
+  }
+  byColor.sort((a, b) => b.count - a.count)
+  totalWaste = Math.round(totalWaste * 100) / 100
+  const totalEff = totalSheets ? Math.round((1 - totalWaste / (totalSheets * sheetWidth)) * 100) : 0
+  return { byColor, totalSheets, totalWaste, totalEff, oversize, sheetWidth }
+}
