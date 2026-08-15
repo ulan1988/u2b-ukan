@@ -82,7 +82,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     const positions = rows.filter(r => r.name1c || r.productId).map(r => ({
       productId: r.productId || undefined, name1c: r.name1c, oral: r.name1c, qty: Number(r.qty) || 0, unit: r.unit,
       widthCm: r.widthCm ? Number(r.widthCm) : undefined,
-      price: Number(r.price) || 0, respUserId: r.respUserId || undefined, supplierId: kind === 'purchase' ? (r.supplierId || undefined) : undefined,
+      price: Number(r.price) || 0, respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
       deadline: r.deadline || undefined, payment: r.payment || '',
     }))
     const body: any = {
@@ -176,7 +176,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
-                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', ...(kind === 'purchase' ? ['ПОСТАВЩИК'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', 'ПОСТАВЩИК', 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec' }}>
@@ -186,7 +186,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 100 }}><input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
-                      {kind === 'purchase' && <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={defaultCagId} onPick={c => setRow(i, { supplierId: c.id })} placeholder="— поставщик —" style={{ fontSize: 13 }} /></td>}
+                      <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => setRow(i, { supplierId: c.id })} placeholder={kind === 'purchase' ? '— поставщик —' : '— производитель —'} style={{ fontSize: 13 }} /></td>
                       <td style={{ padding: '6px 4px', width: 120 }}><input style={inpSm} type="date" value={r.deadline} onChange={e => setRow(i, { deadline: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 120 }}><select style={inpSm} value={r.payment} onChange={e => setRow(i, { payment: e.target.value })}>{PAY.map(p => <option key={p} value={p}>{p || '—'}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 60 }}>
