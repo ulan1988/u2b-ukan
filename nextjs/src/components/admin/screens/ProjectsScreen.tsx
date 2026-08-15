@@ -62,7 +62,7 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
     setBusy(true)
     const r: any = await carveCard(detail.project.id, { lines, contactId: carveContact || undefined, comment: carveComment || undefined })
     setBusy(false)
-    if (r?.ok || r?.id) { showMsg(`✅ Карточка ${r.id || ''} создана в Приёмке`); await onReload?.(); await openDetail(detail.project.id) }
+    if (r?.ok) { showMsg(`✅ Карточка ${r.data?.id || ''} создана в Приёмке`); await onReload?.(); await openDetail(detail.project.id) }
     else showMsg('⚠ ' + (r?.error || 'Не удалось вынести'))
   }
 

@@ -53,6 +53,8 @@ export const createSpecProject = (b: any) => post('/api/spec-projects', b)
 export const listSpecProjects = (orgId: string) => getArray(`/api/spec-projects?orgId=${orgId}`)
 export const specProjectDetail = (id: string) => getObj(`/api/spec-projects/${id}`, null as any)
 export const carveCard = (projectId: string, b: any) => post(`/api/spec-projects/${projectId}/carve`, b)
+// Кабинет мастера: вынести часть спец-проекта сразу к логисту (минуя производство).
+export const carveToLogist = (projectId: string, lines: { specItemId: string; qty: number }[]) => post(`/api/spec-projects/${projectId}/carve`, { mode: 'logist', lines })
 
 export const autoPrices = (productIds: string[], contragentId?: string) =>
   getObj(`/api/pricing?productIds=${productIds.join(',')}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})

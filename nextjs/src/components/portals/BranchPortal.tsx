@@ -12,14 +12,15 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, setProdStage } from '@/lib/api/orders'
-import { fetchRefs } from '@/lib/api/refs'
+import { fetchRefs, listSpecProjects, carveToLogist } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import { SHEET_WIDTH_CM } from '@/lib/production'
 import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
+import SpecProjectWorkbench from '@/components/portals/SpecProjectWorkbench'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
-type Tab = 'production' | 'produce' | 'out' | 'new' | 'finance'
+type Tab = 'production' | 'spec' | 'produce' | 'out' | 'new' | 'finance'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -50,6 +51,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false)
+  const [specProjects, setSpecProjects] = useState<any[]>([]); const [showSpecBuilder, setShowSpecBuilder] = useState(false); const [specQ, setSpecQ] = useState<Record<string, string>>({})
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
   const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
@@ -60,9 +62,19 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])
   // Пауза live-обновления пока идёт правка: каталог, правка кол-ва, чат, заполнение прямого
   // заказа мастера (showDirect) или открыта шторка — иначе перезагрузка списка сбрасывает ввод.
-  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null
+  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null || showSpecBuilder
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { setSelected(null); setDetailTab('positions') }, [tab])
+
+  // Спец-проекты мастера (очередь) — грузим при заходе на вкладку.
+  const loadSpec = useCallback(async () => { setSpecProjects(await listSpecProjects(user.orgId)) }, [user.orgId])
+  useEffect(() => { if (tab === 'spec') loadSpec() }, [tab, loadSpec])
+  // Вынести часть позиции спец-проекта → сразу к логисту (Исходящие), остаток вычитается.
+  async function carveLogist(projectId: string, specItemId: string, qty: number) {
+    const r: any = await carveToLogist(projectId, [{ specItemId, qty }])
+    if (r.ok) { showMsg(`✓ ${qty} шт → логисту${r.data?.id ? ' (' + r.data.id + ')' : ''}`); setSpecQ(p => { const n = { ...p }; delete n[specItemId]; return n }); await loadSpec(); await load() }
+    else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
 
   const inDate = (o: any) => inPeriod(o.createdAt, period, day)
   // Заказ на производство: карточка с позицией плеча-1 (филиал = изготовитель/поставщик), ещё не переданная логисту.
@@ -346,6 +358,42 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
           {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o)} />)}
         </div>}
+        {tab === 'spec' && <div>
+          <div style={{ background: '#e8f1ff', color: '#2a5aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🎨 Свои комплектующие: набери позиции, увидь раскрой, отрабатывай тут. Готовое (можно частью) → сразу логисту.</div>
+          <button onClick={() => setShowSpecBuilder(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showSpecBuilder ? '1.5px solid #e6e2dc' : 'none', background: showSpecBuilder ? '#fff' : PRIMARY, color: showSpecBuilder ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showSpecBuilder ? '× Отмена' : '＋ Новый спец-проект'}</button>
+          {showSpecBuilder && <SpecProjectWorkbench products={products} showMsg={showMsg} onDone={() => { setShowSpecBuilder(false); loadSpec() }} />}
+          {/* Очередь спец-проектов */}
+          {specProjects.length === 0 && !showSpecBuilder ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🎨</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Очередь пуста</div><div style={{ fontSize: 13, color: '#5f5952' }}>Создай спец-проект — набери комплектующие с раскроем.</div></div>
+            : specProjects.map((sp: any) => {
+              const done = sp.items.every((i: any) => Number(i.remaining) <= 0)
+              return (
+                <div key={sp.id} style={{ background: '#fff', borderRadius: 14, marginBottom: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '14px 16px', opacity: done ? .6 : 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{sp.name}</span>
+                    <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>вынесено {sp.totalDrawn} / {sp.totalQty}</span>
+                  </div>
+                  {sp.items.map((it: any) => {
+                    const rem = Number(it.remaining)
+                    const q = specQ[it.id] ?? ''
+                    return (
+                      <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f6f3f0' }}>
+                        <RalDot code={extractRal(it.name)} size={14} />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: rem <= 0 ? '#9a938a' : '#26231f', textDecoration: rem <= 0 ? 'line-through' : 'none' }}>{it.name}</span>
+                        {it.widthCm != null && <span style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, flexShrink: 0 }}>{Number(it.widthCm)} см</span>}
+                        <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0, minWidth: 74, textAlign: 'right' }}>ост. {rem} / {Number(it.qty)}</span>
+                        {rem > 0
+                          ? <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                              <input value={q} inputMode="decimal" placeholder="кол-во" onChange={e => setSpecQ(p => ({ ...p, [it.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ width: 58, padding: '5px 6px', borderRadius: 6, border: `1.5px solid ${Number(q) > rem ? '#e0a0a0' : '#e6e2dc'}`, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
+                              <button disabled={!(Number(q) > 0) || Number(q) > rem} onClick={() => carveLogist(sp.id, it.id, Number(q))} style={{ border: 'none', background: Number(q) > 0 && Number(q) <= rem ? PRIMARY : '#e6e2dc', color: '#fff', borderRadius: 7, padding: '5px 10px', cursor: Number(q) > 0 && Number(q) <= rem ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>К логисту →</button>
+                            </div>
+                          : <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700, flexShrink: 0 }}>✓ готово</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+        </div>}
         {tab === 'produce' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Цепочка: <b>Распил</b> (раскрой → распилено) → <b>Листогиб</b> (согнуто) → <b>Готово</b> к логисту. 1 лист = {SHEET_WIDTH_CM} см.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
@@ -417,7 +465,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length + bending.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🎨', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length + bending.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}

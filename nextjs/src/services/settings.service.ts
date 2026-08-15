@@ -92,6 +92,43 @@ export async function carveCard(orgId: string, specProjectId: string,
   return { ok: true as const, ...res }
 }
 
+// «Спец проект → логист»: мастер отработал часть в своём кабинете (раскрой уже сделан),
+// вынесенное уходит СРАЗУ к логисту (Исходящие), минуя Распил/Листогиб. Позиции без
+// поставщика → leg=2 (не производство), вешаем на дефолтного логиста филиала.
+export async function carveToLogist(orgId: string, specProjectId: string,
+  lines: { specItemId: string; qty: number }[], actor?: any) {
+  const items = await repo.specItemsByProject(specProjectId)
+  const drawn = await repo.drawnBySpecItems(items.map((i: any) => i.id))
+  const byId = new Map((items as any[]).map(i => [i.id, i]))
+  const use = lines.filter(l => l.specItemId && Number(l.qty) > 0)
+  if (!use.length) return { ok: false as const, error: 'Укажите количество' }
+  for (const l of use) {
+    const it = byId.get(l.specItemId)
+    if (!it) return { ok: false as const, error: 'Позиция проекта не найдена' }
+    const rem = Number(it.qty) - (drawn[l.specItemId] || 0)
+    if (Number(l.qty) > rem + 1e-9) return { ok: false as const, error: `«${it.name}»: остаток ${rem}, запрошено ${l.qty}` }
+  }
+  const logistId = await repo.orgDefaultLogist(orgId)   // дефолтный логист филиала
+  const positions = use.map(l => {
+    const it = byId.get(l.specItemId)!
+    return {
+      productId: it.productId || undefined, name1c: it.name, oral: it.name,
+      qty: Number(l.qty), unit: it.unit, price: Number(it.price) || 0,
+      widthCm: it.widthCm != null ? Number(it.widthCm) : undefined,
+      respUserId: logistId || undefined,           // поставщик НЕ задаём → leg=2 (минуя производство)
+      specItemId: l.specItemId,
+    }
+  })
+  const { createOrder } = await import('./order.service')
+  const res: any = await createOrder({
+    orgId, kind: 'sale', prodOrder: true, screen: 'outgoing', block: '',
+    specProjectId, source: 'admin_manual', comment: 'Спец-проект → логист', positions,
+  } as any, actor)
+  const orderRepo = await import('../repositories/order.repo')
+  await orderRepo.updateOrder(res.id, { status: 'В работе' })   // сразу в работе у логиста
+  return { ok: true as const, id: res.id, logistId }
+}
+
 // Сводка для панели Фильтр (канбан-колонки): поставщики, проекты, спецпроекты (с items).
 export async function settingsBundle(orgId: string) {
   const [suppliers, projects, specs, defaults] = await Promise.all([
