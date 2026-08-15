@@ -42,6 +42,7 @@ export async function editProduct(id: string, i: z.infer<typeof updateProductSch
   if (i.priceIn !== undefined) patch.priceIn = String(i.priceIn)          // numeric → string
   if (i.priceRetail !== undefined) patch.priceRetail = String(i.priceRetail)
   if (i.priceOpt !== undefined) patch.priceOpt = String(i.priceOpt)
+  if (i.specTypeId !== undefined) patch.specTypeId = i.specTypeId || null
   if (i.archived !== undefined) patch.archived = i.archived
   const [p] = await repo.updateProduct(id, patch)
   return p

@@ -62,9 +62,38 @@ export const products = pgTable('products', {
   priceIn: money('price_in').notNull().default('0'),      // приходная (закуп)
   priceRetail: money('price_retail').notNull().default('0'),
   priceOpt: money('price_opt').notNull().default('0'),
+  specTypeId: uuid('spec_type_id').references(() => specTypes.id),  // тип изделия (спецификация: стандартный см + материал)
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name) }))
+
+// Тип изделия (спецификация): стандартная ширина (см раскроя листа) + длина + ставка работы.
+// Один тип (Н-профиль=18) применяется ко всем цветным вариантам товара.
+export const specTypes = pgTable('spec_types', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  name: text('name').notNull(),                           // Н-профиль, Ж-профиль, Внутр.угол простой, Нар.угол сложный
+  widthCm: qtyCol('width_cm').notNull().default('0'),     // стандартная ширина (расход по ширине листа)
+  lengthCm: qtyCol('length_cm').notNull().default('200'), // стандартная длина
+  workRate: money('work_rate').notNull().default('0'),    // ставка работы (пока за шт)
+  archived: boolean('archived').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('spec_types_org_idx').on(t.orgId) }))
+
+// Склад материала = физические КУСКИ (не м²). Лист режется только по ширине.
+// Целый лист = 125×200 (kind sheet). Обрезь = полоса остатка (kind remnant), длина полная.
+export const materialPieces = pgTable('material_pieces', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  warehouseId: uuid('warehouse_id').references(() => warehouses.id),
+  productId: uuid('product_id').references(() => products.id),  // лист-материал (цвет/толщина)
+  color: text('color').notNull().default(''),             // RAL — для группировки и подбора обрези
+  widthCm: qtyCol('width_cm').notNull().default('0'),     // ширина куска (целый лист = 125)
+  lengthCm: qtyCol('length_cm').notNull().default('200'),
+  qty: integer('qty').notNull().default(0),               // кол-во таких кусков
+  kind: text('kind').notNull().default('sheet'),          // sheet (целый) | remnant (обрезь)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('material_pieces_org_idx').on(t.orgId), byColor: index('material_pieces_color_idx').on(t.color) }))
 
 // Дерево папок номенклатуры (динамическое). Путь = grp/cat/sub; пустая папка живёт здесь,
 // даже без товаров. products.group/cat/subgroup хранят текст этого же пути.
