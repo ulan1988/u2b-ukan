@@ -70,14 +70,19 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
 
   function asIsName(): string {
     const parts: string[] = []
-    if (selS) parts.push(selS)
-    else if (needsCm && selC) parts.push(selC)
-    else if (needsCm && selG) parts.push(selG)
-    selItems.forEach(i => parts.push(i.label))
+    if (selItems.length) {
+      // выбран вид из набора (Изделие / H-профиль…): имя = ВИД + цвет + см, без папки
+      selItems.forEach(i => parts.push(i.label))
+    } else {
+      // чистая навигация по папкам без вида: имя = подпапка/папка
+      if (selS) parts.push(selS)
+      else if (selC) parts.push(selC)
+      else if (selG) parts.push(selG)
+    }
     if (colorLabel) parts.push(colorLabel)
     if (text.trim()) parts.push(text.trim())
     let n = parts.join(' ').trim()
-    if (needsCm && cm) n += ` · ${cm} см`
+    if (needsCm && cm) n += ` ${cm} см`
     return n
   }
 
