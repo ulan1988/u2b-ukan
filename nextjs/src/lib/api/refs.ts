@@ -49,6 +49,10 @@ export const setOrgColor = (orgId: string, color: string) => send('/api/settings
 
 export const createProject = (b: any) => post('/api/projects', b)
 export const createSpecProject = (b: any) => post('/api/spec-projects', b)
+// Проекты с остатками (кол-во/вынесено/остаток) + деталь + вынос в карточку.
+export const listSpecProjects = (orgId: string) => getArray(`/api/spec-projects?orgId=${orgId}`)
+export const specProjectDetail = (id: string) => getObj(`/api/spec-projects/${id}`, null as any)
+export const carveCard = (projectId: string, b: any) => post(`/api/spec-projects/${projectId}/carve`, b)
 
 export const autoPrices = (productIds: string[], contragentId?: string) =>
   getObj(`/api/pricing?productIds=${productIds.join(',')}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})

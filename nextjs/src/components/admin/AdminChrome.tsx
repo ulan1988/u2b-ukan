@@ -30,6 +30,7 @@ export const NAV: NavItem[] = [
   { key: 'warehouse', label: 'Склад', icon: '🏭' },
   { key: 'production', label: 'Производство', icon: '🛠️' },
   { key: 'nomenclature', label: 'Номенклатура', icon: '📦' },
+  { key: 'projects', label: 'Проекты', icon: '📁' },
   { key: 'settings', label: 'Настройки', icon: '⚙️' },
 ]
 

@@ -91,6 +91,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
+    specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)
     leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : 2,
     deadline: p.deadline ? new Date(p.deadline) : null,
   }))
@@ -298,14 +299,18 @@ export async function setProdStage(cardId: string, posId: string, stage: 'cut' |
   const positions = await repo.positionsByCard(cardId)
   const pos = positions.find((p: any) => p.id === posId)
   if (!pos) return { ok: false as const, error: 'Позиция не найдена' }
+  // Только производственные позиции (leg=1, поставщик-филиал). Складские (leg=2) в производстве не участвуют.
+  if (Number(pos.leg) !== 1) return { ok: false as const, error: 'Позиция не производственная (со склада)' }
   // Раскрой обязателен перед листогибом.
   if (stage === 'cut' && !order.cutConfirmed) return { ok: false as const, error: 'Сначала подтвердите раскрой' }
   // Гибка только после распила.
   if (stage === 'bent' && (PROD_RANK[pos.prodStage || ''] ?? 0) < PROD_RANK.cut) return { ok: false as const, error: 'Позиция ещё не распилена' }
   await repo.updatePosition(posId, { prodStage: stage })
 
-  // Пересчёт статуса карточки по минимальному этапу среди позиций.
-  const ranks = positions.map((p: any) => PROD_RANK[(p.id === posId ? stage : (p.prodStage || ''))] ?? 0)
+  // Пересчёт статуса карточки по минимальному этапу среди ПРОИЗВОДСТВЕННЫХ позиций (leg=1).
+  // Смешанная карточка (склад + листогиб) не застревает: складские позиции не учитываются.
+  const prodPos = positions.filter((p: any) => Number(p.leg) === 1)
+  const ranks = prodPos.map((p: any) => PROD_RANK[(p.id === posId ? stage : (p.prodStage || ''))] ?? 0)
   const min = ranks.length ? Math.min(...ranks) : 0
   const cardStatus = min >= PROD_RANK.bent ? 'Выполнено' : min >= PROD_RANK.cut ? 'Листогиб' : 'Распил'
   await repo.updateOrder(cardId, { status: cardStatus })

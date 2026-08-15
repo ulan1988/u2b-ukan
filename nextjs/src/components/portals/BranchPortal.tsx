@@ -220,7 +220,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Карточка этапа ЛИСТОГИБ: список позиций с пометкой «✓ Согнуто» по каждой.
   // Позиция готова (bent) — зачёркнута. Когда все согнуты — карточка авто → «Выполнено».
   function BendCard({ o }: { o: any }) {
-    const pos = o.positions || []
+    const pos = (o.positions || []).filter((p: any) => Number(p.leg) === 1)   // только листогиб
+    const stock = (o.positions || []).filter((p: any) => Number(p.leg) !== 1) // складские — не наши
     const done = pos.filter((p: any) => p.prodStage === 'bent').length
     return (
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #cfe0f5', padding: '12px 14px', marginBottom: 10 }}>
@@ -244,6 +245,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
           )
         })}
+        {stock.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: '#837c72' }}>📦 Со склада ({stock.length}) — не ваш этап, поедут с заказом.</div>}
       </div>
     )
   }
@@ -251,7 +253,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Карточка этапа РАСПИЛ, ПОСЛЕ подтверждённого раскроя: пометка «✓ Распилено» по позиции.
   // Когда все распилены — карточка авто → «Листогиб».
   function CutCard({ o }: { o: any }) {
-    const pos = o.positions || []
+    const pos = (o.positions || []).filter((p: any) => Number(p.leg) === 1)   // только листогиб
+    const stock = (o.positions || []).filter((p: any) => Number(p.leg) !== 1) // складские — не наши
     const done = pos.filter((p: any) => p.prodStage === 'cut' || p.prodStage === 'bent').length
     return (
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e0d4ef', padding: '12px 14px', marginBottom: 10 }}>
@@ -276,6 +279,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
           )
         })}
+        {stock.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: '#837c72' }}>📦 Со склада ({stock.length}) — не ваш этап, поедут с заказом.</div>}
       </div>
     )
   }

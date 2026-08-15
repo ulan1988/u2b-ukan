@@ -277,6 +277,7 @@ export const orderPositions = pgTable('order_positions', {
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
   status: text('status').notNull().default('В работе'),   // В работе|Готово|В пути|Доставлено
   prodStage: text('prod_stage').notNull().default(''),    // производство: '' = на распиле | cut = распилено (на листогибе) | bent = согнуто (готово)
+  specItemId: uuid('spec_item_id').references(() => specProjectItems.id), // вынесена из позиции проекта (учёт остатка)
   leg: integer('leg').notNull().default(2),
   late: boolean('late').notNull().default(false),
   payment: text('payment').notNull().default(''),
@@ -356,9 +357,12 @@ export const specProjectItems = pgTable('spec_project_items', {
   id: uuid('id').defaultRandom().primaryKey(),
   specProjectId: uuid('spec_project_id').notNull().references(() => specProjects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  qty: qtyCol('qty').notNull().default('0'),
+  qty: qtyCol('qty').notNull().default('0'),                // полное кол-во по проекту (мастер-список)
   unit: text('unit').notNull().default('шт'),
   productId: uuid('product_id').references(() => products.id),
+  widthCm: qtyCol('width_cm'),                              // ширина изделия в см (если листогиб)
+  price: money('price').notNull().default('0'),
+  supplierId: uuid('supplier_id').references(() => contragents.id), // предустановленный маршрут: поставщик-филиал → листогиб
 }, t => ({ bySpec: index('spec_project_items_spec_idx').on(t.specProjectId) }))
 
 export const notifications = pgTable('notifications', {
