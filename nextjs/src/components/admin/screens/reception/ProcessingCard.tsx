@@ -49,12 +49,12 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
   function startEdit(pos: any) {
     // Если «наим. 1С» пусто — предзаполняем точным совпадением из «со слов».
     const ex = (!(pos.name1c || '').trim() && (pos.oral || '').trim()) ? matchNom(pos.oral, products).exact : null
-    setEditing(e => ({ ...e, [pos.id]: { productId: ex?.id || pos.productId || '', name1c: ex?.name || pos.name1c, qty: String(pos.qty), unit: ex?.unit || pos.unit, price: ex ? String(priceOf(ex, Number(pos.price) || 0)) : String(pos.price), respUserId: pos.respUserId || '', deadline: pos.deadline ? String(pos.deadline).slice(0, 10) : '', payment: pos.payment || '' } }))
+    setEditing(e => ({ ...e, [pos.id]: { productId: ex?.id || pos.productId || '', name1c: ex?.name || pos.name1c, widthCm: pos.widthCm != null ? String(pos.widthCm) : '', qty: String(pos.qty), unit: ex?.unit || pos.unit, price: ex ? String(priceOf(ex, Number(pos.price) || 0)) : String(pos.price), respUserId: pos.respUserId || '', deadline: pos.deadline ? String(pos.deadline).slice(0, 10) : '', payment: pos.payment || '' } }))
   }
   function cancelEdit(id: string) { setEditing(e => { const n = { ...e }; delete n[id]; return n }) }
   async function saveEdit(pos: any) {
     const ed = editing[pos.id]
-    await updatePosition(order.id, pos.id, { productId: ed.productId || undefined, name1c: ed.name1c, qty: Number(ed.qty) || 0, unit: ed.unit, price: Number(ed.price) || 0, respUserId: ed.respUserId || undefined, deadline: ed.deadline || null, payment: ed.payment })
+    await updatePosition(order.id, pos.id, { productId: ed.productId || undefined, name1c: ed.name1c, widthCm: ed.widthCm === '' || ed.widthCm == null ? null : Number(ed.widthCm), qty: Number(ed.qty) || 0, unit: ed.unit, price: Number(ed.price) || 0, respUserId: ed.respUserId || undefined, deadline: ed.deadline || null, payment: ed.payment })
     cancelEdit(pos.id); onReload()
   }
   async function clone(pos: any) { await addPosition(order.id, { name1c: pos.name1c, oral: pos.oral, qty: Number(pos.qty), unit: pos.unit, price: Number(pos.price), respUserId: pos.respUserId || undefined, supplierId: pos.supplierId || undefined }); onReload(); toast('Позиция клонирована') }
@@ -97,13 +97,14 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
       <div style={{ padding: '12px 16px', overflowX: 'auto' }}>
         {ps.length === 0 && <div style={{ background: '#fff8e1', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#8a6f00', fontWeight: 500 }}>💬 Со слов: {order.comment}</div>}
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880 }}>
-          <thead><tr style={{ background: '#f1efec' }}>{['НАИМ. 1С', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА', 'ЛОГИСТ', 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 8px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ background: '#f1efec' }}>{['НАИМ. 1С', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА', 'ЛОГИСТ', 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 8px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
             {ps.map((pos: any) => {
               const ed = editing[pos.id]; const isEd = !!ed
               return (
                 <tr key={pos.id} style={{ borderBottom: '1px solid #f1efec', background: !(isEd ? ed.name1c : pos.name1c) ? '#fff5f0' : 'transparent', cursor: isEd ? 'default' : 'pointer' }} onClick={() => !isEd && startEdit(pos)}>
                   <td style={{ padding: '6px 4px', minWidth: 170 }}>{isEd ? <NomInline products={products} value={ed.productId || ''} name={ed.name1c} onPick={p => setEditing(e => ({ ...e, [pos.id]: { ...e[pos.id], productId: p.id, name1c: p.name, unit: p.unit || e[pos.id].unit, price: String(priceOf(p, Number(e[pos.id]?.price) || 0)) } }))} /> : (pos.name1c ? <span style={{ fontSize: 13 }}>{pos.name1c}</span> : (matches[pos.id]?.near ? <button onClick={e => { e.stopPropagation(); applyMatch(pos, matches[pos.id].near) }} title="Похоже на это — нажмите, чтобы подставить" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff8e1', border: '1.5px dashed #e0b34a', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#8a6f00' }}>≈ {matches[pos.id].near.name} <span style={{ fontWeight: 700 }}>✓</span></button> : <span style={{ color: '#837c72' }}>—</span>))}{isEd && ed.name1c && <div style={{ fontSize: 12, color: '#5f5952', marginTop: 2 }}>{ed.name1c}</div>}</td>
+                  <td style={{ padding: '6px 4px', width: 64 }}>{isEd ? <input style={{ ...inpSm, width: 54 }} type="number" placeholder="см" value={ed.widthCm} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], widthCm: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{pos.widthCm != null ? Number(pos.widthCm) : <span style={{ color: '#c1121c' }}>—</span>}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 70 }}>{isEd ? <input style={{ ...inpSm, width: 60 }} type="number" value={ed.qty} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], qty: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{Number(pos.qty)}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 50 }}>{isEd ? <input style={{ ...inpSm, width: 44 }} value={ed.unit} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], unit: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{pos.unit}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 96, whiteSpace: 'nowrap' }}>{isEd ? <input style={{ ...inpSm, width: 84, textAlign: 'right' }} type="number" value={ed.price} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], price: e.target.value } }))} /> : <span style={{ fontSize: 13, fontWeight: 700, color: Number(pos.price) > 0 ? '#26231f' : '#837c72' }}>{Number(pos.price) > 0 ? fmtMoney(Number(pos.price)) : '—'}</span>}</td>

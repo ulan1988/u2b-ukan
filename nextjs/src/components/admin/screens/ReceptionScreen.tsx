@@ -17,7 +17,7 @@ import ProcessingCard from './reception/ProcessingCard'
 import AutoProcure from './reception/AutoProcure'
 
 const CENTER = '🏬 Центр-Склад'
-const emptyPos = () => ({ productId: '', name1c: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '', deadline: '', payment: '' })
+const emptyPos = () => ({ productId: '', name1c: '', widthCm: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '', deadline: '', payment: '' })
 
 export default function ReceptionScreen({ orders, orgId, onAction, onReload, onOpen }: {
   orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void
@@ -81,6 +81,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     const client = allCags.find(c => c.id === contactId)
     const positions = rows.filter(r => r.name1c || r.productId).map(r => ({
       productId: r.productId || undefined, name1c: r.name1c, oral: r.name1c, qty: Number(r.qty) || 0, unit: r.unit,
+      widthCm: r.widthCm ? Number(r.widthCm) : undefined,
       price: Number(r.price) || 0, respUserId: r.respUserId || undefined, supplierId: kind === 'purchase' ? (r.supplierId || undefined) : undefined,
       deadline: r.deadline || undefined, payment: r.payment || '',
     }))
@@ -175,11 +176,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
-                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', ...(kind === 'purchase' ? ['ПОСТАВЩИК'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', ...(kind === 'purchase' ? ['ПОСТАВЩИК'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec' }}>
                       <td style={{ padding: '6px 4px', minWidth: 220 }}><NomInline products={products} value={r.productId} name={r.name1c} onPick={p => pickProduct(i, p)} /></td>
+                      <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => setRow(i, { widthCm: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 70 }}><input style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 100 }}><input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} /></td>
