@@ -1,6 +1,6 @@
 'use client'
 // Каталог-модалка — портирована из Улкана 1:1 (RAL-круги, категории, производители,
-// уровни-слова, длина, клавиатура количества). API → /api/products?all=1.
+// уровни-слова, длина, клавиатура количества). API → /api/products (только активные базы).
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { overlayFor } from '@/lib/nomTree'
@@ -35,7 +35,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
 
   useEffect(() => {
     setMounted(true)
-    fetch('/api/products?all=1').then(r => r.ok ? r.json() : []).then((d: any[]) => {
+    fetch('/api/products').then(r => r.ok ? r.json() : []).then((d: any[]) => {
       setAllItems(Array.isArray(d) ? d.map(x => ({ id: x.id, name: x.name || '', unit: x.unit || 'шт', group: x.group || '', cat: x.cat || '', subgroup: x.subgroup || '' })) : [])
       setLoaded(true)
     }).catch(() => setLoaded(true))
