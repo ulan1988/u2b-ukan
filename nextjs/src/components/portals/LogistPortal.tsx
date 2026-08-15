@@ -140,7 +140,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       <div style={{ background: isPurchase(order) ? '#faf7fd' : '#fff', borderRadius: compact ? 12 : 14, padding: compact ? 11 : 16, marginBottom: compact ? 9 : 12, borderLeft: `4px solid ${isPurchase(order) ? '#7a3aaa' : '#2e8a5e'}`, boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div style={{ fontWeight: 700, fontSize: compact ? 14 : 16, flex: 1, display: 'flex', alignItems: 'center', gap: 7 }}><RalDot code={extractRal(pos.name1c || pos.oral)} />{pos.name1c || pos.oral}</div>
-          <span style={{ fontWeight: 700, fontSize: compact ? 15 : 18, color: PRIMARY, marginLeft: 8 }}>{Number(pos.qty)} {pos.unit}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8, flexShrink: 0 }}>{pos.widthCm != null && <span style={{ fontSize: compact ? 11 : 12, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>📏 {Number(pos.widthCm)} см</span>}<span style={{ fontWeight: 700, fontSize: compact ? 15 : 18, color: PRIMARY }}>{Number(pos.qty)} {pos.unit}</span></span>
         </div>
         <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>{order.fromName || '—'}</div>
         {editable && (supEditPos === pos.id ? (

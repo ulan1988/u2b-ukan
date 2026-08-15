@@ -58,11 +58,12 @@ export default function CardModal({ id, myId = '', onClose, onAction }: {
               {tab === 'positions' ? (
                 positions.length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Позиций нет</div> : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['Наименование', 'Кол-во', 'Цена', 'Сумма', 'Статус'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 8px' }}>{h}</th>)}</tr></thead>
+                    <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['Наименование', ...(positions.some((p: any) => p.widthCm != null) ? ['СМ'] : []), 'Кол-во', 'Цена', 'Сумма', 'Статус'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 8px' }}>{h}</th>)}</tr></thead>
                     <tbody>
                       {positions.map((p: any) => (
                         <tr key={p.id} style={{ borderTop: '1px solid #efece8' }}>
                           <td style={{ padding: '7px 8px' }}>{p.name1c || p.oral || '—'}</td>
+                          {positions.some((x: any) => x.widthCm != null) && <td style={{ padding: '7px 8px', whiteSpace: 'nowrap' }}>{p.widthCm != null ? `${Number(p.widthCm)} см` : '—'}</td>}
                           <td style={{ padding: '7px 8px' }}>{Number(p.qty)} {p.unit}</td>
                           <td style={{ padding: '7px 8px' }}>{fmtMoney(Number(p.price))}</td>
                           <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmtMoney(Number(p.qty) * Number(p.price))}</td>
