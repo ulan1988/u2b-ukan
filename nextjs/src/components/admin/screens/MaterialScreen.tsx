@@ -50,9 +50,10 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   const stockByColor: Record<string, any[]> = {}
   for (const p of stock) (stockByColor[p.color || '—'] ||= []).push(p)
 
-  // ── Привязка типа к изделиям ──
+  // ── Привязка типа к изделиям (только папка «Комплектующие» — их режем из листа) ──
   const [bindSearch, setBindSearch] = useState('')
-  const goods = products.filter((p: any) => p.category === 'goods' && !p.archived)
+  const inCompl = (p: any) => `${p.group || ''} ${p.cat || ''} ${p.subgroup || ''}`.toLowerCase().includes('комплект')
+  const goods = products.filter((p: any) => p.category === 'goods' && !p.archived && inCompl(p))
   const q = bindSearch.trim().toLowerCase()
   const bindList = (q ? goods.filter((p: any) => p.name.toLowerCase().includes(q)) : goods).slice(0, 60)
   async function bindType(productId: string, specTypeId: string) {
@@ -154,7 +155,7 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
               ))}</tbody>
             </table>
           </div>
-          <div style={{ fontSize: 12, color: COLORS.textLight, marginTop: 8 }}>Показаны первые 60 — уточните поиском. Тип даёт стандартный см и материал (лист по цвету).</div>
+          <div style={{ fontSize: 12, color: COLORS.textLight, marginTop: 8 }}>Только папка «Комплектующие» (режутся из листа){goods.length > 60 ? ` · показаны первые 60 из ${goods.length}, уточните поиском` : ''}. Тип даёт стандартный см и материал (лист по цвету).</div>
         </div>
       )}
     </div>
