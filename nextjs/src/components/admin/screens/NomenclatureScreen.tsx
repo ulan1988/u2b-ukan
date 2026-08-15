@@ -19,6 +19,7 @@ export default function NomenclatureScreen() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState('')
+  const [showArchived, setShowArchived] = useState(false)   // архивные скрыты по умолчанию
   const [editItem, setEditItem] = useState<NomItem | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ name: '', unit: 'шт', group: '', cat: '', subgroup: '' })
@@ -72,7 +73,10 @@ export default function NomenclatureScreen() {
   const inCat = (i: NomItem, g: string, c: string) =>
     (norm(i.group) === norm(g) && norm(i.cat) === norm(c)) || (norm(i.group) === norm(c) && norm(i.cat) === norm(g))
 
-  const filtered = items.filter(item => {
+  // Архивные скрыты, пока не включён показ (тумблер).
+  const visible = showArchived ? items : items.filter((i: any) => !i.archived)
+
+  const filtered = visible.filter(item => {
     if (search) return item.name.toLowerCase().includes(search.toLowerCase())
     if (selSubgroup) return inCat(item, selGroup!, selCat!) && norm(item.subgroup) === norm(selSubgroup)
     if (selCat) return inCat(item, selGroup!, selCat!)
@@ -80,9 +84,9 @@ export default function NomenclatureScreen() {
     return true
   })
 
-  const countGroup = (g: string) => items.filter(i => inGroup(i, g)).length
-  const countCat = (g: string, c: string) => items.filter(i => inCat(i, g, c)).length
-  const countSubgroup = (g: string, c: string, s: string) => items.filter(i => inCat(i, g, c) && norm(i.subgroup) === norm(s)).length
+  const countGroup = (g: string) => visible.filter(i => inGroup(i, g)).length
+  const countCat = (g: string, c: string) => visible.filter(i => inCat(i, g, c)).length
+  const countSubgroup = (g: string, c: string, s: string) => visible.filter(i => inCat(i, g, c) && norm(i.subgroup) === norm(s)).length
 
   async function handleSave(item: NomItem) {
     await editProduct(item.id, { name: item.name, unit: item.unit, group: item.group, cat: item.cat, subgroup: item.subgroup })
@@ -164,9 +168,10 @@ export default function NomenclatureScreen() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexShrink: 0, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: 20 }}>📦 Номенклатура</div>
-        <span style={{ fontSize: 14, color: '#5f5952' }}>{items.length} позиций</span>
+        <span style={{ fontSize: 14, color: '#5f5952' }}>{visible.length} позиций{items.length !== visible.length ? ` · ${items.length - visible.length} в архиве` : ''}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input style={{ ...INP, width: 240 }} placeholder="🔍 Поиск по названию..." value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) { setSelGroup(null); setSelCat(null); setSelSubgroup(null) } }} />
+          <button onClick={() => setShowArchived(v => !v)} title="Показать/скрыть архивные" style={{ padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${showArchived ? '#d4613a' : '#e6e2dc'}`, background: showArchived ? '#fff0ea' : '#fff', color: showArchived ? '#c0532a' : '#5f5952', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', fontWeight: showArchived ? 700 : 500 }}>🗃 Архив</button>
           <button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳</button>
           {priceEdit ? (
             <>
