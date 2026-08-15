@@ -5,6 +5,7 @@ export interface NomLevel { key: string; label: string; items: NomItem[] }
 const thicknessEuro: NomLevel = { key: 'thick', label: 'Толщина', items: [{ key: 't035', label: '0,35' }, { key: 't04', label: '0,4' }, { key: 't045', label: '0,45' }] }
 const accessoryKinds: NomLevel = {
   key: 'kind', label: 'Вид', items: [
+    { key: 'izdelie', label: 'Изделие', terms: ['Изделие'], measure: true },  // всегда в наборе, всегда с полем см
     { key: 'h', label: 'H - профиль', terms: ['H - профиль'] }, { key: 'j', label: 'J - профиль', terms: ['J - профиль'] },
     { key: 'outer_r', label: 'Нар. угол (пр)', terms: ['Нар. угол (пр)'] }, { key: 'outer_l', label: 'Нар. угол (сл)', terms: ['Нар. угол (сл)'] },
     { key: 'inner_r', label: 'Внут. угол (пр)', terms: ['Внут. угол (пр)'] }, { key: 'inner_l', label: 'Внут. угол (сл)', terms: ['Внут. угол (сл)'] },

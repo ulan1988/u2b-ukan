@@ -45,8 +45,8 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const cEntry = color && color !== NOCOLOR ? RAL_BY_CODE[color] : undefined
   const colorLabel = cEntry ? (cEntry.code === 'decor' ? 'дерево' : cEntry.code) : ''
   const selItems = overlays.map(lv => lv.items.find(i => i.key === sel[lv.key])).filter(Boolean) as { key: string; label: string; terms?: string[]; measure?: boolean; exclude?: string[] }[]
-  // Изделие меряется в см (Длина). Показываем поле, когда выбрана папка «Изделие» (категория/подпапка).
-  const needsCm = [selG, selC, selS].some(x => /издели/i.test(x || ''))
+  // Поле см (Длина) — когда выбран вид с measure (Изделие) ИЛИ папка «Изделие».
+  const needsCm = selItems.some(i => i.measure) || [selG, selC, selS].some(x => /издели/i.test(x || ''))
 
   const words: string[] = []; const excludes: string[] = []
   overlays.forEach(lv => {
