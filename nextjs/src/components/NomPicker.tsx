@@ -8,7 +8,7 @@ import { RAL_BY_CODE, RalDot, extractRal, ralOrdered } from '@/lib/ral'
 
 const PRIMARY = '#d4613a'
 const GLOW = '0 0 0 4px rgba(212,97,58,.25)'
-export interface PickedPos { name1c: string; oral: string; qty: number; unit: string }
+export interface PickedPos { name1c: string; oral: string; qty: number; unit: string; widthCm?: number }
 interface NomHit { id: string; name: string; unit: string }
 interface NomFull { id: string; name: string; unit: string; group: string; cat: string; subgroup: string }
 const NOCOLOR = '__none__'
@@ -28,7 +28,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [cm, setCm] = useState('')
   const [text, setText] = useState('')
   const [rows, setRows] = useState<PickedPos[]>([])
-  const [pad, setPad] = useState<null | { name1c: string; oral: string; unit: string; digits: string }>(null)
+  const [pad, setPad] = useState<null | { name1c: string; oral: string; unit: string; digits: string; widthCm?: number }>(null)
   const padRef = useRef(pad); padRef.current = pad
 
   const overlays = overlayFor(selC || selG)   // накладки-слова (толщина/покрытие) — по выбранной папке
@@ -45,7 +45,8 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const cEntry = color && color !== NOCOLOR ? RAL_BY_CODE[color] : undefined
   const colorLabel = cEntry ? (cEntry.code === 'decor' ? 'дерево' : cEntry.code) : ''
   const selItems = overlays.map(lv => lv.items.find(i => i.key === sel[lv.key])).filter(Boolean) as { key: string; label: string; terms?: string[]; measure?: boolean; exclude?: string[] }[]
-  const measureItem = selItems.find(i => i.measure)
+  // Изделие меряется в см (Длина). Показываем поле, когда выбрана папка «Изделие» (категория/подпапка).
+  const needsCm = [selG, selC, selS].some(x => /издели/i.test(x || ''))
 
   const words: string[] = []; const excludes: string[] = []
   overlays.forEach(lv => {
@@ -70,12 +71,13 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   function asIsName(): string {
     const parts: string[] = []
     if (selS) parts.push(selS)
-    selItems.filter(i => !i.measure).forEach(i => parts.push(i.label))
-    if (measureItem) parts.push(measureItem.terms?.[0] || 'Изделие')
+    else if (needsCm && selC) parts.push(selC)
+    else if (needsCm && selG) parts.push(selG)
+    selItems.forEach(i => parts.push(i.label))
     if (colorLabel) parts.push(colorLabel)
     if (text.trim()) parts.push(text.trim())
     let n = parts.join(' ').trim()
-    if (measureItem && cm) n += ` · ${cm} см`
+    if (needsCm && cm) n += ` · ${cm} см`
     return n
   }
 
@@ -134,7 +136,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   function commitPad() {
     const p = padRef.current; if (!p) return
     const qty = parseInt(p.digits || '0', 10) || 0; if (qty <= 0) return
-    setRows(prev => [...prev, { name1c: p.name1c, oral: p.oral, qty, unit: p.unit }]); setPad(null)
+    setRows(prev => [...prev, { name1c: p.name1c, oral: p.oral, qty, unit: p.unit, widthCm: p.widthCm }]); setPad(null)
   }
   useEffect(() => {
     if (!pad) return
@@ -155,7 +157,8 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   if (selG) crumbs.push(<span key="p" style={{ fontWeight: 700 }}>{selG}</span>)
   if (selC) crumbs.push(<span key="c2">{selC}</span>)
   if (selS) crumbs.push(<span key="s2">{selS}</span>)
-  selItems.forEach(it => crumbs.push(<span key={it.key}>«{it.measure ? (cm ? `Изделие · ${cm} см` : 'Изделие') : it.label}»</span>))
+  selItems.forEach(it => crumbs.push(<span key={it.key}>«{it.label}»</span>))
+  if (needsCm && cm) crumbs.push(<span key="cm"><b style={{ color: PRIMARY }}>{cm} см</b></span>)
   if (cEntry) crumbs.push(<span key="c"><b style={{ color: PRIMARY }}>{colorLabel}</b> ({cEntry.name.toLowerCase()})</span>)
   else if (color === NOCOLOR) crumbs.push(<span key="c">без цвета</span>)
   if (text.trim()) crumbs.push(<span key="t">«{text.trim()}»</span>)
@@ -219,10 +222,10 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{lv.items.map(it => <button key={it.key} onClick={() => pickItem(lv.key, it.key, !!it.measure)} style={pill(sel[lv.key] === it.key)}>{it.label}</button>)}</div>
             </div>
           ))}
-          {measureItem && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 14, color: '#5f5952', fontWeight: 600 }}>Длина:</span>
-              <input value={cm} onChange={e => setCm(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="см" style={{ width: 90, padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontFamily: 'inherit', outline: 'none', textAlign: 'center' }} />
+          {needsCm && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff8f5', border: '1.5px solid #f0d9cc', borderRadius: 10, padding: '8px 12px' }}>
+              <span style={{ fontSize: 14, color: '#5f5952', fontWeight: 700 }}>📏 Длина изделия:</span>
+              <input autoFocus value={cm} onChange={e => setCm(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="см" style={{ width: 90, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${cm ? PRIMARY : '#e6e2dc'}`, fontSize: 15, fontFamily: 'inherit', outline: 'none', textAlign: 'center', fontWeight: 700 }} />
               <span style={{ fontSize: 14, color: '#5f5952' }}>см</span>
             </div>
           )}
@@ -235,9 +238,9 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
             <div>
               <div style={LBL}>НАЙДЕНО В БАЗЕ</div>
               {loading ? <div style={{ fontSize: 14, color: '#5f5952', padding: '8px 0' }}>Поиск…</div>
-                : shown.length > 0 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{shown.map(h => <button key={h.id} onClick={() => setPad({ name1c: h.name, oral: h.name, unit: h.unit, digits: '' })} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit' }}><RalDot code={extractRal(h.name)} size={14} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span><span style={{ fontSize: 12, color: '#5f5952', background: '#f1efec', padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{h.unit}</span><span style={{ color: PRIMARY, fontWeight: 800, flexShrink: 0 }}>+</span></button>)}</div>
+                : shown.length > 0 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{shown.map(h => <button key={h.id} onClick={() => setPad({ name1c: h.name, oral: h.name, unit: h.unit, digits: '', widthCm: needsCm && cm ? Number(cm) : undefined })} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit' }}><RalDot code={extractRal(h.name)} size={14} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span><span style={{ fontSize: 12, color: '#5f5952', background: '#f1efec', padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{h.unit}</span><span style={{ color: PRIMARY, fontWeight: 800, flexShrink: 0 }}>+</span></button>)}</div>
                   : <div style={{ fontSize: 14, color: '#5f5952', padding: '8px 0' }}>Не найдено в папке — можно добавить как есть ↓</div>}
-              {asIsName() && <button onClick={() => { const n = asIsName(); if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '' }) }} style={{ marginTop: 8, width: '100%', border: '1.5px dashed #d8d3cc', background: 'none', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 14, color: '#4a4640', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить как есть: «{asIsName()}»</button>}
+              {asIsName() && <button onClick={() => { const n = asIsName(); if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ marginTop: 8, width: '100%', border: '1.5px dashed #d8d3cc', background: 'none', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 14, color: '#4a4640', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить как есть: «{asIsName()}»</button>}
             </div>
           )}
           {rows.length > 0 && (

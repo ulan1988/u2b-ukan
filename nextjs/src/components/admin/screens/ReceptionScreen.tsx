@@ -70,7 +70,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     toast('Цены подтянуты')
   }
   function addFromCatalog(items: PickedPos[]) {
-    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => ({ ...emptyPos(), name1c: it.name1c, qty: String(it.qty), unit: it.unit }))])
+    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => ({ ...emptyPos(), name1c: it.name1c || it.oral, widthCm: it.widthCm != null ? String(it.widthCm) : '', qty: String(it.qty), unit: it.unit }))])
     setShowCatalog(false)
   }
   async function newProject() { const name = window.prompt('Название проекта'); if (!name) return; const r: any = await createProject({ orgId, name }); if (r.ok || r.id) { loadSettings(); toast('Проект создан') } }

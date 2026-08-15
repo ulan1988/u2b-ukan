@@ -131,7 +131,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
   }
   async function addToOrder(orderId: string, items: PickedPos[]) {
     setAddCatalogFor(null); if (!items.length) return
-    for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit })
+    for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, widthCm: it.widthCm })
     await load(); setToast(`✓ Добавлено: ${items.length}`)
   }
   async function handleNewOrder(e?: React.FormEvent) {
@@ -139,7 +139,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     if (!newText.trim() && catalogPos.length === 0) { setToast('Опишите заявку или соберите по каталогу'); return }
     setNewLoading(true)
     try {
-      const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
+      const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
       const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, positions })
       if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); load() }
       else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))

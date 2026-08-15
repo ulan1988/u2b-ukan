@@ -120,7 +120,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
-  async function addToOrder(orderId: string, items: PickedPos[]) { setAddCatalogFor(null); if (!items.length) return; for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, supplierId: undefined }); await refreshDetail(orderId); showMsg(`✓ Добавлено: ${items.length}`) }
+  async function addToOrder(orderId: string, items: PickedPos[]) { setAddCatalogFor(null); if (!items.length) return; for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, widthCm: it.widthCm, supplierId: undefined }); await refreshDetail(orderId); showMsg(`✓ Добавлено: ${items.length}`) }
   async function sendChat(orderId: string) { const t = msg.trim(); if (!t) return; setMsg(''); await sendMessage(orderId, t); const m = await listMessages(orderId); setDetails(prev => ({ ...prev, [orderId]: { ...prev[orderId], messages: m } })) }
   async function openChat(orderId: string) { const m = await listMessages(orderId); setDetails(prev => ({ ...prev, [orderId]: { ...prev[orderId], messages: m } })) }
 
@@ -129,7 +129,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     if (!newText.trim() && catalogPos.length === 0) { showMsg('Выберите товары из каталога или опишите заявку'); return }
     setNewLoading(true)
     try {
-      const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit }))
+      const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
       const r = await createClientOrder({ comment: newText, positions }, user.id)
       if (r.ok) { setNewDone({ id: r.data.id }); setNewTo(''); setNewText(''); setCatalogPos([]); load() }
       else showMsg('⚠ ' + (r.error || 'Не удалось отправить заявку'))

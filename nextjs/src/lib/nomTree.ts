@@ -8,7 +8,6 @@ const accessoryKinds: NomLevel = {
     { key: 'h', label: 'H - профиль', terms: ['H - профиль'] }, { key: 'j', label: 'J - профиль', terms: ['J - профиль'] },
     { key: 'outer_r', label: 'Нар. угол (пр)', terms: ['Нар. угол (пр)'] }, { key: 'outer_l', label: 'Нар. угол (сл)', terms: ['Нар. угол (сл)'] },
     { key: 'inner_r', label: 'Внут. угол (пр)', terms: ['Внут. угол (пр)'] }, { key: 'inner_l', label: 'Внут. угол (сл)', terms: ['Внут. угол (сл)'] },
-    { key: 'item', label: 'Изделие · см', measure: true, terms: ['Изделие'] },
   ],
 }
 const thicknessFlat: NomLevel = { key: 'thick', label: 'Толщина', items: [{ key: 't02', label: '0,2' }, { key: 't025', label: '0,25' }, { key: 't04', label: '0,4' }, { key: 't045', label: '0,45' }] }

@@ -67,7 +67,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       const nm = (it.name1c || it.oral || '').trim()
       const cmM = nm.match(/(\d+)\s*см/)
       const clean = nm.replace(/\s*·?\s*\d+\s*см\s*$/, '').trim() || nm
-      return { productId: '', name: clean, color: extractRal(clean), cm: cmM ? cmM[1] : '', qty: String(it.qty || 1), price: '' }
+      return { productId: '', name: clean, color: extractRal(clean), cm: it.widthCm != null ? String(it.widthCm) : (cmM ? cmM[1] : ''), qty: String(it.qty || 1), price: '' }
     })
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), ...add])
     setCatalog(false)
