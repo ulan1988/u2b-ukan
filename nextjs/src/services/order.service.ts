@@ -286,6 +286,38 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   return { ok: true }
 }
 
+// ── Производство по позициям (кабинет мастера «Нипа листогиб») ────────────────
+// Цепочка этапов на позиции: '' (на распиле) → cut (распилено, ждёт листогиб) →
+// bent (согнуто, готово). Статус карточки = по САМОЙ отстающей позиции:
+// есть позиция на распиле → «Распил»; все распилены → «Листогиб»; все согнуты →
+// «Выполнено» (готово к логисту). Раскрой обязателен: «распилено» нельзя без cutConfirmed.
+const PROD_RANK: Record<string, number> = { '': 0, cut: 1, bent: 2 }
+export async function setProdStage(cardId: string, posId: string, stage: 'cut' | 'bent', actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
+  const positions = await repo.positionsByCard(cardId)
+  const pos = positions.find((p: any) => p.id === posId)
+  if (!pos) return { ok: false as const, error: 'Позиция не найдена' }
+  // Раскрой обязателен перед листогибом.
+  if (stage === 'cut' && !order.cutConfirmed) return { ok: false as const, error: 'Сначала подтвердите раскрой' }
+  // Гибка только после распила.
+  if (stage === 'bent' && (PROD_RANK[pos.prodStage || ''] ?? 0) < PROD_RANK.cut) return { ok: false as const, error: 'Позиция ещё не распилена' }
+  await repo.updatePosition(posId, { prodStage: stage })
+
+  // Пересчёт статуса карточки по минимальному этапу среди позиций.
+  const ranks = positions.map((p: any) => PROD_RANK[(p.id === posId ? stage : (p.prodStage || ''))] ?? 0)
+  const min = ranks.length ? Math.min(...ranks) : 0
+  const cardStatus = min >= PROD_RANK.bent ? 'Выполнено' : min >= PROD_RANK.cut ? 'Листогиб' : 'Распил'
+  await repo.updateOrder(cardId, { status: cardStatus })
+
+  await repo.insertHistory({
+    cardId, action: 'prodStage',
+    detail: `${pos.name1c || pos.oral || 'Позиция'} → ${stage === 'cut' ? 'распилено' : 'согнуто'}`,
+    userName: actor?.name || 'Система',
+  })
+  return { ok: true as const, cardStatus }
+}
+
 // Удалить позицию карточки (стол приёмки).
 export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }

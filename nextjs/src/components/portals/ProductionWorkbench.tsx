@@ -82,7 +82,8 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
   const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика
-  const valid = hasPos && (!needCustomer || !!cid)
+  const cutReady = pack.totalSheets > 0           // раскрой валиден (есть листы) — обязателен для подтверждения
+  const valid = hasPos && (!needCustomer || !!cid) && (!order?.id || cutReady)
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -101,9 +102,11 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   async function done() {
     if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
     if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
+    // Раскрой обязателен: подтвердить распил можно только с валидным раскроем (есть листы).
+    if (order?.id && pack.totalSheets <= 0) { showMsg('Заполните раскрой: укажите см у изделий'); return }
     setBusy(true)
     try {
-      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceDone'); showMsg('✓ Выполнено — готово к логисту') }
+      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'confirmCut'); showMsg('✓ Раскрой подтверждён — отмечайте распил по позициям') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), widthCm: Number(r.cm) || undefined } })
@@ -248,7 +251,8 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: '#5f5952' }}>Листов: <b style={{ color: '#26231f' }}>{pack.totalSheets}</b> · всего {totalCm} см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
-        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#2e8a5e' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : (order?.id ? '✓ Выполнено' : '✓ Создать карточку')}</button>
+        {order?.id && !cutReady && <span style={{ fontSize: 12, color: '#b03020', fontWeight: 600 }}>Укажите см у изделий — раскрой обязателен</span>}
+        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#7a3aaa' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : (order?.id ? '📐 Подтвердить раскрой →' : '✓ Создать карточку')}</button>
       </div>
     </div>
   )

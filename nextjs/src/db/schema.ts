@@ -251,6 +251,7 @@ export const orders = pgTable('orders', {
   fact: boolean('fact').notNull().default(false),
   posted1c: boolean('posted_1c').notNull().default(false),
   cold: boolean('cold').notNull().default(false),
+  cutConfirmed: boolean('cut_confirmed').notNull().default(false), // раскрой подтверждён мастером (обязателен перед листогибом)
   trackingLink: text('tracking_link').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
   leg: integer('leg').notNull().default(2),               // 1 = первое плечо (филиал-поставщик), 2 = обычная
@@ -275,6 +276,7 @@ export const orderPositions = pgTable('order_positions', {
   respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
   status: text('status').notNull().default('В работе'),   // В работе|Готово|В пути|Доставлено
+  prodStage: text('prod_stage').notNull().default(''),    // производство: '' = на распиле | cut = распилено (на листогибе) | bent = согнуто (готово)
   leg: integer('leg').notNull().default(2),
   late: boolean('late').notNull().default(false),
   payment: text('payment').notNull().default(''),

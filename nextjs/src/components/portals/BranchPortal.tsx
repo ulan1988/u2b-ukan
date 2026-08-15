@@ -11,7 +11,7 @@ import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, setProdStage } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -27,6 +27,7 @@ function StatusBadge({ status }: { status: string }) {
     'В пути': { bg: '#fdf8e1', color: '#8a6f00' }, 'Доставлено': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Принято филиалом': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Архив': { bg: '#efece8', color: '#6b655b' },
     'К выполнению': { bg: '#f3eeff', color: '#7a3aaa' }, 'Выполнено': { bg: '#e8f5ee', color: '#2e8a5e' },
     'Производство': { bg: '#f3eeff', color: '#7a3aaa' }, 'Изготовлено': { bg: '#e8f5ee', color: '#2e8a5e' },
+    'Распил': { bg: '#f3eeff', color: '#7a3aaa' }, 'Листогиб': { bg: '#e8f1ff', color: '#2a5aaa' },
   }
   const s = map[status] || { bg: '#efece8', color: '#6b655b' }
   return <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }}>{status}</span>
@@ -73,15 +74,19 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const notClosed = (o: any) => !['bookkeeping', 'archive'].includes(o.screen)
   // Поток производителя: [Заказы на производство] «🛠️ В работу» → [Производство: стол мастера,
   // раскрой+гибка, статус «К выполнению»] «✓ Выполнено» → [готово, статус «Выполнено»] «К логисту» → Исходящие.
-  // Статусы производителя (со старыми названиями для совместимости):
-  const isWork = (o: any) => o.status === 'К выполнению' || o.status === 'Производство'   // стол мастера
-  const isDone = (o: any) => o.status === 'Выполнено' || o.status === 'Изготовлено'        // готово к логисту
+  // Этапы производства (со старыми названиями для совместимости):
+  const isCut = (o: any) => ['Распил', 'К выполнению', 'Производство'].includes(o.status)   // этап РАСПИЛ
+  const isBend = (o: any) => o.status === 'Листогиб'                                          // этап ЛИСТОГИБ
+  const isDone = (o: any) => ['Выполнено', 'Изготовлено'].includes(o.status)                 // готово к логисту
+  const inProd = (o: any) => isCut(o) || isBend(o)                                            // на любом рабочем этапе
   const custName = (o: any) => cags.find((c: any) => c.id === o.contactId)?.name || ''
-  // Заказы на производство — плечо-1, ещё НЕ взятые мастером (не К выполнению / Выполнено). ЗК тут нет.
-  const production = orders.filter(o => isProd(o) && !isZK(o) && !o.isCancelled && notClosed(o) && !isWork(o) && !isDone(o) && inDate(o))
-  // Стол мастера — взято к выполнению (раскрой+гибка). Плечо ИЛИ прямой заказ мастера (ЗК).
-  const producing = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && notClosed(o) && isWork(o) && inDate(o))
-  // Готово (Выполнено) — ждёт передачи логисту. Плечо ИЛИ ЗК. После «К логисту» уходит в Исходящие.
+  // Заказы на производство — плечо-1, ещё НЕ взятые мастером (не на этапе и не готово). ЗК тут нет.
+  const production = orders.filter(o => isProd(o) && !isZK(o) && !o.isCancelled && notClosed(o) && !inProd(o) && !isDone(o) && inDate(o))
+  // РАСПИЛ — стол мастера: раскрой + отметка «распилено». Плечо ИЛИ прямой заказ (ЗК).
+  const producing = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && notClosed(o) && isCut(o) && inDate(o))
+  // ЛИСТОГИБ — распилено, гнём. Плечо ИЛИ ЗК.
+  const bending = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && notClosed(o) && isBend(o) && inDate(o))
+  // Готово (Выполнено) — ждёт передачи логисту. После «К логисту» уходит в Исходящие.
   const readyProd = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && notForwarded(o) && isDone(o) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
@@ -117,6 +122,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Отметить одну позицию выполненной.
   async function posComplete(cardId: string, posId: string) {
     await updatePosition(cardId, posId, { status: 'Выполнено' }); await refreshDetail(cardId); await load(); showMsg('✓ Позиция выполнена')
+  }
+  // Этап позиции: cut (распилено) / bent (согнуто). Карточка сама едет Распил→Листогиб→Выполнено.
+  async function markStage(cardId: string, posId: string, stage: 'cut' | 'bent') {
+    const r = await setProdStage(cardId, posId, stage)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    await refreshDetail(cardId); await load(); showMsg(stage === 'cut' ? '✓ Распилено' : '✓ Согнуто')
   }
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
@@ -206,6 +217,69 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     )
   }
 
+  // Карточка этапа ЛИСТОГИБ: список позиций с пометкой «✓ Согнуто» по каждой.
+  // Позиция готова (bent) — зачёркнута. Когда все согнуты — карточка авто → «Выполнено».
+  function BendCard({ o }: { o: any }) {
+    const pos = o.positions || []
+    const done = pos.filter((p: any) => p.prodStage === 'bent').length
+    return (
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #cfe0f5', padding: '12px 14px', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#2a5aaa' }}>{fmtCode(o.id)}</span>
+          <StatusBadge status={o.status} />
+          {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
+          <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>согнуто {done}/{pos.length}</span>
+        </div>
+        {pos.map((p: any) => {
+          const bent = p.prodStage === 'bent'
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f6f3f0' }}>
+              <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: bent ? '#9a938a' : '#26231f', textDecoration: bent ? 'line-through' : 'none' }}>{p.name1c || p.oral}</span>
+              {p.widthCm != null && <span style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, flexShrink: 0 }}>{Number(p.widthCm)} см</span>}
+              <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
+              {bent
+                ? <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700, flexShrink: 0 }}>✓ согнуто</span>
+                : <button onClick={() => markStage(o.id, p.id, 'bent')} style={{ border: '1.5px solid #b8cdea', background: '#e8f1ff', color: '#2a5aaa', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}>✓ Согнуто</button>}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Карточка этапа РАСПИЛ, ПОСЛЕ подтверждённого раскроя: пометка «✓ Распилено» по позиции.
+  // Когда все распилены — карточка авто → «Листогиб».
+  function CutCard({ o }: { o: any }) {
+    const pos = o.positions || []
+    const done = pos.filter((p: any) => p.prodStage === 'cut' || p.prodStage === 'bent').length
+    return (
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e0d4ef', padding: '12px 14px', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
+          <StatusBadge status={o.status} />
+          <span style={{ fontSize: 11, background: '#e8f5ee', color: '#2e8a5e', padding: '1px 7px', borderRadius: 20, fontWeight: 700 }}>📐 раскрой ✓</span>
+          {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
+          <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>распилено {done}/{pos.length}</span>
+        </div>
+        {pos.map((p: any) => {
+          const cut = p.prodStage === 'cut' || p.prodStage === 'bent'
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f6f3f0' }}>
+              <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: cut ? '#9a938a' : '#26231f', textDecoration: cut ? 'line-through' : 'none' }}>{p.name1c || p.oral}</span>
+              {p.widthCm != null && <span style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, flexShrink: 0 }}>{Number(p.widthCm)} см</span>}
+              <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
+              {cut
+                ? <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700, flexShrink: 0 }}>✓ распилено</span>
+                : <button onClick={() => markStage(o.id, p.id, 'cut')} style={{ border: '1.5px solid #d8c4ec', background: '#f3eeff', color: '#7a3aaa', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}>✓ Распилено</button>}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif", maxWidth: 480, margin: '0 auto' }}>
       {toast && <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
@@ -269,14 +343,33 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o)} />)}
         </div>}
         {tab === 'produce' && <div>
-          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Рабочий стол мастера · 1 лист = {SHEET_WIDTH_CM} см (режем по ширине). Материал = см изделий ÷ {SHEET_WIDTH_CM}.</div>
+          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Цепочка: <b>Распил</b> (раскрой → распилено) → <b>Листогиб</b> (согнуто) → <b>Готово</b> к логисту. 1 лист = {SHEET_WIDTH_CM} см.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
           {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
-          {producing.length === 0 && !showDirect && readyProd.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>
-            : producing.map(o => <ProductionWorkbench key={o.id} order={o} uid={user.id} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
+          {producing.length === 0 && bending.length === 0 && !showDirect && readyProd.length === 0 && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в производстве</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
+
+          {/* ── ЭТАП 1: РАСПИЛ (раскрой + пометка «распилено» по позициям) ── */}
+          {producing.length > 0 && (
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 8 }}>✂️ РАСПИЛ · {producing.length}</div>
+              {producing.map(o => o.cutConfirmed
+                ? <CutCard key={o.id} o={o} />
+                : <ProductionWorkbench key={o.id} order={o} uid={user.id} contragents={cags} products={products} onDone={load} showMsg={showMsg} />)}
+            </div>
+          )}
+
+          {/* ── ЭТАП 2: ЛИСТОГИБ (пометка «согнуто» по позициям) ── */}
+          {bending.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#2a5aaa', letterSpacing: '.04em', marginBottom: 8 }}>🛠️ ЛИСТОГИБ · {bending.length}</div>
+              {bending.map(o => <BendCard key={o.id} o={o} />)}
+            </div>
+          )}
+
+          {/* ── ЭТАП 3: ГОТОВО К ЛОГИСТУ ── */}
           {readyProd.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>✅ ВЫПОЛНЕНО — ГОТОВО К ЛОГИСТУ · {readyProd.length}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>✅ ГОТОВО К ЛОГИСТУ · {readyProd.length}</div>
               {readyProd.map(o => (
                 <div key={o.id} style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #cfeadd', padding: '10px 12px', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -320,7 +413,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length + bending.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}
