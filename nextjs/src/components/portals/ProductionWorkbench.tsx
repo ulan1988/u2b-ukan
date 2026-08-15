@@ -228,7 +228,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
             {rows.map((r, i) => (
               <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
                 <td style={{ padding: '4px 6px', fontSize: 12, color: '#837c72' }}>{i + 1}</td>
-                <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => setRow(i, { productId: p.id, name: p.name, color: extractRal(p.name) })} /></td>
+                <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => setRow(i, { productId: p.id, name: p.name, color: p.color || extractRal(p.name), ...(p.widthCm != null ? { cm: String(p.widthCm) } : {}) })} /></td>
                 <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => setRow(i, { cm: e.target.value })} placeholder="см" /></td>
                 <td style={{ padding: '4px 4px', width: 56 }}><input style={{ ...inp, width: 50, textAlign: 'right' }} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                 <td style={{ padding: '4px 4px', width: 80, textAlign: 'right', fontSize: 13 }}>{piecePrice(r) ? Math.round(piecePrice(r)).toLocaleString('ru-RU') : <input style={{ ...inp, width: 70, textAlign: 'right' }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder="цена" />}</td>

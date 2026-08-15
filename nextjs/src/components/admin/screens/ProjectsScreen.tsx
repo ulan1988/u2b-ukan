@@ -182,7 +182,7 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={i} style={{ borderTop: `1px solid ${COLORS.borderLight}` }}>
-                    <td style={{ padding: '4px 6px', minWidth: 200 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => setRow(i, { productId: p.id, name: p.name })} /></td>
+                    <td style={{ padding: '4px 6px', minWidth: 200 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => setRow(i, { productId: p.id, name: p.name, ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}) })} /></td>
                     <td style={{ padding: '4px 4px' }}><input style={{ ...INP, textAlign: 'right' }} inputMode="numeric" value={r.widthCm} onChange={e => setRow(i, { widthCm: e.target.value.replace(/\D/g, '') })} placeholder="см" /></td>
                     <td style={{ padding: '4px 4px' }}><input style={{ ...INP, textAlign: 'right' }} inputMode="decimal" value={r.qty} onChange={e => setRow(i, { qty: e.target.value.replace(/[^0-9.,]/g, '') })} /></td>
                     <td style={{ padding: '4px 4px' }}><input style={INP} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>

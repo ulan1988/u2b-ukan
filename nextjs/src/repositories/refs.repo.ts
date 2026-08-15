@@ -1,7 +1,7 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
-import { organizations, contragents, warehouses, products, cashAccounts } from '../db/schema'
-import { and, eq, or } from 'drizzle-orm'
+import { organizations, contragents, warehouses, products, cashAccounts, specTypes } from '../db/schema'
+import { and, eq, or, getTableColumns } from 'drizzle-orm'
 
 export const listOrganizations = () =>
   db.select().from(organizations).where(eq(organizations.archived, false))
@@ -27,8 +27,11 @@ export const centralWarehouse = async (orgId: string) => {
   return rows.find(w => w.isCentral) || rows[0] || null
 }
 
+// Товары для форм/пикеров + стандартный см и имя типа (спецификация) через join.
 export const listProducts = () =>
-  db.select().from(products).where(eq(products.archived, false))
+  db.select({ ...getTableColumns(products), stdWidthCm: specTypes.widthCm, typeName: specTypes.name })
+    .from(products).leftJoin(specTypes, eq(products.specTypeId, specTypes.id))
+    .where(eq(products.archived, false))
 
 export const listContragents = () =>
   db.select().from(contragents).where(eq(contragents.archived, false))
