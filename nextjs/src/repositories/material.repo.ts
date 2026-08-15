@@ -1,11 +1,11 @@
 // Спецификации (типы изделий) + склад материала (куски: листы/обрезь). Только Drizzle.
 import { db } from '../lib/db'
 import { specTypes, materialPieces } from '../db/schema'
-import { and, eq, desc, asc } from 'drizzle-orm'
+import { eq, desc, asc } from 'drizzle-orm'
 
-// ── Типы изделий (спецификация) ──
-export const listSpecTypes = (orgId: string) =>
-  db.select().from(specTypes).where(and(eq(specTypes.orgId, orgId), eq(specTypes.archived, false))).orderBy(asc(specTypes.name))
+// ── Типы изделий (спецификация) ── глобальны (номенклатура общая), org не фильтруем.
+export const listSpecTypes = (_orgId?: string) =>
+  db.select().from(specTypes).where(eq(specTypes.archived, false)).orderBy(asc(specTypes.name))
 export const insertSpecType = (v: typeof specTypes.$inferInsert) => db.insert(specTypes).values(v).returning()
 export const updateSpecType = (id: string, patch: Partial<typeof specTypes.$inferInsert>) =>
   db.update(specTypes).set(patch).where(eq(specTypes.id, id)).returning()
