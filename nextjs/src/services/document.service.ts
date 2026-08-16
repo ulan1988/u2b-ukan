@@ -42,6 +42,8 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves)
+  // Ф2: приход листов → склад материала (единый лист, 0,35→0,4). Цена остаётся в документе.
+  try { const { receiveSheetsFromLines } = await import('./material.service'); await receiveSheetsFromLines(input.orgId, input.warehouseId, lines.map(l => ({ productId: l.productId, qty: l.qty }))) } catch {}
   return { id: docId, number: doc.number, total }
 }
 

@@ -44,6 +44,34 @@ export async function addSheets(orgId: string, i: { warehouseId?: string; produc
   return { ok: true as const, piece: p }
 }
 
+// ── Приход листов из накладной → склад материала (с нормализацией толщины) ──
+// Правило владельца: 0,35 → наш единый 0,4; 0,45 — отдельный; глянец/мат — разные листы.
+// Цена остаётся в документе (склад без цены). Листы считаем в ШТУКАХ.
+const sheetColor = (n: string) => (n.match(/(\d{4})/) || [])[1] || (/(дуб|дерев|3d)/i.test(n) ? 'дерево' : '')
+const sheetThick = (n: string) => (n.match(/(\d+[.,]\d+)/) || [])[1] || ''
+const sheetIsMat = (n: string) => /(^|\s)мат(овый)?(\s|$)/i.test(n)
+const isSheetProduct = (p: any) => p && p.category === 'material' && /лист/i.test(p.name)
+
+export async function receiveSheetsFromLines(orgId: string, warehouseId: string | null | undefined, lines: { productId: string; qty: any }[]) {
+  const refs = await import('../repositories/refs.repo')
+  const prods: any[] = await refs.listProducts()
+  const byId = new Map(prods.map(p => [p.id, p]))
+  const findUnified = (color: string, thick: string, mat: boolean) =>
+    prods.find(p => isSheetProduct(p) && sheetColor(p.name) === color && sheetThick(p.name) === thick && sheetIsMat(p.name) === mat)
+  for (const l of lines) {
+    const p = byId.get(l.productId)
+    if (!isSheetProduct(p)) continue
+    const color = sheetColor(p.name)
+    const thick = sheetThick(p.name)
+    const mat = sheetIsMat(p.name)
+    const normThick = thick === '0,35' || thick === '0.35' ? '0,4' : thick   // 0,35 → наш 0,4
+    // если нормализованный лист заведён — приходуем в него; иначе — в сам товар строки
+    const target = (normThick !== thick ? findUnified(color, normThick, mat) : null) || p
+    const qty = Math.round(Number(l.qty) || 0)
+    if (qty > 0) await addSheets(orgId, { warehouseId: warehouseId || undefined, productId: target.id, color, widthCm: SHEET_WIDTH_CM, lengthCm: SHEET_LENGTH_CM, qty })
+  }
+}
+
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
 export async function reviseSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
   const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM

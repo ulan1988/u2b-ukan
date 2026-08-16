@@ -63,7 +63,7 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
     const colorLabel = shColor === 'decor' ? 'дерево' : shColor
     const name = `Лист плоский ${colorLabel}${th ? ` ${th}` : ''} ${shMat ? 'мат' : 'глян'}`
     if (sheets.some((s: any) => s.name.toLowerCase().trim() === name.toLowerCase().trim())) { showMsg('Такой лист уже есть'); return }
-    const r: any = await addProduct({ name, unit: 'м2', category: 'material', group: 'Материалы', cat: '', subgroup: colorLabel })
+    const r: any = await addProduct({ name, unit: 'лист', category: 'material', group: 'Материалы', cat: '', subgroup: colorLabel })
     if (r.ok) { showMsg('✅ Лист заведён'); loadProducts() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
   async function removeSheet(id: string) { await archiveProduct(id); loadProducts(); showMsg('🗃 В архив') }
