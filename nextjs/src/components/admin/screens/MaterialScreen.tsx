@@ -3,15 +3,17 @@
 // (куски листы/обрезь по цветам), Привязка типа к цветным изделиям.
 import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
-import { extractRal, RalDot } from '@/lib/ral'
+import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { SHEET_WIDTH_CM, SHEET_LENGTH_CM, MIN_REMNANT_CM } from '@/lib/production'
-import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, reviseSheet } from '@/lib/api/refs'
+import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, reviseSheet, addProduct, archiveProduct } from '@/lib/api/refs'
 
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: `1.5px solid ${COLORS.border}`, background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 5, display: 'block', letterSpacing: '.04em' }
 const TH: React.CSSProperties = { padding: '7px 8px', fontSize: 11, fontWeight: 700, color: COLORS.textMuted, textAlign: 'left', whiteSpace: 'nowrap' }
 const num = (v: any) => Number(v) || 0
-const TABS = [{ key: 'types', label: '📐 Типы изделий' }, { key: 'stock', label: '🧱 Склад материала' }, { key: 'bind', label: '🔗 Привязка' }] as const
+const TABS = [{ key: 'types', label: '📐 Типы изделий' }, { key: 'sheets', label: '📄 Листы' }, { key: 'stock', label: '🧱 Склад материала' }, { key: 'bind', label: '🔗 Привязка' }] as const
+// покрытие: по умолчанию глянец; матовые изделие НЕ берёт
+const THICKS = ['0,35', '0,4', '0,45']
 type TabKey = typeof TABS[number]['key']
 
 export default function MaterialScreen({ orgId }: { orgId: string }) {
@@ -49,6 +51,24 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   // группировка склада по цвету
   const stockByColor: Record<string, any[]> = {}
   for (const p of stock) (stockByColor[p.color || '—'] ||= []).push(p)
+
+  // ── Листы (спецификация материала): цвет + толщина + покрытие (глян по умолч., мат — опция) ──
+  const [shColor, setShColor] = useState(''); const [shThick, setShThick] = useState('0,4'); const [shMat, setShMat] = useState(false); const [shAll, setShAll] = useState(false)
+  const sheets = materials.filter((p: any) => !p.archived && /лист/i.test(p.name))
+  const parseThick = (n: string) => (n.match(/(\d+[.,]\d+)/) || [])[1] || ''   // первое дробное число = толщина
+  const isMat = (n: string) => /(^|\s)мат(овый)?(\s|$)/i.test(n)               // \b не работает с кириллицей
+  async function addSheet() {
+    if (!shColor) { showMsg('Выберите цвет'); return }
+    const th = (shThick || '').trim().replace('.', ',')
+    const colorLabel = shColor === 'decor' ? 'дерево' : shColor
+    const name = `Лист плоский ${colorLabel}${th ? ` ${th}` : ''} ${shMat ? 'мат' : 'глян'}`
+    if (sheets.some((s: any) => s.name.toLowerCase().trim() === name.toLowerCase().trim())) { showMsg('Такой лист уже есть'); return }
+    const r: any = await addProduct({ name, unit: 'м2', category: 'material', group: 'Материалы', cat: '', subgroup: colorLabel })
+    if (r.ok) { showMsg('✅ Лист заведён'); loadProducts() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function removeSheet(id: string) { await archiveProduct(id); loadProducts(); showMsg('🗃 В архив') }
+  const sheetsByColor: Record<string, any[]> = {}
+  for (const s of sheets) (sheetsByColor[extractRal(s.name) || '—'] ||= []).push(s)
 
   // ── Привязка типа к изделиям (только папка «Комплектующие» — их режем из листа) ──
   const [bindSearch, setBindSearch] = useState('')
@@ -108,6 +128,58 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
                   ))}</tbody>
                 </table>
               </div>}
+        </div>
+      )}
+
+      {/* ── ЛИСТЫ (спецификация материала) ── */}
+      {tab === 'sheets' && (
+        <div style={{ maxWidth: 760 }}>
+          <div style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, padding: 16, marginBottom: 16 }}>
+            <label style={LBL}>НОВЫЙ ЛИСТ · «Лист плоский {shColor === 'decor' ? 'дерево' : shColor || '____'} {shThick} {shMat ? 'мат' : 'глян'}»</label>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', margin: '4px 0 6px' }}>ЦВЕТ</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {ralOrdered(shAll).map((c: any) => {
+                const on = shColor === c.code
+                return <button key={c.code} type="button" onClick={() => setShColor(on ? '' : c.code)} title={`${c.code} · ${c.name}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, border: 'none', background: 'none', cursor: 'pointer', padding: 0, width: 36 }}>
+                  <span style={{ width: on ? 30 : 24, height: on ? 30 : 24, borderRadius: '50%', background: c.bg || c.hex, boxShadow: on ? `0 0 0 3px rgba(212,97,58,.3), inset 0 0 0 1.5px rgba(0,0,0,.12)` : 'inset 0 0 0 1.5px rgba(0,0,0,.14)' }} />
+                  <span style={{ fontSize: 9, fontWeight: on ? 800 : 500, color: on ? COLORS.primary : '#6b645b' }}>{c.code === 'decor' ? 'дерево' : c.code}</span>
+                </button>
+              })}
+              <button type="button" onClick={() => setShAll(v => !v)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, border: 'none', background: 'none', cursor: 'pointer', width: 36 }}>
+                <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#f1efec', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>{shAll ? '🙈' : '👁'}</span>
+                <span style={{ fontSize: 9, color: '#6b645b' }}>{shAll ? 'скрыть' : 'ещё'}</span>
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div>
+                <label style={LBL}>ТОЛЩИНА, мм</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {THICKS.map(t => <button key={t} type="button" onClick={() => setShThick(t)} style={{ padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: shThick === t ? 700 : 500, fontFamily: 'inherit', background: shThick === t ? COLORS.primary : '#f1efec', color: shThick === t ? '#fff' : '#4a4640' }}>{t}</button>)}
+                  <input style={{ ...INP, width: 70 }} value={shThick} onChange={e => setShThick(e.target.value.replace(/[^0-9.,]/g, ''))} />
+                </div>
+              </div>
+              <div>
+                <label style={LBL}>ПОКРЫТИЕ</label>
+                <button type="button" onClick={() => setShMat(v => !v)} style={{ padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${shMat ? '#b03020' : '#cfeadd'}`, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', background: shMat ? '#fbecea' : '#eef7f1', color: shMat ? '#b03020' : '#2e8a5e' }}>{shMat ? '● Матовый' : '○ Глянец (по умолч.)'}</button>
+              </div>
+              <button onClick={addSheet} style={{ marginLeft: 'auto', padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>＋ Завести лист</button>
+            </div>
+            <div style={{ fontSize: 12, color: COLORS.textLight, marginTop: 8 }}>Подбор под изделие: по цвету, только НЕ матовый. Толщина в имени, на подбор не влияет.</div>
+          </div>
+          {Object.keys(sheetsByColor).length === 0 ? <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Листов пока нет.</div>
+            : Object.entries(sheetsByColor).map(([color, list]) => (
+              <div key={color} style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, padding: 14, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><RalDot code={extractRal(color) || color} /><b style={{ fontSize: 15 }}>{color}</b></div>
+                {list.map((s: any) => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>{s.name}</span>
+                    {parseThick(s.name) && <span style={{ fontSize: 11, color: COLORS.textMuted }}>{parseThick(s.name)} мм</span>}
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: isMat(s.name) ? '#fbecea' : '#eef7f1', color: isMat(s.name) ? '#b03020' : '#2e8a5e' }}>{isMat(s.name) ? 'мат' : 'глян'}</span>
+                    <button onClick={() => removeSheet(s.id)} title="В архив" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: COLORS.textLight }}>🗃</button>
+                  </div>
+                ))}
+              </div>
+            ))}
         </div>
       )}
 
