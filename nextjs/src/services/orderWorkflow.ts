@@ -221,6 +221,14 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   }
   // Филиал передал логисту: позиции первого плеча (leg=1) → leg=2, теперь их видит логист.
   if (action === 'branchForward') await repo.setLegForCard(id, 1, 2)
+  // Раскрой подтверждён → движение склада материала (−целые листы по цвету, +обрезь ≥4см). Один раз.
+  if (action === 'confirmCut' && !order.cutConfirmed) {
+    try {
+      const { consumeForCut } = await import('./material.service')
+      const sum = await consumeForCut(order.orgId, positions)
+      if (sum) await repo.insertHistory({ cardId: id, action: 'material', detail: `Раскрой: −${sum.sheets} лист${sum.shortfall ? ` (не хватило ${sum.shortfall})` : ''}, +${sum.remnants} обрезь`, userName: actor?.name || 'Система' })
+    } catch { /* склад не критичен для воркфлоу */ }
+  }
   // Закуп оформлен → открыть связанные продажи: перенести поставщика/цену/логиста,
   // продажи становятся готовыми на столе Приёмки (openLinkedSales, как в Улкане).
   if (action === 'finalizePurchase') {

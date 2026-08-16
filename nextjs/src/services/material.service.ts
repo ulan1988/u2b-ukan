@@ -1,5 +1,5 @@
 // Спецификации (типы изделий) + склад материала (листы/обрезь).
-import { SHEET_WIDTH_CM, SHEET_LENGTH_CM } from '../lib/production'
+import { SHEET_WIDTH_CM, SHEET_LENGTH_CM, MIN_REMNANT_CM, optimizeCut } from '../lib/production'
 import * as repo from '../repositories/material.repo'
 
 // ── Типы изделий ──
@@ -70,6 +70,54 @@ export async function receiveSheetsFromLines(orgId: string, warehouseId: string 
     const qty = Math.round(Number(l.qty) || 0)
     if (qty > 0) await addSheets(orgId, { warehouseId: warehouseId || undefined, productId: target.id, color, widthCm: SHEET_WIDTH_CM, lengthCm: SHEET_LENGTH_CM, qty })
   }
+}
+
+// ── Раскрой ↔ склад (Ф2 кирпич2): списание целых листов + приход обрези ──
+// Списать N целых листов цвета (только НЕ матовые), FIFO. Возвращает {taken, shortfall}.
+async function deductSheets(orgId: string, color: string, count: number) {
+  if (count <= 0) return { taken: 0, shortfall: 0 }
+  const refs = await import('../repositories/refs.repo')
+  const prods: any[] = await refs.listProducts()
+  const matById = new Map(prods.map(p => [p.id, sheetIsMat(p.name)]))
+  const pieces = (await repo.listMaterialPieces(orgId))
+    .filter((p: any) => p.kind === 'sheet' && (p.color || '') === color && !matById.get(p.productId))
+    .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())   // FIFO
+  let need = count
+  for (const pc of pieces) {
+    if (need <= 0) break
+    const take = Math.min(need, Number(pc.qty))
+    await repo.updateMaterialQty(pc.id, Number(pc.qty) - take)
+    need -= take
+  }
+  return { taken: count - need, shortfall: need }
+}
+
+// Приходовать обрезь (полоса ширины × 200). Если такой кусок есть — +кол-во.
+async function addRemnant(orgId: string, color: string, widthCm: number, qty = 1) {
+  const w = Math.round(widthCm)
+  const same = (await repo.listMaterialPieces(orgId)).find((p: any) =>
+    p.kind === 'remnant' && (p.color || '') === color && Number(p.widthCm) === w && Number(p.lengthCm) === SHEET_LENGTH_CM)
+  if (same) { await repo.updateMaterialQty(same.id, Number(same.qty) + qty); return }
+  await repo.insertMaterialPiece({ orgId, color, widthCm: String(w), lengthCm: String(SHEET_LENGTH_CM), qty, kind: 'remnant' })
+}
+
+// Раскрой карточки → движение склада: −целые листы по цвету, +обрезь ≥4см. Идемпотентность — у вызывающего.
+export async function consumeForCut(orgId: string, positions: any[]) {
+  const items = positions
+    .filter(p => Number(p.leg) === 1 && Number(p.widthCm) > 0)
+    .map(p => ({ name: p.name1c || p.oral || '', color: sheetColor(p.name1c || p.oral || ''), cm: Number(p.widthCm), qty: Number(p.qty) }))
+    .filter(i => i.cm > 0 && i.qty > 0)
+  if (!items.length) return null
+  const pack = optimizeCut(items, SHEET_WIDTH_CM)
+  const summary = { sheets: 0, remnants: 0, shortfall: 0, byColor: [] as any[] }
+  for (const g of pack.byColor) {
+    const d = await deductSheets(orgId, g.color, g.count)
+    let rem = 0
+    for (const sh of g.sheets) if (sh.waste >= MIN_REMNANT_CM) { await addRemnant(orgId, g.color, sh.waste); rem++ }
+    summary.sheets += g.count; summary.remnants += rem; summary.shortfall += d.shortfall
+    summary.byColor.push({ color: g.color, sheets: g.count, remnants: rem, shortfall: d.shortfall })
+  }
+  return summary
 }
 
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
