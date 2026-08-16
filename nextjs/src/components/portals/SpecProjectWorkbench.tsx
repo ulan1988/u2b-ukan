@@ -7,7 +7,7 @@ import NomInline from '@/components/NomInline'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { optimizeCut, SHEET_WIDTH_CM } from '@/lib/production'
-import { createSpecProject } from '@/lib/api/refs'
+import { createSpecProject, produceToStock } from '@/lib/api/refs'
 
 const PRIMARY = '#d4613a'
 const SEG = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7', '#e34948', '#008300']
@@ -65,6 +65,21 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
       const res: any = await createSpecProject({ name, items })
       if (res?.id || res?.ok) { showMsg('✓ Спец-проект в очереди'); onDone() }
       else showMsg('⚠ ' + (res?.error || 'Не удалось'))
+    } catch { showMsg('⚠ Ошибка сети') } finally { setBusy(false) }
+  }
+
+  // «В запас»: изделия сразу в свой склад (собственное производство) — списывает листы раскроем.
+  async function toStock() {
+    if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
+    setBusy(true)
+    try {
+      const items = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => {
+        const nm = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`
+        return { productId: r.productId || undefined, name: nm, widthCm: Number(r.cm) || undefined, qty: Number(r.qty) || 0 }
+      })
+      const res: any = await produceToStock(items)
+      if (res.ok) { showMsg(`📦 В запас: ${res.data?.produced ?? items.length} поз · −${res.data?.consumed?.sheets ?? 0} лист`); onDone() }
+      else showMsg('⚠ ' + (res.error || 'Не удалось'))
     } catch { showMsg('⚠ Ошибка сети') } finally { setBusy(false) }
   }
 
@@ -173,7 +188,8 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
         <button onClick={() => setRows(rs => [...rs, blank()])} style={{ border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '5px 14px', background: 'none', cursor: 'pointer', fontSize: 13, color: '#5f5952', fontFamily: 'inherit' }}>＋ Пустая строка</button>
-        <button onClick={save} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? PRIMARY : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : 'В очередь →'}</button>
+        <button onClick={toStock} disabled={busy || !hasPos} style={{ marginLeft: 'auto', padding: '9px 16px', borderRadius: 8, border: '1.5px solid #cfeadd', background: hasPos ? '#eef7f1' : '#f1efec', color: hasPos ? '#2e8a5e' : '#9a938a', cursor: hasPos ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }} title="Изделия сразу в свой склад (собственное производство)">📦 В запас</button>
+        <button onClick={save} disabled={busy || !valid} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? PRIMARY : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : 'В очередь →'}</button>
       </div>
     </div>
   )

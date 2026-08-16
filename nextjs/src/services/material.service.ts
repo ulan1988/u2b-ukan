@@ -120,6 +120,23 @@ export async function consumeForCut(orgId: string, positions: any[]) {
   return summary
 }
 
+// Производство В ЗАПАС (листогиб → свой склад): списать листы раскроем + приходовать
+// изделие в склад готовой продукции (по базе), пометка «собственное производство».
+export async function produceToStock(orgId: string, items: { productId?: string; name: string; widthCm?: number; qty: number }[], _actor?: any) {
+  const positions = items.map(i => ({ leg: 1, name1c: i.name, oral: i.name, widthCm: i.widthCm, qty: i.qty }))
+  const consumed = await consumeForCut(orgId, positions)   // −листы, +обрезь (кирпич2)
+  const refs = await import('../repositories/refs.repo')
+  const wh = await refs.centralWarehouse(orgId)
+  const outputs = items.filter(i => i.productId && Number(i.qty) > 0)
+    .map(i => ({ productId: i.productId as string, qty: Number(i.qty), widthCm: i.widthCm ? Number(i.widthCm) : undefined, price: 0 }))
+  let doc: any = null
+  if (wh && outputs.length) {
+    const docSvc = await import('./document.service')
+    doc = await docSvc.createProduction({ orgId, warehouseId: wh.id, inputs: [], outputs, comment: 'Собственное производство (листогиб) — запас' } as any)
+  }
+  return { ok: true as const, consumed, produced: outputs.length, docId: doc?.id }
+}
+
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
 export async function reviseSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
   const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM
