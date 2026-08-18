@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
-  const orgId = new URL(req.url).searchParams.get('orgId') || s.orgId
+  const sp = new URL(req.url).searchParams
+  const orgId = sp.get('all') ? undefined : (sp.get('orgId') || s.orgId)   // all=1 → агрегат по всем орг
   return NextResponse.json(await sheetsByColor(orgId))
 }

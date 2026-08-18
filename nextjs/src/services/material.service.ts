@@ -138,11 +138,13 @@ export async function produceToStock(orgId: string, items: { productId?: string;
 }
 
 // Кабинет-передатчик листов: сколько целых листов по цветам (глянец/мат раздельно).
-export async function sheetsByColor(orgId: string) {
+// Без orgId — агрегат по всем орг (для главного дашборда).
+export async function sheetsByColor(orgId?: string) {
   const refs = await import('../repositories/refs.repo')
   const prods: any[] = await refs.listProducts()
   const matById = new Map(prods.map(p => [p.id, sheetIsMat(p.name)]))
-  const pieces = (await repo.listMaterialPieces(orgId)).filter((p: any) => p.kind === 'sheet')
+  const all = orgId ? await repo.listMaterialPieces(orgId) : await repo.listAllMaterialPieces()
+  const pieces = all.filter((p: any) => p.kind === 'sheet')
   const map: Record<string, { color: string; glyan: number; mat: number }> = {}
   for (const p of pieces) {
     const key = p.color || '—'

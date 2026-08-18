@@ -408,7 +408,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             })}
         </div>}
         {tab === 'sheets' && <div>
-          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📄 Взял лист — тапни цвет, впиши сколько взял. Списывается с целых листов.</div>
+          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📄 Индикатор целых листов. Взял лист — тапни цвет, впиши сколько взял, счётчик обновится (видно на главном дашборде).</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {ralOrdered(false).map((c: any) => {
               const cnt = sheetQtyOf(c.code); const on = takeColor === c.code
@@ -431,7 +431,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
               <div style={{ display: 'flex', gap: 8 }}>
                 <input autoFocus value={takeQty} inputMode="numeric" onChange={e => setTakeQty(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === 'Enter' && takeLeaf()} placeholder="сколько взял"
                   style={{ flex: 1, padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e6e2dc', fontSize: 18, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />
-                <button onClick={takeLeaf} disabled={!(Number(takeQty) > 0)} style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: Number(takeQty) > 0 ? PRIMARY : '#e6e2dc', color: '#fff', cursor: Number(takeQty) > 0 ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 15, fontFamily: 'inherit' }}>− Списать</button>
+                <button onClick={takeLeaf} disabled={!(Number(takeQty) > 0)} style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: Number(takeQty) > 0 ? PRIMARY : '#e6e2dc', color: '#fff', cursor: Number(takeQty) > 0 ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 15, fontFamily: 'inherit' }}>✓ Записать</button>
               </div>
             </div>
           )}

@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { COLORS } from '@/lib/colors'
 import { barColor, fmtMoney } from '@/lib/adminFmt'
 import { fetchDashboard } from '@/lib/api/reports'
+import { sheetsAll } from '@/lib/api/refs'
+import { RalDot } from '@/lib/ral'
 import { useLiveData } from '@/lib/live'
 
 const fmtDateTime = (d: any) => d ? new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
@@ -32,10 +34,12 @@ type DashboardData = {
 export default function DashboardScreen({ orgId }: { orgId: string }) {
   const router = useRouter()
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
+  const [sheets, setSheets] = useState<any[]>([])
   const setScreen = (s: string) => router.push(`/admin/${s}`)
 
   const load = useCallback(async () => {
     try { setDashboard(await fetchDashboard(orgId) as DashboardData) } catch {}
+    try { setSheets(await sheetsAll()) } catch {}
   }, [orgId])
   useLiveData(load, [orgId])
 
@@ -140,6 +144,32 @@ export default function DashboardScreen({ orgId }: { orgId: string }) {
               }
             </div>
           </div>
+
+          {/* Целые листы (передатчик мастера) */}
+          {(() => {
+            const withGlyan = sheets.filter((s: any) => Number(s.glyan) > 0).sort((a: any, b: any) => Number(b.glyan) - Number(a.glyan))
+            const totalG = sheets.reduce((a: number, s: any) => a + Number(s.glyan || 0), 0)
+            return (
+              <div style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 0 0 1.5px #e6e2dc', marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>📄 Целые листы</div>
+                  <span style={{ fontSize: 13, color: '#5f5952' }}>всего {totalG} листов (глянец)</span>
+                </div>
+                {withGlyan.length === 0 ? <div style={{ color: '#5f5952', fontSize: 14 }}>Нет данных — мастер ещё не отметил листы (кабинет → 📄 Листы).</div>
+                  : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10 }}>
+                      {withGlyan.map((s: any) => (
+                        <div key={s.color} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, background: '#faf8f6', boxShadow: '0 0 0 1px #eee' }}>
+                          <RalDot code={s.color} size={16} />
+                          <div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: '#26231f', lineHeight: 1 }}>{Number(s.glyan)}</div>
+                            <div style={{ fontSize: 11, color: '#5f5952', fontWeight: 600 }}>{s.color}{Number(s.mat) > 0 ? ` · мат ${Number(s.mat)}` : ''}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>}
+              </div>
+            )
+          })()}
         </>
       )}
     </div>

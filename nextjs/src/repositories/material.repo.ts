@@ -13,6 +13,8 @@ export const updateSpecType = (id: string, patch: Partial<typeof specTypes.$infe
 // ── Склад материала (куски) ──
 export const listMaterialPieces = (orgId: string) =>
   db.select().from(materialPieces).where(eq(materialPieces.orgId, orgId)).orderBy(asc(materialPieces.color), desc(materialPieces.widthCm))
+export const listAllMaterialPieces = () =>
+  db.select().from(materialPieces).orderBy(asc(materialPieces.color), desc(materialPieces.widthCm))
 export const insertMaterialPiece = (v: typeof materialPieces.$inferInsert) => db.insert(materialPieces).values(v).returning()
 export const updateMaterialQty = (id: string, qty: number) =>
   db.update(materialPieces).set({ qty }).where(eq(materialPieces.id, id)).returning()
