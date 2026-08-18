@@ -4,7 +4,7 @@
 // правка кол-ва, добавление из каталога (NomPicker). Адаптировано под модель u2b.
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { cardProgress } from '@/lib/adminFmt'
-import { RalDot, extractRal } from '@/lib/ral'
+import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
@@ -12,7 +12,7 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, setProdStage } from '@/lib/api/orders'
-import { fetchRefs, listSpecProjects, carveToLogist } from '@/lib/api/refs'
+import { fetchRefs, listSpecProjects, carveToLogist, sheetsByColor, takeSheet } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import { SHEET_WIDTH_CM } from '@/lib/production'
@@ -20,7 +20,7 @@ import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 import SpecProjectWorkbench from '@/components/portals/SpecProjectWorkbench'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
-type Tab = 'production' | 'spec' | 'produce' | 'out' | 'new' | 'finance'
+type Tab = 'production' | 'spec' | 'sheets' | 'produce' | 'out' | 'new' | 'finance'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -52,6 +52,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false)
   const [specProjects, setSpecProjects] = useState<any[]>([]); const [showSpecBuilder, setShowSpecBuilder] = useState(false); const [specQ, setSpecQ] = useState<Record<string, string>>({})
+  const [sheets, setSheets] = useState<any[]>([]); const [takeColor, setTakeColor] = useState(''); const [takeQty, setTakeQty] = useState('')
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
   const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
@@ -73,6 +74,18 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   async function carveLogist(projectId: string, specItemId: string, qty: number) {
     const r: any = await carveToLogist(projectId, [{ specItemId, qty }])
     if (r.ok) { showMsg(`✓ ${qty} шт → логисту${r.data?.id ? ' (' + r.data.id + ')' : ''}`); setSpecQ(p => { const n = { ...p }; delete n[specItemId]; return n }); await loadSpec(); await load() }
+    else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
+
+  // Кабинет-передатчик листов: остатки по цветам + списание «взял N».
+  const loadSheets = useCallback(async () => { setSheets(await sheetsByColor(user.orgId)) }, [user.orgId])
+  useEffect(() => { if (tab === 'sheets') loadSheets() }, [tab, loadSheets])
+  const sheetQtyOf = (code: string) => { const s = sheets.find((x: any) => (x.color || '') === code); return s ? Number(s.glyan) || 0 : 0 }
+  async function takeLeaf() {
+    const n = Number((takeQty || '').replace(',', '.')) || 0
+    if (!takeColor || n <= 0) { showMsg('Выберите цвет и кол-во'); return }
+    const r: any = await takeSheet(takeColor, n)
+    if (r.ok) { showMsg(`− ${n} листов ${takeColor}${r.shortfall ? ` (не хватило ${r.shortfall})` : ''}`); setTakeColor(''); setTakeQty(''); await loadSheets() }
     else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
 
@@ -394,6 +407,35 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
               )
             })}
         </div>}
+        {tab === 'sheets' && <div>
+          <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📄 Взял лист — тапни цвет, впиши сколько взял. Списывается с целых листов.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {ralOrdered(false).map((c: any) => {
+              const cnt = sheetQtyOf(c.code); const on = takeColor === c.code
+              return (
+                <button key={c.code} type="button" onClick={() => { setTakeColor(on ? '' : c.code); setTakeQty('') }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 6px 10px', borderRadius: 14, cursor: 'pointer', fontFamily: 'inherit', background: '#fff', border: on ? `2.5px solid ${PRIMARY}` : '1.5px solid #e6e2dc', boxShadow: on ? '0 4px 14px rgba(212,97,58,.25)' : '0 1px 4px rgba(0,0,0,.06)' }}>
+                  <span style={{ fontSize: 26, fontWeight: 800, color: cnt > 0 ? '#26231f' : '#c9c3ba', lineHeight: 1 }}>{cnt}</span>
+                  <span style={{ width: 30, height: 30, borderRadius: '50%', background: c.bg || c.hex, boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,.14)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: on ? PRIMARY : '#5f5952' }}>{c.code === 'decor' ? 'дерево' : c.code}</span>
+                </button>
+              )
+            })}
+          </div>
+          {takeColor && (
+            <div style={{ marginTop: 14, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 14 }}>
+                <RalDot code={takeColor} size={16} /><b>{takeColor === 'decor' ? 'дерево' : takeColor}</b>
+                <span style={{ color: '#5f5952' }}>· в наличии {sheetQtyOf(takeColor)} листов</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input autoFocus value={takeQty} inputMode="numeric" onChange={e => setTakeQty(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === 'Enter' && takeLeaf()} placeholder="сколько взял"
+                  style={{ flex: 1, padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e6e2dc', fontSize: 18, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />
+                <button onClick={takeLeaf} disabled={!(Number(takeQty) > 0)} style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: Number(takeQty) > 0 ? PRIMARY : '#e6e2dc', color: '#fff', cursor: Number(takeQty) > 0 ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 15, fontFamily: 'inherit' }}>− Списать</button>
+              </div>
+            </div>
+          )}
+        </div>}
         {tab === 'produce' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Цепочка: <b>Распил</b> (раскрой → распилено) → <b>Листогиб</b> (согнуто) → <b>Готово</b> к логисту. 1 лист = {SHEET_WIDTH_CM} см.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
@@ -465,7 +507,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🧰', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length + bending.length }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🧰', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: producing.length + bending.length }, { key: 'sheets' as Tab, icon: '📄', label: 'Листы', badge: 0 }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}

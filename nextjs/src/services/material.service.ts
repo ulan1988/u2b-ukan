@@ -137,6 +137,27 @@ export async function produceToStock(orgId: string, items: { productId?: string;
   return { ok: true as const, consumed, produced: outputs.length, docId: doc?.id }
 }
 
+// Кабинет-передатчик листов: сколько целых листов по цветам (глянец/мат раздельно).
+export async function sheetsByColor(orgId: string) {
+  const refs = await import('../repositories/refs.repo')
+  const prods: any[] = await refs.listProducts()
+  const matById = new Map(prods.map(p => [p.id, sheetIsMat(p.name)]))
+  const pieces = (await repo.listMaterialPieces(orgId)).filter((p: any) => p.kind === 'sheet')
+  const map: Record<string, { color: string; glyan: number; mat: number }> = {}
+  for (const p of pieces) {
+    const key = p.color || '—'
+    if (!map[key]) map[key] = { color: key, glyan: 0, mat: 0 }
+    map[key][matById.get(p.productId) ? 'mat' : 'glyan'] += Number(p.qty)
+  }
+  return Object.values(map)
+}
+
+// Мастер взял N листов цвета (передатчик) — списываем целые листы (глянец, FIFO).
+export async function takeSheets(orgId: string, color: string, qty: number) {
+  const d = await deductSheets(orgId, color, Math.round(Number(qty) || 0))
+  return { ok: true as const, ...d }
+}
+
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
 export async function reviseSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
   const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM
