@@ -79,8 +79,22 @@ export function packByColor(items: { color: string; cm: number; qty: number }[],
 // листов на КАЖДЫЙ цвет. Даёт листы с сегментами (для визуализации), обрезь и КПД.
 export interface CutItemIn { name: string; color: string; cm: number; qty: number }
 export interface CutSeg { cm: number; name: string; ci: number }
-export interface CutSheet { segs: CutSeg[]; waste: number }
-export interface CutColor { color: string; sheets: CutSheet[]; count: number; waste: number; eff: number; items: { name: string; cm: number; qty: number }[] }
+export interface CutSheet { segs: CutSeg[]; waste: number; good?: number; scrap?: number; kind?: string; pieces?: number[] }
+export interface CutColor { color: string; sheets: CutSheet[]; count: number; waste: number; eff: number; good?: number; scrap?: number; items: { name: string; cm: number; qty: number }[] }
+// «Умный» план остатка (из калькулятора): остаток r см на листе, где можно снять cap см
+// с деталей (pcs×допуск). useful = стандартные изделия (см). Возвращает годную часть/мусор.
+export interface CutOpts { useful?: number[]; tol?: number; grow?: number }
+function remnantPlan(r: number, cap: number, useful: number[], grow: number) {
+  if (r <= 1e-9) return { good: 0, scrap: 0, kind: 'zero', pieces: [] as number[] }
+  if (r <= grow && r <= cap) return { good: 0, scrap: 0, kind: 'zero', pieces: [] as number[] }   // растянули детали → лист в ноль
+  const U = useful.find(u => u >= r && u - r <= cap)                                               // заузили под стандарт
+  if (U) return { good: U, scrap: 0, kind: 'useful', pieces: [U] }
+  const desc = [...useful].sort((a, b) => b - a)                                                   // вырезали полезные куски из остатка
+  let cur = r, good = 0; const pieces: number[] = []
+  for (let g = 0; g < 50; g++) { const u = desc.find(x => x <= cur); if (!u) break; pieces.push(u); good += u; cur -= u }
+  if (good > 0) return { good, scrap: Math.round(cur * 100) / 100, kind: 'part', pieces }
+  return { good: 0, scrap: r, kind: 'dirty', pieces: [] as number[] }
+}
 
 // Все паттерны реза (мультимножества кусков, влезающие в лист SL с зазором GAP).
 // Одиночные паттерны добавляем всегда — гарантия полного покрытия даже при обрыве по cap.
@@ -139,7 +153,10 @@ function solveGroup(items: { w: number; q: number }[], SL: number, GAP: number) 
   return used
 }
 
-export function optimizeCut(items: CutItemIn[], sheetWidth = SHEET_WIDTH_CM, gap = 0) {
+export function optimizeCut(items: CutItemIn[], sheetWidth = SHEET_WIDTH_CM, gap = 0, opts: CutOpts = {}) {
+  const useful = (opts.useful || []).filter(u => u > 0).sort((a, b) => a - b)
+  const tol = opts.tol ?? 0.2, grow = opts.grow ?? 0.3   // допуск/растяжка по умолчанию (см)
+  const smart = useful.length > 0
   const groups = new Map<string, CutItemIn[]>()
   let oversize = 0
   for (const it of items) {
@@ -151,22 +168,33 @@ export function optimizeCut(items: CutItemIn[], sheetWidth = SHEET_WIDTH_CM, gap
     groups.get(c)!.push({ name: it.name, color: c, cm: w, qty: q })
   }
   const byColor: CutColor[] = []
-  let totalSheets = 0, totalWaste = 0
+  let totalSheets = 0, totalWaste = 0, totalGood = 0, totalScrap = 0
   for (const [color, its] of Array.from(groups.entries())) {
     const used = solveGroup(its.map(it => ({ w: it.cm, q: it.qty })), sheetWidth, gap)
     const sheets: CutSheet[] = used.map(p => {
       const segs: CutSeg[] = []
       its.forEach((it, ii) => { for (let k = 0; k < p.counts[ii]; k++) segs.push({ cm: it.cm, name: it.name, ci: ii }) })
-      return { segs, waste: p.waste }
+      const sh: CutSheet = { segs, waste: p.waste }
+      if (smart) {
+        const pcs = p.counts.reduce((a, b) => a + b, 0)
+        const plan = remnantPlan(p.waste, pcs * tol, useful, grow)   // остаток → в дело/мусор по стандартам
+        sh.good = plan.good; sh.scrap = plan.scrap; sh.kind = plan.kind; sh.pieces = plan.pieces
+      }
+      return sh
     })
     const count = sheets.length
     const waste = Math.round(sheets.reduce((s, sh) => s + sh.waste, 0) * 100) / 100
     const eff = count ? Math.round((1 - waste / (count * sheetWidth)) * 100) : 0
-    totalSheets += count; totalWaste += waste
-    byColor.push({ color, sheets, count, waste, eff, items: its.map(it => ({ name: it.name, cm: it.cm, qty: it.qty })) })
+    const good = Math.round(sheets.reduce((s, sh) => s + (sh.good || 0), 0) * 100) / 100
+    const scrap = Math.round(sheets.reduce((s, sh) => s + (sh.scrap || 0), 0) * 100) / 100
+    totalSheets += count; totalWaste += waste; totalGood += good; totalScrap += scrap
+    byColor.push({ color, sheets, count, waste, eff, good, scrap, items: its.map(it => ({ name: it.name, cm: it.cm, qty: it.qty })) })
   }
   byColor.sort((a, b) => b.count - a.count)
   totalWaste = Math.round(totalWaste * 100) / 100
+  totalGood = Math.round(totalGood * 100) / 100; totalScrap = Math.round(totalScrap * 100) / 100
   const totalEff = totalSheets ? Math.round((1 - totalWaste / (totalSheets * sheetWidth)) * 100) : 0
-  return { byColor, totalSheets, totalWaste, totalEff, oversize, sheetWidth }
+  // % мусора (реальная потеря) — при умном режиме: только настоящий мусор, а не полезные остатки.
+  const scrapPct = totalSheets ? Math.round((smart ? totalScrap : totalWaste) / (totalSheets * sheetWidth) * 1000) / 10 : 0
+  return { byColor, totalSheets, totalWaste, totalEff, totalGood, totalScrap, scrapPct, smart, oversize, sheetWidth }
 }

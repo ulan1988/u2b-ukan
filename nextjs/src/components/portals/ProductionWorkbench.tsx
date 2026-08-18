@@ -78,7 +78,8 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const totalCm = rows.reduce((s, r) => s + (Number(r.cm) || 0) * (Number(r.qty) || 0), 0)
   // Цвет берём из изделия (extractRal). Раскрой ОТДЕЛЬНО по каждому цвету — лист одного
   // цвета нельзя резать под изделие другого.
-  const pack = optimizeCut(rows.map(r => ({ name: r.name || 'Изделие', color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })), SHEET_WIDTH_CM)
+  const useful = Array.from(new Set(products.map((p: any) => Number(p.stdWidthCm)).filter((n: number) => n > 0))).sort((a, b) => a - b)
+  const pack = optimizeCut(rows.map(r => ({ name: r.name || 'Изделие', color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })), SHEET_WIDTH_CM, 0, { useful })
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
   const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика

@@ -20,6 +20,7 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
   const [priceCm, setPriceCm] = useState('')
   const [rows, setRows] = useState<Row[]>([blank()])
   const [busy, setBusy] = useState(false)
+  const [showCalc, setShowCalc] = useState(false)   // раскрой считается по кнопке
   const [qColor, setQColor] = useState(''); const [allColors, setAllColors] = useState(false)
   const [qKind, setQKind] = useState(''); const [qCm, setQCm] = useState('')
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
@@ -49,7 +50,9 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
   }
 
   const piecePrice = (r: Row) => { const auto = (Number(priceCm) || 0) * (Number(r.cm) || 0); return auto > 0 ? auto : (Number(r.price) || 0) }
-  const pack = optimizeCut(rows.map(r => ({ name: r.name || 'Изделие', color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })), SHEET_WIDTH_CM)
+  // useful = стандартные см наших изделий (из типов, через products.stdWidthCm) — под них подгоняем остатки.
+  const useful = Array.from(new Set(products.map((p: any) => Number(p.stdWidthCm)).filter((n: number) => n > 0))).sort((a, b) => a - b)
+  const pack = optimizeCut(rows.map(r => ({ name: r.name || 'Изделие', color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })), SHEET_WIDTH_CM, 0, { useful })
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
   const valid = !!name.trim() && hasPos
 
@@ -131,13 +134,19 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
         )}
       </div>
 
-      {/* Раскрой — сразу видно сколько листов надо */}
-      {pack.totalSheets > 0 && (
+      {/* Раскрой — по кнопке */}
+      <button type="button" onClick={() => setShowCalc(v => !v)} disabled={!hasPos} style={{ marginBottom: 10, padding: '9px 16px', borderRadius: 8, border: 'none', background: !hasPos ? '#e6e2dc' : showCalc ? '#334155' : '#6366f1', color: '#fff', cursor: hasPos ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showCalc ? '× Скрыть раскрой' : '📐 Рассчитать раскрой'}</button>
+      {showCalc && pack.totalSheets > 0 && (
         <div style={{ background: '#eef7f1', border: '1.5px solid #cfeadd', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13 }}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 8 }}>
             <span style={{ fontSize: 15 }}>📐 Листов: <b style={{ color: '#2e8a5e', fontSize: 18 }}>{pack.totalSheets}</b> <span style={{ color: '#837c72', fontSize: 12 }}>(по {pack.sheetWidth} см)</span></span>
-            <span>обрезь <b>{pack.totalWaste}</b> см</span>
-            <span>КПД <b style={{ color: pack.totalEff >= 90 ? '#2e8a5e' : '#b07a00' }}>{pack.totalEff}%</b></span>
+            {pack.smart
+              ? <>
+                  <span>в дело <b style={{ color: '#2e8a5e' }}>{pack.totalGood}</b> см</span>
+                  <span>мусор <b style={{ color: pack.totalScrap ? '#e34948' : '#2e8a5e' }}>{pack.totalScrap}</b> см</span>
+                  <span>рез <b style={{ color: pack.scrapPct <= 3 ? '#2e8a5e' : '#b07a00' }}>{pack.scrapPct}%</b></span>
+                </>
+              : <><span>обрезь <b>{pack.totalWaste}</b> см</span><span>КПД <b style={{ color: pack.totalEff >= 90 ? '#2e8a5e' : '#b07a00' }}>{pack.totalEff}%</b></span></>}
             {pack.oversize > 0 && <span style={{ color: '#b03020', fontWeight: 700 }}>⚠ {pack.oversize} шт шире листа</span>}
           </div>
           {pack.byColor.map(g => (
@@ -154,7 +163,10 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
                       {sh.segs.map((seg, gi) => (
                         <div key={gi} title={`${seg.name} — ${seg.cm} см`} style={{ width: `${seg.cm / pack.sheetWidth * 100}%`, background: SEG[seg.ci % SEG.length], borderLeft: gi > 0 ? '1px solid rgba(255,255,255,.3)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', overflow: 'hidden', whiteSpace: 'nowrap' }}>{seg.cm / pack.sheetWidth > 0.06 ? seg.cm : ''}</div>
                       ))}
-                      {sh.waste > 0 && <div title={`обрезь ${sh.waste} см`} style={{ width: `${sh.waste / pack.sheetWidth * 100}%`, background: '#fff0f0', color: '#e34948', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>{sh.waste / pack.sheetWidth > 0.05 ? sh.waste : ''}</div>}
+                      {sh.waste > 0 && (pack.smart && (sh.good || 0) > 0 ? (<>
+                        {(sh.waste - (sh.scrap || 0)) > 0.001 && <div title={`в дело ${sh.good} см`} style={{ width: `${(sh.waste - (sh.scrap || 0)) / pack.sheetWidth * 100}%`, background: '#dcf5e6', color: '#2e8a5e', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', fontWeight: 700 }}>{(sh.waste - (sh.scrap || 0)) / pack.sheetWidth > 0.05 ? '↺' : ''}</div>}
+                        {(sh.scrap || 0) > 0 && <div title={`мусор ${sh.scrap} см`} style={{ width: `${(sh.scrap || 0) / pack.sheetWidth * 100}%`, background: '#fff0f0', color: '#e34948', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>{(sh.scrap || 0) / pack.sheetWidth > 0.05 ? sh.scrap : ''}</div>}
+                      </>) : <div title={`обрезь ${sh.waste} см`} style={{ width: `${sh.waste / pack.sheetWidth * 100}%`, background: '#fff0f0', color: '#e34948', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>{sh.waste / pack.sheetWidth > 0.05 ? sh.waste : ''}</div>)}
                     </div>
                   </div>
                 ))}
