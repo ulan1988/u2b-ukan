@@ -156,7 +156,7 @@ export default function SheetCabinetPublic({ slug }: { slug: string }) {
         </div>
 
         <div style={{ marginTop: 22, padding: '12px 14px', background: '#1a1d1b', border: '1px solid #262a27', borderRadius: 10, fontSize: 11, lineHeight: 1.5, color: '#7c7e79' }}>
-          Нажмите на стопку, чтобы списать (−) или добавить (+) листы. Высота стопки меняется вместе с остатком. Каждый ввод пишется в историю — видно, кто внёс.
+          Нажмите на стопку и впишите, сколько листов взяли. Высота стопки меняется вместе с остатком. Каждый ввод пишется в историю — видно, кто внёс.
         </div>
 
         {/* История — кто вносил */}
@@ -200,10 +200,7 @@ export default function SheetCabinetPublic({ slug }: { slug: string }) {
                   style={{ height: 54, borderRadius: 12, border: 'none', background: '#2a2e2b', color: '#fff', fontFamily: MONO, fontSize: 22, fontWeight: 700, cursor: 'pointer' }}>{k}</button>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button onClick={() => apply('-')} disabled={!(parseInt(input, 10) > 0)} style={{ height: 56, borderRadius: 14, border: '1.5px solid #3a3f3b', background: '#22201d', color: '#e25303', fontSize: 17, fontWeight: 800, cursor: parseInt(input, 10) > 0 ? 'pointer' : 'not-allowed', fontFamily: SANS }}>− Списать</button>
-              <button onClick={() => apply('+')} disabled={!(parseInt(input, 10) > 0)} style={{ height: 56, borderRadius: 14, border: 'none', background: parseInt(input, 10) > 0 ? '#e25303' : '#2a2e2b', color: '#fff', fontSize: 17, fontWeight: 800, cursor: parseInt(input, 10) > 0 ? 'pointer' : 'not-allowed', fontFamily: SANS }}>+ Добавить</button>
-            </div>
+            <button onClick={() => apply('-')} disabled={!(parseInt(input, 10) > 0)} style={{ width: '100%', height: 58, borderRadius: 14, border: 'none', background: parseInt(input, 10) > 0 ? '#e25303' : '#2a2e2b', color: '#fff', fontSize: 18, fontWeight: 800, cursor: parseInt(input, 10) > 0 ? 'pointer' : 'not-allowed', fontFamily: SANS }}>− Списать</button>
           </div>
         </div>
       )}
