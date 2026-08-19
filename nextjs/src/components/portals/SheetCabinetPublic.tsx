@@ -51,8 +51,8 @@ function layersFor(count: number, hex: string, dark: boolean) {
   return out
 }
 
-export default function SheetCabinetPublic({ slug }: { slug: string }) {
-  const [name, setName] = useState(''); const [nameInput, setNameInput] = useState('')
+export default function SheetCabinetPublic({ slug, sessionUser }: { slug?: string; sessionUser?: { name: string; orgId: string } }) {
+  const [name, setName] = useState(sessionUser?.name || ''); const [nameInput, setNameInput] = useState('')
   const [cab, setCab] = useState<{ name: string; sheets: any[]; log: any[] } | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [input, setInput] = useState(''); const [showExtra, setShowExtra] = useState(false)
@@ -60,14 +60,25 @@ export default function SheetCabinetPublic({ slug }: { slug: string }) {
   const showMsg = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
   useEffect(() => {
-    const s = localStorage.getItem('listy_name_' + slug); if (s) setName(s)
+    if (!sessionUser && slug) { const s = localStorage.getItem('listy_name_' + slug); if (s) setName(s) }
     if (!document.getElementById('listy-fonts')) {
       const l = document.createElement('link'); l.id = 'listy-fonts'; l.rel = 'stylesheet'
       l.href = 'https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap'
       document.head.appendChild(l)
     }
-  }, [slug])
-  const load = useCallback(async () => { try { const r = await fetch(`/api/listy/${slug}/data`); if (r.ok) setCab(await r.json()) } catch {} }, [slug])
+  }, [slug, sessionUser])
+  const load = useCallback(async () => {
+    try {
+      if (slug) { const r = await fetch(`/api/listy/${slug}/data`); if (r.ok) setCab(await r.json()) }
+      else if (sessionUser) {
+        const [sh, lg] = await Promise.all([
+          fetch(`/api/material/sheets?orgId=${sessionUser.orgId}`).then(r => r.json()).catch(() => []),
+          fetch(`/api/material/log?orgId=${sessionUser.orgId}`).then(r => r.json()).catch(() => []),
+        ])
+        setCab({ name: sessionUser.name, sheets: Array.isArray(sh) ? sh : [], log: Array.isArray(lg) ? lg : [] })
+      }
+    } catch {}
+  }, [slug, sessionUser])
   useEffect(() => { load() }, [load])
   const countOf = (ral: string) => { const s = cab?.sheets.find((x: any) => (x.color || '') === ourColor(ral)); return s ? Number(s.glyan) || 0 : 0 }
 
@@ -75,15 +86,17 @@ export default function SheetCabinetPublic({ slug }: { slug: string }) {
     const v = parseInt(input, 10) || 0
     if (!openId || v <= 0) return
     try {
-      const r = await fetch(`/api/listy/${slug}/take`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color: ourColor(openId), qty: v, sign, name }) })
+      const r = slug
+        ? await fetch(`/api/listy/${slug}/take`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color: ourColor(openId), qty: v, sign, name }) })
+        : await fetch(`/api/material/take`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color: ourColor(openId), qty: v }) })   // сессия: только списание
       const b = await r.json()
       if (r.ok) { showMsg(`${sign === '-' ? '−' : '+'}${v} листов ${openId}${b.shortfall ? ` (не хватило ${b.shortfall})` : ''}`); setOpenId(null); setInput(''); await load() }
       else showMsg('⚠ ' + (b.error || 'Не удалось'))
     } catch { showMsg('⚠ Ошибка сети') }
   }
 
-  // ── Вход по имени ──
-  if (!name) {
+  // ── Вход по имени (только публичный режим) ──
+  if (!sessionUser && !name) {
     const go = () => { if (nameInput.trim()) { localStorage.setItem('listy_name_' + slug, nameInput.trim()); setName(nameInput.trim()) } }
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(#171a19,#111312 260px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: SANS }}>
@@ -177,9 +190,11 @@ export default function SheetCabinetPublic({ slug }: { slug: string }) {
           </div>
         </div>
 
-        {/* Сменить имя */}
+        {/* Сменить имя (публичный) / Выйти (сессия) */}
         <div style={{ textAlign: 'center', marginTop: 18 }}>
-          <button onClick={() => { localStorage.removeItem('listy_name_' + slug); setName('') }} style={{ background: 'none', border: 'none', color: '#5a5d5c', fontSize: 12, cursor: 'pointer', fontFamily: SANS }}>сменить имя ({name})</button>
+          {slug
+            ? <button onClick={() => { localStorage.removeItem('listy_name_' + slug); setName('') }} style={{ background: 'none', border: 'none', color: '#5a5d5c', fontSize: 12, cursor: 'pointer', fontFamily: SANS }}>сменить имя ({name})</button>
+            : <button onClick={async () => { const { logout } = await import('@/lib/api/auth'); await logout(); location.href = '/listy' }} style={{ background: 'none', border: 'none', color: '#5a5d5c', fontSize: 12, cursor: 'pointer', fontFamily: SANS }}>выйти ({name})</button>}
         </div>
       </div>
 

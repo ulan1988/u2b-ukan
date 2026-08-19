@@ -1,12 +1,13 @@
-import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
-import SheetCabinet from '@/components/portals/SheetCabinet'
+import SheetCabinet from '@/components/portals/SheetCabinetPublic'
+import CabinetLogin from '@/components/portals/CabinetLogin'
 
 export const dynamic = 'force-dynamic'
 
-// Отдельный кабинет листов (для рабочих). Открытая страница /listy — вносят «взял N».
+// Отдельный кабинет листов со СВОИМ входом (логин/пароль). Залогинен → кабинет,
+// иначе → форма входа. Публичный по имени — отдельно на /listy/[slug].
 export default async function ListyPage() {
   const session = await getSession()
-  if (!session) redirect('/login?from=/listy')
-  return <SheetCabinet user={{ name: session.name, orgId: session.orgId }} />
+  if (!session) return <CabinetLogin />
+  return <SheetCabinet sessionUser={{ name: session.name, orgId: session.orgId }} />
 }
