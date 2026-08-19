@@ -167,6 +167,21 @@ export async function takeSheetsLogged(orgId: string, color: string, qty: number
   await repo.insertMaterialLog({ orgId, color, qty: n, userName: (userName || '').trim() || 'без имени' })
   return { ok: true as const, ...d }
 }
+
+// Корректировка листов ±delta (индикатор): −взял, +добавил. Пишется в журнал (кто).
+export async function adjustSheetLogged(orgId: string, color: string, delta: number, userName: string) {
+  const d = Math.round(Number(delta) || 0)
+  let shortfall = 0
+  if (d < 0) { const r = await deductSheets(orgId, color, -d); shortfall = r.shortfall }
+  else if (d > 0) {
+    const same = (await repo.listMaterialPieces(orgId)).find((p: any) =>
+      p.kind === 'sheet' && (p.color || '') === color && Number(p.widthCm) === SHEET_WIDTH_CM && Number(p.lengthCm) === SHEET_LENGTH_CM && !p.productId)
+    if (same) await repo.updateMaterialQty(same.id, Number(same.qty) + d)
+    else await repo.insertMaterialPiece({ orgId, color, widthCm: String(SHEET_WIDTH_CM), lengthCm: String(SHEET_LENGTH_CM), qty: d, kind: 'sheet' })
+  }
+  await repo.insertMaterialLog({ orgId, color, qty: d, userName: (userName || '').trim() || 'без имени' })
+  return { ok: true as const, delta: d, shortfall }
+}
 export const materialLog = (orgId: string) => repo.recentMaterialLog(orgId)
 
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
