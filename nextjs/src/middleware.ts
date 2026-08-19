@@ -4,7 +4,7 @@ import { verifyToken, COOKIE } from '@/lib/auth'
 
 // Пускаем без сессии: логин и его API + статика PWA (манифест/воркер/иконки).
 // Всё остальное — только авторизованным.
-const PUBLIC = ['/login', '/register', '/api/auth', '/api/health', '/track', '/api/track', '/manifest.json', '/order.webmanifest', '/sw.js', '/icons']
+const PUBLIC = ['/login', '/register', '/api/auth', '/api/health', '/track', '/api/track', '/listy', '/api/listy', '/manifest.json', '/order.webmanifest', '/sw.js', '/icons']
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl

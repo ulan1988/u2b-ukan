@@ -37,7 +37,7 @@ const barColor = (pct: number) => pct >= 100 ? '#3a9d6e' : pct >= 60 ? '#c4a832'
 const fmtDate = (d?: string | null) => !d ? '—' : new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
 const fmtTime = (d?: string | null) => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' · ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }
 
-export default function BranchPortal({ user }: { user: { id: string; name: string; orgId: string } }) {
+export default function BranchPortal({ user }: { user: { id: string; name: string; orgId: string; slug?: string } }) {
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<Tab>('production')
@@ -409,7 +409,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         </div>}
         {tab === 'sheets' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📄 Индикатор целых листов. Взял лист — тапни цвет, впиши сколько взял, счётчик обновится (видно на главном дашборде).</div>
-          <a href="/listy" target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 12, padding: '9px 16px', borderRadius: 8, background: '#0f172a', color: '#38bdf8', textDecoration: 'none', fontSize: 14, fontWeight: 700 }}>🖥 Открыть визуальный кабинет листов →</a>
+          <a href={user.slug ? `/listy/${user.slug}` : '/listy'} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 12, padding: '9px 16px', borderRadius: 8, background: '#111312', color: '#E75B12', textDecoration: 'none', fontSize: 14, fontWeight: 700 }}>🖥 Открыть кабинет листов (по ссылке) →</a>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {ralOrdered(false).map((c: any) => {
               const cnt = sheetQtyOf(c.code); const on = takeColor === c.code

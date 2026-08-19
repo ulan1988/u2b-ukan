@@ -160,6 +160,15 @@ export async function takeSheets(orgId: string, color: string, qty: number) {
   return { ok: true as const, ...d }
 }
 
+// То же + запись в журнал (кто внёс — вход по имени в кабинете производителя).
+export async function takeSheetsLogged(orgId: string, color: string, qty: number, userName: string) {
+  const n = Math.round(Number(qty) || 0)
+  const d = await deductSheets(orgId, color, n)
+  await repo.insertMaterialLog({ orgId, color, qty: n, userName: (userName || '').trim() || 'без имени' })
+  return { ok: true as const, ...d }
+}
+export const materialLog = (orgId: string) => repo.recentMaterialLog(orgId)
+
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
 export async function reviseSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
   const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM

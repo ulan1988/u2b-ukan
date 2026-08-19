@@ -1,7 +1,12 @@
 // Спецификации (типы изделий) + склад материала (куски: листы/обрезь). Только Drizzle.
 import { db } from '../lib/db'
-import { specTypes, materialPieces } from '../db/schema'
+import { specTypes, materialPieces, materialLog } from '../db/schema'
 import { eq, desc, asc } from 'drizzle-orm'
+
+// Журнал листов (кто/цвет/кол-во).
+export const insertMaterialLog = (v: typeof materialLog.$inferInsert) => db.insert(materialLog).values(v)
+export const recentMaterialLog = (orgId: string, limit = 30) =>
+  db.select().from(materialLog).where(eq(materialLog.orgId, orgId)).orderBy(desc(materialLog.createdAt)).limit(limit)
 
 // ── Типы изделий (спецификация) ── глобальны (номенклатура общая), org не фильтруем.
 export const listSpecTypes = (_orgId?: string) =>

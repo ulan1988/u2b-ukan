@@ -80,6 +80,16 @@ export const specTypes = pgTable('spec_types', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('spec_types_org_idx').on(t.orgId) }))
 
+// Журнал листов (кабинет-передатчик): кто внёс / взял сколько листов какого цвета.
+export const materialLog = pgTable('material_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  color: text('color').notNull().default(''),
+  qty: integer('qty').notNull().default(0),               // взято листов (списание-индикатор)
+  userName: text('user_name').notNull().default(''),      // кто внёс (вход по имени)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('material_log_org_idx').on(t.orgId) }))
+
 // Склад материала = физические КУСКИ (не м²). Лист режется только по ширине.
 // Целый лист = 125×200 (kind sheet). Обрезь = полоса остатка (kind remnant), длина полная.
 export const materialPieces = pgTable('material_pieces', {
