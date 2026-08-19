@@ -86,14 +86,16 @@ export default function SheetCabinetPublic({ slug }: { slug: string }) {
   if (!name) {
     const go = () => { if (nameInput.trim()) { localStorage.setItem('listy_name_' + slug, nameInput.trim()); setName(nameInput.trim()) } }
     return (
-      <div style={{ minHeight: '100vh', background: '#111312', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: SANS }}>
-        <div style={{ width: '100%', maxWidth: 360, background: '#1b1e1c', borderRadius: 18, padding: 26, boxShadow: '0 10px 40px rgba(0,0,0,.5)' }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#eceae5' }}>Склад листов</div>
-          <div style={{ fontFamily: MONO, fontSize: 12, color: '#8b8d88', margin: '4px 0 22px' }}>{cab?.name || ''} · вход по имени</div>
-          <input autoFocus value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="ваше имя"
-            style={{ width: '100%', padding: '14px 16px', borderRadius: 12, border: '2px solid #2a2e2b', background: '#111312', color: '#fff', fontSize: 18, fontWeight: 600, outline: 'none', marginBottom: 16, fontFamily: SANS }} />
-          <button onClick={go} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: nameInput.trim() ? '#e25303' : '#2a2e2b', color: '#fff', fontSize: 16, fontWeight: 700, cursor: nameInput.trim() ? 'pointer' : 'not-allowed', fontFamily: SANS }}>Войти →</button>
-          <div style={{ fontSize: 11, color: '#6b6e69', marginTop: 12, lineHeight: 1.4 }}>Имя нужно, чтобы в истории было видно, кто вносил.</div>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(#171a19,#111312 260px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: SANS }}>
+        <div style={{ width: '100%', maxWidth: 380, background: '#1b1e1c', borderRadius: 20, padding: '30px 24px', boxShadow: '0 10px 50px rgba(0,0,0,.6)', border: '1px solid #2a2e2b' }}>
+          <div style={{ fontSize: 15, fontFamily: MONO, color: '#e25303', fontWeight: 700, marginBottom: 4 }}>📄 {cab?.name || 'Производитель'}</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#eceae5', marginBottom: 4 }}>Склад листов</div>
+          <div style={{ fontSize: 13, color: '#8b8d88', marginBottom: 24 }}>Введите своё имя, чтобы войти</div>
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#e25303', letterSpacing: '.05em', display: 'block', marginBottom: 8 }}>ВАШЕ ИМЯ</label>
+          <input autoFocus value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="напр. Асхат"
+            style={{ width: '100%', padding: '16px 18px', borderRadius: 14, border: `2px solid ${nameInput.trim() ? '#e25303' : '#4a4f4b'}`, background: '#2a2e2b', color: '#fff', fontSize: 20, fontWeight: 600, outline: 'none', marginBottom: 18, fontFamily: SANS, boxSizing: 'border-box' }} />
+          <button onClick={go} disabled={!nameInput.trim()} style={{ width: '100%', padding: 16, borderRadius: 14, border: 'none', background: nameInput.trim() ? '#e25303' : '#333834', color: '#fff', fontSize: 17, fontWeight: 800, cursor: nameInput.trim() ? 'pointer' : 'not-allowed', fontFamily: SANS }}>Войти →</button>
+          <div style={{ fontSize: 11, color: '#6b6e69', marginTop: 14, lineHeight: 1.4 }}>Имя нужно, чтобы в истории было видно, кто вносил данные.</div>
         </div>
       </div>
     )
