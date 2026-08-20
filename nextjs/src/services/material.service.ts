@@ -184,6 +184,20 @@ export async function adjustSheetLogged(orgId: string, color: string, delta: num
 }
 export const materialLog = (orgId: string) => repo.recentMaterialLog(orgId)
 
+// Месячная сверка: листы отработано (кабинет) × 125 см = материал; см продано + см в запас = сделано;
+// разница = потери реза (обрезь+мусор), % реза.
+export async function monthClose(orgId: string, from: string, to: string) {
+  const d = await repo.monthCloseData(orgId, from, to)
+  const takenSheets = d.taken.reduce((a: number, t: any) => a + Number(t.sheets || 0), 0)
+  const materialCm = takenSheets * SHEET_WIDTH_CM
+  const soldCm = Math.round(Number(d.sold?.cm || 0)), soldPcs = Math.round(Number(d.sold?.pcs || 0))
+  const stockCm = Math.round(Number(d.stock?.cm || 0)), stockPcs = Math.round(Number(d.stock?.pcs || 0))
+  const madeCm = soldCm + stockCm
+  const lossCm = Math.max(0, materialCm - madeCm)
+  const lossPct = materialCm > 0 ? Math.round(lossCm / materialCm * 1000) / 10 : 0
+  return { from, to, byColor: d.taken, takenSheets, materialCm, soldCm, soldPcs, stockCm, stockPcs, madeCm, lossCm, lossPct }
+}
+
 // РЕВИЗИЯ листов — выставить ФАКТИЧЕСКОЕ кол-во (add/reduce: списание, недостачи).
 export async function reviseSheet(orgId: string, i: { warehouseId?: string; productId?: string; color: string; widthCm?: number; lengthCm?: number; qty: number }) {
   const widthCm = i.widthCm || SHEET_WIDTH_CM, lengthCm = i.lengthCm || SHEET_LENGTH_CM

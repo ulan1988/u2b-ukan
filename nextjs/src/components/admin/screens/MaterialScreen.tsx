@@ -5,13 +5,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { SHEET_WIDTH_CM, SHEET_LENGTH_CM, MIN_REMNANT_CM } from '@/lib/production'
-import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, reviseSheet, addProduct, archiveProduct } from '@/lib/api/refs'
+import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, reviseSheet, addProduct, archiveProduct, materialReport } from '@/lib/api/refs'
 
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: `1.5px solid ${COLORS.border}`, background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 5, display: 'block', letterSpacing: '.04em' }
 const TH: React.CSSProperties = { padding: '7px 8px', fontSize: 11, fontWeight: 700, color: COLORS.textMuted, textAlign: 'left', whiteSpace: 'nowrap' }
 const num = (v: any) => Number(v) || 0
-const TABS = [{ key: 'types', label: '📐 Типы изделий' }, { key: 'sheets', label: '📄 Листы' }, { key: 'stock', label: '🧱 Склад материала' }, { key: 'bind', label: '🔗 Привязка' }] as const
+const TABS = [{ key: 'types', label: '📐 Типы изделий' }, { key: 'sheets', label: '📄 Листы' }, { key: 'stock', label: '🧱 Склад материала' }, { key: 'report', label: '📊 Расчёт (месяц)' }, { key: 'bind', label: '🔗 Привязка' }] as const
 // покрытие: по умолчанию глянец; матовые изделие НЕ берёт
 const THICKS = ['0,35', '0,4', '0,45']
 type TabKey = typeof TABS[number]['key']
@@ -24,6 +24,16 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   const [materials, setMaterials] = useState<any[]>([])
   const [toast, setToast] = useState('')
   const showMsg = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2600) }
+  const [report, setReport] = useState<any>(null)
+  const [ym, setYm] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
+  const loadReport = useCallback(async () => {
+    const [y, m] = ym.split('-').map(Number)
+    const from = `${y}-${String(m).padStart(2, '0')}-01`
+    const nx = m === 12 ? { y: y + 1, m: 1 } : { y, m: m + 1 }
+    const to = `${nx.y}-${String(nx.m).padStart(2, '0')}-01`
+    setReport(await materialReport(orgId, from, to))
+  }, [orgId, ym])
+  useEffect(() => { if (tab === 'report') loadReport() }, [tab, loadReport])
 
   const loadTypes = useCallback(async () => setTypes(await listSpecTypes(orgId)), [orgId])
   const loadStock = useCallback(async () => setStock(await materialStock(orgId)), [orgId])
@@ -217,6 +227,49 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
       )}
 
       {/* ── ПРИВЯЗКА ТИПА ── */}
+      {/* ── РАСЧЁТ (ЗАКРЫТИЕ МЕСЯЦА) ── */}
+      {tab === 'report' && (
+        <div style={{ maxWidth: 760 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div><label style={LBL}>МЕСЯЦ</label><input type="month" value={ym} onChange={e => setYm(e.target.value)} style={{ ...INP, width: 180 }} /></div>
+            <button onClick={loadReport} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>Пересчитать</button>
+          </div>
+          {!report ? <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Загрузка…</div> : (() => {
+            const cm = (v: number) => `${(v / 100).toFixed(1)} м` + ` (${Math.round(v)} см)`
+            const rows = [
+              { k: 'Листов отработано', v: `${report.takenSheets} шт`, hint: `= ${report.materialCm} см материала (× ${SHEET_WIDTH_CM})`, c: COLORS.text },
+              { k: 'Изделий продано', v: cm(report.soldCm), hint: `${report.soldPcs} шт (по карточкам)`, c: '#2e8a5e' },
+              { k: 'Изделий в запас', v: cm(report.stockCm), hint: `${report.stockPcs} шт (собственное произв.)`, c: '#2a5aaa' },
+              { k: 'Сделано всего', v: cm(report.madeCm), hint: 'продано + запас', c: COLORS.text },
+              { k: 'Потери реза (обрезь+мусор)', v: cm(report.lossCm), hint: `${report.lossPct}% от материала`, c: report.lossPct > 12 ? '#b03020' : '#a56a00' },
+            ]
+            return (
+              <div style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, padding: 18 }}>
+                <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }}>Сверка материала: сколько целых листов отработано → во что превратилось (продажи + запас) → потери реза.</div>
+                {rows.map(r => (
+                  <div key={r.k} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, padding: '11px 0', borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                    <div><div style={{ fontSize: 14, fontWeight: 600 }}>{r.k}</div><div style={{ fontSize: 12, color: COLORS.textLight }}>{r.hint}</div></div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: r.c, whiteSpace: 'nowrap' }}>{r.v}</div>
+                  </div>
+                ))}
+                {report.byColor.length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textMuted, marginBottom: 8 }}>ЛИСТЫ ОТРАБОТАНО ПО ЦВЕТАМ</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {report.byColor.map((b: any) => (
+                        <span key={b.color} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, background: COLORS.bgCard, padding: '5px 10px', borderRadius: 20 }}>
+                          <RalDot code={extractRal(b.color) || b.color} size={13} /><b>{b.color}</b> · {b.sheets} шт
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
       {tab === 'bind' && (
         <div style={{ maxWidth: 760 }}>
           <input style={{ ...INP, marginBottom: 12, maxWidth: 340 }} value={bindSearch} onChange={e => setBindSearch(e.target.value)} placeholder="🔍 поиск изделия (H-профиль, угол…)" />

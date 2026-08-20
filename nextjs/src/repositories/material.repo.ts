@@ -23,3 +23,21 @@ export const listAllMaterialPieces = () =>
 export const insertMaterialPiece = (v: typeof materialPieces.$inferInsert) => db.insert(materialPieces).values(v).returning()
 export const updateMaterialQty = (id: string, qty: number) =>
   db.update(materialPieces).set({ qty }).where(eq(materialPieces.id, id)).returning()
+
+// Данные месячной сверки: листы взято (кабинет), см продано (карточки), см в запас (производство).
+export async function monthCloseData(orgId: string, from: string, to: string) {
+  const { sqlClient } = await import('../lib/db')
+  const [taken, sold, stock] = await Promise.all([
+    sqlClient`select color, sum(-qty)::int as sheets from material_log
+      where org_id=${orgId} and qty<0 and created_at>=${from} and created_at<${to} group by color order by sum(-qty) desc`,
+    sqlClient`select coalesce(sum(op.width_cm*op.qty),0)::float as cm, coalesce(sum(op.qty),0)::float as pcs
+      from order_positions op join orders o on o.id=op.card_id
+      where o.org_id=${orgId} and o.kind='sale' and o.is_cancelled=false and op.width_cm is not null
+        and o.delivered is not null and o.delivered>=${from} and o.delivered<${to}`,
+    sqlClient`select coalesce(sum(dl.width_cm*dl.qty),0)::float as cm, coalesce(sum(dl.qty),0)::float as pcs
+      from document_lines dl join documents d on d.id=dl.document_id
+      where d.org_id=${orgId} and d.type='production' and d.comment ilike '%запас%' and dl.role='output' and dl.width_cm is not null
+        and d.date>=${from} and d.date<${to}`,
+  ])
+  return { taken: taken as any[], sold: (sold as any[])[0], stock: (stock as any[])[0] }
+}
