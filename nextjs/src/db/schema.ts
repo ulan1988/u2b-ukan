@@ -292,6 +292,7 @@ export const orders = pgTable('orders', {
   cold: boolean('cold').notNull().default(false),
   cutConfirmed: boolean('cut_confirmed').notNull().default(false), // (устар.) раскрой подтверждён мастером — раскрой убран из потока
   prodPhase: text('prod_phase').notNull().default(''),    // этап мастера: '' → accepted (Принял) → working (В работе) → ready (Готов к доставке) → sent (Отправлено)
+  payment: text('payment').notNull().default(''),         // способ оплаты карточки: '' | Долг | Наличка | Каспи
   trackingLink: text('tracking_link').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
   leg: integer('leg').notNull().default(2),               // 1 = первое плечо (филиал-поставщик), 2 = обычная

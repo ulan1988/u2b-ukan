@@ -351,6 +351,40 @@ export async function sendPositions(cardId: string, posIds: string[] | undefined
   return { ok: true as const, sent: targets.length, remaining }
 }
 
+// Сплит большой карточки: выбранные позиции → НОВАЯ карточка (тот же заказчик), из исходной
+// удаляются. Новая карточка = заказ мастера (ЗК-код), сразу на столе (prodPhase=accepted).
+// Нужно оставить хотя бы одну позицию в исходной (иначе это не сплит, а переименование).
+export async function splitCard(cardId: string, posIds: string[], actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
+  const positions = await repo.positionsByCard(cardId)
+  const move = positions.filter((p: any) => posIds?.includes(p.id))
+  if (!move.length) return { ok: false as const, error: 'Не выбраны позиции' }
+  if (move.length >= positions.length) return { ok: false as const, error: 'Оставьте хотя бы одну позицию в исходной карточке' }
+
+  const newId = prodOrderNumber(await repo.nextProdSeq())
+  const newOrder: any = {
+    id: newId, orgId: order.orgId, kind: order.kind, screen: 'reception', block: '',
+    status: 'Принял', prodPhase: 'accepted', source: order.source || 'admin_manual',
+    fromName: order.fromName || '', fromId: order.fromId ?? null, contactId: order.contactId ?? null,
+    projectId: order.projectId ?? null, specProjectId: order.specProjectId ?? null,
+    comment: order.comment || '', payment: order.payment || '', leg: order.leg ?? 2,
+    trackingLink: encodeURIComponent(newId),
+  }
+  const newPositions = move.map((p: any, idx: number) => ({
+    id: `${newId}-P${idx + 1}`, cardId: newId, productId: p.productId ?? null,
+    name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
+    widthCm: p.widthCm != null ? String(p.widthCm) : null,
+    respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
+    specItemId: p.specItemId ?? null, leg: p.leg ?? 1, status: p.status || 'В работе',
+  }))
+  const history = { cardId: newId, action: 'split', detail: `Создана из ${cardId} (${move.length} поз.)`, userName: actor?.name || 'Система' }
+  await repo.insertOrderPosting(newOrder, newPositions, history)
+  for (const p of move) await repo.deletePosition(p.id)
+  await repo.insertHistory({ cardId, action: 'split', detail: `Вынесено в ${newId}: ${move.length} поз.`, userName: actor?.name || 'Система' })
+  return { ok: true as const, id: newId, moved: move.length }
+}
+
 // Удалить позицию карточки (стол приёмки).
 export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
@@ -370,6 +404,7 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
   if (patch.phone !== undefined) set.phone = patch.phone
   if (patch.projectId !== undefined) set.projectId = patch.projectId || null
   if (patch.specProjectId !== undefined) set.specProjectId = patch.specProjectId || null
+  if (patch.payment !== undefined) set.payment = patch.payment || ''
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)
   await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })
   // Оповещение об изменении карточки: комментарий / срок (в чат + логисту).

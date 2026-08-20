@@ -29,6 +29,11 @@ export async function sendOrder(cardId: string, posIds?: string[]) {
   const r = await post(`/api/orders/${cardId}/send`, posIds && posIds.length ? { posIds } : {})
   return { ok: r.ok, error: r.error as string | undefined, remaining: r.data?.remaining as number | undefined }
 }
+// Сплит карточки: выбранные позиции → новая карточка.
+export async function splitCard(cardId: string, posIds: string[]) {
+  const r = await post(`/api/orders/${cardId}/split`, { posIds })
+  return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
+}
 export async function setPosStatus(cardId: string, status: string, posId?: string) {
   const r = await post(`/api/orders/${cardId}/pos`, { posId, status })
   return { ok: r.ok }

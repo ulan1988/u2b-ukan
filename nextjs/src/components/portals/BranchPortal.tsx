@@ -11,7 +11,7 @@ import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard } from '@/lib/api/orders'
 import { fetchRefs, listSpecProjects, carveToLogist, sheetsByColor, takeSheet } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -71,6 +71,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Спец-проекты мастера (очередь) — грузим при заходе на вкладку.
   const loadSpec = useCallback(async () => { setSpecProjects(await listSpecProjects(user.orgId)) }, [user.orgId])
   useEffect(() => { if (tab === 'spec') loadSpec() }, [tab, loadSpec])
+  // Список проектов нужен и в шторке (Ф-B: «Добавить в проект»).
+  useEffect(() => { if (drawerId) loadSpec() }, [drawerId, loadSpec])
   // Вынести часть позиции спец-проекта → сразу к логисту (Исходящие), остаток вычитается.
   async function carveLogist(projectId: string, specItemId: string, qty: number) {
     const r: any = await carveToLogist(projectId, [{ specItemId, qty }])
@@ -138,6 +140,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       setSel({}); if (r.remaining && r.remaining > 0) { showMsg(`✓ Отправлено · осталось ${r.remaining}`); await refreshDetail(id) } else { setDrawerId(null); showMsg('✓ Отправлено логисту') }
       await load()
     } catch { showMsg('⚠ Ошибка сети') }
+  }
+  // Ф-B: действия карточки — оплата, проект, сплит (выбранные → новая карточка).
+  async function setPayment(id: string, payment: string) { const r = await updateCard(id, { payment }); if (r.ok) { await refreshDetail(id); await load(); showMsg(payment ? `💳 Оплата: ${payment}` : 'Оплата снята') } else showMsg('⚠ Не удалось') }
+  async function attachProject(id: string, specProjectId: string) { const r = await updateCard(id, { specProjectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(specProjectId ? '📁 Добавлено в проект' : 'Отвязано от проекта') } else showMsg('⚠ Не удалось') }
+  async function doSplit(id: string, posIds: string[]) {
+    const r = await splitCard(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setSel({}); setDrawerId(null); await load(); showMsg(`✓ Создана карточка ${r.id || ''}`)
   }
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
@@ -257,6 +266,20 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   return <button key={k} onClick={() => cur !== i && act(o.id, action, `✓ ${label}`)} style={{ flex: 1, padding: '8px 4px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{label}</button>
                 })}
               </div>
+              {/* Ф-B: оплата (Долг/Наличка/Каспи) + проект */}
+              <div style={{ padding: '9px 16px', borderBottom: '1px solid #f1efec', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', width: 54, flexShrink: 0 }}>💳</span>
+                  {['Долг', 'Наличка', 'Каспи'].map(pm => { const on = (o.payment || '') === pm; return <button key={pm} onClick={() => setPayment(o.id, on ? '' : pm)} style={{ flex: 1, padding: '6px 4px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{pm}</button> })}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', width: 54, flexShrink: 0 }}>📁</span>
+                  <select value={o.specProjectId || ''} onChange={e => attachProject(o.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                    <option value="">— без проекта —</option>
+                    {specProjects.map((sp: any) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                  </select>
+                </div>
+              </div>
               <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 14 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ЗАКАЗЧИК:</span>
@@ -285,6 +308,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
               </div>
               {leg1.length > 0 && (
                 <div style={{ padding: '12px 16px', borderTop: '1px solid #f1efec', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {selIds.length > 0 && selIds.length < pos.length && (
+                    <button onClick={() => doSplit(o.id, selIds)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f3eeff', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>➕ Вынести в новую карточку ({selIds.length})</button>
+                  )}
                   {selIds.length > 0 && selIds.length < leg1.length
                     ? <button onClick={() => sendCard(o.id, selIds)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить выбранные ({selIds.length}) →</button>
                     : <button onClick={() => sendCard(o.id)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить всё логисту ({leg1.length}) →</button>}

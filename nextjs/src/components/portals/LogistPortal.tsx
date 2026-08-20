@@ -10,7 +10,7 @@ import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, listMessages, sendMessage, orderAction } from '@/lib/api/orders'
+import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, deletePosition, listMessages, sendMessage, orderAction } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 import { getDraft, pastDrafts as apiPast, addRow as apiAddRow, updateRow as apiUpdRow, deleteRow as apiDelRow, closeShift } from '@/lib/api/reports'
@@ -33,6 +33,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [toast, setToast] = useState('')
   const [updating, setUpdating] = useState<string | null>(null)
   const [supEditPos, setSupEditPos] = useState<string | null>(null)
+  const [qtyEditPos, setQtyEditPos] = useState<string | null>(null); const [qtyVal, setQtyVal] = useState('')
   const [addingCardId, setAddingCardId] = useState<string | null>(null)
   const [chatOpenPos, setChatOpenPos] = useState<string | null>(null)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
@@ -56,10 +57,10 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     const [o, n] = await Promise.all([logistOrders(viewAs ? user.id : undefined), viewAs ? Promise.resolve([]) : listNotifications()])
     setOrders(o); setNotifications(n as any); setLoading(false)
   }, [viewAs, user.id])
-  const pausedRef = useRef(false); pausedRef.current = supEditPos !== null || addingCardId !== null || chatOpenPos !== null
+  const pausedRef = useRef(false); pausedRef.current = supEditPos !== null || qtyEditPos !== null || addingCardId !== null || chatOpenPos !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { fetchRefs().then((r: any) => setSuppliers((r.contragents || []).filter((c: any) => c.kind !== 'client').map((c: any) => ({ id: c.id, name: c.name })))) }, [])
-  useEffect(() => { setSupEditPos(null); setAddingCardId(null); setChatOpenPos(null) }, [tab])
+  useEffect(() => { setSupEditPos(null); setQtyEditPos(null); setAddingCardId(null); setChatOpenPos(null) }, [tab])
 
   const loadDraft = useCallback(async (date?: string | null) => { const d: any = await getDraft(date || undefined); setShiftRows((d.rows || []).map((r: any) => ({ ...r, auto: !!r.posId }))); setReportComment(d.report?.comment || '') }, [])
   const loadPast = useCallback(async () => { setPastDrafts(await apiPast() as any) }, [])
@@ -83,6 +84,9 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   }
 
   async function saveSupplier(cardId: string, posId: string, supplierId: string) { await updatePosition(cardId, posId, { supplierId }); showMsg('✓ Поставщик изменён'); setSupEditPos(null); load() }
+  // Логист правит кол-во / убирает позицию перед доставкой (недовоз, брак, ошибка).
+  async function savePosQty(cardId: string, posId: string) { await updatePosition(cardId, posId, { qty: Number(qtyVal.replace(',', '.')) || 0 }); showMsg('✓ Кол-во изменено'); setQtyEditPos(null); setQtyVal(''); load() }
+  async function removePos(cardId: string, posId: string) { if (!confirm('Убрать позицию из карточки?')) return; const r = await deletePosition(cardId, posId); if (r.ok) { showMsg('✓ Позиция убрана'); load() } else showMsg('⚠ Не удалось убрать') }
   async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
   // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
   async function handleAccept(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'logistAccept'); if (r.ok) { showMsg('✓ Продажа принята → в работу'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось принять')); setUpdating(null) }
@@ -140,7 +144,10 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       <div style={{ background: isPurchase(order) ? '#faf7fd' : '#fff', borderRadius: compact ? 12 : 14, padding: compact ? 11 : 16, marginBottom: compact ? 9 : 12, borderLeft: `4px solid ${isPurchase(order) ? '#7a3aaa' : '#2e8a5e'}`, boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div style={{ fontWeight: 700, fontSize: compact ? 14 : 16, flex: 1, display: 'flex', alignItems: 'center', gap: 7 }}><RalDot code={extractRal(pos.name1c || pos.oral)} />{pos.name1c || pos.oral}</div>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8, flexShrink: 0 }}>{pos.widthCm != null && <span style={{ fontSize: compact ? 11 : 12, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>📏 {Number(pos.widthCm)} см</span>}<span style={{ fontWeight: 700, fontSize: compact ? 15 : 18, color: PRIMARY }}>{Number(pos.qty)} {pos.unit}</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8, flexShrink: 0 }}>{pos.widthCm != null && <span style={{ fontSize: compact ? 11 : 12, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>📏 {Number(pos.widthCm)} см</span>}
+            {editable && qtyEditPos === pos.id
+              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><input autoFocus value={qtyVal} inputMode="decimal" onChange={e => setQtyVal(e.target.value.replace(/[^0-9.,]/g, ''))} onKeyDown={e => e.key === 'Enter' && savePosQty(order.id, pos.id)} style={{ width: 54, padding: '4px 6px', borderRadius: 6, border: `1.5px solid ${PRIMARY}`, fontSize: 14, textAlign: 'right', fontFamily: 'inherit' }} /><button onClick={() => savePosQty(order.id, pos.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>✓</button></span>
+              : <span onClick={() => { if (editable) { setQtyEditPos(pos.id); setQtyVal(String(Number(pos.qty))) } }} title={editable ? 'Изменить кол-во' : ''} style={{ fontWeight: 700, fontSize: compact ? 15 : 18, color: PRIMARY, cursor: editable ? 'pointer' : 'default' }}>{Number(pos.qty)} {pos.unit}{editable && <span style={{ fontSize: 12, marginLeft: 2 }}>✎</span>}</span>}</span>
         </div>
         <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>{order.fromName || '—'}</div>
         {editable && (supEditPos === pos.id ? (
@@ -159,6 +166,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isPurchase(order) ? '#f3eeff' : '#e8f5ee', color: isPurchase(order) ? '#7a3aaa' : '#2e8a5e' }}>{isPurchase(order) ? '🛒 ЗАКУП' : 'ПРОДАЖА'}</span>
           {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
           <span style={{ fontSize: 12, background: pos.status === 'Доставлено' ? '#e8f5ee' : '#fff0ea', color: pos.status === 'Доставлено' ? '#2e8a5e' : '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{pos.status}</span>
+          {editable && <button onClick={() => removePos(order.id, pos.id)} title="Убрать позицию" style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 7, padding: '2px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Убрать</button>}
         </div>
         {order.screen === 'reception' && !isPurchase(order)
           ? <button onClick={() => handleAccept(order.id)} disabled={updating === order.id} style={{ marginTop: compact ? 8 : 12, width: '100%', padding: compact ? '9px' : '12px', borderRadius: compact ? 8 : 10, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: compact ? 12.5 : 14, cursor: 'pointer', fontFamily: 'inherit', opacity: updating === order.id ? 0.6 : 1 }}>✅ Принять продажу → в работу</button>
