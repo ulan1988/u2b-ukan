@@ -150,24 +150,23 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: () => ({ screen: 'reception', block: 'processing', status: 'В обработке' }),
     history: () => 'Филиал вернул заявку',
   },
-  // Производитель: взял заказ на стол мастера → этап РАСПИЛ (первый этап цепочки).
+  // Производитель — поток мастера (без раскроя): Принял → В работе → Готов к доставке → Отправлено.
+  // Этап живёт в prodPhase (не конфликтует со статусом «В работе» головы); статус = ярлык.
+  // Отправку (целиком/частями) делает отдельный роут /api/orders/[id]/send.
   produceAccept: {
     roles: [...ADMIN, 'branch'],
-    patch: () => ({ status: 'Распил', cutConfirmed: false }),
-    history: () => 'Взято на распил',
+    patch: () => ({ status: 'Принял', prodPhase: 'accepted' }),
+    history: () => 'Принял в работу',
   },
-  // Производитель: подтвердил раскрой (обязателен перед листогибом). Без этого позиции
-  // нельзя пометить «распилено».
-  confirmCut: {
+  produceStart: {
     roles: [...ADMIN, 'branch'],
-    patch: () => ({ cutConfirmed: true }),
-    history: () => 'Раскрой подтверждён',
+    patch: () => ({ status: 'В работе', prodPhase: 'working' }),
+    history: () => 'В работе',
   },
-  // Производитель: форс «всё выполнено» (аварийный/ручной) — статус «Выполнено», готово к логисту.
-  produceDone: {
+  produceReady: {
     roles: [...ADMIN, 'branch'],
-    patch: () => ({ status: 'Выполнено' }),
-    history: () => 'Выполнено',
+    patch: () => ({ status: 'Готов к доставке', prodPhase: 'ready' }),
+    history: () => 'Готов к доставке',
   },
   finalizePurchase: {
     roles: ADMIN,
@@ -221,14 +220,6 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   }
   // Филиал передал логисту: позиции первого плеча (leg=1) → leg=2, теперь их видит логист.
   if (action === 'branchForward') await repo.setLegForCard(id, 1, 2)
-  // Раскрой подтверждён → движение склада материала (−целые листы по цвету, +обрезь ≥4см). Один раз.
-  if (action === 'confirmCut' && !order.cutConfirmed) {
-    try {
-      const { consumeForCut } = await import('./material.service')
-      const sum = await consumeForCut(order.orgId, positions)
-      if (sum) await repo.insertHistory({ cardId: id, action: 'material', detail: `Раскрой: −${sum.sheets} лист${sum.shortfall ? ` (не хватило ${sum.shortfall})` : ''}, +${sum.remnants} обрезь`, userName: actor?.name || 'Система' })
-    } catch { /* склад не критичен для воркфлоу */ }
-  }
   // Закуп оформлен → открыть связанные продажи: перенести поставщика/цену/логиста,
   // продажи становятся готовыми на столе Приёмки (openLinkedSales, как в Улкане).
   if (action === 'finalizePurchase') {

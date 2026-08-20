@@ -24,6 +24,11 @@ export async function setProdStage(cardId: string, posId: string, stage: 'cut' |
   const r = await post(`/api/orders/${cardId}/prod`, { posId, stage })
   return { ok: r.ok, error: r.error as string | undefined }
 }
+// Мастер → логисту: отправить целиком (posIds не задан) или частями (выбранные позиции).
+export async function sendOrder(cardId: string, posIds?: string[]) {
+  const r = await post(`/api/orders/${cardId}/send`, posIds && posIds.length ? { posIds } : {})
+  return { ok: r.ok, error: r.error as string | undefined, remaining: r.data?.remaining as number | undefined }
+}
 export async function setPosStatus(cardId: string, status: string, posId?: string) {
   const r = await post(`/api/orders/${cardId}/pos`, { posId, status })
   return { ok: r.ok }

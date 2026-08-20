@@ -323,6 +323,34 @@ export async function setProdStage(cardId: string, posId: string, stage: 'cut' |
   return { ok: true as const, cardStatus }
 }
 
+// Отправка логисту (кабинет мастера): целиком или частями. Выбранные производственные
+// позиции (leg=1) → leg=2 (их видит логист), карточка → экран «Исходящие». Когда leg=1
+// позиций не осталось — карточка «Отправлено» (prodPhase=sent) уходит из стола мастера.
+// posIds пуст/не задан → отправить все производственные позиции (целиком).
+export async function sendPositions(cardId: string, posIds: string[] | undefined, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
+  const positions = await repo.positionsByCard(cardId)
+  const leg1 = positions.filter((p: any) => Number(p.leg) === 1)
+  if (!leg1.length) return { ok: false as const, error: 'Нечего отправлять' }
+  const wantAll = !posIds || !posIds.length
+  const targets = wantAll ? leg1 : leg1.filter((p: any) => posIds!.includes(p.id))
+  if (!targets.length) return { ok: false as const, error: 'Не выбраны позиции' }
+  for (const p of targets) await repo.updatePosition(p.id, { leg: 2 })
+  const remaining = leg1.length - targets.length
+  const patch: Record<string, any> = { screen: 'outgoing', block: '' }
+  if (remaining <= 0) { patch.status = 'Отправлено'; patch.prodPhase = 'sent' }
+  await repo.updateOrder(cardId, patch)
+  await repo.insertHistory({
+    cardId, action: 'produceSend',
+    detail: remaining <= 0
+      ? `Отправлено логисту${targets.length && !wantAll ? `: ${targets.length} поз.` : ''}`
+      : `Отправлено логисту частично: ${targets.length} поз. (осталось ${remaining})`,
+    userName: actor?.name || 'Система',
+  })
+  return { ok: true as const, sent: targets.length, remaining }
+}
+
 // Удалить позицию карточки (стол приёмки).
 export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }

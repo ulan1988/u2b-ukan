@@ -9,11 +9,9 @@ import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
-import { optimizeCut, SHEET_WIDTH_CM } from '@/lib/production'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
 
 const PRIMARY = '#d4613a'
-const SEG = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7', '#e34948', '#008300']   // цвета сегментов реза
 interface Row { id?: string; productId: string; name: string; color: string; cm: string; qty: string; price: string }
 const inp: React.CSSProperties = { padding: '6px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
@@ -29,7 +27,6 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
   const [busy, setBusy] = useState(false)
   const [catalog, setCatalog] = useState(false)
-  const [showCalc, setShowCalc] = useState(false)          // расчёт раскроя — по умолчанию выкл
   const [qColor, setQColor] = useState('')                 // наружная моделька: выбранный цвет
   const [allColors, setAllColors] = useState(false)        // показать все цвета (глазок)
   const [qKind, setQKind] = useState('')                   // …и вид из «Комплектующие»
@@ -76,15 +73,10 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const piecePrice = (r: Row) => { const auto = (Number(priceCm) || 0) * (Number(r.cm) || 0); return auto > 0 ? auto : (Number(r.price) || 0) }
   const rowSum = (r: Row) => (Number(r.qty) || 0) * piecePrice(r)
   const totalCm = rows.reduce((s, r) => s + (Number(r.cm) || 0) * (Number(r.qty) || 0), 0)
-  // Цвет берём из изделия (extractRal). Раскрой ОТДЕЛЬНО по каждому цвету — лист одного
-  // цвета нельзя резать под изделие другого.
-  const useful = Array.from(new Set(products.map((p: any) => Number(p.stdWidthCm)).filter((n: number) => n > 0))).sort((a, b) => a - b)
-  const pack = optimizeCut(rows.map(r => ({ name: r.name || 'Изделие', color: r.color || extractRal(r.name), cm: Number(r.cm) || 0, qty: Number(r.qty) || 0 })), SHEET_WIDTH_CM, 0, { useful })
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
   const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика
-  const cutReady = pack.totalSheets > 0           // раскрой валиден (есть листы) — обязателен для подтверждения
-  const valid = hasPos && (!needCustomer || !!cid) && (!order?.id || cutReady)
+  const valid = hasPos && (!needCustomer || !!cid)
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -103,11 +95,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   async function done() {
     if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
     if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
-    // Раскрой обязателен: подтвердить распил можно только с валидным раскроем (есть листы).
-    if (order?.id && pack.totalSheets <= 0) { showMsg('Заполните раскрой: укажите см у изделий'); return }
     setBusy(true)
     try {
-      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'confirmCut'); showMsg('✓ Раскрой подтверждён — отмечайте распил по позициям') }
+      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), widthCm: Number(r.cm) || undefined } })
@@ -174,52 +164,6 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         )}
       </div>
 
-      {/* Расчёт раскроя — тумблер, по умолчанию ВЫКЛ (включаем когда нужно) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <button type="button" onClick={() => setShowCalc(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1.5px solid #e6e2dc', borderRadius: 22, padding: '5px 13px', background: showCalc ? '#eef7f1' : '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#4a4640', fontFamily: 'inherit' }}>
-          <span style={{ width: 30, height: 17, borderRadius: 10, background: showCalc ? '#2e8a5e' : '#cfc9c0', position: 'relative', transition: 'background .15s', flexShrink: 0 }}>
-            <span style={{ position: 'absolute', top: 2, left: showCalc ? 15 : 2, width: 13, height: 13, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
-          </span>
-          📐 Расчёт раскроя
-        </button>
-      </div>
-      {showCalc && pack.totalSheets > 0 && (
-        <div style={{ background: '#eef7f1', border: '1.5px solid #cfeadd', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13 }}>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 8 }}>
-            <span style={{ fontSize: 15 }}>📐 Листов: <b style={{ color: '#2e8a5e', fontSize: 18 }}>{pack.totalSheets}</b> <span style={{ color: '#837c72', fontSize: 12 }}>(по {pack.sheetWidth} см)</span></span>
-            <span>обрезь <b>{pack.totalWaste}</b> см</span>
-            <span>КПД <b style={{ color: pack.totalEff >= 90 ? '#2e8a5e' : '#b07a00' }}>{pack.totalEff}%</b></span>
-            {pack.oversize > 0 && <span style={{ color: '#b03020', fontWeight: 700 }}>⚠ {pack.oversize} шт шире листа</span>}
-          </div>
-          {pack.byColor.map(g => {
-            const d: Record<number, number> = {}; for (const sh of g.sheets) if (sh.waste > 0) d[sh.waste] = (d[sh.waste] || 0) + 1
-            const rd = Object.entries(d).sort((a, b) => Number(a[0]) - Number(b[0]))
-            return (
-              <div key={g.color} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #d7ecdf' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
-                  <RalDot code={g.color} /><b>{g.color}</b>
-                  <span style={{ color: '#5f5952' }}>{g.count} лист · обрезь {g.waste} см · КПД {g.eff}%</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {g.sheets.map((sh, si) => (
-                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 10, color: '#9a938a', width: 42, flexShrink: 0 }}>Лист {si + 1}</span>
-                      <div style={{ flex: 1, height: 20, borderRadius: 4, background: '#eee', border: '1px solid #e0e0e0', overflow: 'hidden', display: 'flex' }}>
-                        {sh.segs.map((seg, gi) => (
-                          <div key={gi} title={`${seg.name} — ${seg.cm} см`} style={{ width: `${seg.cm / pack.sheetWidth * 100}%`, background: SEG[seg.ci % SEG.length], borderLeft: gi > 0 ? '1px solid rgba(255,255,255,.3)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', overflow: 'hidden', whiteSpace: 'nowrap' }}>{seg.cm / pack.sheetWidth > 0.06 ? seg.cm : ''}</div>
-                        ))}
-                        {sh.waste > 0 && <div title={`обрезь ${sh.waste} см`} style={{ width: `${sh.waste / pack.sheetWidth * 100}%`, background: '#fff0f0', color: '#e34948', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>{sh.waste / pack.sheetWidth > 0.05 ? sh.waste : ''}</div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {rd.length > 0 && <div style={{ marginTop: 5, color: '#837c72', fontSize: 12 }}>остатки: {rd.map(([cm, n]) => `${cm}см×${n}`).join(', ')}</div>}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
           <thead><tr style={{ background: '#f8f6f3' }}>
@@ -250,10 +194,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       {catalog && <NomPicker onPick={addFromCatalog} onClose={() => setCatalog(false)} />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: '#5f5952' }}>Листов: <b style={{ color: '#26231f' }}>{pack.totalSheets}</b> · всего {totalCm} см</span>
+        <span style={{ fontSize: 13, color: '#5f5952' }}>Всего: <b style={{ color: '#26231f' }}>{totalCm}</b> см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
-        {order?.id && !cutReady && <span style={{ fontSize: 12, color: '#b03020', fontWeight: 600 }}>Укажите см у изделий — раскрой обязателен</span>}
-        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#7a3aaa' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : (order?.id ? '📐 Подтвердить раскрой →' : '✓ Создать карточку')}</button>
+        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#7a3aaa' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : '✓ Создать карточку'}</button>
       </div>
     </div>
   )
