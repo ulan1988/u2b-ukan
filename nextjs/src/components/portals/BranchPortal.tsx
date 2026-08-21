@@ -11,7 +11,7 @@ import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, shiftSummary, addShiftExpense, closeShiftDay } from '@/lib/api/orders'
 import { fetchRefs, listSpecProjects, carveToLogist, sheetsByColor, takeSheet } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -19,7 +19,7 @@ import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 import SpecProjectWorkbench from '@/components/portals/SpecProjectWorkbench'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
-type Tab = 'production' | 'spec' | 'sheets' | 'produce' | 'out' | 'new' | 'finance'
+type Tab = 'production' | 'spec' | 'sheets' | 'produce' | 'shift' | 'out' | 'new' | 'finance'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -56,6 +56,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
   const [sel, setSel] = useState<Record<string, boolean>>({})     // выбор позиций в шторке для частичной отправки
   const [pay, setPay] = useState({ cash: '', kaspi: '', change: '', changeFrom: '' })   // касса мастера
+  const [shiftDate, setShiftDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })
+  const [shift, setShift] = useState<any>(null)
+  const [exp, setExp] = useState({ kind: 'salary' as 'salary' | 'current', who: '', accountId: '', amount: '' })
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
   const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
@@ -79,6 +82,22 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     const r: any = await carveToLogist(projectId, [{ specItemId, qty }])
     if (r.ok) { showMsg(`✓ ${qty} шт → логисту${r.data?.id ? ' (' + r.data.id + ')' : ''}`); setSpecQ(p => { const n = { ...p }; delete n[specItemId]; return n }); await loadSpec(); await load() }
     else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
+
+  // Смена мастера: сводка дня (доходы/запас/расходы).
+  const loadShift = useCallback(async () => { setShift(await shiftSummary(shiftDate, user.id)) }, [shiftDate, user.id])
+  useEffect(() => { if (tab === 'shift') loadShift() }, [tab, loadShift])
+  async function addExp() {
+    const amount = Number((exp.amount || '').replace(',', '.')) || 0
+    if (!exp.accountId || amount <= 0) { showMsg('Выберите счёт и сумму'); return }
+    const r: any = await addShiftExpense({ kind: exp.kind, who: exp.who, accountId: exp.accountId, amount, date: shiftDate })
+    if (r.ok) { showMsg(exp.kind === 'salary' ? '✓ ЗП добавлена' : '✓ Расход добавлен'); setExp(e => ({ ...e, who: '', amount: '' })); await loadShift() }
+    else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function closeShift() {
+    if (!confirm('Закрыть смену? Расходы будут проведены.')) return
+    const r: any = await closeShiftDay(shiftDate)
+    if (r.ok) { showMsg('✓ Смена закрыта'); await loadShift() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
 
   // Кабинет-передатчик листов: остатки по цветам + списание «взял N».
@@ -501,6 +520,56 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
           )}
         </div>}
+        {tab === 'shift' && (() => {
+          const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
+          const accts = shift?.accounts || []
+          const inc = shift?.income || { cash: 0, kaspi: 0, debt: 0, total: 0 }
+          const stat = (label: string, val: string, color: string) => <div style={{ flex: 1, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '11px 12px', minWidth: 92 }}><div style={{ fontSize: 11, color: '#837c72', fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, color, marginTop: 3 }}>{val}</div></div>
+          return <div>
+            <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>💵 Смена мастера за день: продажи, производство в запас, расходы (ЗП + текущие) и итог кассы.</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+              <input type="date" value={shiftDate} onChange={e => setShiftDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontFamily: 'inherit' }} />
+              <button onClick={loadShift} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: PRIMARY, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>Обновить</button>
+            </div>
+            {!shift ? <div style={{ textAlign: 'center', padding: 30, color: '#5f5952' }}>Загрузка…</div> : <>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ (продажи)</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                {stat('Наличка', m(inc.cash), '#2e8a5e')}{stat('Каспи', m(inc.kaspi), '#2a5aaa')}{stat('Долг', m(inc.debt), '#c0532a')}{stat('Всего продано', m(inc.total), '#26231f')}
+              </div>
+              <div style={{ fontSize: 12, color: '#837c72', marginBottom: 14 }}>{(shift.cards || []).length} продаж{(shift.cards || []).length ? ': ' + shift.cards.map((c: any) => `${fmtCode(c.id)} (${m(c.total)})`).join(', ') : ' нет'}</div>
+
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 8 }}>📦 ПРОИЗВОДСТВО В ЗАПАС</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>{stat('Изделий', m(shift.stock?.qty), '#7a3aaa')}{stat('На сумму', m(shift.stock?.amount), '#7a3aaa')}</div>
+
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#c0532a', letterSpacing: '.04em', marginBottom: 8 }}>📤 РАСХОДЫ (через «Деньги»)</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>{stat('ЗП', m(shift.expenses?.salaryTotal), '#c0532a')}{stat('Текущие', m(shift.expenses?.currentTotal), '#c0532a')}{stat('Итого расход', m(shift.expenses?.total), '#c0532a')}</div>
+              {(shift.expenses?.rows || []).length > 0 && <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '8px 12px', marginBottom: 10 }}>{shift.expenses.rows.map((r: any, i: number) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < shift.expenses.rows.length - 1 ? '1px solid #f6f3f0' : 'none', fontSize: 13 }}><span>{r.article === 'ЗП' ? '👤 ЗП' : '🧾 ' + r.article}{r.who ? ` · ${r.who}` : ''}{r.status !== 'posted' ? ' (черновик)' : ''}</span><b style={{ color: '#c0532a' }}>−{m(-r.amt)}</b></div>)}</div>}
+
+              {/* Добавить расход */}
+              <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '12px 14px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  {(['salary', 'current'] as const).map(k => <button key={k} onClick={() => setExp(e => ({ ...e, kind: k }))} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: exp.kind === k ? PRIMARY : '#f1efec', color: exp.kind === k ? '#fff' : '#5f5952' }}>{k === 'salary' ? '👤 ЗП' : '🧾 Текущий'}</button>)}
+                </div>
+                <input value={exp.who} onChange={e => setExp(x => ({ ...x, who: e.target.value }))} placeholder={exp.kind === 'salary' ? 'Сотрудник (кому)' : 'Назначение расхода'} style={{ ...INP, marginBottom: 8 }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <select value={exp.accountId} onChange={e => setExp(x => ({ ...x, accountId: e.target.value }))} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontFamily: 'inherit', background: '#fff' }}>
+                    <option value="">— счёт списания —</option>
+                    {accts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <input value={exp.amount} inputMode="decimal" onChange={e => setExp(x => ({ ...x, amount: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="сумма" style={{ width: 110, padding: '9px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
+                  <button onClick={addExp} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '9px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>＋</button>
+                </div>
+              </div>
+
+              {/* Итог по счетам + закрытие */}
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>💰 ОСТАТОК ПО СЧЕТАМ (Деньги)</div>
+              <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '8px 12px', marginBottom: 12 }}>
+                {accts.map((a: any) => <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}><span>{a.name}</span><b>{m(shift.closing?.[a.id])}</b></div>)}
+              </div>
+              <button onClick={closeShift} disabled={!shift.hasDraft} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: shift.hasDraft ? PRIMARY : '#e6e2dc', color: '#fff', cursor: shift.hasDraft ? 'pointer' : 'not-allowed', fontSize: 15, fontWeight: 700, fontFamily: 'inherit' }}>{shift.hasDraft ? '🔒 Закрыть смену (провести расходы)' : '✓ Расходы проведены'}</button>
+            </>}
+          </div>
+        })()}
         {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
         {tab === 'new' && (
           <div>
@@ -527,7 +596,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🧰', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: inWork.length }, { key: 'sheets' as Tab, icon: '📄', label: 'Листы', badge: 0 }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🧰', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: inWork.length }, { key: 'shift' as Tab, icon: '💵', label: 'Смена', badge: 0 }, { key: 'sheets' as Tab, icon: '📄', label: 'Листы', badge: 0 }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}

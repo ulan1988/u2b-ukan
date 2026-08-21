@@ -23,7 +23,8 @@ async function ensureCashAccounts(orgId: string) {
     await db.insert(cashAccounts).values({ id, orgId, name, kind: 'cash', sortOrder: sort })
     return id
   }
-  return { cash: await ensure('Наличка', 1), kaspi: await ensure('Каспи', 2) }
+  // Названия как в головном офисе: наличка = «Основная касса», каспи = «KASPI GOLD».
+  return { cash: await ensure('Основная касса', 3), kaspi: await ensure('KASPI GOLD', 2) }
 }
 
 // Мост-контрагент филиала на головной офис (contragents.orgRefId = hq org).
@@ -71,7 +72,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
 
   const label = debt > 0 ? (cash || kaspi ? 'Частично' : 'Долг') : (cash && kaspi ? 'Смешанная' : cash ? 'Наличка' : 'Каспи')
   const change = Math.max(0, Number(p.change) || 0)
-  await repo.updateOrder(cardId, { paidCash: String(cash), paidKaspi: String(kaspi), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, prodPhase: 'sold' })
+  await repo.updateOrder(cardId, { paidCash: String(cash), paidKaspi: String(kaspi), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, prodPhase: 'sold', delivered: new Date() })
   await repo.insertHistory({ cardId, action: 'pay', detail: `Продано (${inv.number}): нал ${cash}, каспи ${kaspi}, долг ${debt}${change > 0 ? `, сдача ${change}` : ''}`, userName: actor?.name || 'Система' })
   return { ok: true as const, total, cash, kaspi, debt, number: inv.number }
 }
@@ -89,7 +90,7 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
     .where(and(eq(documents.sourceOrderId, cardId), ne(documents.status, 'cancelled')))
   for (const d of docs) await cancelDocument(d.id)
   await db.delete(payments).where(eq(payments.documentId, order.linkedDocId as string))
-  await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'reception', status: 'Готов к доставке', prodPhase: 'ready', paidCash: '0', paidKaspi: '0', changeSum: '0', changeFrom: '', payment: '' })
+  await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'reception', status: 'Готов к доставке', prodPhase: 'ready', paidCash: '0', paidKaspi: '0', changeSum: '0', changeFrom: '', payment: '', delivered: null })
   await repo.insertHistory({ cardId, action: 'unpay', detail: 'Продажа отменена — карточка снова в работе', userName: actor?.name || 'Система' })
   return { ok: true as const, cancelled: docs.length }
 }
