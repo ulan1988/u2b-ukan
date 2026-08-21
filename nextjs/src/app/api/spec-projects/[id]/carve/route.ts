@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!b?.lines?.length) return NextResponse.json({ error: 'Не выбраны позиции' }, { status: 400 })
   const res: any = b.mode === 'logist'
     ? await carveToLogist(s.orgId, params.id, b.lines, s)
-    : await carveCard(s.orgId, params.id, { contactId: b.contactId, fromName: b.fromName, comment: b.comment, deadline: b.deadline }, b.lines, s)
+    : await carveCard(s.orgId, params.id, { contactId: b.contactId, fromName: b.fromName, comment: b.comment, deadline: b.deadline, prod: b.prod }, b.lines, s)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   await pushSignal()
   return NextResponse.json(res, { status: 201 })

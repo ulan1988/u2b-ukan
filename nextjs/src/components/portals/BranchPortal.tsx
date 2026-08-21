@@ -12,7 +12,7 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase, shiftSummary, addShiftExpense, closeShiftDay, productProfit } from '@/lib/api/orders'
-import { fetchRefs, listSpecProjects, carveToLogist, sheetsByColor, takeSheet } from '@/lib/api/refs'
+import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
@@ -52,6 +52,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false)
   const [specProjects, setSpecProjects] = useState<any[]>([]); const [showSpecBuilder, setShowSpecBuilder] = useState(false); const [specQ, setSpecQ] = useState<Record<string, string>>({})
+  const [carveFor, setCarveFor] = useState<string | null>(null)   // проект в режиме «Создать карточку»
   const [sheets, setSheets] = useState<any[]>([]); const [takeColor, setTakeColor] = useState(''); const [takeQty, setTakeQty] = useState('')
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
   const [sel, setSel] = useState<Record<string, boolean>>({})     // выбор позиций в шторке для частичной отправки
@@ -70,7 +71,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])
   // Пауза live-обновления пока идёт правка: каталог, правка кол-ва, чат, заполнение прямого
   // заказа мастера (showDirect) или открыта шторка — иначе перезагрузка списка сбрасывает ввод.
-  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null || showSpecBuilder
+  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null || showSpecBuilder || carveFor !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { setSelected(null); setDetailTab('positions') }, [tab])
 
@@ -80,9 +81,19 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Список проектов нужен и в шторке (Ф-B: «Добавить в проект»); касса сбрасывается на новую карточку.
   useEffect(() => { if (drawerId) loadSpec(); setPay({ cash: '', kaspi: '', change: '', changeFrom: '' }) }, [drawerId, loadSpec])
   // Вынести часть позиции спец-проекта → сразу к логисту (Исходящие), остаток вычитается.
-  async function carveLogist(projectId: string, specItemId: string, qty: number) {
-    const r: any = await carveToLogist(projectId, [{ specItemId, qty }])
-    if (r.ok) { showMsg(`✓ ${qty} шт → логисту${r.data?.id ? ' (' + r.data.id + ')' : ''}`); setSpecQ(p => { const n = { ...p }; delete n[specItemId]; return n }); await loadSpec(); await load() }
+  // Собрать введённые кол-ва проекта в строки (specItemId + qty).
+  const carveLines = () => Object.entries(specQ).map(([specItemId, v]) => ({ specItemId, qty: Number(String(v).replace(',', '.')) || 0 })).filter(l => l.qty > 0)
+  // «Создать карточку» из проекта → заявка в Приёмку (пойдёт по потоку производства). Остаток проекта уменьшается.
+  async function doCarveCard(projectId: string) {
+    const lines = carveLines(); if (!lines.length) { showMsg('Укажите количество'); return }
+    const r: any = await carveCard(projectId, { lines, prod: true })
+    if (r.ok) { showMsg(`✓ Карточка создана${r.data?.id ? ' ' + r.data.id : ''}`); setSpecQ({}); setCarveFor(null); await loadSpec(); await load() }
+    else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function doCarveLogist(projectId: string) {
+    const lines = carveLines(); if (!lines.length) { showMsg('Укажите количество'); return }
+    const r: any = await carveToLogist(projectId, lines)
+    if (r.ok) { showMsg(`✓ Отправлено логисту${r.data?.id ? ' ' + r.data.id : ''}`); setSpecQ({}); setCarveFor(null); await loadSpec(); await load() }
     else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
 
@@ -415,15 +426,15 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o)} />)}
         </div>}
         {tab === 'spec' && <div>
-          <div style={{ background: '#e8f1ff', color: '#2a5aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🧰 Свои комплектующие: набери позиции, увидь раскрой, отрабатывай тут. Готовое (можно частью) → сразу логисту.</div>
-          <button onClick={() => setShowSpecBuilder(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showSpecBuilder ? '1.5px solid #e6e2dc' : 'none', background: showSpecBuilder ? '#fff' : PRIMARY, color: showSpecBuilder ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showSpecBuilder ? '× Отмена' : '＋ Новый спец-проект'}</button>
+          <div style={{ background: '#e8f1ff', color: '#2a5aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🧰 Проект = мастер-список (не карточка). Из него по частям «➕ Создать карточку»: серым — базовое кол-во/остаток, в пустое поле впиши сколько нужно.</div>
+          <button onClick={() => setShowSpecBuilder(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showSpecBuilder ? '1.5px solid #e6e2dc' : 'none', background: showSpecBuilder ? '#fff' : PRIMARY, color: showSpecBuilder ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showSpecBuilder ? '× Отмена' : '＋ Новый проект'}</button>
           {showSpecBuilder && <SpecProjectWorkbench products={products} showMsg={showMsg} onDone={() => { setShowSpecBuilder(false); loadSpec() }} />}
-          {/* Очередь спец-проектов */}
-          {specProjects.length === 0 && !showSpecBuilder ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🧰</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Очередь пуста</div><div style={{ fontSize: 13, color: '#5f5952' }}>Создай спец-проект — набери комплектующие с раскроем.</div></div>
+          {specProjects.length === 0 && !showSpecBuilder ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🧰</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Проектов нет</div><div style={{ fontSize: 13, color: '#5f5952' }}>Создай проект — набери что нужно, потом вытаскивай карточками.</div></div>
             : specProjects.map((sp: any) => {
               const done = sp.items.every((i: any) => Number(i.remaining) <= 0)
+              const carving = carveFor === sp.id
               return (
-                <div key={sp.id} style={{ background: '#fff', borderRadius: 14, marginBottom: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '14px 16px', opacity: done ? .6 : 1 }}>
+                <div key={sp.id} style={{ background: '#fff', borderRadius: 14, marginBottom: 10, boxShadow: carving ? '0 0 0 2px #b8cdea' : '0 0 0 1.5px #e6e2dc', padding: '14px 16px', opacity: done && !carving ? .6 : 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{sp.name}</span>
                     <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>вынесено {sp.totalDrawn} / {sp.totalQty}</span>
@@ -436,16 +447,21 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                         <RalDot code={extractRal(it.name)} size={14} />
                         <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: rem <= 0 ? '#9a938a' : '#26231f', textDecoration: rem <= 0 ? 'line-through' : 'none' }}>{it.name}</span>
                         {it.widthCm != null && <span style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, flexShrink: 0 }}>{Number(it.widthCm)} см</span>}
-                        <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0, minWidth: 74, textAlign: 'right' }}>ост. {rem} / {Number(it.qty)}</span>
-                        {rem > 0
-                          ? <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                              <input value={q} inputMode="decimal" placeholder="кол-во" onChange={e => setSpecQ(p => ({ ...p, [it.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ width: 58, padding: '5px 6px', borderRadius: 6, border: `1.5px solid ${Number(q) > rem ? '#e0a0a0' : '#e6e2dc'}`, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
-                              <button disabled={!(Number(q) > 0) || Number(q) > rem} onClick={() => carveLogist(sp.id, it.id, Number(q))} style={{ border: 'none', background: Number(q) > 0 && Number(q) <= rem ? PRIMARY : '#e6e2dc', color: '#fff', borderRadius: 7, padding: '5px 10px', cursor: Number(q) > 0 && Number(q) <= rem ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>К логисту →</button>
-                            </div>
-                          : <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700, flexShrink: 0 }}>✓ готово</span>}
+                        {/* серым — базовое кол-во / остаток (только показ) */}
+                        <span style={{ fontSize: 12, color: '#9a938a', fontWeight: 600, flexShrink: 0, minWidth: 78, textAlign: 'right' }}>ост. {rem} / {Number(it.qty)}</span>
+                        {/* пустое поле для ввода нужного кол-ва — только в режиме создания карточки */}
+                        {carving && rem > 0 && <input value={q} inputMode="decimal" placeholder="сколько" onChange={e => setSpecQ(p => ({ ...p, [it.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ width: 68, padding: '6px 8px', borderRadius: 6, border: `1.5px solid ${Number(q) > rem ? '#e0a0a0' : '#b8cdea'}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', flexShrink: 0 }} />}
+                        {carving && rem <= 0 && <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700, flexShrink: 0 }}>✓</span>}
                       </div>
                     )
                   })}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    {carving ? <>
+                      <button onClick={() => doCarveCard(sp.id)} style={{ flex: 1, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>✓ Создать карточку</button>
+                      <button onClick={() => doCarveLogist(sp.id)} title="Сразу логисту (минуя производство)" style={{ border: '1.5px solid #b8cdea', background: '#e8f1ff', color: '#2a5aaa', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Логисту</button>
+                      <button onClick={() => { setCarveFor(null); setSpecQ({}) }} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
+                    </> : <button disabled={done} onClick={() => { setCarveFor(sp.id); setSpecQ({}) }} style={{ width: '100%', border: 'none', background: done ? '#e6e2dc' : '#7a3aaa', color: '#fff', borderRadius: 9, padding: '10px', cursor: done ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{done ? '✓ Проект выполнен' : '➕ Создать карточку'}</button>}
+                  </div>
                 </div>
               )
             })}

@@ -60,7 +60,7 @@ export async function specProjectDetail(id: string) {
 // «Вынести в карточку»: часть кол-ва из позиций проекта → новая заявка в Приёмку.
 // Валидируем остаток на сервере (нельзя вынести больше, чем осталось).
 export async function carveCard(orgId: string, specProjectId: string,
-  meta: { contactId?: string; fromName?: string; comment?: string; deadline?: string },
+  meta: { contactId?: string; fromName?: string; comment?: string; deadline?: string; prod?: boolean },
   lines: { specItemId: string; qty: number }[], actor?: any) {
   const items = await repo.specItemsByProject(specProjectId)
   const drawn = await repo.drawnBySpecItems(items.map((i: any) => i.id))
@@ -83,12 +83,17 @@ export async function carveCard(orgId: string, specProjectId: string,
     }
   })
   const { createOrder } = await import('./order.service')
-  const res = await createOrder({
-    orgId, kind: 'sale', screen: 'reception', block: 'processing',
+  const res: any = await createOrder({
+    orgId, kind: 'sale', prodOrder: meta.prod, screen: 'reception', block: 'processing',
     specProjectId, contactId: meta.contactId, fromName: meta.fromName || '',
     source: 'admin_manual', comment: meta.comment || '', deadline: meta.deadline,
     positions,
   } as any, actor)
+  // Карточка мастера (prod) — позиции производственные (leg=1): идёт по циклу Принял→…→база→продажа.
+  if (meta.prod && res?.id) {
+    const orderRepo = await import('../repositories/order.repo')
+    await orderRepo.updatePositionsByCard(res.id, { leg: 1 })
+  }
   return { ok: true as const, ...res }
 }
 
