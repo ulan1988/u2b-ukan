@@ -6,9 +6,10 @@ import { fmtMoney, fmtDate, statusStyle } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import { finance } from '@/lib/api/finance'
 import { fetchDailyReports, updateDailyReport, postAllToBook } from '@/lib/api/reports'
+import CashDayScreen from '@/components/admin/screens/CashDayScreen'
 
 // Бухгалтерия 1:1: Карточки + Отчёты логистов + Смены. Плюс вкладка Финансы (ERP, по решению владельца).
-type Tab = 'cards' | 'reports' | 'shifts' | 'finance'
+type Tab = 'cards' | 'cash' | 'reports' | 'shifts' | 'finance'
 
 function Btn({ onClick, children, variant, disabled }: { onClick: () => void; children: React.ReactNode; variant?: 'primary'; disabled?: boolean }) {
   return (
@@ -38,7 +39,7 @@ export default function BookkeepingScreen({ orders, orgId, onAction, onReload, o
 
   const cards = orders.filter(o => o.screen === 'bookkeeping')
   const tabs: Array<[Tab, string]> = [
-    ['cards', `Карточки (${cards.length})`], ['reports', 'Отчёты логистов'], ['shifts', 'Смены'], ['finance', 'Финансы'],
+    ['cards', `Карточки (${cards.length})`], ['cash', '💵 Касса (отчёт)'], ['reports', 'Отчёты логистов'], ['shifts', 'Смены'], ['finance', 'Финансы'],
   ]
 
   async function postAll() { const r: any = await postAllToBook(orgId); toast(`Проведено: ${r.count}`); onReload?.() }
@@ -81,6 +82,7 @@ export default function BookkeepingScreen({ orders, orgId, onAction, onReload, o
       {tab === 'shifts' && <ShiftsTab reports={reports} reload={loadReports} toast={toast} />}
 
       {/* ── ФИНАНСЫ (ERP) ── */}
+      {tab === 'cash' && <CashDayScreen orgId={orgId} />}
       {tab === 'finance' && <FinancePanel fin={fin} />}
     </div>
   )

@@ -4,22 +4,31 @@
 // расходы (ЗП/текущие через «Деньги»), производство в запас, закрытие смены. Орг — из селектора.
 import { useEffect, useState, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
-import { cashDay, cashExpense, cashTransferGold, cashCloseShift } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashTransferGold, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
 
 export default function CashDayScreen({ orgId }: { orgId: string }) {
+  const [view, setView] = useState<'day' | 'month'>('day')
   const [date, setDate] = useState(todayStr())
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState('')
   const [exp, setExp] = useState({ kind: 'salary' as 'salary' | 'current', who: '', accountId: '', amount: '' })
   const [gold, setGold] = useState('')
+  const [ym, setYm] = useState(() => todayStr().slice(0, 7))
+  const [month, setMonth] = useState<any>(null)
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
 
   const load = useCallback(async () => { setLoading(true); setData(await cashDay(orgId, date)); setLoading(false) }, [orgId, date])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (view === 'day') load() }, [load, view])
+  const loadMonth = useCallback(async () => {
+    setLoading(true)
+    const [y, mo] = ym.split('-').map(Number); const last = new Date(y, mo, 0).getDate()
+    setMonth(await cashMonth(orgId, `${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`)); setLoading(false)
+  }, [orgId, ym])
+  useEffect(() => { if (view === 'month') loadMonth() }, [loadMonth, view])
 
   async function addExp() {
     const amount = Number((exp.amount || '').replace(',', '.')) || 0
@@ -54,14 +63,47 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     <div className="anim-fade">
       {flash && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: COLORS.dark, color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{flash}</div>}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 22 }}>💵 Касса дня</div>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit' }} />
-        <button onClick={load} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>Обновить</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, fontSize: 22 }}>💵 Касса</div>
+        <div style={{ display: 'flex', gap: 4, background: COLORS.bg, borderRadius: 9, padding: 3 }}>
+          {(['day', 'month'] as const).map(v => <button key={v} onClick={() => setView(v)} style={{ padding: '6px 16px', borderRadius: 7, border: 'none', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: view === v ? COLORS.white : 'transparent', color: view === v ? COLORS.primary : COLORS.textMuted, boxShadow: view === v ? `0 0 0 1px ${COLORS.border}` : 'none' }}>{v === 'day' ? 'День' : 'Месяц'}</button>)}
+        </div>
+        {view === 'day'
+          ? <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit' }} />
+          : <input type="month" value={ym} onChange={e => setYm(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit' }} />}
+        <button onClick={() => view === 'day' ? load() : loadMonth()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>Обновить</button>
         {loading && <span style={{ color: COLORS.textMuted }}>Загрузка…</span>}
       </div>
 
-      {!data ? <div style={{ ...card, textAlign: 'center', color: COLORS.textMuted }}>Нет данных</div> : <>
+      {view === 'month' ? (!month ? <div style={{ ...card, textAlign: 'center', color: COLORS.textMuted }}>Нет данных</div> : (() => {
+        const t = month.totals || {}
+        const cell: React.CSSProperties = { padding: '7px 10px', fontSize: 13, textAlign: 'right', whiteSpace: 'nowrap' }
+        const th: React.CSSProperties = { ...cell, fontWeight: 700, color: COLORS.textLight, fontSize: 12, borderBottom: `1.5px solid ${COLORS.border}` }
+        return <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: 'left' }}>Дата</th><th style={th}>Наличка</th><th style={th}>Каспи</th><th style={th}>QR</th><th style={th}>Долг</th><th style={th}>Продано</th><th style={{ ...th, textAlign: 'center' }}>✓</th><th style={th}>ЗП</th><th style={th}>Расход</th>
+            </tr></thead>
+            <tbody>
+              {(month.days || []).map((d: any) => <tr key={d.day} style={{ borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                <td style={{ ...cell, textAlign: 'left', fontWeight: 600 }}>{d.day.slice(8)}.{d.day.slice(5, 7)}</td>
+                <td style={cell}>{m(d.cash)}</td><td style={cell}>{m(d.kaspi)}</td><td style={cell}>{m(d.qr)}</td>
+                <td style={{ ...cell, color: COLORS.primaryDark }}>{m(d.debt)}</td><td style={{ ...cell, fontWeight: 700 }}>{m(d.sold)}</td>
+                <td style={{ ...cell, textAlign: 'center' }}>{d.ok ? '✅' : '❌'}</td>
+                <td style={cell}>{d.salary ? m(d.salary) : '—'}</td><td style={cell}>{d.current ? m(d.current) : '—'}</td>
+              </tr>)}
+              {(month.days || []).length === 0 && <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: COLORS.textMuted, padding: 24 }}>Продаж за месяц нет</td></tr>}
+            </tbody>
+            <tfoot><tr style={{ borderTop: `2px solid ${COLORS.border}`, background: COLORS.bgCard }}>
+              <td style={{ ...cell, textAlign: 'left', fontWeight: 800 }}>ИТОГО ({t.cnt || 0})</td>
+              <td style={{ ...cell, fontWeight: 800 }}>{m(t.cash)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.kaspi)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.qr)}</td>
+              <td style={{ ...cell, fontWeight: 800, color: COLORS.primaryDark }}>{m(t.debt)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.sold)}</td>
+              <td style={{ ...cell, textAlign: 'center' }}>{month.ok ? '✅' : '❌'}</td>
+              <td style={{ ...cell, fontWeight: 800 }}>{m(t.salary)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.current)}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+      })()) : !data ? <div style={{ ...card, textAlign: 'center', color: COLORS.textMuted }}>Нет данных</div> : <>
         {/* Доходы */}
         <div style={{ fontSize: 13, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ (продажи)</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>

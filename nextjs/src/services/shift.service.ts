@@ -76,6 +76,43 @@ export async function masterShift(orgId: string, date: string) {
   }
 }
 
+// Месячный отчёт кассы (как Excel «месяц»): по каждому дню продажи/долг/проверка/ЗП/расходы + итоги.
+export async function cashReport(orgId: string, from: string, to: string) {
+  const sales = await sqlClient`
+    select d.date::text as "day", coalesce(sum(o.paid_cash),0)::float cash, coalesce(sum(o.paid_kaspi),0)::float kaspi,
+      coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total),0)::float sold, count(*)::int cnt
+    from orders o
+    join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
+    join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id=o.id
+    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    group by d.date
+  ` as unknown as Array<any>
+  const exps = await sqlClient`
+    with rr as (
+      select r.date, r.article, (select coalesce(sum(a.amount),0) from fin_row_amounts a where a.row_id=r.id) tot
+      from fin_rows r where r.org_id=${orgId} and r.type<>'mv' and r.date between ${from} and ${to}
+    )
+    select date::text as "day",
+      coalesce(sum(case when article='ЗП' and tot<0 then -tot else 0 end),0)::float salary,
+      coalesce(sum(case when article<>'ЗП' and tot<0 then -tot else 0 end),0)::float as "current"
+    from rr group by date
+  ` as unknown as Array<any>
+  const byDay: Record<string, any> = {}
+  const ensure = (day: string) => (byDay[day] = byDay[day] || { day, cash: 0, kaspi: 0, qr: 0, sold: 0, cnt: 0, salary: 0, current: 0 })
+  for (const s of sales) { const r = ensure(s.day); r.cash = num(s.cash); r.kaspi = num(s.kaspi); r.qr = num(s.qr); r.sold = num(s.sold); r.cnt = num(s.cnt) }
+  for (const e of exps) { const r = ensure(e.day); r.salary = num(e.salary); r.current = num(e.current) }
+  const days = Object.values(byDay).map((r: any) => {
+    const paid = r.cash + r.kaspi + r.qr
+    const debt = Math.max(0, r.sold - paid)
+    return { ...r, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
+  }).sort((a: any, b: any) => a.day.localeCompare(b.day))
+  const totals = days.reduce((t: any, d: any) => ({
+    cash: t.cash + d.cash, kaspi: t.kaspi + d.kaspi, qr: t.qr + d.qr, debt: t.debt + d.debt,
+    sold: t.sold + d.sold, salary: t.salary + d.salary, current: t.current + d.current, expense: t.expense + d.expense, cnt: t.cnt + d.cnt,
+  }), { cash: 0, kaspi: 0, qr: 0, debt: 0, sold: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
+  return { from, to, days, totals, ok: days.every((d: any) => d.ok) }
+}
+
 export interface ExpenseInput { kind: 'salary' | 'current'; who?: string; article?: string; accountId: string; amount: number; date: string }
 
 export async function addShiftExpense(orgId: string, input: ExpenseInput, _actor?: Session | null) {

@@ -23,3 +23,4 @@ export const cashDay = (orgId: string, date: string) => getObj<any>(`/api/financ
 export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; who?: string; accountId: string; amount: number; date: string }) => post('/api/finance/shift', { orgId, ...body })
 export const cashTransferGold = (orgId: string, amount: number, date: string) => post('/api/finance/shift', { orgId, action: 'transfer', amount, date })
 export const cashCloseShift = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'close', date })
+export const cashMonth = (orgId: string, from: string, to: string) => getObj<any>(`/api/finance/shift?mode=month&orgId=${orgId}&from=${from}&to=${to}`, null as any)

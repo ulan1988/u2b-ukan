@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { masterShift, addShiftExpense, closeMasterShift, transferGoldToBank } from '@/services/shift.service'
+import { masterShift, cashReport, addShiftExpense, closeMasterShift, transferGoldToBank } from '@/services/shift.service'
 import { sessionFromRequest } from '@/lib/auth'
 import { today } from '@/lib/num'
 import { pushSignal } from '@/lib/pusherServer'
@@ -15,6 +15,10 @@ export async function GET(req: NextRequest) {
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   const orgId = sp.get('orgId') || s.orgId
+  if (sp.get('mode') === 'month') {
+    const from = sp.get('from') || today(), to = sp.get('to') || today()
+    return NextResponse.json(await cashReport(orgId, from, to))
+  }
   const date = sp.get('date') || today()
   return NextResponse.json(await masterShift(orgId, date))
 }
