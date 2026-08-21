@@ -8,6 +8,33 @@ import * as refsRepo from '../repositories/refs.repo'
 import { createProduction } from './document.service'
 import type { Session } from '../lib/auth'
 
+const SHEET_WIDTH_CM = 125
+
+// Цена листа нужного цвета = последняя цена закупа (из приходных накладных листов, глянец).
+// Себестоимость изделия = доля листа = цена_листа × ширина_изделия / 125.
+async function sheetPriceForColor(orgId: string, color: string): Promise<number> {
+  if (!color) return 0
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`
+    select dl.price::float price
+    from document_lines dl
+    join documents d on d.id = dl.document_id and d.type='purchase' and d.status<>'cancelled'
+    join products p on p.id = dl.product_id and p.category='material'
+    where d.org_id=${orgId}
+      and lower(p.name) like '%лист%' and lower(p.name) like ${'%' + color.toLowerCase() + '%'}
+      and lower(p.name) not like '%мат%'
+    order by d.date desc, d.created_at desc limit 1` as unknown as Array<{ price: number }>
+  return rows[0]?.price || 0
+}
+const ralOf = (name: string) => { const m = (name || '').match(/(^|\D)(\d{4})(\D|$)/); return m ? m[2] : '' }
+async function setProductCost(productId: string, cost: number) {
+  if (!(cost > 0)) return
+  const { db } = await import('../lib/db')
+  const { products } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  await db.update(products).set({ priceIn: String(Math.round(cost)) }).where(eq(products.id, productId))
+}
+
 // Найти/создать товар по имени (goods, папка «Комплектующие»). Имя = идентичность изделия
 // (напр. «Изделие 9003 15 см») — по нему считается рентабельность конкретного товара.
 async function ensureProduct(name: string): Promise<string> {
@@ -39,13 +66,19 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   const outputs: any[] = []
   let created = 0
   for (const p of targets) {
+    const nm = (p.name1c || p.oral).trim()
     let productId = p.productId as string | null
     if (!productId) {
-      productId = await ensureProduct((p.name1c || p.oral).trim())
+      productId = await ensureProduct(nm)
       await repo.updatePosition(p.id, { productId })
       created++
     }
-    outputs.push({ productId, qty: Number(p.qty), price: Number(p.price) || 0, widthCm: p.widthCm != null ? Number(p.widthCm) : undefined })
+    // Себестоимость = доля листа: цена_листа(цвет) × ширина / 125.
+    const width = p.widthCm != null ? Number(p.widthCm) : 0
+    const sheetPrice = await sheetPriceForColor(order.orgId, ralOf(nm))
+    const cost = width > 0 && sheetPrice > 0 ? (sheetPrice * width) / SHEET_WIDTH_CM : 0
+    await setProductCost(productId, cost)   // в products.price_in — по нему считается рентабельность
+    outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: width || undefined })
   }
   // Пока БЕЗ списания листа (материал — через кабинет-индикатор). Только выпуск изделия.
   const doc = await createProduction({ orgId: order.orgId, warehouseId: wh.id, inputs: [], outputs, comment: `Производство изделий · заявка ${cardId}` } as any)

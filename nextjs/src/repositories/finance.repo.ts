@@ -56,6 +56,38 @@ export async function profitReport(orgId: string) {
     order by d.date desc, d.created_at desc` as unknown as Promise<Array<{ id: string; number: string; date: string; client: string | null; revenue: number; cost: number }>>
 }
 
+// Рентабельность ПО ТОВАРУ за период: выручка − себестоимость (FIFO закупа + непокрытая ×price_in).
+export async function profitByProduct(orgId: string, from?: string, to?: string) {
+  const f = from || null, t = to || null
+  return sqlClient`
+    with pline as (
+      select document_id, product_id, sum(qty) qty, sum(amount) amount
+      from document_lines where role='main' group by document_id, product_id
+    ),
+    saleline as (
+      select sl.product_id, sl.document_id, sum(sl.qty) sqty, sum(sl.amount) samount
+      from document_lines sl
+      join documents d on d.id=sl.document_id and d.type='sale' and d.status<>'cancelled' and coalesce(d.operation,'')<>'opening1c'
+      where sl.role='main' and d.org_id=${orgId}
+        and (${f}::date is null or d.date >= ${f}::date)
+        and (${t}::date is null or d.date <= ${t}::date)
+      group by sl.product_id, sl.document_id
+    ),
+    linked as (
+      select dl.sale_doc_id, dl.product_id, sum(dl.qty) lqty, sum(dl.qty*(pl.amount/nullif(pl.qty,0))) lcost
+      from doc_links dl join pline pl on pl.document_id=dl.purchase_doc_id and pl.product_id=dl.product_id
+      group by dl.sale_doc_id, dl.product_id
+    )
+    select s.product_id::text id, pr.name,
+      sum(s.sqty)::float qty, sum(s.samount)::float revenue,
+      sum(coalesce(l.lcost,0) + greatest(s.sqty-coalesce(l.lqty,0),0)*pr.price_in)::float cost
+    from saleline s
+    join products pr on pr.id=s.product_id
+    left join linked l on l.sale_doc_id=s.document_id and l.product_id=s.product_id
+    group by s.product_id, pr.name
+    order by revenue desc` as unknown as Promise<Array<{ id: string; name: string; qty: number; revenue: number; cost: number }>>
+}
+
 // Нач. остаток контрагента (для выписки).
 export async function contragentOpening(orgId: string, contragentId: string) {
   const r = await sqlClient`select coalesce(opening_balance,0)::float op from contragents where id=${contragentId} and org_id=${orgId}` as unknown as Array<{ op: number }>

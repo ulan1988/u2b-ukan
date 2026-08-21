@@ -93,6 +93,19 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
 }
 
 // Рентабельность: по каждой продаже выручка − себестоимость = прибыль, маржа %.
+// Рентабельность ПО ТОВАРУ за период: qty, выручка, себестоимость, прибыль, маржа %.
+export async function profitByProduct(orgId: string, from?: string, to?: string) {
+  const rows = await finRepo.profitByProduct(orgId, from, to)
+  const items = rows.map(r => {
+    const profit = r.revenue - r.cost
+    return { id: r.id, name: r.name, qty: r.qty, revenue: r.revenue, cost: r.cost, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
+  })
+  const revenue = items.reduce((s, x) => s + x.revenue, 0)
+  const cost = items.reduce((s, x) => s + x.cost, 0)
+  const profit = revenue - cost
+  return { items, totals: { revenue, cost, profit, margin: revenue > 0 ? (profit / revenue) * 100 : 0 } }
+}
+
 export async function profit(orgId: string) {
   const rows = await finRepo.profitReport(orgId)
   const sales = rows.map(r => {
