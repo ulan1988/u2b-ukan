@@ -24,6 +24,7 @@ export const NAV: NavItem[] = [
   { key: 'accounting', label: 'У-Канбан', icon: '🗂' },
   { key: 'bookkeeping', label: 'Бухгалтерия', icon: '📒' },
   { key: 'money', label: 'Финанс', icon: '💵' },
+  { key: 'cashday', label: 'Касса дня', icon: '🧾' },
   { key: 'invoice_in', label: 'Приходные накладные', icon: '🧾' },
   { key: 'invoice_out', label: 'Расходные накладные', icon: '📄' },
   { key: 'archive', label: 'Архив', icon: '🗂' },
