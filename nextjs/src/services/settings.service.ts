@@ -67,6 +67,14 @@ export async function carveCard(orgId: string, specProjectId: string,
   const byId = new Map((items as any[]).map(i => [i.id, i]))
   const use = lines.filter(l => l.specItemId && Number(l.qty) > 0)
   if (!use.length) return { ok: false as const, error: 'Нечего выносить — укажите количество' }
+  // Заказчик карточки: явно заданный, иначе Автор проекта (spec_projects.clientId).
+  if (!meta.contactId) {
+    const { db } = await import('../lib/db')
+    const { specProjects } = await import('../db/schema')
+    const { eq } = await import('drizzle-orm')
+    const [proj] = await db.select({ clientId: specProjects.clientId }).from(specProjects).where(eq(specProjects.id, specProjectId)).limit(1)
+    if (proj?.clientId) meta = { ...meta, contactId: proj.clientId }
+  }
   for (const l of use) {
     const it = byId.get(l.specItemId)
     if (!it) return { ok: false as const, error: 'Позиция проекта не найдена' }

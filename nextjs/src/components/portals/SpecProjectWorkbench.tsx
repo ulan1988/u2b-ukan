@@ -4,6 +4,7 @@
 // и «В очередь →» сохраняет спец-проект. Дальше из очереди выносит части к логисту.
 import { useState } from 'react'
 import NomInline from '@/components/NomInline'
+import ContragentPicker from '@/components/ContragentPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { optimizeCut, SHEET_WIDTH_CM } from '@/lib/production'
@@ -15,8 +16,9 @@ interface Row { productId: string; name: string; color: string; cm: string; qty:
 const inp: React.CSSProperties = { padding: '6px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 const blank = (): Row => ({ productId: '', name: '', color: '', cm: '', qty: '1', price: '' })
 
-export default function SpecProjectWorkbench({ products, onDone, showMsg }: { products: any[]; onDone: () => void; showMsg: (m: string) => void }) {
+export default function SpecProjectWorkbench({ products, contragents = [], onDone, showMsg }: { products: any[]; contragents?: any[]; onDone: () => void; showMsg: (m: string) => void }) {
   const [name, setName] = useState('')
+  const [clientId, setClientId] = useState('')
   const [priceCm, setPriceCm] = useState('')
   const [rows, setRows] = useState<Row[]>([blank()])
   const [busy, setBusy] = useState(false)
@@ -65,7 +67,7 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
         const nm = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`
         return { name: nm, qty: Number(r.qty) || 0, unit: 'шт', productId: r.productId || undefined, widthCm: Number(r.cm) || undefined, price: Math.round(piecePrice(r)) }
       })
-      const res: any = await createSpecProject({ name, items })
+      const res: any = await createSpecProject({ name, clientId: clientId || undefined, items })
       if (res?.id || res?.ok) { showMsg('✓ Спец-проект в очереди'); onDone() }
       else showMsg('⚠ ' + (res?.error || 'Не удалось'))
     } catch { showMsg('⚠ Ошибка сети') } finally { setBusy(false) }
@@ -93,12 +95,16 @@ export default function SpecProjectWorkbench({ products, onDone, showMsg }: { pr
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>НАЗВАНИЕ СПЕЦ-ПРОЕКТА</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>НАЗВАНИЕ ПРОЕКТА</label>
           <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="напр. Отливы RAL8017 — партия" />
         </div>
         <div style={{ width: 120 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЦЕНА ЗА СМ</label>
           <input style={inp} type="number" value={priceCm} onChange={e => setPriceCm(e.target.value)} placeholder="тг/см" />
+        </div>
+        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>👤 АВТОР / ЗАКАЗЧИК</label>
+          <ContragentPicker contragents={contragents} value={clientId} onPick={(c: any) => setClientId(c.id)} placeholder="— выберите заказчика —" />
         </div>
       </div>
 

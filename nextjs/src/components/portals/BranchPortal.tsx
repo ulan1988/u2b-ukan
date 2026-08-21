@@ -78,6 +78,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Спец-проекты мастера (очередь) — грузим при заходе на вкладку.
   const loadSpec = useCallback(async () => { setSpecProjects(await listSpecProjects(user.orgId)) }, [user.orgId])
   useEffect(() => { if (tab === 'spec') loadSpec() }, [tab, loadSpec])
+  useEffect(() => { loadSpec() }, [loadSpec])   // проекты нужны и в «Прямом заказе» (фильтр по клиенту)
   // Список проектов нужен и в шторке (Ф-B: «Добавить в проект»); касса сбрасывается на новую карточку.
   useEffect(() => { if (drawerId) loadSpec(); setPay({ cash: '', kaspi: '', change: '', changeFrom: '' }) }, [drawerId, loadSpec])
   // Вынести часть позиции спец-проекта → сразу к логисту (Исходящие), остаток вычитается.
@@ -428,7 +429,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'spec' && <div>
           <div style={{ background: '#e8f1ff', color: '#2a5aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🧰 Проект = мастер-список (не карточка). Из него по частям «➕ Создать карточку»: серым — базовое кол-во/остаток, в пустое поле впиши сколько нужно.</div>
           <button onClick={() => setShowSpecBuilder(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showSpecBuilder ? '1.5px solid #e6e2dc' : 'none', background: showSpecBuilder ? '#fff' : PRIMARY, color: showSpecBuilder ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showSpecBuilder ? '× Отмена' : '＋ Новый проект'}</button>
-          {showSpecBuilder && <SpecProjectWorkbench products={products} showMsg={showMsg} onDone={() => { setShowSpecBuilder(false); loadSpec() }} />}
+          {showSpecBuilder && <SpecProjectWorkbench products={products} contragents={cags} showMsg={showMsg} onDone={() => { setShowSpecBuilder(false); loadSpec() }} />}
           {specProjects.length === 0 && !showSpecBuilder ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🧰</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Проектов нет</div><div style={{ fontSize: 13, color: '#5f5952' }}>Создай проект — набери что нужно, потом вытаскивай карточками.</div></div>
             : specProjects.map((sp: any) => {
               const done = sp.items.every((i: any) => Number(i.remaining) <= 0)
@@ -499,7 +500,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'produce' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Стол мастера: <b>Принял</b> → <b>В работе</b> → <b>Готов к доставке</b> → отправка логисту. Позиции — в шторке (📋), можно отправить целиком или частями.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
-          {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
+          {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} onDone={() => { setShowDirect(false); load(); loadSpec() }} showMsg={showMsg} />}
           {inWork.length === 0 && sold.length === 0 && !showDirect && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в работе</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
 
           {([

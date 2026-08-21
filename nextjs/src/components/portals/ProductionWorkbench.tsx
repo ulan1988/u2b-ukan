@@ -28,11 +28,14 @@ function itemName(r: Row): string {
   return n
 }
 
-export default function ProductionWorkbench({ order, uid, contragents, products, onDone, showMsg }: {
-  order: any | null; uid?: string; contragents: any[]; products: any[]; onDone: () => void; showMsg: (m: string) => void
+export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg }: {
+  order: any | null; uid?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
+  const [specProjectId, setSpecProjectId] = useState(order?.specProjectId || '')
   const [priceCm, setPriceCm] = useState('')
+  // Проекты выбранного заказчика (Автор = clientId). Нет заказчика/проектов — список пуст.
+  const clientProjects = (specProjects || []).filter((sp: any) => cid && sp.clientId === cid)
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
   const [busy, setBusy] = useState(false)
   const [catalog, setCatalog] = useState(false)
@@ -110,7 +113,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
-        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, positions }, uid)
+        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
         if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceAccept'); showMsg('✓ Заказ создан — к выполнению') }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }
       }
@@ -131,10 +134,20 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЗАКАЗЧИК {needCustomer && <span style={{ color: '#c1121c' }}>*</span>}</label>
           <div style={{ borderRadius: 8, boxShadow: needCustomer && !cid ? '0 0 0 1.5px #e6a6a6' : 'none' }}>
-            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => setCid(c.id)} placeholder="— выберите заказчика —" />
+            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => { setCid(c.id); setSpecProjectId('') }} placeholder="— выберите заказчика —" />
           </div>
           {needCustomer && !cid && <div style={{ fontSize: 11, color: '#c1121c', marginTop: 3 }}>Обязательно — без заказчика карточку не создать</div>}
         </div>
+        {/* Проекты заказчика — появляются при выборе клиента, если у него есть проекты */}
+        {cid && clientProjects.length > 0 && (
+          <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>📁 ПРОЕКТ ЗАКАЗЧИКА</label>
+            <select value={specProjectId} onChange={e => setSpecProjectId(e.target.value)} style={{ ...inp, height: 34 }}>
+              <option value="">— без проекта —</option>
+              {clientProjects.map((sp: any) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ width: 130 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЦЕНА ЗА СМ</label>
           <input style={inp} type="number" value={priceCm} onChange={e => setPriceCm(e.target.value)} placeholder="тг/см" />
