@@ -11,7 +11,7 @@ import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale } from '@/lib/api/orders'
 import { fetchRefs, listSpecProjects, carveToLogist, sheetsByColor, takeSheet } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -55,6 +55,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [sheets, setSheets] = useState<any[]>([]); const [takeColor, setTakeColor] = useState(''); const [takeQty, setTakeQty] = useState('')
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
   const [sel, setSel] = useState<Record<string, boolean>>({})     // выбор позиций в шторке для частичной отправки
+  const [pay, setPay] = useState({ cash: '', kaspi: '', change: '', changeFrom: '' })   // касса мастера
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
   const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
@@ -71,8 +72,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Спец-проекты мастера (очередь) — грузим при заходе на вкладку.
   const loadSpec = useCallback(async () => { setSpecProjects(await listSpecProjects(user.orgId)) }, [user.orgId])
   useEffect(() => { if (tab === 'spec') loadSpec() }, [tab, loadSpec])
-  // Список проектов нужен и в шторке (Ф-B: «Добавить в проект»).
-  useEffect(() => { if (drawerId) loadSpec() }, [drawerId, loadSpec])
+  // Список проектов нужен и в шторке (Ф-B: «Добавить в проект»); касса сбрасывается на новую карточку.
+  useEffect(() => { if (drawerId) loadSpec(); setPay({ cash: '', kaspi: '', change: '', changeFrom: '' }) }, [drawerId, loadSpec])
   // Вынести часть позиции спец-проекта → сразу к логисту (Исходящие), остаток вычитается.
   async function carveLogist(projectId: string, specItemId: string, qty: number) {
     const r: any = await carveToLogist(projectId, [{ specItemId, qty }])
@@ -109,6 +110,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const working = orders.filter(o => prodBase(o) && phase(o) === 'working' && inDate(o))
   const ready = orders.filter(o => prodBase(o) && phase(o) === 'ready' && inDate(o))
   const inWork = [...accepted, ...working, ...ready]
+  // Продано мастером (проведена расходная) — по фазе sold, вне notClosed.
+  const sold = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && phase(o) === 'sold' && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
   const prodQueue = [...production, ...incoming].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
@@ -141,12 +144,22 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       await load()
     } catch { showMsg('⚠ Ошибка сети') }
   }
-  // Ф-B: действия карточки — оплата, проект, сплит (выбранные → новая карточка).
-  async function setPayment(id: string, payment: string) { const r = await updateCard(id, { payment }); if (r.ok) { await refreshDetail(id); await load(); showMsg(payment ? `💳 Оплата: ${payment}` : 'Оплата снята') } else showMsg('⚠ Не удалось') }
+  // Ф-B: действия карточки — проект, сплит (выбранные → новая карточка).
   async function attachProject(id: string, specProjectId: string) { const r = await updateCard(id, { specProjectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(specProjectId ? '📁 Добавлено в проект' : 'Отвязано от проекта') } else showMsg('⚠ Не удалось') }
   async function doSplit(id: string, posIds: string[]) {
     const r = await splitCard(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setSel({}); setDrawerId(null); await load(); showMsg(`✓ Создана карточка ${r.id || ''}`)
+  }
+  // Касса: оплатить (продать) → расходная + оплаты; отменить продажу → сторно.
+  async function doPay(id: string) {
+    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom }
+    const r = await payCard(id, body); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setPay({ cash: '', kaspi: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`💵 Продано${r.number ? ` (${r.number})` : ''}${r.debt ? ` · долг ${r.debt}` : ''}`)
+  }
+  async function doUnpay(id: string) {
+    if (!confirm('Отменить продажу? Документы будут сторнированы, карточка вернётся в работу.')) return
+    const r = await unpostSale(id); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    await load(); showMsg('↩ Продажа отменена')
   }
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
@@ -247,6 +260,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         const sent = pos.filter((p: any) => Number(p.leg) !== 1)   // уже у логиста
         const selIds = leg1.filter((p: any) => sel[p.id]).map((p: any) => p.id)
         const ph = phase(o)
+        const total = pos.reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+        const isSold = ph === 'sold' || !!o.linkedDocId
+        const cashN = Number((pay.cash || '').replace(',', '.')) || 0, kaspiN = Number((pay.kaspi || '').replace(',', '.')) || 0
+        const debtN = Math.max(0, total - cashN - kaspiN)
+        const fmtMoney = (n: number) => Math.round(n).toLocaleString('ru-RU')
         return (
           <div onClick={() => { setDrawerId(null); setSel({}) }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,18,16,.4)', zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 'min(400px, 92vw)', height: '100%', background: '#fff', boxShadow: '-8px 0 30px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column' }}>
@@ -266,12 +284,34 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   return <button key={k} onClick={() => cur !== i && act(o.id, action, `✓ ${label}`)} style={{ flex: 1, padding: '8px 4px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{label}</button>
                 })}
               </div>
-              {/* Ф-B: оплата (Долг/Наличка/Каспи) + проект */}
-              <div style={{ padding: '9px 16px', borderBottom: '1px solid #f1efec', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', width: 54, flexShrink: 0 }}>💳</span>
-                  {['Долг', 'Наличка', 'Каспи'].map(pm => { const on = (o.payment || '') === pm; return <button key={pm} onClick={() => setPayment(o.id, on ? '' : pm)} style={{ flex: 1, padding: '6px 4px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{pm}</button> })}
-                </div>
+              {/* Ф-C: касса (нал/каспи/долг/сдача) + проект */}
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid #f1efec', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {isSold ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#2e8a5e' }}>💵 Продано · {fmtMoney(total)} ₸</span>
+                    <span style={{ fontSize: 12, color: '#5f5952' }}>{o.payment || ''}{Number(o.paidCash) > 0 ? ` · нал ${fmtMoney(Number(o.paidCash))}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${fmtMoney(Number(o.paidKaspi))}` : ''}</span>
+                    <button onClick={() => doUnpay(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить продажу</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>КАССА</span>
+                      <span style={{ fontSize: 13, color: '#5f5952' }}>сумма <b style={{ color: '#26231f' }}>{fmtMoney(total)}</b> ₸</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: debtN > 0 ? '#c0532a' : '#2e8a5e' }}>долг {fmtMoney(debtN)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <label style={{ flex: 1, fontSize: 12, color: '#5f5952' }}>Наличка<input value={pay.cash} inputMode="decimal" onChange={e => setPay(p => ({ ...p, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
+                      <label style={{ flex: 1, fontSize: 12, color: '#5f5952' }}>Каспи<input value={pay.kaspi} inputMode="decimal" onChange={e => setPay(p => ({ ...p, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: '#5f5952' }}>Сдача</span>
+                      <input value={pay.change} inputMode="decimal" onChange={e => setPay(p => ({ ...p, change: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: 80, padding: '6px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
+                      <span style={{ fontSize: 12, color: '#5f5952' }}>с</span>
+                      {(['cash', 'kaspi'] as const).map(cf => { const on = pay.changeFrom === cf; return <button key={cf} onClick={() => setPay(p => ({ ...p, changeFrom: on ? '' : cf }))} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{cf === 'cash' ? 'нал' : 'каспи'}</button> })}
+                      <button onClick={() => doPay(o.id)} style={{ marginLeft: 'auto', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>💵 Оплатить</button>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', width: 54, flexShrink: 0 }}>📁</span>
                   <select value={o.specProjectId || ''} onChange={e => attachProject(o.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
@@ -407,7 +447,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Стол мастера: <b>Принял</b> → <b>В работе</b> → <b>Готов к доставке</b> → отправка логисту. Позиции — в шторке (📋), можно отправить целиком или частями.</div>
           <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
           {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} onDone={() => { setShowDirect(false); load() }} showMsg={showMsg} />}
-          {inWork.length === 0 && !showDirect && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в работе</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
+          {inWork.length === 0 && sold.length === 0 && !showDirect && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в работе</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
 
           {([
             { key: 'accepted', title: '📥 ПРИНЯЛ', color: '#7a3aaa', items: accepted, next: { action: 'produceStart', label: '▶ В работу' } },
@@ -437,6 +477,29 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
               })}
             </div>
           ))}
+
+          {sold.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>💵 ПРОДАНО · {sold.length}</div>
+              {sold.map(o => {
+                const total = (o.positions || []).reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+                return (
+                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #cfeadd', padding: '11px 13px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: '#2e8a5e' }}>{fmtCode(o.id)}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#2e8a5e' }}>{Math.round(total).toLocaleString('ru-RU')} ₸</span>
+                      {o.payment && <span style={{ fontSize: 11, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{o.payment}</span>}
+                      {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}</span>
+                      <button onClick={() => doUnpay(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>}
         {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
         {tab === 'new' && (
