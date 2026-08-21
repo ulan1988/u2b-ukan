@@ -19,6 +19,15 @@ function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
 }
 
+// Имя изделия = идентичность товара: «{вид} {цвет} {см} см» (напр. «Изделие 9003 15 см»).
+// По нему создаётся товар в базе и считается рентабельность.
+function itemName(r: Row): string {
+  let n = (r.name || 'Изделие').trim()
+  if (r.color && !n.toLowerCase().includes(r.color.toLowerCase())) n += ' ' + r.color
+  if (r.cm && !/\d+\s*см/i.test(n)) n += ` ${r.cm} см`
+  return n
+}
+
 export default function ProductionWorkbench({ order, uid, contragents, products, onDone, showMsg }: {
   order: any | null; uid?: string; contragents: any[]; products: any[]; onDone: () => void; showMsg: (m: string) => void
 }) {
@@ -83,7 +92,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     const keep = new Set<string>()
     for (const r of rows) {
       if (!(r.name || r.productId) || !(Number(r.qty) > 0)) continue
-      const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`
+      const name = itemName(r)
       const body: any = { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined }
       if (r.id) { await updatePosition(cardId, r.id, body); keep.add(r.id) }
       else { const res: any = await addPosition(cardId, body); if (res?.data?.position?.id) keep.add(res.data.position.id) }
@@ -100,7 +109,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
-        const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`; return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), widthCm: Number(r.cm) || undefined } })
+        const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
         const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, positions }, uid)
         if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceAccept'); showMsg('✓ Заказ создан — к выполнению') }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }

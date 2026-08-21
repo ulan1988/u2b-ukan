@@ -46,7 +46,14 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (order.linkedDocId) return { ok: false as const, error: 'Уже продано — сначала отмените продажу' }
   const positions = await repo.positionsByCard(cardId)
-  if (!positions.some((x: any) => x.productId)) return { ok: false as const, error: 'Нет позиций с товаром из справочника — нельзя провести расходную' }
+  if (!positions.length) return { ok: false as const, error: 'Нет позиций' }
+  // Производственный цикл: изделия должны быть в базе (товар на складе). Если у позиции нет
+  // product_id — автоматически вносим в базу (создаём товар + выпуск на склад), затем продаём.
+  if (positions.some((x: any) => !x.productId)) {
+    const { produceToBase } = await import('./producer.service')
+    const pr = await produceToBase(cardId, actor)
+    if (!pr.ok) return { ok: false as const, error: pr.error }
+  }
   const total = positions.reduce((s: number, x: any) => s + Number(x.qty || 0) * Number(x.price || 0), 0)
   const cash = Math.max(0, Number(p.cash) || 0), kaspi = Math.max(0, Number(p.kaspi) || 0)
   const debt = Math.max(0, total - cash - kaspi)

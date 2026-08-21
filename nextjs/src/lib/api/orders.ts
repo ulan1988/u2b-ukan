@@ -43,6 +43,11 @@ export async function unpostSale(cardId: string) {
   const r = await send(`/api/orders/${cardId}/pay`, 'DELETE')
   return { ok: r.ok, error: r.error as string | undefined }
 }
+// Производство: внести изделия карточки в базу (создать товар + выпуск на склад).
+export async function produceToBase(cardId: string) {
+  const r = await post(`/api/orders/${cardId}/tobase`, {})
+  return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, produced: r.data?.produced as number | undefined }
+}
 export async function setPosStatus(cardId: string, status: string, posId?: string) {
   const r = await post(`/api/orders/${cardId}/pos`, { posId, status })
   return { ok: r.ok }
