@@ -73,8 +73,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => ({ ...emptyPos(), name1c: it.name1c || it.oral, widthCm: it.widthCm != null ? String(it.widthCm) : '', qty: String(it.qty), unit: it.unit }))])
     setShowCatalog(false)
   }
-  async function newProject() { const name = window.prompt('Название проекта'); if (!name) return; const r: any = await createProject({ orgId, name }); if (r.ok || r.id) { loadSettings(); toast('Проект создан') } }
-  async function newSpec() { const name = window.prompt('Название спецпроекта'); if (!name) return; const r: any = await createSpecProject({ orgId, name }); if (r.ok || r.id) { loadSettings(); toast('Спецпроект создан') } }
+  // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
+  async function newProject() { const name = window.prompt('Название проекта'); if (!name) return; const r: any = await createProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.id) { loadSettings(); if (r.id) setProjectId(r.id); toast('Проект создан') } }
+  async function newSpec() { const name = window.prompt('Название спецпроекта'); if (!name) return; const r: any = await createSpecProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.id) { loadSettings(); if (r.id) setSpecId(r.id); toast('Спецпроект создан') } }
 
   async function submit(asDraft: boolean) {
     setBusy(true)
@@ -145,19 +146,19 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 <label style={LBL}>{kind === 'purchase' ? 'ПОЛУЧАТЕЛЬ' : 'К КОМУ (КЛИЕНТ) *'}</label>
                 {kind === 'purchase'
                   ? <input style={{ ...INP, background: '#f6f3f0', color: purple, fontWeight: 700 }} value={CENTER} disabled />
-                  : <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={c => setContactId(c.id)} placeholder="— выберите контрагента —" />}
+                  : <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={c => { setContactId(c.id); setProjectId(''); setSpecId('') }} placeholder="— выберите контрагента —" />}
               </div>
               <div>
-                <label style={LBL}>ПРОЕКТ</label>
+                <label style={LBL}>ПРОЕКТ{contactId ? ' (клиента)' : ''}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <select style={{ ...INP, flex: 1 }} value={projectId} onChange={e => setProjectId(e.target.value)}><option value="">—</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  <select style={{ ...INP, flex: 1 }} value={projectId} onChange={e => setProjectId(e.target.value)}><option value="">—</option>{projects.filter(p => !contactId || !p.clientId || p.clientId === contactId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                   <button onClick={newProject} style={{ padding: '0 10px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#f1efec', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>＋</button>
                 </div>
               </div>
               <div>
-                <label style={LBL}>СПЕЦПРОЕКТ</label>
+                <label style={LBL}>СПЕЦПРОЕКТ{contactId ? ' (клиента)' : ''}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <select style={{ ...INP, flex: 1 }} value={specId} onChange={e => setSpecId(e.target.value)}><option value="">—</option>{specs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  <select style={{ ...INP, flex: 1 }} value={specId} onChange={e => setSpecId(e.target.value)}><option value="">—</option>{specs.filter(p => !contactId || !p.clientId || p.clientId === contactId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                   <button onClick={newSpec} style={{ padding: '0 10px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#f1efec', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>＋</button>
                 </div>
               </div>
