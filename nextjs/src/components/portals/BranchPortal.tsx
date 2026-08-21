@@ -11,7 +11,7 @@ import FinanceView from '@/components/portals/FinanceView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase, shiftSummary, addShiftExpense, closeShiftDay, productProfit } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase, shiftSummary, addShiftExpense, closeShiftDay, transferGold, productProfit } from '@/lib/api/orders'
 import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -56,10 +56,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [sheets, setSheets] = useState<any[]>([]); const [takeColor, setTakeColor] = useState(''); const [takeQty, setTakeQty] = useState('')
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
   const [sel, setSel] = useState<Record<string, boolean>>({})     // выбор позиций в шторке для частичной отправки
-  const [pay, setPay] = useState({ cash: '', kaspi: '', change: '', changeFrom: '' })   // касса мастера
+  const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })   // касса мастера
   const [shiftDate, setShiftDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })
   const [shift, setShift] = useState<any>(null)
   const [exp, setExp] = useState({ kind: 'salary' as 'salary' | 'current', who: '', accountId: '', amount: '' })
+  const [gold, setGold] = useState('')   // сумма перевода GOLD → банк
   const [profRange, setProfRange] = useState(() => { const d = new Date(); const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return { from: `${ym}-01`, to: `${ym}-${String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, '0')}` } })
   const [prof, setProf] = useState<any>(null)
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
@@ -80,7 +81,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   useEffect(() => { if (tab === 'spec') loadSpec() }, [tab, loadSpec])
   useEffect(() => { loadSpec() }, [loadSpec])   // проекты нужны и в «Прямом заказе» (фильтр по клиенту)
   // Список проектов нужен и в шторке (Ф-B: «Добавить в проект»); касса сбрасывается на новую карточку.
-  useEffect(() => { if (drawerId) loadSpec(); setPay({ cash: '', kaspi: '', change: '', changeFrom: '' }) }, [drawerId, loadSpec])
+  useEffect(() => { if (drawerId) loadSpec(); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }) }, [drawerId, loadSpec])
   // Вынести часть позиции спец-проекта → сразу к логисту (Исходящие), остаток вычитается.
   // Собрать введённые кол-ва проекта в строки (specItemId + qty).
   const carveLines = () => Object.entries(specQ).map(([specItemId, v]) => ({ specItemId, qty: Number(String(v).replace(',', '.')) || 0 })).filter(l => l.qty > 0)
@@ -112,6 +113,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     if (!confirm('Закрыть смену? Расходы будут проведены.')) return
     const r: any = await closeShiftDay(shiftDate)
     if (r.ok) { showMsg('✓ Смена закрыта'); await loadShift() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function doTransferGold() {
+    const amount = Number((gold || '').replace(',', '.')) || 0
+    if (amount <= 0) { showMsg('Укажите сумму перевода'); return }
+    const r: any = await transferGold(amount, shiftDate)
+    if (r.ok) { showMsg(`💳 Переведено в банк: ${amount}`); setGold(''); await loadShift() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
 
   // Рентабельность по товару за период.
@@ -189,9 +196,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   // Касса: оплатить (продать) → расходная + оплаты; отменить продажу → сторно.
   async function doPay(id: string) {
-    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom }
+    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, qr: Number((pay.qr || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom }
     const r = await payCard(id, body); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setPay({ cash: '', kaspi: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`💵 Продано${r.number ? ` (${r.number})` : ''}${r.debt ? ` · долг ${r.debt}` : ''}`)
+    setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`💵 Продано${r.number ? ` (${r.number})` : ''}${r.debt ? ` · долг ${r.debt}` : ''}`)
   }
   async function doUnpay(id: string) {
     if (!confirm('Отменить продажу? Документы будут сторнированы, карточка вернётся в работу.')) return
@@ -305,8 +312,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         const total = pos.reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
         const isSold = ph === 'sold' || !!o.linkedDocId
         const needBase = pos.length > 0 && pos.some((p: any) => !p.productId)
-        const cashN = Number((pay.cash || '').replace(',', '.')) || 0, kaspiN = Number((pay.kaspi || '').replace(',', '.')) || 0
-        const debtN = Math.max(0, total - cashN - kaspiN)
+        const cashN = Number((pay.cash || '').replace(',', '.')) || 0, kaspiN = Number((pay.kaspi || '').replace(',', '.')) || 0, qrN = Number((pay.qr || '').replace(',', '.')) || 0
+        const debtN = Math.max(0, total - cashN - kaspiN - qrN)
         const fmtMoney = (n: number) => Math.round(n).toLocaleString('ru-RU')
         return (
           <div onClick={() => { setDrawerId(null); setSel({}) }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,18,16,.4)', zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
@@ -348,9 +355,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontSize: 13, color: '#5f5952' }}>сумма <b style={{ color: '#26231f' }}>{fmtMoney(total)}</b> ₸</span>
                       <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: debtN > 0 ? '#c0532a' : '#2e8a5e' }}>долг {fmtMoney(debtN)}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <label style={{ flex: 1, fontSize: 12, color: '#5f5952' }}>Наличка<input value={pay.cash} inputMode="decimal" onChange={e => setPay(p => ({ ...p, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
-                      <label style={{ flex: 1, fontSize: 12, color: '#5f5952' }}>Каспи<input value={pay.kaspi} inputMode="decimal" onChange={e => setPay(p => ({ ...p, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Наличка<input value={pay.cash} inputMode="decimal" onChange={e => setPay(p => ({ ...p, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
+                      <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Каспи<span style={{ color: '#b8b1a6' }}> (GOLD)</span><input value={pay.kaspi} inputMode="decimal" onChange={e => setPay(p => ({ ...p, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
+                      <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>QR<span style={{ color: '#b8b1a6' }}> (банк)</span><input value={pay.qr} inputMode="decimal" onChange={e => setPay(p => ({ ...p, qr: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>Сдача</span>
@@ -546,7 +554,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}</span>
+                      <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
                       <button onClick={() => doUnpay(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
                     </div>
                   </div>
@@ -558,8 +566,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'shift' && (() => {
           const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
           const accts = shift?.accounts || []
-          const inc = shift?.income || { cash: 0, kaspi: 0, debt: 0, total: 0 }
-          const stat = (label: string, val: string, color: string) => <div style={{ flex: 1, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '11px 12px', minWidth: 92 }}><div style={{ fontSize: 11, color: '#837c72', fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, color, marginTop: 3 }}>{val}</div></div>
+          const inc = shift?.income || { cash: 0, kaspi: 0, qr: 0, debt: 0, total: 0 }
+          const chk = shift?.check || { ok: true, diff: 0 }
+          const stat = (label: string, val: string, color: string) => <div style={{ flex: 1, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 11px', minWidth: 78 }}><div style={{ fontSize: 11, color: '#837c72', fontWeight: 700 }}>{label}</div><div style={{ fontSize: 16, fontWeight: 800, color, marginTop: 3 }}>{val}</div></div>
           return <div>
             <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>💵 Смена мастера за день: продажи, производство в запас, расходы (ЗП + текущие) и итог кассы.</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
@@ -568,8 +577,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
             {!shift ? <div style={{ textAlign: 'center', padding: 30, color: '#5f5952' }}>Загрузка…</div> : <>
               <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ (продажи)</div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                {stat('Наличка', m(inc.cash), '#2e8a5e')}{stat('Каспи', m(inc.kaspi), '#2a5aaa')}{stat('Долг', m(inc.debt), '#c0532a')}{stat('Всего продано', m(inc.total), '#26231f')}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                {stat('Наличка', m(inc.cash), '#2e8a5e')}{stat('Каспи', m(inc.kaspi), '#2a5aaa')}{stat('QR', m(inc.qr), '#2a5aaa')}{stat('Долг', m(inc.debt), '#c0532a')}{stat('Продано', m(inc.total), '#26231f')}
+              </div>
+              {/* Проверка как в отчёте: оплаты + долг = продано */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: chk.ok ? '#e8f5ee' : '#faeaea', borderRadius: 8, padding: '8px 12px', marginBottom: 8, fontSize: 13 }}>
+                <b style={{ color: chk.ok ? '#2e8a5e' : '#c0392b' }}>{chk.ok ? '✅ Проверка: сходится' : `❌ Расхождение ${m(chk.diff)}`}</b>
+                <span style={{ color: '#5f5952', marginLeft: 'auto' }}>нал+каспи+QR+долг = продано</span>
               </div>
               <div style={{ fontSize: 12, color: '#837c72', marginBottom: 14 }}>{(shift.cards || []).length} продаж{(shift.cards || []).length ? ': ' + shift.cards.map((c: any) => `${fmtCode(c.id)} (${m(c.total)})`).join(', ') : ' нет'}</div>
 
@@ -596,11 +610,25 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                 </div>
               </div>
 
-              {/* Итог по счетам + закрытие */}
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>💰 ОСТАТОК ПО СЧЕТАМ (Деньги)</div>
+              {/* Движение по счетам за день (продажи + расходы/переводы) */}
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', marginBottom: 8 }}>💰 СЧЕТА ЗА ДЕНЬ (продажи − расходы)</div>
               <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '8px 12px', marginBottom: 12 }}>
-                {accts.map((a: any) => <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}><span>{a.name}</span><b>{m(shift.closing?.[a.id])}</b></div>)}
+                {accts.map((a: any) => <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13, borderBottom: '1px solid #f8f6f3' }}><span>{a.name}</span><b style={{ color: a.net < 0 ? '#c0532a' : '#26231f' }}>{m(a.net)}</b></div>)}
               </div>
+
+              {/* KASPI GOLD — личный сбор мастера + перевод в банк */}
+              <div style={{ background: '#fff8ef', borderRadius: 12, boxShadow: '0 0 0 1.5px #f0d9b0', padding: '11px 13px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 9 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6f00' }}>💳 На мастере (KASPI GOLD)</span>
+                  <b style={{ fontSize: 17, color: '#8a6f00', marginLeft: 'auto' }}>{m(shift.goldBalance)}</b>
+                </div>
+                <div style={{ fontSize: 11.5, color: '#9a8a5a', marginBottom: 8 }}>Собрано на личный Каспи, ещё не переведено в банк.</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={gold} inputMode="decimal" onChange={e => setGold(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="сумма перевода" style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: '1.5px solid #f0d9b0', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  <button onClick={doTransferGold} style={{ border: 'none', background: '#b8860b', color: '#fff', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>Перевести в банк →</button>
+                </div>
+              </div>
+
               <button onClick={closeShift} disabled={!shift.hasDraft} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: shift.hasDraft ? PRIMARY : '#e6e2dc', color: '#fff', cursor: shift.hasDraft ? 'pointer' : 'not-allowed', fontSize: 15, fontWeight: 700, fontFamily: 'inherit' }}>{shift.hasDraft ? '🔒 Закрыть смену (провести расходы)' : '✓ Расходы проведены'}</button>
             </>}
           </div>

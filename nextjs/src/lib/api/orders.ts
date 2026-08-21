@@ -35,7 +35,7 @@ export async function splitCard(cardId: string, posIds: string[]) {
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
 // Касса мастера: оплатить (продать) — нал/каспи/сдача, долг авто.
-export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; change?: number; changeFrom?: string }) {
+export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string }) {
   const r = await post(`/api/orders/${cardId}/pay`, body)
   return { ok: r.ok, error: r.error as string | undefined, debt: r.data?.debt as number | undefined, number: r.data?.number as string | undefined }
 }
@@ -86,6 +86,7 @@ export const branchOrders = (uid?: string) => getArray(`/api/branch/orders${uid 
 export const shiftSummary = (date: string, uid?: string) => getOne<any>(`/api/branch/shift?date=${date}${uid ? `&uid=${uid}` : ''}`)
 export const addShiftExpense = (body: { kind: 'salary' | 'current'; who?: string; article?: string; accountId: string; amount: number; date: string }) => post('/api/branch/shift', body)
 export const closeShiftDay = (date: string) => post('/api/branch/shift', { action: 'close', date })
+export const transferGold = (amount: number, date: string) => post('/api/branch/shift', { action: 'transfer', amount, date })
 // Рентабельность по товару за период.
 export const productProfit = (from: string, to: string, uid?: string) => getOne<any>(`/api/branch/profit?from=${from}&to=${to}${uid ? `&uid=${uid}` : ''}`)
 export const createClientOrder = (body: any, uid?: string) => post(`/api/client/orders${uid ? `?uid=${uid}` : ''}`, body)

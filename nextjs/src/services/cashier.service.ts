@@ -23,8 +23,8 @@ async function ensureCashAccounts(orgId: string) {
     await db.insert(cashAccounts).values({ id, orgId, name, kind: 'cash', sortOrder: sort })
     return id
   }
-  // Названия как в головном офисе: наличка = «Основная касса», каспи = «KASPI GOLD».
-  return { cash: await ensure('Основная касса', 3), kaspi: await ensure('KASPI GOLD', 2) }
+  // Наличка = «Основная касса», каспи = «KASPI GOLD» (личный мастера), QR = «Банковский счет».
+  return { cash: await ensure('Основная касса', 3), kaspi: await ensure('KASPI GOLD', 2), bank: await ensure('Банковский счет', 1) }
 }
 
 // Мост-контрагент филиала на головной офис (contragents.orgRefId = hq org).
@@ -39,7 +39,7 @@ async function hqBridgeContragent(orgId: string): Promise<string | null> {
   return cg?.id || null
 }
 
-export interface PayInput { cash?: number; kaspi?: number; change?: number; changeFrom?: string }
+export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string }
 
 export async function payCard(cardId: string, p: PayInput, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
@@ -55,8 +55,8 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
     if (!pr.ok) return { ok: false as const, error: pr.error }
   }
   const total = positions.reduce((s: number, x: any) => s + Number(x.qty || 0) * Number(x.price || 0), 0)
-  const cash = Math.max(0, Number(p.cash) || 0), kaspi = Math.max(0, Number(p.kaspi) || 0)
-  const debt = Math.max(0, total - cash - kaspi)
+  const cash = Math.max(0, Number(p.cash) || 0), kaspi = Math.max(0, Number(p.kaspi) || 0), qr = Math.max(0, Number(p.qr) || 0)
+  const debt = Math.max(0, total - cash - kaspi - qr)
 
   // Контрагент: заказчик карточки, иначе мост на головной офис.
   let contactId = order.contactId as string | null
@@ -74,14 +74,17 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
 
   // Оплаты нал/каспи в кассу (гасят дебиторку), привязка к документу.
   const acc = await ensureCashAccounts(order.orgId)
-  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: today(), cashAccountId: acc.cash, documentId: docId, comment: `Касса ${cardId} · нал` })
-  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: today(), cashAccountId: acc.kaspi, documentId: docId, comment: `Касса ${cardId} · каспи` })
+  const day = today()
+  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: docId, comment: `Касса ${cardId} · нал` })
+  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: docId, comment: `Касса ${cardId} · каспи` })
+  if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: docId, comment: `Касса ${cardId} · QR` })
 
-  const label = debt > 0 ? (cash || kaspi ? 'Частично' : 'Долг') : (cash && kaspi ? 'Смешанная' : cash ? 'Наличка' : 'Каспи')
+  const methods = [cash && 'Наличка', kaspi && 'Каспи', qr && 'QR'].filter(Boolean) as string[]
+  const label = debt > 0 ? (methods.length ? 'Частично' : 'Долг') : (methods.length > 1 ? 'Смешанная' : methods[0] || 'Наличка')
   const change = Math.max(0, Number(p.change) || 0)
-  await repo.updateOrder(cardId, { paidCash: String(cash), paidKaspi: String(kaspi), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, prodPhase: 'sold', delivered: new Date() })
-  await repo.insertHistory({ cardId, action: 'pay', detail: `Продано (${inv.number}): нал ${cash}, каспи ${kaspi}, долг ${debt}${change > 0 ? `, сдача ${change}` : ''}`, userName: actor?.name || 'Система' })
-  return { ok: true as const, total, cash, kaspi, debt, number: inv.number }
+  await repo.updateOrder(cardId, { paidCash: String(cash), paidKaspi: String(kaspi), paidQr: String(qr), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, prodPhase: 'sold', delivered: new Date() })
+  await repo.insertHistory({ cardId, action: 'pay', detail: `Продано (${inv.number}): нал ${cash}, каспи ${kaspi}, QR ${qr}, долг ${debt}${change > 0 ? `, сдача ${change}` : ''}`, userName: actor?.name || 'Система' })
+  return { ok: true as const, total, cash, kaspi, qr, debt, number: inv.number }
 }
 
 // Отмена продажи: сторно всех документов карточки (расходная + зеркальная у головного),
@@ -97,7 +100,7 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
     .where(and(eq(documents.sourceOrderId, cardId), ne(documents.status, 'cancelled')))
   for (const d of docs) await cancelDocument(d.id)
   await db.delete(payments).where(eq(payments.documentId, order.linkedDocId as string))
-  await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'reception', status: 'Готов к доставке', prodPhase: 'ready', paidCash: '0', paidKaspi: '0', changeSum: '0', changeFrom: '', payment: '', delivered: null })
+  await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'reception', status: 'Готов к доставке', prodPhase: 'ready', paidCash: '0', paidKaspi: '0', paidQr: '0', changeSum: '0', changeFrom: '', payment: '', delivered: null })
   await repo.insertHistory({ cardId, action: 'unpay', detail: 'Продажа отменена — карточка снова в работе', userName: actor?.name || 'Система' })
   return { ok: true as const, cancelled: docs.length }
 }

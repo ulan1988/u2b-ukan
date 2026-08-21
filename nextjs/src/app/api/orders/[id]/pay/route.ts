@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
-  const res: any = await payCard(params.id, { cash: b?.cash, kaspi: b?.kaspi, change: b?.change, changeFrom: b?.changeFrom }, s)
+  const res: any = await payCard(params.id, { cash: b?.cash, kaspi: b?.kaspi, qr: b?.qr, change: b?.change, changeFrom: b?.changeFrom }, s)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   await pushSignal()
   return NextResponse.json(res)

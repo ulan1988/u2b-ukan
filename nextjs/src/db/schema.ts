@@ -293,8 +293,9 @@ export const orders = pgTable('orders', {
   cutConfirmed: boolean('cut_confirmed').notNull().default(false), // (устар.) раскрой подтверждён мастером — раскрой убран из потока
   prodPhase: text('prod_phase').notNull().default(''),    // этап мастера: '' → accepted (Принял) → working (В работе) → ready (Готов к доставке) → sent (Отправлено)
   payment: text('payment').notNull().default(''),         // способ оплаты карточки: '' | Наличка | Каспи | Долг | Смешанная | Частично (ярлык)
-  paidCash: money('paid_cash').notNull().default('0'),    // касса мастера: получено наличкой
-  paidKaspi: money('paid_kaspi').notNull().default('0'),  // получено каспи
+  paidCash: money('paid_cash').notNull().default('0'),    // касса мастера: получено наличкой (→ Основная касса)
+  paidKaspi: money('paid_kaspi').notNull().default('0'),  // получено каспи (→ KASPI GOLD, личный мастера)
+  paidQr: money('paid_qr').notNull().default('0'),        // получено QR/переводом (→ Банковский счёт)
   changeSum: money('change_sum').notNull().default('0'),  // выдана сдача
   changeFrom: text('change_from').notNull().default(''),  // сдача с чего: '' | cash | kaspi
   trackingLink: text('tracking_link').notNull().default(''),
