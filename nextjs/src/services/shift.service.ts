@@ -79,8 +79,8 @@ export async function masterShift(orgId: string, date: string) {
     debtHQ = num(pur.v) - remittedHQ
   }
 
-  // Сотрудники филиала — для оплаты ЗП списком.
-  const staff = await sqlClient`select id::text, name, role from users where org_id=${orgId} and role not in ('client','supplier_client') order by name` as unknown as Array<any>
+  // Сотрудники филиала (справочник) — для оплаты ЗП списком, с дневным окладом.
+  const staff = await sqlClient`select id::text, name, position, daily_wage::float "dailyWage" from employees where org_id=${orgId} and archived=false order by name` as unknown as Array<any>
 
   return {
     date, income, check, cards, staff,

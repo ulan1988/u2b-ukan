@@ -143,6 +143,17 @@ export const cashAccounts = pgTable('cash_accounts', {
   archived: boolean('archived').notNull().default(false),
 }, t => ({ byOrg: index('cash_accounts_org_idx').on(t.orgId) }))
 
+// Справочник сотрудников филиала (для оплаты ЗП списком). Не логины — просто работники.
+export const employees = pgTable('employees', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  name: text('name').notNull(),
+  position: text('position').notNull().default(''),          // должность
+  dailyWage: money('daily_wage').notNull().default('0'),     // дневной оклад (подставляется в ЗП, редактируется)
+  archived: boolean('archived').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('employees_org_idx').on(t.orgId) }))
+
 // ─── Документы (ядро) ────────────────────────────────────────────────────────
 
 // (reviewed — проверена ли накладная оператором; авто-проведённые = false → жёлтая метка)
