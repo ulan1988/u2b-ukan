@@ -9,6 +9,7 @@ import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { optimizeCut, SHEET_WIDTH_CM } from '@/lib/production'
 import { createSpecProject, produceToStock } from '@/lib/api/refs'
+import { itemName } from '@/lib/itemName'
 
 const PRIMARY = '#d4613a'
 const SEG = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7', '#e34948', '#008300']
@@ -73,7 +74,7 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
     setBusy(true)
     try {
       const items = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => {
-        const nm = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`
+        const nm = itemName(r)
         return { name: nm, qty: Number(r.qty) || 0, unit: 'шт', productId: r.productId || undefined, widthCm: Number(r.cm) || undefined, price: Math.round(piecePrice(r)) }
       })
       const res: any = await createSpecProject({ name, clientId: clientId || undefined, items })
@@ -88,7 +89,7 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
     setBusy(true)
     try {
       const items = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => {
-        const nm = `${r.name}${r.color && !r.name.includes(r.color) ? ' ' + r.color : ''}`
+        const nm = itemName(r)
         return { productId: r.productId || undefined, name: nm, widthCm: Number(r.cm) || undefined, qty: Number(r.qty) || 0 }
       })
       const res: any = await produceToStock(items)

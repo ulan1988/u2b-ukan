@@ -10,6 +10,7 @@ import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
+import { itemName } from '@/lib/itemName'
 
 const PRIMARY = '#d4613a'
 interface Row { id?: string; productId: string; name: string; color: string; cm: string; qty: string; price: string }
@@ -17,15 +18,6 @@ const inp: React.CSSProperties = { padding: '6px 8px', borderRadius: 6, border: 
 
 function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
-}
-
-// Имя изделия = идентичность товара: «{вид} {цвет} {см} см» (напр. «Изделие 9003 15 см»).
-// По нему создаётся товар в базе и считается рентабельность.
-function itemName(r: Row): string {
-  let n = (r.name || 'Изделие').trim()
-  if (r.color && !n.toLowerCase().includes(r.color.toLowerCase())) n += ' ' + r.color
-  if (r.cm && !/\d+\s*см/i.test(n)) n += ` ${r.cm} см`
-  return n
 }
 
 export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg }: {
