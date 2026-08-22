@@ -14,6 +14,7 @@ import BookkeepingScreen from '@/components/admin/screens/BookkeepingScreen'
 import FinanceMoneyScreen from '@/components/admin/screens/FinanceMoneyScreen'
 import CashDayScreen from '@/components/admin/screens/CashDayScreen'
 import EmployeesScreen from '@/components/admin/screens/EmployeesScreen'
+import DdsArticlesScreen from '@/components/admin/screens/DdsArticlesScreen'
 import InvoicesScreen from '@/components/admin/screens/InvoicesScreen'
 import WarehouseScreen from '@/components/admin/screens/WarehouseScreen'
 import ProductionScreen from '@/components/admin/screens/ProductionScreen'
@@ -40,6 +41,7 @@ export default function AdminScreenPage() {
     case 'money': return <FinanceMoneyScreen orgId={a.orgId} />
     case 'cashday': return <CashDayScreen orgId={a.orgId} />
     case 'employees': return <EmployeesScreen orgId={a.orgId} />
+    case 'dds': return <DdsArticlesScreen orgId={a.orgId} />
     case 'invoice_in': return <InvoicesScreen kind="in" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'invoice_out': return <InvoicesScreen kind="out" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'archive': return <ArchiveScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />

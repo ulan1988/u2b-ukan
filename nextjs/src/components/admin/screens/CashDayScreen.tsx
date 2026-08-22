@@ -234,7 +234,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🧾 Текущий расход</div>
                 <select value={cur.articleId} onChange={e => setCur(x => ({ ...x, articleId: e.target.value }))} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box', marginBottom: 8 }}>
                   <option value="">— статья ДДС —</option>
-                  {Object.entries((data.expenseArticles || []).reduce((g: any, a: any) => { const k = a.code || 'Прочее'; (g[k] = g[k] || []).push(a); return g }, {})).map(([grp, arts]: any) => <optgroup key={grp} label={grp}>{arts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</optgroup>)}
+                  {(() => { const ACT: any = { operating: 'Операционная', transfer: 'Перемещения', financial: 'Финансовая', investing: 'Инвестиционная' }; return Object.entries((data.expenseArticles || []).reduce((g: any, a: any) => { const k = ACT[a.activity] || a.activity || 'Прочее'; (g[k] = g[k] || []).push(a); return g }, {})).map(([grp, arts]: any) => <optgroup key={grp} label={grp}>{arts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</optgroup>) })()}
                 </select>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input value={cur.who} onChange={e => setCur(x => ({ ...x, who: e.target.value }))} placeholder="комментарий (необязательно)" style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />

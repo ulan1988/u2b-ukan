@@ -69,6 +69,11 @@ export const sheetsAll = () => getArray('/api/material/sheets?all=1')   // вс�
 export const materialReport = (orgId: string, from: string, to: string) => getObj(`/api/material/report?orgId=${orgId}&from=${from}&to=${to}`, null as any)
 export const takeSheet = (color: string, qty: number) => post('/api/material/take', { color, qty })
 
+// Справочник статей ДДС (дерево деятельность→группа→статья).
+export const listDdsArticles = (orgId: string) => getArray(`/api/dds-articles?orgId=${orgId}`)
+export const saveDdsArticle = (b: any) => post('/api/dds-articles', b)
+export const archiveDdsArticle = (id: string) => send(`/api/dds-articles?id=${id}`, 'DELETE')
+
 // Справочник сотрудников (для ЗП).
 export const listEmployees = (orgId: string, all = false) => getArray(`/api/employees?orgId=${orgId}${all ? '&all=1' : ''}`)
 export const saveEmployee = (b: any) => post('/api/employees', b)

@@ -472,8 +472,12 @@ export const dailyReportRows = pgTable('daily_report_rows', {
 export const finExpenseArticles = pgTable('fin_expense_articles', {
   id: uuid('id').defaultRandom().primaryKey(),
   orgId: uuid('org_id').notNull().references(() => organizations.id),
-  code: text('code'),                                     // 7100/7200/7400
+  code: text('code'),                                     // (устар.) 7100/7200/7400
   name: text('name').notNull().default(''),
+  activity: text('activity').notNull().default('operating'), // operating|transfer|financial|investing (деятельность ДДС)
+  direction: text('direction').notNull().default('out'),     // in (поступление) | out (платёж) | both (оба)
+  parentId: uuid('parent_id'),                           // группа-папка (Платежи/Поступления) — самоссылка
+  isGroup: boolean('is_group').notNull().default(false), // папка-группа vs статья
   sortOrder: integer('sort_order').notNull().default(0),
   archived: boolean('archived').notNull().default(false),
 }, t => ({ byOrg: index('fin_expense_articles_org_idx').on(t.orgId) }))

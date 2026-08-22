@@ -82,7 +82,7 @@ export async function masterShift(orgId: string, date: string) {
   // Сотрудники филиала (справочник) — для оплаты ЗП списком, с дневным окладом.
   const staff = await sqlClient`select id::text, name, position, daily_wage::float "dailyWage" from employees where org_id=${orgId} and archived=false order by name` as unknown as Array<any>
   // Статьи расходов (как в 1С: 7100/7200/7400) — для «текущего расхода».
-  const expenseArticles = await sqlClient`select id::text, code, name from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Array<any>
+  const expenseArticles = await sqlClient`select id::text, name, activity, direction from fin_expense_articles where org_id=${orgId} and archived=false and is_group=false order by activity, sort_order, name` as unknown as Array<any>
 
   return {
     date, income, check, cards, staff, expenseArticles,
