@@ -3,7 +3,7 @@
 // (№ / номенклатура / цвет / см / шт / тг за шт / сумма / ✕ клон), расчёт материала
 // (см ÷ 125 = листов). «Выполнено» → карточка уходит из стола обратно в «Заказы на
 // производство» (готова к логисту). Прямой заказ (без карточки) — «Создать карточку».
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
@@ -43,6 +43,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const [allColors, setAllColors] = useState(false)        // показать все цвета (глазок)
   const [qKind, setQKind] = useState('')                   // …и вид из «Комплектующие»
   const [qCm, setQCm] = useState('')                       // длина для «Изделие · см»
+  const [qQty, setQQty] = useState('1')                    // кол-во для быстрого добавления
+  const cmRef = useRef<HTMLInputElement>(null)
+  const qtyRef = useRef<HTMLInputElement>(null)
   function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
 
@@ -60,14 +63,19 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       return colorCode === 'decor' ? /дерев|дуб|3d/i.test(p.name) : extractRal(p.name) === colorCode
     }).sort((a, b) => a.name.length - b.name.length)[0]
   }
+  // Авто-фокус на «Длину», как только выбран вид с размером — сразу набирай см.
+  useEffect(() => { if (accKind?.measure) setTimeout(() => cmRef.current?.focus(), 0) }, [qKind])   // eslint-disable-line react-hooks/exhaustive-deps
   function addQuick() {
     if (!accKind) return
+    if (accKind.measure && !qCm) { cmRef.current?.focus(); return }
     const prod = findProd(accKind, qColor)
     const colorLabel = qColor ? (qColor === 'decor' ? 'дерево' : qColor) : ''
     const name = prod?.name || [accKind.terms?.[0] || accKind.label, colorLabel].filter(Boolean).join(' ')
-    const row: Row = { productId: prod?.id || '', name, color: extractRal(name) || qColor, cm: accKind.measure ? qCm : '', qty: '1', price: '' }
+    const qty = Math.max(1, Number(qQty) || 1)
+    const row: Row = { productId: prod?.id || '', name, color: extractRal(name) || qColor, cm: accKind.measure ? qCm : '', qty: String(qty), price: '' }
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), row])
-    setQCm('')
+    setQCm(''); setQQty('1')
+    if (accKind.measure) setTimeout(() => cmRef.current?.focus(), 0)
   }
 
   // Выбор из каталога-модельки (NomPicker) → строки стола. Цвет и «· NN см» тянутся из имени.
@@ -180,7 +188,18 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         </div>
         {accKind && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            {accKind.measure && <><span style={{ fontSize: 13, color: '#5f5952' }}>Длина:</span><input style={{ ...inp, width: 80, textAlign: 'center' }} inputMode="numeric" value={qCm} onChange={e => setQCm(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="см" /><span style={{ fontSize: 13, color: '#5f5952' }}>см</span></>}
+            {accKind.measure && <>
+              <span style={{ fontSize: 13, color: '#5f5952' }}>Длина:</span>
+              <input ref={cmRef} style={{ ...inp, width: 74, textAlign: 'center' }} inputMode="numeric" value={qCm}
+                onChange={e => setQCm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); qtyRef.current?.focus(); qtyRef.current?.select() } }}
+                placeholder="см" />
+              <span style={{ fontSize: 13, color: '#5f5952' }}>см ×</span>
+            </>}
+            <input ref={qtyRef} style={{ ...inp, width: 56, textAlign: 'center' }} inputMode="numeric" value={qQty}
+              onChange={e => setQQty(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addQuick() } }}
+              placeholder="шт" />
             <button type="button" onClick={addQuick} style={{ border: 'none', borderRadius: 8, padding: '7px 16px', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>＋ Добавить{qColor ? ` · ${qColor === 'decor' ? 'дерево' : qColor}` : ''}</button>
           </div>
         )}

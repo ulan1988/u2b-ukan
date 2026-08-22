@@ -2,7 +2,7 @@
 // Спец-проект мастера (кабинет филиала, мобильный). Мастер набирает 4-10 позиций
 // своей моделькой (цвета + Комплектующие), сразу видит раскрой (сколько листов надо),
 // и «В очередь →» сохраняет спец-проект. Дальше из очереди выносит части к логисту.
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
@@ -24,7 +24,10 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
   const [busy, setBusy] = useState(false)
   const [showCalc, setShowCalc] = useState(false)   // раскрой считается по кнопке
   const [qColor, setQColor] = useState(''); const [allColors, setAllColors] = useState(false)
-  const [qKind, setQKind] = useState(''); const [qCm, setQCm] = useState('')
+  const [qKind, setQKind] = useState(''); const [qCm, setQCm] = useState(''); const [qQty, setQQty] = useState('1')
+  const nameRef = useRef<HTMLInputElement>(null)
+  const cmRef = useRef<HTMLInputElement>(null)
+  const qtyRef = useRef<HTMLInputElement>(null)
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
 
   // Моделька: цвета + виды из «Комплектующие» (Изделие/Нар.угол/H-профиль).
@@ -41,14 +44,20 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
       return colorCode === 'decor' ? /дерев|дуб|3d/i.test(p.name) : extractRal(p.name) === colorCode
     }).sort((a, b) => a.name.length - b.name.length)[0]
   }
+  // Авто-фокус на «Длину», как только выбран вид с размером — сразу набирай см.
+  useEffect(() => { if (accKind?.measure) setTimeout(() => cmRef.current?.focus(), 0) }, [qKind])   // eslint-disable-line react-hooks/exhaustive-deps
   function addQuick() {
     if (!accKind) return
+    if (accKind.measure && !qCm) { cmRef.current?.focus(); return }
     const prod = findProd(accKind, qColor)
     const colorLabel = qColor ? (qColor === 'decor' ? 'дерево' : qColor) : ''
     const nm = prod?.name || [accKind.terms?.[0] || accKind.label, colorLabel].filter(Boolean).join(' ')
-    const row: Row = { productId: prod?.id || '', name: nm, color: extractRal(nm) || qColor, cm: accKind.measure ? qCm : '', qty: '1', price: '' }
+    const qty = Math.max(1, Number(qQty) || 1)
+    const row: Row = { productId: prod?.id || '', name: nm, color: extractRal(nm) || qColor, cm: accKind.measure ? qCm : '', qty: String(qty), price: '' }
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), row])
-    setQCm('')
+    setQCm(''); setQQty('1')
+    // возврат курсора на «Длину» — для быстрого набора следующей позиции
+    if (accKind.measure) setTimeout(() => cmRef.current?.focus(), 0)
   }
 
   const piecePrice = (r: Row) => { const auto = (Number(priceCm) || 0) * (Number(r.cm) || 0); return auto > 0 ? auto : (Number(r.price) || 0) }
@@ -96,7 +105,7 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
       <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>НАЗВАНИЕ ПРОЕКТА</label>
-          <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="напр. Отливы RAL8017 — партия" />
+          <input ref={nameRef} style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="напр. Отливы RAL8017 — партия" />
         </div>
         <div style={{ width: 120 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЦЕНА ЗА СМ</label>
@@ -104,7 +113,7 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
         </div>
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>👤 АВТОР / ЗАКАЗЧИК</label>
-          <ContragentPicker contragents={contragents} value={clientId} onPick={(c: any) => setClientId(c.id)} placeholder="— выберите заказчика —" />
+          <ContragentPicker contragents={contragents} value={clientId} onPick={(c: any) => { setClientId(c.id); if (!name.trim()) setTimeout(() => nameRef.current?.focus(), 0) }} placeholder="— выберите заказчика —" />
         </div>
       </div>
 
@@ -134,7 +143,18 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
         </div>
         {accKind && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            {accKind.measure && <><span style={{ fontSize: 13, color: '#5f5952' }}>Длина:</span><input style={{ ...inp, width: 80, textAlign: 'center' }} inputMode="numeric" value={qCm} onChange={e => setQCm(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="см" /><span style={{ fontSize: 13, color: '#5f5952' }}>см</span></>}
+            {accKind.measure && <>
+              <span style={{ fontSize: 13, color: '#5f5952' }}>Длина:</span>
+              <input ref={cmRef} style={{ ...inp, width: 74, textAlign: 'center' }} inputMode="numeric" value={qCm}
+                onChange={e => setQCm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); qtyRef.current?.focus(); qtyRef.current?.select() } }}
+                placeholder="см" />
+              <span style={{ fontSize: 13, color: '#5f5952' }}>см ×</span>
+            </>}
+            <input ref={qtyRef} style={{ ...inp, width: 56, textAlign: 'center' }} inputMode="numeric" value={qQty}
+              onChange={e => setQQty(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addQuick() } }}
+              placeholder="шт" />
             <button type="button" onClick={addQuick} style={{ border: 'none', borderRadius: 8, padding: '7px 16px', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>＋ Добавить{qColor ? ` · ${qColor === 'decor' ? 'дерево' : qColor}` : ''}</button>
           </div>
         )}
