@@ -79,8 +79,11 @@ export async function masterShift(orgId: string, date: string) {
     debtHQ = num(pur.v) - remittedHQ
   }
 
+  // Сотрудники филиала — для оплаты ЗП списком.
+  const staff = await sqlClient`select id::text, name, role from users where org_id=${orgId} and role not in ('client','supplier_client') order by name` as unknown as Array<any>
+
   return {
-    date, income, check, cards,
+    date, income, check, cards, staff,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
@@ -132,6 +135,16 @@ export async function addShiftExpense(orgId: string, input: ExpenseInput, _actor
   if (!input.accountId || !(num(input.amount) > 0)) return { ok: false as const, error: 'Укажите счёт и сумму' }
   const article = input.kind === 'salary' ? 'ЗП' : (input.article || 'Текущий расход')
   return saveFinRow(orgId, { date: input.date, type: 'etc', article, who: input.who || '', amounts: [{ accountId: input.accountId, amount: -Math.abs(num(input.amount)) }] })
+}
+
+// Оплатить ЗП списком (разом): по каждому сотруднику с суммой>0 — расходная строка ЗП с одного счёта.
+export async function payWages(orgId: string, accountId: string, items: Array<{ who: string; amount: number }>, date: string, _actor?: Session | null) {
+  if (!accountId) return { ok: false as const, error: 'Выберите счёт списания' }
+  const use = (items || []).filter(i => num(i.amount) > 0)
+  if (!use.length) return { ok: false as const, error: 'Укажите суммы ЗП' }
+  let total = 0
+  for (const i of use) { await saveFinRow(orgId, { date, type: 'etc', article: 'ЗП', who: i.who || '', amounts: [{ accountId, amount: -Math.abs(num(i.amount)) }] }); total += Math.abs(num(i.amount)) }
+  return { ok: true as const, count: use.length, total }
 }
 
 // Инкассация «мастер → филиал»: нал + KASPI GOLD мастера → Банковский счёт филиала (проведённый mv).
