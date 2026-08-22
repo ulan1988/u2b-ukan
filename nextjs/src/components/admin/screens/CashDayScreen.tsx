@@ -37,7 +37,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     const amount = Number((cur.amount || '').replace(',', '.')) || 0
     if (!cur.accountId || amount <= 0) { toast('Выберите счёт и сумму'); return }
     const art = (data?.expenseArticles || []).find((a: any) => a.id === cur.articleId)
-    const article = art ? `${art.code ? art.code + ' ' : ''}${art.name}` : 'Текущий расход'
+    const article = art ? art.name : 'Текущий расход'
     const r: any = await cashExpense(orgId, { kind: 'current', who: cur.who, article, expenseArticleId: cur.articleId || undefined, accountId: cur.accountId, amount, date })
     if (r.ok) { toast('✓ Расход добавлен'); setCur({ articleId: '', who: '', accountId: '', amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
@@ -233,8 +233,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🧾 Текущий расход</div>
                 <select value={cur.articleId} onChange={e => setCur(x => ({ ...x, articleId: e.target.value }))} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box', marginBottom: 8 }}>
-                  <option value="">— статья расхода —</option>
-                  {(data.expenseArticles || []).map((a: any) => <option key={a.id} value={a.id}>{a.code ? a.code + ' · ' : ''}{a.name}</option>)}
+                  <option value="">— статья ДДС —</option>
+                  {Object.entries((data.expenseArticles || []).reduce((g: any, a: any) => { const k = a.code || 'Прочее'; (g[k] = g[k] || []).push(a); return g }, {})).map(([grp, arts]: any) => <optgroup key={grp} label={grp}>{arts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</optgroup>)}
                 </select>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input value={cur.who} onChange={e => setCur(x => ({ ...x, who: e.target.value }))} placeholder="комментарий (необязательно)" style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
