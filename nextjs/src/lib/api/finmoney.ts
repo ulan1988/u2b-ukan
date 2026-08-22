@@ -20,7 +20,7 @@ export const finExpSave = (items: any[]) => post('/api/finance/money', { action:
 
 // Касса дня (смена филиала на десктопе): орг выбирается явно.
 export const cashDay = (orgId: string, date: string) => getObj<any>(`/api/finance/shift?orgId=${orgId}&date=${date}`, null as any)
-export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; who?: string; accountId: string; amount: number; date: string }) => post('/api/finance/shift', { orgId, ...body })
+export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }) => post('/api/finance/shift', { orgId, ...body })
 export const cashIncassate = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'incassate', cash, kaspi, date })
 export const cashRemit = (orgId: string, amount: number, date: string) => post('/api/finance/shift', { orgId, action: 'remit', amount, date })
 export const cashWages = (orgId: string, accountId: string, items: Array<{ who: string; amount: number }>, date: string) => post('/api/finance/shift', { orgId, action: 'wages', accountId, items, date })

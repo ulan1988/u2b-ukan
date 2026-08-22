@@ -15,7 +15,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState('')
-  const [cur, setCur] = useState({ who: '', accountId: '', amount: '' })   // текущий расход
+  const [cur, setCur] = useState({ articleId: '', who: '', accountId: '', amount: '' })   // текущий расход
   const [wageAcc, setWageAcc] = useState('')                    // счёт списания ЗП
   const [wages, setWages] = useState<Record<string, string>>({})   // ЗП по сотрудникам
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация мастер→филиал
@@ -36,8 +36,10 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   async function addCurrent() {
     const amount = Number((cur.amount || '').replace(',', '.')) || 0
     if (!cur.accountId || amount <= 0) { toast('Выберите счёт и сумму'); return }
-    const r: any = await cashExpense(orgId, { kind: 'current', who: cur.who, accountId: cur.accountId, amount, date })
-    if (r.ok) { toast('✓ Расход добавлен'); setCur({ who: '', accountId: '', amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    const art = (data?.expenseArticles || []).find((a: any) => a.id === cur.articleId)
+    const article = art ? `${art.code ? art.code + ' ' : ''}${art.name}` : 'Текущий расход'
+    const r: any = await cashExpense(orgId, { kind: 'current', who: cur.who, article, expenseArticleId: cur.articleId || undefined, accountId: cur.accountId, amount, date })
+    if (r.ok) { toast('✓ Расход добавлен'); setCur({ articleId: '', who: '', accountId: '', amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   async function payAllWages() {
     const acc = wageAcc || (data?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (data?.accounts || [])[0]?.id
@@ -227,14 +229,21 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   ))}
                 {(() => { const tot = (data.staff || []).reduce((s: number, u: any) => s + (Number((wages[u.id] || '').replace(',', '.')) || 0), 0); return <button onClick={payAllWages} disabled={!(tot > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: tot > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: tot > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Оплатить ЗП${tot > 0 ? ' · ' + m(tot) : ''}`}</button> })()}
               </div>
-              {/* Текущий расход */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input value={cur.who} onChange={e => setCur(x => ({ ...x, who: e.target.value }))} placeholder="текущий расход — назначение" style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                <select value={cur.accountId} onChange={e => setCur(x => ({ ...x, accountId: e.target.value }))} style={{ width: 150, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff' }}>
-                  <option value="">— счёт —</option>{accts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {/* Текущий расход — по статье (как в 1С) */}
+              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🧾 Текущий расход</div>
+                <select value={cur.articleId} onChange={e => setCur(x => ({ ...x, articleId: e.target.value }))} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box', marginBottom: 8 }}>
+                  <option value="">— статья расхода —</option>
+                  {(data.expenseArticles || []).map((a: any) => <option key={a.id} value={a.id}>{a.code ? a.code + ' · ' : ''}{a.name}</option>)}
                 </select>
-                <input value={cur.amount} inputMode="decimal" onChange={e => setCur(x => ({ ...x, amount: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="сумма" style={{ width: 110, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
-                <button onClick={addCurrent} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>＋</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={cur.who} onChange={e => setCur(x => ({ ...x, who: e.target.value }))} placeholder="комментарий (необязательно)" style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  <select value={cur.accountId} onChange={e => setCur(x => ({ ...x, accountId: e.target.value }))} style={{ width: 150, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff' }}>
+                    <option value="">— счёт —</option>{accts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <input value={cur.amount} inputMode="decimal" onChange={e => setCur(x => ({ ...x, amount: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="сумма" style={{ width: 110, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
+                  <button onClick={addCurrent} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>＋</button>
+                </div>
               </div>
             </div>
             <button onClick={close} disabled={!data.hasDraft} style={{ padding: '14px', borderRadius: 10, border: 'none', background: data.hasDraft ? COLORS.primary : COLORS.border, color: '#fff', cursor: data.hasDraft ? 'pointer' : 'not-allowed', fontSize: 15, fontWeight: 700, fontFamily: 'inherit' }}>{data.hasDraft ? '🔒 Закрыть смену (провести расходы)' : '✓ Расходы проведены'}</button>

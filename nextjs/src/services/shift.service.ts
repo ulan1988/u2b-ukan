@@ -81,9 +81,11 @@ export async function masterShift(orgId: string, date: string) {
 
   // Сотрудники филиала (справочник) — для оплаты ЗП списком, с дневным окладом.
   const staff = await sqlClient`select id::text, name, position, daily_wage::float "dailyWage" from employees where org_id=${orgId} and archived=false order by name` as unknown as Array<any>
+  // Статьи расходов (как в 1С: 7100/7200/7400) — для «текущего расхода».
+  const expenseArticles = await sqlClient`select id::text, code, name from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Array<any>
 
   return {
-    date, income, check, cards, staff,
+    date, income, check, cards, staff, expenseArticles,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
@@ -129,12 +131,12 @@ export async function cashReport(orgId: string, from: string, to: string) {
   return { from, to, days, totals, ok: days.every((d: any) => d.ok) }
 }
 
-export interface ExpenseInput { kind: 'salary' | 'current'; who?: string; article?: string; accountId: string; amount: number; date: string }
+export interface ExpenseInput { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }
 
 export async function addShiftExpense(orgId: string, input: ExpenseInput, _actor?: Session | null) {
   if (!input.accountId || !(num(input.amount) > 0)) return { ok: false as const, error: 'Укажите счёт и сумму' }
   const article = input.kind === 'salary' ? 'ЗП' : (input.article || 'Текущий расход')
-  return saveFinRow(orgId, { date: input.date, type: 'etc', article, who: input.who || '', amounts: [{ accountId: input.accountId, amount: -Math.abs(num(input.amount)) }] })
+  return saveFinRow(orgId, { date: input.date, type: 'etc', article, who: input.who || '', expenseArticleId: input.expenseArticleId || null, amounts: [{ accountId: input.accountId, amount: -Math.abs(num(input.amount)) }] })
 }
 
 // Оплатить ЗП списком (разом): по каждому сотруднику с суммой>0 — расходная строка ЗП с одного счёта.
