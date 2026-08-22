@@ -21,6 +21,7 @@ export const finExpSave = (items: any[]) => post('/api/finance/money', { action:
 // Касса дня (смена филиала на десктопе): орг выбирается явно.
 export const cashDay = (orgId: string, date: string) => getObj<any>(`/api/finance/shift?orgId=${orgId}&date=${date}`, null as any)
 export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; who?: string; accountId: string; amount: number; date: string }) => post('/api/finance/shift', { orgId, ...body })
-export const cashTransferGold = (orgId: string, amount: number, date: string) => post('/api/finance/shift', { orgId, action: 'transfer', amount, date })
+export const cashIncassate = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'incassate', cash, kaspi, date })
+export const cashRemit = (orgId: string, amount: number, date: string) => post('/api/finance/shift', { orgId, action: 'remit', amount, date })
 export const cashCloseShift = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'close', date })
 export const cashMonth = (orgId: string, from: string, to: string) => getObj<any>(`/api/finance/shift?mode=month&orgId=${orgId}&from=${from}&to=${to}`, null as any)

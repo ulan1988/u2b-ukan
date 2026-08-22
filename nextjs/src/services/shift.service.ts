@@ -59,20 +59,33 @@ export async function masterShift(orgId: string, date: string) {
   const finMap: Record<string, number> = {}; for (const r of (fd.rows || [])) for (const am of (r.amounts || [])) finMap[am.accountId] = (finMap[am.accountId] || 0) + num(am.amount)
   const accounts = (fd.accounts || []).map((a: any) => ({ id: a.id, name: a.name, fromSales: payMap[a.id] || 0, fromFin: finMap[a.id] || 0, net: (payMap[a.id] || 0) + (finMap[a.id] || 0) }))
 
-  // Остаток KASPI GOLD (личный сбор мастера, накопительно): все оплаты каспи − переводы в банк.
-  const gold = findAcc(fd.accounts || [], 'KASPI GOLD')
-  let goldBalance = 0
-  if (gold) {
-    const gp = (await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where org_id=${orgId} and cash_account_id=${gold.id}` as unknown as Array<any>)[0]
-    const gf = (await sqlClient`select coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.org_id=${orgId} and r.status='posted' and a.account_id=${gold.id}` as unknown as Array<any>)[0]
-    goldBalance = num(gp.v) + num(gf.v)
+  // Накопительные остатки по счетам (оплаты продаж + движения «Денег»). 3 уровня инкассации:
+  // у мастера = Наличка + KASPI GOLD; у филиала = Банковский счёт; у головного = отдано (payments out мосту).
+  const balOf = async (accId?: string) => {
+    if (!accId) return 0
+    const p = (await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where org_id=${orgId} and cash_account_id=${accId}` as unknown as Array<any>)[0]
+    const f = (await sqlClient`select coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.org_id=${orgId} and r.status='posted' and a.account_id=${accId}` as unknown as Array<any>)[0]
+    return num(p.v) + num(f.v)
+  }
+  const gold = findAcc(fd.accounts || [], 'KASPI GOLD'), cashA = findAcc(fd.accounts || [], 'Основная касса'), bankA = findAcc(fd.accounts || [], 'Банковский счет')
+  const goldBalance = await balOf(gold?.id), cashBalance = await balOf(cashA?.id), bankBalance = await balOf(bankA?.id)
+  // Долг перед головным (мы закупаем у него в долг) + сколько уже отдано (инкассировано головному).
+  const bridge = (await sqlClient`select c.id::text id from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
+  let debtHQ = 0, remittedHQ = 0
+  if (bridge) {
+    const pur = (await sqlClient`select coalesce(sum(total),0)::float v from documents where org_id=${orgId} and contragent_id=${bridge.id} and type='purchase' and status<>'cancelled'` as unknown as Array<any>)[0]
+    const rem = (await sqlClient`select coalesce(sum(amount),0)::float v from payments where org_id=${orgId} and contragent_id=${bridge.id} and direction='out'` as unknown as Array<any>)[0]
+    remittedHQ = num(rem.v)
+    debtHQ = num(pur.v) - remittedHQ
   }
 
   return {
     date, income, check, cards,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
-    accounts, goldId: gold?.id || null, goldBalance, hasDraft,
+    accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
+    levels: { master: cashBalance + goldBalance, masterCash: cashBalance, masterGold: goldBalance, branch: bankBalance, hq: remittedHQ, debtHQ },
+    hasDraft,
   }
 }
 
@@ -121,15 +134,31 @@ export async function addShiftExpense(orgId: string, input: ExpenseInput, _actor
   return saveFinRow(orgId, { date: input.date, type: 'etc', article, who: input.who || '', amounts: [{ accountId: input.accountId, amount: -Math.abs(num(input.amount)) }] })
 }
 
-// Перевод личного KASPI GOLD → Банковский счёт (мастер сдаёт собранное в банк). Проведённый.
-export async function transferGoldToBank(orgId: string, amount: number, date: string, _actor?: Session | null) {
+// Инкассация «мастер → филиал»: нал + KASPI GOLD мастера → Банковский счёт филиала (проведённый mv).
+export async function incassate(orgId: string, cash: number, kaspi: number, date: string, _actor?: Session | null) {
+  const c = Math.max(0, num(cash)), k = Math.max(0, num(kaspi))
+  if (c + k <= 0) return { ok: false as const, error: 'Укажите сумму инкассации' }
+  const fd = await financeDay(orgId, date)
+  const gold = findAcc(fd.accounts || [], 'KASPI GOLD'), cashA = findAcc(fd.accounts || [], 'Основная касса'), bank = findAcc(fd.accounts || [], 'Банковский счет')
+  if (!bank) return { ok: false as const, error: 'Не найден Банковский счёт' }
+  const amounts: any[] = [{ accountId: bank.id, amount: c + k }]
+  if (c > 0 && cashA) amounts.push({ accountId: cashA.id, amount: -c })
+  if (k > 0 && gold) amounts.push({ accountId: gold.id, amount: -k })
+  const r: any = await saveFinRow(orgId, { date, type: 'mv', article: 'Инкассация: мастер → филиал', amounts })
+  if (r?.id) { const fin = await import('../repositories/fin.repo'); await fin.setPosted([r.id]) }
+  return { ok: true as const, cash: c, kaspi: k }
+}
+// Сдать головному «филиал → головной»: платёж поставщику (мост) с Банковского счёта → закрывает долг.
+export async function remitToHQ(orgId: string, amount: number, date: string, actor?: Session | null) {
   const amt = Math.abs(num(amount))
   if (!(amt > 0)) return { ok: false as const, error: 'Укажите сумму' }
+  const bridge = (await sqlClient`select c.id::text id from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
+  if (!bridge) return { ok: false as const, error: 'Не найден контрагент-головной' }
   const fd = await financeDay(orgId, date)
-  const gold = findAcc(fd.accounts || [], 'KASPI GOLD'), bank = findAcc(fd.accounts || [], 'Банковский счет')
-  if (!gold || !bank) return { ok: false as const, error: 'Не найдены счета KASPI GOLD / Банковский счёт' }
-  const r: any = await saveFinRow(orgId, { date, type: 'mv', article: 'Перевод GOLD → банк', amounts: [{ accountId: gold.id, amount: -amt }, { accountId: bank.id, amount: amt }] })
-  if (r?.id) { const fin = await import('../repositories/fin.repo'); await fin.setPosted([r.id]) }
+  const bank = findAcc(fd.accounts || [], 'Банковский счет')
+  const { randomUUID } = await import('crypto')
+  const payRepo = await import('../repositories/payment.repo')
+  await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: bridge.id, direction: 'out', amount: String(amt), date, cashAccountId: bank?.id || null, comment: `Инкассация головному${actor?.name ? ' · ' + actor.name : ''}` } as any)
   return { ok: true as const, amount: amt }
 }
 

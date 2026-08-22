@@ -4,7 +4,7 @@
 // расходы (ЗП/текущие через «Деньги»), производство в запас, закрытие смены. Орг — из селектора.
 import { useEffect, useState, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
-import { cashDay, cashExpense, cashTransferGold, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashIncassate, cashRemit, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
@@ -16,7 +16,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState('')
   const [exp, setExp] = useState({ kind: 'salary' as 'salary' | 'current', who: '', accountId: '', amount: '' })
-  const [gold, setGold] = useState('')
+  const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация мастер→филиал
+  const [remit, setRemit] = useState('')                        // сдать головному
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
   const [month, setMonth] = useState<any>(null)
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
@@ -36,11 +37,17 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     const r: any = await cashExpense(orgId, { kind: exp.kind, who: exp.who, accountId: exp.accountId, amount, date })
     if (r.ok) { toast(exp.kind === 'salary' ? '✓ ЗП добавлена' : '✓ Расход добавлен'); setExp(e => ({ ...e, who: '', amount: '' })); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
-  async function transfer() {
-    const amount = Number((gold || '').replace(',', '.')) || 0
+  async function doIncassate() {
+    const cash = Number((incas.cash || '').replace(',', '.')) || 0, kaspi = Number((incas.kaspi || '').replace(',', '.')) || 0
+    if (cash + kaspi <= 0) { toast('Укажите сумму инкассации'); return }
+    const r: any = await cashIncassate(orgId, cash, kaspi, date)
+    if (r.ok) { toast(`💼 Инкассировано в филиал: ${m(cash + kaspi)}`); setIncas({ cash: '', kaspi: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function doRemit() {
+    const amount = Number((remit || '').replace(',', '.')) || 0
     if (amount <= 0) { toast('Укажите сумму'); return }
-    const r: any = await cashTransferGold(orgId, amount, date)
-    if (r.ok) { toast(`💳 Переведено в банк: ${m(amount)}`); setGold(''); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    const r: any = await cashRemit(orgId, amount, date)
+    if (r.ok) { toast(`🏢 Сдано головному: ${m(amount)}`); setRemit(''); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   async function close() {
     if (!confirm('Закрыть смену? Расходы будут проведены.')) return
@@ -127,16 +134,43 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 </div>
               ))}
             </div>
+            {/* Инкассация: деньги проходят 3 уровня — у мастера → у филиала → у головного (закрывает долг) */}
             <div style={{ ...card, background: '#fff8ef', boxShadow: '0 0 0 1.5px #f0d9b0' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: '#8a6f00', letterSpacing: '.04em' }}>💳 НА МАСТЕРЕ (KASPI GOLD)</span>
-                <b style={{ fontSize: 22, color: '#8a6f00', marginLeft: 'auto' }}>{m(data.goldBalance)} ₸</b>
-              </div>
-              <div style={{ fontSize: 12.5, color: '#9a8a5a', marginBottom: 10 }}>Собрано на личный Каспи мастера, ещё не переведено в банк.</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input value={gold} inputMode="decimal" onChange={e => setGold(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="сумма перевода в банк" style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1.5px solid #f0d9b0', fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                <button onClick={transfer} style={{ border: 'none', background: '#b8860b', color: '#fff', borderRadius: 8, padding: '10px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Перевести в банк →</button>
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#8a6f00', letterSpacing: '.04em', marginBottom: 10 }}>💼 ИНКАССАЦИЯ</div>
+              {(() => { const L = data.levels || {}; return <>
+                {/* Уровень 1: у мастера */}
+                <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6f00' }}>💰 У мастера</span>
+                    <span style={{ fontSize: 12, color: COLORS.textLight }}>Наличка {m(L.masterCash)} · GOLD {m(L.masterGold)}</span>
+                    <b style={{ fontSize: 16, marginLeft: 'auto', color: '#8a6f00' }}>{m(L.master)} ₸</b>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <input value={incas.cash} inputMode="decimal" onChange={e => setIncas(x => ({ ...x, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="нал" style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    <input value={incas.kaspi} inputMode="decimal" onChange={e => setIncas(x => ({ ...x, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="каспи (GOLD)" style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    <button onClick={doIncassate} style={{ border: 'none', background: '#b8860b', color: '#fff', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Инкассировать ↓</button>
+                  </div>
+                </div>
+                {/* Уровень 2: у филиала */}
+                <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2a5aaa' }}>🏭 У филиала (Банковский счёт)</span>
+                    <b style={{ fontSize: 16, marginLeft: 'auto', color: '#2a5aaa' }}>{m(L.branch)} ₸</b>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <input value={remit} inputMode="decimal" onChange={e => setRemit(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="сумма головному" style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    <button onClick={doRemit} style={{ border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Сдать головному ↓</button>
+                  </div>
+                </div>
+                {/* Уровень 3: у головного + долг */}
+                <div style={{ background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2e8a5e' }}>🏢 Отдано головному</span>
+                    <b style={{ fontSize: 16, marginLeft: 'auto', color: '#2e8a5e' }}>{m(L.hq)} ₸</b>
+                  </div>
+                  <div style={{ fontSize: 13, color: COLORS.primaryDark, marginTop: 6, fontWeight: 700 }}>Долг перед головным: {m(L.debtHQ)} ₸</div>
+                </div>
+              </> })()}
             </div>
             <div style={card}>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 10 }}>📦 ПРОИЗВОДСТВО В ЗАПАС</div>
