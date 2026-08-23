@@ -3,10 +3,12 @@
 // автозакуп). Логика передачи карточки — через onAction (родитель) и order.service;
 // экран лишь фильтрует по screen/block/status и вызывает действия. Подкомпоненты и
 // общий UI вынесены в ./reception/*.
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import { extractRal } from '@/lib/ral'
+import { itemName } from '@/lib/itemName'
 import { COLORS } from '@/lib/colors'
 import { fmtDate, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
@@ -43,6 +45,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [rows, setRows] = useState<any[]>([emptyPos()])
   const [showCatalog, setShowCatalog] = useState(false)
   const [busy, setBusy] = useState(false)
+  const advRef = useRef<any>(null)   // таймер авто-перехода СМ → КОЛ-ВО (пауза после набора)
 
   function loadSettings() { fetchSettings(orgId).then((s: any) => { setProjects((s.projects || []).filter((p: any) => p.status === 'active')); setSpecs((s.specProjects || []).filter((p: any) => p.status === 'active')); setDefaultCagId(s.defaultContragentId || '') }) }
   useEffect(() => {
@@ -70,7 +73,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     toast('Цены подтянуты')
   }
   function addFromCatalog(items: PickedPos[]) {
-    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => ({ ...emptyPos(), name1c: it.name1c || it.oral, widthCm: it.widthCm != null ? String(it.widthCm) : '', qty: String(it.qty), unit: it.unit }))])
+    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => { const cm = it.widthCm != null ? String(it.widthCm) : ''; const nm = itemName({ name: it.name1c || it.oral, color: extractRal(it.name1c || it.oral), cm }); return { ...emptyPos(), name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit } })])
     setShowCatalog(false)
   }
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
@@ -80,12 +83,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   async function submit(asDraft: boolean) {
     setBusy(true)
     const client = allCags.find(c => c.id === contactId)
-    const positions = rows.filter(r => r.name1c || r.productId).map(r => ({
-      productId: r.productId || undefined, name1c: r.name1c, oral: r.name1c, qty: Number(r.qty) || 0, unit: r.unit,
+    const positions = rows.filter(r => r.name1c || r.productId).map(r => { const nm = itemName({ name: r.name1c, color: extractRal(r.name1c), cm: r.widthCm }); return ({
+      productId: r.productId || undefined, name1c: nm, oral: nm, qty: Number(r.qty) || 0, unit: r.unit,
       widthCm: r.widthCm ? Number(r.widthCm) : undefined,
       price: Number(r.price) || 0, respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
       deadline: r.deadline || undefined, payment: r.payment || '',
-    }))
+    }) })
     const body: any = {
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
       projectId: projectId || undefined, specProjectId: specId || undefined,
@@ -182,8 +185,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                   {rows.map((r, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec' }}>
                       <td style={{ padding: '6px 4px', minWidth: 220 }}><NomInline products={products} value={r.productId} name={r.name1c} onPick={p => pickProduct(i, p)} /></td>
-                      <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => setRow(i, { widthCm: e.target.value })} /></td>
-                      <td style={{ padding: '6px 4px', width: 70 }}><input style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
+                      <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => { const cm = e.target.value; const el = e.target as HTMLInputElement; setRow(i, { widthCm: cm, name1c: r.name1c ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm }) : r.name1c }); if (advRef.current) clearTimeout(advRef.current); if (cm) advRef.current = setTimeout(() => { const q = el.closest('tr')?.querySelector('input[data-qty]') as HTMLInputElement | null; q?.focus(); q?.select() }, 600) }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (advRef.current) clearTimeout(advRef.current); const q = (e.target as HTMLInputElement).closest('tr')?.querySelector('input[data-qty]') as HTMLInputElement | null; q?.focus(); q?.select() } }} /></td>
+                      <td style={{ padding: '6px 4px', width: 70 }}><input data-qty style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 100 }}><input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
