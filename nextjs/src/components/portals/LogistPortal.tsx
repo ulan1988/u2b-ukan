@@ -10,6 +10,7 @@ import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
+import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { logistOrders, setPosStatus, createOrder, updatePosition, addPosition, deletePosition, listMessages, sendMessage, orderAction } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
@@ -35,6 +36,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [supEditPos, setSupEditPos] = useState<string | null>(null)
   const [qtyEditPos, setQtyEditPos] = useState<string | null>(null); const [qtyVal, setQtyVal] = useState('')
   const [addingCardId, setAddingCardId] = useState<string | null>(null)
+  const [catalogCardId, setCatalogCardId] = useState<string | null>(null)   // открыт каталог-пикер для этой карточки
   const [chatOpenPos, setChatOpenPos] = useState<string | null>(null)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
@@ -57,7 +59,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     const [o, n] = await Promise.all([logistOrders(viewAs ? user.id : undefined), viewAs ? Promise.resolve([]) : listNotifications()])
     setOrders(o); setNotifications(n as any); setLoading(false)
   }, [viewAs, user.id])
-  const pausedRef = useRef(false); pausedRef.current = supEditPos !== null || qtyEditPos !== null || addingCardId !== null || chatOpenPos !== null
+  const pausedRef = useRef(false); pausedRef.current = supEditPos !== null || qtyEditPos !== null || addingCardId !== null || catalogCardId !== null || chatOpenPos !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { fetchRefs().then((r: any) => setSuppliers((r.contragents || []).filter((c: any) => c.kind !== 'client').map((c: any) => ({ id: c.id, name: c.name })))) }, [])
   useEffect(() => { setSupEditPos(null); setQtyEditPos(null); setAddingCardId(null); setChatOpenPos(null) }, [tab])
@@ -101,6 +103,14 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     if (!name.trim()) return
     await addPosition(cardId, { name1c: name, oral: name, qty: Number(qty) || 0, unit: 'шт', respUserId: user.id, supplierId: supplierId || undefined })
     setAddingCardId(null); load(); showMsg('✓ Позиция добавлена')
+  }
+  // Добавление позиций из общего каталога (NomPicker): имя «вид+цвет+см», см → widthCm.
+  async function addFromCatalog(cardId: string, items: PickedPos[]) {
+    for (const it of items) {
+      const nm = (it.name1c || it.oral || '').trim(); if (!nm) continue
+      await addPosition(cardId, { name1c: nm, oral: nm, qty: Number(it.qty) || 0, unit: it.unit || 'шт', respUserId: user.id, widthCm: it.widthCm })
+    }
+    setCatalogCardId(null); load(); showMsg(`✓ Добавлено: ${items.length} поз`)
   }
 
   async function saveRow() {
@@ -188,7 +198,10 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
             <div style={{ display: 'flex', gap: 6 }}><input type="number" value={addQ} onChange={e => setAddQ(e.target.value)} placeholder="Кол-во" style={{ ...inp, width: 90, padding: '7px 9px' }} /><button onClick={() => addPos(order.id, addN, addQ, addS)} disabled={!addN.trim()} style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: PRIMARY, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13, opacity: addN.trim() ? 1 : .5 }}>Добавить</button><button onClick={() => setAddingCardId(null)} style={{ padding: '7px 12px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Отмена</button></div>
           </div>
         ) : (
-          <button onClick={() => setAddingCardId(order.id)} style={{ marginTop: 10, width: '100%', padding: '9px', border: '1.5px dashed #d8d3cc', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 14, color: '#5f5952', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить позицию</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button onClick={() => setCatalogCardId(order.id)} style={{ flex: 1, padding: '9px', border: 'none', borderRadius: 8, background: PRIMARY, color: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', fontWeight: 700 }}>📖 Каталог</button>
+            <button onClick={() => setAddingCardId(order.id)} style={{ flex: 1, padding: '9px', border: '1.5px dashed #d8d3cc', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 14, color: '#5f5952', fontFamily: 'inherit', fontWeight: 600 }}>＋ Вручную</button>
+          </div>
         ))}
       </div>
     )
@@ -341,6 +354,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
       <AppBadge count={badgeCount} baseTitle="Логист · U2B" />
       <PushSetup />
+      {catalogCardId && <NomPicker onPick={items => addFromCatalog(catalogCardId!, items)} onClose={() => setCatalogCardId(null)} />}
     </div>
   )
 }
