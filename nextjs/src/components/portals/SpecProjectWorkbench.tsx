@@ -49,7 +49,6 @@ export default function SpecProjectWorkbench({ products, contragents = [], onDon
   useEffect(() => { if (accKind?.measure) setTimeout(() => cmRef.current?.focus(), 0) }, [qKind])   // eslint-disable-line react-hooks/exhaustive-deps
   function addQuick() {
     if (!accKind) return
-    if (accKind.measure && !qCm) { cmRef.current?.focus(); return }
     const prod = findProd(accKind, qColor)
     const base = prod?.name || accKind.terms?.[0] || accKind.label
     // Имя строки собираем сразу по формуле «вид + цвет + см» (видно в таблице)
