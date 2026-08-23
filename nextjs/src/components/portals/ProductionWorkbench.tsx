@@ -61,10 +61,11 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     if (!accKind) return
     if (accKind.measure && !qCm) { cmRef.current?.focus(); return }
     const prod = findProd(accKind, qColor)
-    const colorLabel = qColor ? (qColor === 'decor' ? 'дерево' : qColor) : ''
-    const name = prod?.name || [accKind.terms?.[0] || accKind.label, colorLabel].filter(Boolean).join(' ')
+    const base = prod?.name || accKind.terms?.[0] || accKind.label
+    // Имя строки собираем сразу по формуле «вид + цвет + см» (видно в таблице)
+    const name = itemName({ name: base, color: qColor, cm: accKind.measure ? qCm : '' })
     const qty = Math.max(1, Number(qQty) || 1)
-    const row: Row = { productId: prod?.id || '', name, color: extractRal(name) || qColor, cm: accKind.measure ? qCm : '', qty: String(qty), price: '' }
+    const row: Row = { productId: prod?.id || '', name, color: qColor === 'decor' ? 'decor' : (qColor || extractRal(name)), cm: accKind.measure ? qCm : '', qty: String(qty), price: '' }
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), row])
     setQCm(''); setQQty('1')
     if (accKind.measure) setTimeout(() => cmRef.current?.focus(), 0)
@@ -207,7 +208,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
               <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
                 <td style={{ padding: '4px 6px', fontSize: 12, color: '#837c72' }}>{i + 1}</td>
                 <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => setRow(i, { productId: p.id, name: p.name, color: p.color || extractRal(p.name), ...(p.widthCm != null ? { cm: String(p.widthCm) } : {}) })} /></td>
-                <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => setRow(i, { cm: e.target.value })} placeholder="см" /></td>
+                <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => { const cm = e.target.value; setRow(i, { cm, name: r.name ? itemName({ name: r.name, color: r.color, cm }) : r.name }) }} placeholder="см" /></td>
                 <td style={{ padding: '4px 4px', width: 56 }}><input style={{ ...inp, width: 50, textAlign: 'right' }} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                 <td style={{ padding: '4px 4px', width: 80, textAlign: 'right', fontSize: 13 }}>{piecePrice(r) ? Math.round(piecePrice(r)).toLocaleString('ru-RU') : <input style={{ ...inp, width: 70, textAlign: 'right' }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder="цена" />}</td>
                 <td style={{ padding: '4px 6px', width: 90, textAlign: 'right', fontSize: 13, fontWeight: 700 }}>{rowSum(r) ? Math.round(rowSum(r)).toLocaleString('ru-RU') : '—'}</td>
