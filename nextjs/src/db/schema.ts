@@ -286,8 +286,7 @@ export const orders = pgTable('orders', {
   fromId: uuid('from_id').references(() => users.id),
   contactId: uuid('contact_id').references(() => contragents.id),   // клиент-заказчик
   toWarehouseId: uuid('to_warehouse_id').references(() => warehouses.id), // Центр-Склад для закупа
-  projectId: uuid('project_id').references(() => projects.id),
-  specProjectId: uuid('spec_project_id'),                 // → spec_projects.id (ленивая ссылка)
+  specProjectId: uuid('spec_project_id'),                 // → spec_projects.id (проект контрагента; единая система проектов)
   comment: text('comment').notNull().default(''),
   phone: text('phone'),
   deadline: timestamp('deadline'),
@@ -392,16 +391,6 @@ export const categoryRules = pgTable('category_rules', {
   logistName: text('logist_name').notNull().default(''),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, t => ({ byOrgCat: uniqueIndex('category_rules_org_cat_uniq').on(t.orgId, t.category) }))
-
-export const projects = pgTable('projects', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  orgId: uuid('org_id').notNull().references(() => organizations.id),
-  name: text('name').notNull(),
-  clientId: uuid('client_id').references(() => contragents.id),
-  description: text('description').notNull().default(''),
-  status: text('status').notNull().default('active'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-}, t => ({ byOrg: index('projects_org_idx').on(t.orgId) }))
 
 export const specProjects = pgTable('spec_projects', {
   id: uuid('id').defaultRandom().primaryKey(),

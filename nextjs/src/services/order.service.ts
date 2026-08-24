@@ -79,7 +79,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
     source: i.source, isDraft: i.isDraft ?? false,
     fromName: i.fromName, fromId: i.fromId ?? null, contactId: i.contactId ?? null,
-    projectId: i.projectId ?? null, specProjectId: i.specProjectId ?? null,
+    specProjectId: i.specProjectId ?? null,
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
@@ -345,7 +345,7 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
     id: newId, orgId: order.orgId, kind: order.kind, screen: 'reception', block: '',
     status: 'Принял', prodPhase: 'accepted', source: order.source || 'admin_manual',
     fromName: order.fromName || '', fromId: order.fromId ?? null, contactId: order.contactId ?? null,
-    projectId: order.projectId ?? null, specProjectId: order.specProjectId ?? null,
+    specProjectId: order.specProjectId ?? null,
     comment: order.comment || '', payment: order.payment || '', leg: order.leg ?? 2,
     trackingLink: encodeURIComponent(newId),
   }
@@ -380,7 +380,6 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
   if (patch.deadline !== undefined) set.deadline = patch.deadline ? new Date(patch.deadline) : null
   if (patch.comment !== undefined) set.comment = patch.comment
   if (patch.phone !== undefined) set.phone = patch.phone
-  if (patch.projectId !== undefined) set.projectId = patch.projectId || null
   if (patch.specProjectId !== undefined) set.specProjectId = patch.specProjectId || null
   if (patch.payment !== undefined) set.payment = patch.payment || ''
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)

@@ -12,7 +12,7 @@ import { itemName } from '@/lib/itemName'
 import { COLORS } from '@/lib/colors'
 import { fmtDate, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
-import { autoPrices, settings as fetchSettings, createProject, createSpecProject } from '@/lib/api/refs'
+import { autoPrices, settings as fetchSettings, createSpecProject } from '@/lib/api/refs'
 import { Btn, INP, inpSm, LBL, PAY, purple } from './reception/ui'
 import PurchaseDraft from './reception/PurchaseDraft'
 import ProcessingCard from './reception/ProcessingCard'
@@ -28,7 +28,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [allCags, setAllCags] = useState<any[]>([])   // все контрагенты (клиент/поставщик не делим)
   const [defaultCagId, setDefaultCagId] = useState('')
   const [logists, setLogists] = useState<any[]>([])
-  const [projects, setProjects] = useState<any[]>([])
   const [specs, setSpecs] = useState<any[]>([])
   const [flash, setFlash] = useState('')
   const toast = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 2000) }
@@ -37,7 +36,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<'sale' | 'purchase'>('sale')
   const [contactId, setContactId] = useState('')
-  const [projectId, setProjectId] = useState('')
   const [specId, setSpecId] = useState('')
   const [phone, setPhone] = useState('')
   const [deadline, setDeadline] = useState('')
@@ -47,7 +45,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [busy, setBusy] = useState(false)
   const advRef = useRef<any>(null)   // таймер авто-перехода СМ → КОЛ-ВО (пауза после набора)
 
-  function loadSettings() { fetchSettings(orgId).then((s: any) => { setProjects((s.projects || []).filter((p: any) => p.status === 'active')); setSpecs((s.specProjects || []).filter((p: any) => p.status === 'active')); setDefaultCagId(s.defaultContragentId || '') }) }
+  function loadSettings() { fetchSettings(orgId).then((s: any) => { setSpecs((s.specProjects || []).filter((p: any) => p.status === 'active')); setDefaultCagId(s.defaultContragentId || '') }) }
   useEffect(() => {
     fetchRefs().then((r: any) => {
       const inOrg = (x: any) => !x.orgId || x.orgId === orgId
@@ -77,7 +75,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     setShowCatalog(false)
   }
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
-  async function newProject() { const name = window.prompt('Название проекта'); if (!name) return; const r: any = await createProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.id) { loadSettings(); if (r.id) setProjectId(r.id); toast('Проект создан') } }
   async function newSpec() { const name = window.prompt('Название спецпроекта'); if (!name) return; const r: any = await createSpecProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.id) { loadSettings(); if (r.id) setSpecId(r.id); toast('Спецпроект создан') } }
 
   async function submit(asDraft: boolean) {
@@ -91,14 +88,14 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     }) })
     const body: any = {
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
-      projectId: projectId || undefined, specProjectId: specId || undefined,
+      specProjectId: specId || undefined,
       screen: asDraft ? 'incoming' : 'reception', block: asDraft ? '' : 'processing', isDraft: asDraft,
     }
     if (kind === 'sale') { body.contactId = contactId || undefined; body.fromName = client?.name || '' }
     else body.fromName = 'Центр-Склад'
     const r: any = await createOrder(body)
     setBusy(false)
-    if (r.id || r.ok) { setOpen(false); setContactId(''); setProjectId(''); setSpecId(''); setPhone(''); setDeadline(''); setComment(''); setRows([emptyPos()]); onReload(); toast(asDraft ? 'Черновик сохранён' : 'Отправлено') }
+    if (r.id || r.ok) { setOpen(false); setContactId(''); setSpecId(''); setPhone(''); setDeadline(''); setComment(''); setRows([emptyPos()]); onReload(); toast(asDraft ? 'Черновик сохранён' : 'Отправлено') }
   }
 
   const waiting = orders.filter(o => o.screen === 'reception' && o.block !== 'processing' && !o.isCancelled)
@@ -149,17 +146,10 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 <label style={LBL}>{kind === 'purchase' ? 'ПОЛУЧАТЕЛЬ' : 'К КОМУ (КЛИЕНТ) *'}</label>
                 {kind === 'purchase'
                   ? <input style={{ ...INP, background: '#f6f3f0', color: purple, fontWeight: 700 }} value={CENTER} disabled />
-                  : <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={c => { setContactId(c.id); setProjectId(''); setSpecId('') }} placeholder="— выберите контрагента —" />}
+                  : <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={c => { setContactId(c.id); setSpecId('') }} placeholder="— выберите контрагента —" />}
               </div>
               <div>
                 <label style={LBL}>ПРОЕКТ{contactId ? ' (клиента)' : ''}</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <select style={{ ...INP, flex: 1 }} value={projectId} onChange={e => setProjectId(e.target.value)}><option value="">—</option>{projects.filter(p => !contactId || !p.clientId || p.clientId === contactId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                  <button onClick={newProject} style={{ padding: '0 10px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#f1efec', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>＋</button>
-                </div>
-              </div>
-              <div>
-                <label style={LBL}>СПЕЦПРОЕКТ{contactId ? ' (клиента)' : ''}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <select style={{ ...INP, flex: 1 }} value={specId} onChange={e => setSpecId(e.target.value)}><option value="">—</option>{specs.filter(p => !contactId || !p.clientId || p.clientId === contactId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                   <button onClick={newSpec} style={{ padding: '0 10px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#f1efec', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>＋</button>

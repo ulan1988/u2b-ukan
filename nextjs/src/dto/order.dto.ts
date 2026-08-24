@@ -26,7 +26,6 @@ export const createOrderSchema = z.object({
   screen: z.string().optional(),
   block: z.string().optional(),
   isDraft: z.boolean().optional(),
-  projectId: z.string().uuid().optional(),
   specProjectId: z.string().uuid().optional(),
   comment: z.string().optional().default(''),
   phone: z.string().optional(),

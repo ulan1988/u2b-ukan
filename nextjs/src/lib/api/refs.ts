@@ -47,7 +47,6 @@ export const setDefaultLogist = (orgId: string, defaultLogistId: string) => send
 export const setDefaultContragent = (orgId: string, defaultContragentId: string) => send('/api/settings', 'PATCH', { orgId, defaultContragentId })
 export const setOrgColor = (orgId: string, color: string) => send('/api/settings', 'PATCH', { orgId, color })
 
-export const createProject = (b: any) => post('/api/projects', b)
 export const listProjectsByClient = (clientId?: string) => getArray(`/api/projects${clientId ? `?clientId=${clientId}` : ''}`)
 export const createSpecProject = (b: any) => post('/api/spec-projects', b)
 // Проекты с остатками (кол-во/вынесено/остаток) + деталь + вынос в карточку.

@@ -11,11 +11,6 @@ export async function listProjectsByClient(clientId?: string) {
   return db.select({ id: specProjects.id, name: specProjects.name, clientId: specProjects.clientId }).from(specProjects).where(cond).orderBy(desc(specProjects.createdAt))
 }
 
-export async function createProject(orgId: string, name: string, clientId?: string) {
-  const [p] = await repo.insertProject({ orgId, name, clientId: clientId ?? null })
-  return p
-}
-
 interface SpecItemInput { name: string; qty: number; unit?: string; productId?: string; widthCm?: number; price?: number; supplierId?: string }
 export async function createSpecProject(orgId: string, name: string, clientId: string | null, items: SpecItemInput[]) {
   const id = randomUUID()
@@ -154,14 +149,14 @@ export async function carveToLogist(orgId: string, specProjectId: string,
 
 // Сводка для панели Фильтр (канбан-колонки): поставщики, проекты, спецпроекты (с items).
 export async function settingsBundle(orgId: string) {
-  const [suppliers, projects, specs, defaults] = await Promise.all([
-    repo.suppliers(orgId), repo.projectsByOrg(orgId), repo.specProjectsByOrg(orgId), repo.orgDefaults(orgId),
+  const [suppliers, specs, defaults] = await Promise.all([
+    repo.suppliers(orgId), repo.specProjectsByOrg(orgId), repo.orgDefaults(orgId),
   ])
   const items = await repo.specItemsByProjects(specs.map(s => s.id))
   const byProject: Record<string, any[]> = {}
   for (const it of items) (byProject[it.specProjectId] ||= []).push(it)
   const specProjects = specs.map(s => ({ ...s, items: byProject[s.id] || [] }))
-  return { suppliers, projects, specProjects, defaultLogistId: defaults.defaultLogistId, defaultContragentId: defaults.defaultContragentId }
+  return { suppliers, projects: [], specProjects, defaultLogistId: defaults.defaultLogistId, defaultContragentId: defaults.defaultContragentId }
 }
 
 export const setDefaultLogist = (orgId: string, userId: string | null) => repo.setOrgDefaultLogist(orgId, userId || null)

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listUsers, createUser, editUser, deleteUser, deleteCabinet } from '@/lib/api/auth'
-import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject, listProjectsByClient, listContragents, addContragent, editContragent, listUnits, saveUnits } from '@/lib/api/refs'
+import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createSpecProject, listProjectsByClient, listContragents, addContragent, editContragent, listUnits, saveUnits } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finFavList, finFavSave } from '@/lib/api/finmoney'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
