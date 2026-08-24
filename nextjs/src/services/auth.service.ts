@@ -40,7 +40,7 @@ export const listUsers = () => userRepo.listUsers()
 
 export async function userBySlug(slug: string) {
   const [u] = await userRepo.findBySlug(slug)
-  return u ? { id: u.id, name: u.name, orgId: u.orgId, role: u.role, slug: u.slug } : null
+  return u ? { id: u.id, name: u.name, orgId: u.orgId, role: u.role, slug: u.slug, contragentId: (u as any).contragentId ?? null } : null
 }
 
 // Цель запроса портала: обычно сам пользователь; админ может смотреть чужой (uid).

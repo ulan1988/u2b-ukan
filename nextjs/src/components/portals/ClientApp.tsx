@@ -12,6 +12,7 @@ import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import FinanceView from '@/components/portals/FinanceView'
 import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage, clientDocs, acceptClientDoc } from '@/lib/api/orders'
+import { listProjectsByClient, reconcile } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -81,12 +82,15 @@ function DocList({ list, loading, emptyIcon, emptyText, onAccept }: { list: any[
 const fmtDate = (d?: string | null) => !d ? '—' : new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
 const fmtDateTime = (d?: string) => { if (!d) return '—'; const dt = new Date(d), diff = Math.floor((Date.now() - dt.getTime()) / 60000); if (diff < 1) return 'только что'; if (diff < 60) return `${diff} мин`; if (diff < 1440) return `${Math.floor(diff / 60)} ч`; return fmtDate(d) }
 
-export default function ClientApp({ user, viewAs }: { user: { id: string; name: string; orgId: string; slug?: string }; viewAs?: boolean }) {
+export default function ClientApp({ user, viewAs }: { user: { id: string; name: string; orgId: string; slug?: string; contragentId?: string | null }; viewAs?: boolean }) {
   const [orders, setOrders] = useState<any[]>([])
   const [docs, setDocs] = useState<{ purchases: any[]; sales: any[]; returns: any[] }>({ purchases: [], sales: [], returns: [] })
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'orders' | 'buy' | 'sell' | 'return' | 'new' | 'notifications' | 'finance'>('orders')
+  const [tab, setTab] = useState<'orders' | 'buy' | 'sell' | 'return' | 'new' | 'notifications' | 'finance' | 'projects'>('orders')
+  const [projects, setProjects] = useState<any[]>([])       // проекты клиента (если ему создали)
+  const [newProject, setNewProject] = useState('')          // проект новой заявки
+  const [projData, setProjData] = useState<any>(null)       // акт сверки по проектам (анализ)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [toast, setToast] = useState('')
   const [newText, setNewText] = useState(''); const [newDeadline, setNewDeadline] = useState(''); const [newLoading, setNewLoading] = useState(false)
@@ -111,6 +115,9 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
   const pausedRef = useRef(false); pausedRef.current = (tab === 'new' && !newResult) || addCatalogFor !== null || Object.keys(editQty).length > 0
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { if (tab === 'new') setNewDeadline(d => d || todayLocal()) }, [tab])
+  // Проекты клиента — грузим, если у него есть контрагент (у кого создали проект → вкладка появится).
+  useEffect(() => { if (user.contragentId) listProjectsByClient(user.contragentId).then(setProjects).catch(() => setProjects([])) }, [user.contragentId])
+  useEffect(() => { if (tab === 'projects' && user.contragentId) reconcile(user.contragentId).then(setProjData).catch(() => {}) }, [tab, user.contragentId])
 
   const unread = notifications.filter(n => !n.read).length
   const myOrders = orders.filter(o => inPeriod(o.createdAt, period, day))
@@ -121,6 +128,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     { key: 'sell', icon: '💰', label: 'Продажа', badge: docs.sales.length },
     { key: 'return', icon: '↩', label: 'Возврат', badge: pendingReturns, blink: pendingReturns > 0 },
     { key: 'new', icon: '➕', label: 'Новая', badge: 0 },
+    ...(projects.length > 0 ? [{ key: 'projects' as typeof tab, icon: '📁', label: 'Проекты', badge: projects.length }] : []),
     { key: 'finance', icon: '💹', label: 'Финансы', badge: 0 },
     { key: 'notifications', icon: '🔔', label: 'Уведомления', badge: unread, blink: unread > 0 },
   ]
@@ -140,8 +148,8 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     setNewLoading(true)
     try {
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
-      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, positions })
-      if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); load() }
+      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions })
+      if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); setNewProject(''); load() }
       else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))
     } catch (err: any) { setToast('⚠ Ошибка: ' + (err?.message || 'сеть недоступна')) }
     finally { setNewLoading(false) }
@@ -279,6 +287,13 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
                     {catalogPos.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>{catalogPos.map((p, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8f6f3', borderRadius: 8, padding: '8px 10px' }}><RalDot code={extractRal(p.name1c || p.oral)} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span><span style={{ fontSize: 13, color: '#5f5952', flexShrink: 0, fontWeight: 600 }}>{p.qty} {p.unit}</span><button type="button" onClick={() => setCatalogPos(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button></div>)}</div>}
                     <button type="button" onClick={() => setShowCatalog(true)} style={{ width: '100%', padding: '13px', border: `1.5px ${catalogPos.length ? 'solid' : 'dashed'} #d4613a`, background: catalogPos.length ? '#fff' : '#fff8f5', color: '#d4613a', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>📖 {catalogPos.length ? 'Добавить ещё товар' : 'Выбрать товары из каталога'}</button>
                   </div>
+                  {projects.length > 0 && (
+                    <div><label style={{ fontSize: 13, fontWeight: 600, color: '#7a3aaa', marginBottom: 4, display: 'block' }}>📁 ПРОЕКТ <span style={{ fontWeight: 400 }}>(необязательно)</span></label>
+                      <select style={{ ...inp, border: '1.5px solid #e6ddf3' }} value={newProject} onChange={e => setNewProject(e.target.value)}>
+                        <option value="">— без проекта —</option>
+                        {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select></div>
+                  )}
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>КОММЕНТАРИЙ <span style={{ fontWeight: 400 }}>(необязательно)</span></label><textarea style={{ ...inp, minHeight: 72, resize: 'vertical' }} value={newText} onChange={e => setNewText(e.target.value)} placeholder="Уточнения, пожелания — или опишите заявку словами" /></div>
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>ЖЕЛАЕМЫЙ СРОК</label><input style={inp} type="date" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} /></div>
                   <button type="button" onClick={() => handleNewOrder()} disabled={newLoading} style={{ padding: '13px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1 }}>{newLoading ? 'Отправка...' : catalogPos.length ? `ОТПРАВИТЬ ЗАЯВКУ · ${catalogPos.length} поз. →` : 'ОТПРАВИТЬ ЗАЯВКУ →'}</button>
@@ -289,6 +304,26 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
           </div>
         )}
 
+        {tab === 'projects' && (() => {
+          const mm = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
+          const rows = (projData?.byProject || [])
+          return (
+            <div className="anim-fade">
+              <div style={{ fontSize: 14, color: '#5f5952', marginBottom: 14 }}>Ваши проекты — оборот, оплачено и остаток по каждому. Заявку можно привязать к проекту при создании.</div>
+              {rows.length === 0 ? <div style={{ background: '#fff', borderRadius: 12, padding: 28, textAlign: 'center', color: '#5f5952', boxShadow: '0 0 0 1px #e6e2dc' }}>Пока нет движений по проектам</div>
+                : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{rows.map((p: any, i: number) => (
+                  <div key={i} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', boxShadow: '0 0 0 1px #e6ddf3' }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>📁 {p.name}</div>
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 13.5 }}>
+                      <span style={{ color: '#5f5952' }}>оборот <b style={{ color: '#26231f' }}>{mm(p.total)} ₸</b></span>
+                      <span style={{ color: '#5f5952' }}>оплачено <b style={{ color: '#2e8a5e' }}>{mm(p.paid)} ₸</b></span>
+                      <span style={{ color: Number(p.balance) > 0 ? '#c1121c' : '#2e8a5e', fontWeight: 800 }}>долг {mm(p.balance)} ₸</span>
+                    </div>
+                  </div>
+                ))}</div>}
+            </div>
+          )
+        })()}
         {tab === 'finance' && <FinanceView uid={viewAs ? user.id : undefined} />}
 
         {tab === 'notifications' && (
