@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import * as repo from '../repositories/order.repo'
 import * as refsRepo from '../repositories/refs.repo'
 import { createProduction } from './document.service'
+import { itemName } from '../lib/itemName'
 import type { Session } from '../lib/auth'
 
 const SHEET_WIDTH_CM = 125
@@ -104,7 +105,10 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   const sheetCache = new Map<string, SheetInfo | null>()
   let created = 0
   for (const p of targets) {
-    const nm = (p.name1c || p.oral).trim()
+    // Разрыв 6: имя изделия через единую формулу (иначе на складе появлялось безымянное «Изделие»).
+    // Нормализуем «вид+цвет+см» из имени позиции + её ширины — товар создаётся с полной идентичностью.
+    const raw = (p.name1c || p.oral || '').trim()
+    const nm = itemName({ name: raw, color: ralOf(raw), cm: p.widthCm })
     let productId = p.productId as string | null
     if (!productId) {
       productId = await ensureProduct(nm)

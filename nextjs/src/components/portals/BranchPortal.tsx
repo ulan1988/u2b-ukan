@@ -8,6 +8,8 @@ import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
+import ShiftView from '@/components/portals/ShiftView'
+import ProfitView from '@/components/portals/ProfitView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
@@ -19,7 +21,7 @@ import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 import SpecProjectWorkbench from '@/components/portals/SpecProjectWorkbench'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
-type Tab = 'production' | 'spec' | 'sheets' | 'produce' | 'out' | 'new' | 'finance'
+type Tab = 'production' | 'spec' | 'sheets' | 'produce' | 'out' | 'new' | 'finance' | 'shift' | 'profit'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -557,10 +559,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           </div>
         )}
         {tab === 'finance' && <FinanceView />}
+        {tab === 'shift' && <ShiftView uid={user.id} />}
+        {tab === 'profit' && <ProfitView uid={user.id} />}
       </div>
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🧰', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: inWork.length }, { key: 'sheets' as Tab, icon: '📄', label: 'Листы', badge: 0 }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
+        {[{ key: 'production' as Tab, icon: '📋', label: 'Заказы на производство', badge: prodQueue.length }, { key: 'spec' as Tab, icon: '🧰', label: 'Спец проект', badge: specProjects.filter((sp: any) => sp.remaining > 0).length }, { key: 'produce' as Tab, icon: '🛠️', label: 'Производство', badge: inWork.length }, { key: 'sheets' as Tab, icon: '📄', label: 'Листы', badge: 0 }, { key: 'out' as Tab, icon: '📤', label: 'Исходящие', badge: outgoing.length }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0 }, { key: 'shift' as Tab, icon: '💵', label: 'Смена', badge: 0 }, { key: 'profit' as Tab, icon: '📈', label: 'Рентабельность', badge: 0 }, { key: 'finance' as Tab, icon: '💰', label: 'Финансы', badge: 0 }].map(({ key, icon, label, badge }) => {
           const active = tab === key
           return <button key={key} onClick={() => setTab(key)} title={label} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}><span>{icon}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}
