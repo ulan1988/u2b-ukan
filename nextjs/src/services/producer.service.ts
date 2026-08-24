@@ -110,9 +110,12 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     // Нормализуем «вид+цвет+см» из имени позиции + её ширины — товар создаётся с полной идентичностью.
     const raw = (p.name1c || p.oral || '').trim()
     const nm = itemName({ name: raw, color: ralOf(raw), cm: p.widthCm })
-    // Голое «Изделие» (нет ни цвета/РАЛ, ни см) — это ШАБЛОН (umbrella), а не складская единица:
-    // цвет неизвестен → лист выбрать нельзя. Не плодим товар-заглушку и не списываем лист.
-    if (/^изделие$/i.test(nm)) { skipped++; continue }
+    // «Изделие» — полноценный SKU только при наличии И РАЛ, И см («Изделие 9003 15 см»).
+    // Без цвета или без длины это ШАБЛОН (umbrella): лист выбрать нельзя, товар-заглушку не плодим.
+    // (Профили/углы имеют стандартный см из типа — на них требование см не распространяем.)
+    const isIzdelie = /^изделие\b/i.test(nm)
+    const hasCm = Number(p.widthCm) > 0 || /\d+\s*см/i.test(nm)
+    if (isIzdelie && (!ralOf(nm) || !hasCm)) { skipped++; continue }
     let productId = p.productId as string | null
     if (!productId) {
       productId = await ensureProduct(nm)
@@ -129,7 +132,7 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: width || undefined })
     made.push(p)
   }
-  if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета — укажите РАЛ (и длину), тогда выпустится товар «Изделие {цвет} {см} см»' : 'Нет изделий для внесения', skipped }
+  if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета или длины — укажите РАЛ и см, тогда выпустится товар «Изделие {цвет} {см} см»' : 'Нет изделий для внесения', skipped }
 
   // Материал списываем раскроем по складу кусков (material_pieces): −целые листы того же РАЛа,
   // остаток ≥4 см → в обрезь. Это уже построенная связка изделие↔лист (consumeForCut/optimizeCut),
