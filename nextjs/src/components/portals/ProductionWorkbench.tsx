@@ -41,6 +41,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const advRef = useRef<any>(null)   // таймер авто-перехода на след. ячейку (пауза после набора)
   function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
+  // Автоцена по типу клиента (опт/розница) — как на головном: после настройки цены товара подтянется сама.
+  const clientPT = (contragents.find((c: any) => c.id === cid)?.priceType) || 'retail'
+  const priceForClient = (p: any, pt: string = clientPT) => Number((pt === 'opt' ? p?.priceOpt : p?.priceRetail)) || 0
 
   // Наружная моделька: сверху цвета, снизу виды из папки «Комплектующие» (Изделие/Нар.угол/H-профиль).
   const ACC = overlayFor('комплектующие')[0]?.items || []
@@ -147,7 +150,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЗАКАЗЧИК {needCustomer && <span style={{ color: '#c1121c' }}>*</span>}</label>
           <div style={{ borderRadius: 8, boxShadow: needCustomer && !cid ? '0 0 0 1.5px #e6a6a6' : 'none' }}>
-            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => { setCid(c.id); setSpecProjectId('') }} placeholder="— выберите заказчика —" />
+            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => { setCid(c.id); setSpecProjectId(''); const pt = c.priceType || 'retail'; setRows(rs => rs.map(r => { const pr = r.productId ? priceForClient(products.find((x: any) => x.id === r.productId), pt) : 0; return pr > 0 ? { ...r, price: String(pr) } : r })) }} placeholder="— выберите заказчика —" />
           </div>
           {needCustomer && !cid && <div style={{ fontSize: 11, color: '#c1121c', marginTop: 3 }}>Обязательно — без заказчика карточку не создать</div>}
         </div>
@@ -196,7 +199,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
             {accKind.measure && <>
               <span style={{ fontSize: 13, color: '#5f5952' }}>Длина:</span>
               <input ref={cmRef} style={{ ...inp, width: 74, textAlign: 'center' }} inputMode="numeric" value={qCm}
-                onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); setQCm(v); if (advRef.current) clearTimeout(advRef.current); if (v) advRef.current = setTimeout(() => { qtyRef.current?.focus(); qtyRef.current?.select() }, 600) }}
+                onChange={e => setQCm(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (advRef.current) clearTimeout(advRef.current); qtyRef.current?.focus(); qtyRef.current?.select() } }}
                 placeholder="см" />
               <span style={{ fontSize: 13, color: '#5f5952' }}>см ×</span>
@@ -219,8 +222,8 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
             {rows.map((r, i) => (
               <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
                 <td style={{ padding: '4px 6px', fontSize: 12, color: '#837c72' }}>{i + 1}</td>
-                <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => setRow(i, { productId: p.id, name: p.name, color: p.color || extractRal(p.name), ...(p.widthCm != null ? { cm: String(p.widthCm) } : {}) })} /></td>
-                <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => { const cm = e.target.value; const el = e.target as HTMLInputElement; setRow(i, { cm, name: r.name ? itemName({ name: r.name, color: r.color, cm }) : r.name }); if (advRef.current) clearTimeout(advRef.current); if (cm) advRef.current = setTimeout(() => { const q = el.closest('tr')?.querySelector('input[data-qty]') as HTMLInputElement | null; q?.focus(); q?.select() }, 600) }} placeholder="см" /></td>
+                <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => { const pr = priceForClient(p); setRow(i, { productId: p.id, name: p.name, color: p.color || extractRal(p.name), ...(p.widthCm != null ? { cm: String(p.widthCm) } : {}), ...(pr > 0 ? { price: String(pr) } : {}) }) }} /></td>
+                <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => { const cm = e.target.value; setRow(i, { cm, name: r.name ? itemName({ name: r.name, color: r.color, cm }) : r.name }) }} placeholder="см" /></td>
                 <td style={{ padding: '4px 4px', width: 56 }}><input data-qty style={{ ...inp, width: 50, textAlign: 'right' }} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                 <td style={{ padding: '4px 4px', width: 80, textAlign: 'right', fontSize: 13 }}>{piecePrice(r) ? Math.round(piecePrice(r)).toLocaleString('ru-RU') : <input style={{ ...inp, width: 70, textAlign: 'right' }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder="цена" />}</td>
                 <td style={{ padding: '4px 6px', width: 90, textAlign: 'right', fontSize: 13, fontWeight: 700 }}>{rowSum(r) ? Math.round(rowSum(r)).toLocaleString('ru-RU') : '—'}</td>
