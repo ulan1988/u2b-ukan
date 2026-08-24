@@ -64,10 +64,11 @@ export async function contragentLedger(orgId: string, contragentId: string, open
 // «−» (уменьшение): приход от него, возврат от клиента, оплата от клиента.
 // Начальный остаток на дату `from` = нач.остаток справочника + сумма движений ДО from.
 export async function contragentReconciliation(orgId: string, contragentId: string, from?: string, to?: string) {
-  const [docs, pays, opening0] = await Promise.all([
+  const [docs, pays, opening0, byProject] = await Promise.all([
     finRepo.contragentDocs(orgId, contragentId),
     finRepo.contragentPayments(orgId, contragentId),
     finRepo.contragentOpening(orgId, contragentId),
+    finRepo.contragentProjectTotals(orgId, contragentId),
   ])
   const docTitle: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
   const inc = (t: string) => t === 'sale' || t === 'return_out'
@@ -89,7 +90,7 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
     sumInc += m.inc; sumDec += m.dec
     rows.push({ date: m.date, title: m.title, opening: start, inc: m.inc, dec: m.dec, balance: running, docId: m.docId, type: m.type })
   }
-  return { opening, rows, totals: { opening, inc: sumInc, dec: sumDec, closing: running }, currency: '₸' }
+  return { opening, rows, totals: { opening, inc: sumInc, dec: sumDec, closing: running }, byProject, currency: '₸' }
 }
 
 // Рентабельность: по каждой продаже выручка − себестоимость = прибыль, маржа %.

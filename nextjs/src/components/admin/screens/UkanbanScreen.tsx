@@ -226,6 +226,18 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
           : !data ? <div style={emptyBox}>Нет данных</div>
             : (
               <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', maxWidth: 1040 }}>
+                {Array.isArray(data.byProject) && data.byProject.length > 0 && (
+                  <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1efec', background: '#fbf9ff' }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 8 }}>📁 ПО ПРОЕКТАМ (оборот)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {data.byProject.map((p: any, i: number) => (
+                        <span key={i} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, background: '#fff', border: '1.5px solid #e6ddf3', borderRadius: 20, padding: '5px 12px', fontSize: 13 }}>
+                          <b>{p.name}</b><span style={{ color: '#7a3aaa', fontWeight: 800 }}>{fmtMoney(Number(p.total))}</span><span style={{ color: '#9a938a', fontSize: 11 }}>· {p.cnt} док</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
                     <thead>

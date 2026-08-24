@@ -104,6 +104,23 @@ export async function contragentDocs(orgId: string, contragentId: string) {
     order by date desc, created_at desc` as unknown as Promise<Array<{ id: string; number: string; type: string; date: string; total: number; status: string }>>
 }
 
+// Разбивка оборота контрагента по проектам (через карточку-основание документа: sourceOrderId → order.projectId).
+// «сколько ушло на проект»: сумма расходных (продажи) − возвраты, по каждому проекту клиента.
+export async function contragentProjectTotals(orgId: string, contragentId: string) {
+  return sqlClient`
+    select coalesce(pr.id::text,'') as "projectId",
+           coalesce(pr.name,'— без проекта —') as name,
+           sum(case when d.type in ('sale','return_out') then d.total::float else -d.total::float end) as total,
+           count(*)::int as cnt
+    from documents d
+    left join orders o on o.id = d.source_order_id
+    left join projects pr on pr.id = o.project_id
+    where d.org_id=${orgId} and d.contragent_id=${contragentId}
+      and d.type in ('sale','purchase','return_in','return_out') and d.status<>'cancelled'
+    group by pr.id, pr.name
+    order by total desc` as unknown as Promise<Array<{ projectId: string; name: string; total: number; cnt: number }>>
+}
+
 // Оплаты одного контрагента.
 export async function contragentPayments(orgId: string, contragentId: string) {
   return sqlClient`
