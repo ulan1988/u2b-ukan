@@ -57,7 +57,7 @@ export const carveCard = (projectId: string, b: any) => post(`/api/spec-projects
 export const carveToLogist = (projectId: string, lines: { specItemId: string; qty: number }[]) => post(`/api/spec-projects/${projectId}/carve`, { mode: 'logist', lines })
 
 // Спецификации (типы изделий) + склад материала (листы/обрезь).
-export const listSpecTypes = (orgId: string) => getArray(`/api/spec-types?orgId=${orgId}`)
+export const listSpecTypes = (orgId: string, all = false) => getArray(`/api/spec-types?orgId=${orgId}${all ? '&all=1' : ''}`)
 export const createSpecType = (b: any) => post('/api/spec-types', b)
 export const editSpecType = (id: string, b: any) => patch(`/api/spec-types/${id}`, b)
 export const materialStock = (orgId: string) => getArray(`/api/material?orgId=${orgId}`)

@@ -25,6 +25,8 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   const [toast, setToast] = useState('')
   const showMsg = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2600) }
   const [report, setReport] = useState<any>(null)
+  const [showArc, setShowArc] = useState(false)      // показать архив (типы/листы) с кнопкой «Вернуть»
+  const [arcTypes, setArcTypes] = useState<any[]>([])
   const [ym, setYm] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
   const loadReport = useCallback(async () => {
     const [y, m] = ym.split('-').map(Number)
@@ -47,7 +49,10 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
     const r: any = await createSpecType({ orgId, name: tName, widthCm: num(tWidth), lengthCm: num(tLen) || SHEET_LENGTH_CM, workRate: num(tRate) })
     if (r.ok) { setTName(''); setTWidth(''); setTRate(''); showMsg('✅ Тип создан'); loadTypes() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
-  async function archiveType(id: string) { await editSpecType(id, { archived: true }); loadTypes(); showMsg('🗃 В архив') }
+  async function archiveType(id: string) { if (!confirm('Убрать тип в архив? Вернуть можно кнопкой «🗃 Архив».')) return; await editSpecType(id, { archived: true }); loadTypes(); if (showArc) loadArc(); showMsg('🗃 В архив') }
+  const loadArc = useCallback(async () => { const all = await listSpecTypes(orgId, true); setArcTypes((all || []).filter((t: any) => t.archived)) }, [orgId])
+  async function restoreType(id: string) { await editSpecType(id, { archived: false }); loadTypes(); loadArc(); showMsg('↩ Восстановлено') }
+  async function restoreSheet(id: string) { await editProduct(id, { archived: false }); loadProducts(); showMsg('↩ Восстановлено') }
 
   // ── Склад материала: РЕВИЗИЯ (факт кол-ва). Обычный приход — из приходной накладной. ──
   const [mProd, setMProd] = useState(''); const [mQty, setMQty] = useState('')
@@ -76,9 +81,10 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
     const r: any = await addProduct({ name, unit: 'лист', category: 'material', group: 'Материалы', cat: '', subgroup: colorLabel })
     if (r.ok) { showMsg('✅ Лист заведён'); loadProducts() } else showMsg('⚠ ' + (r.error || 'Не удалось'))
   }
-  async function removeSheet(id: string) { await archiveProduct(id); loadProducts(); showMsg('🗃 В архив') }
+  async function removeSheet(id: string) { if (!confirm('Убрать лист в архив? Вернуть можно кнопкой «🗃 Архив».')) return; await archiveProduct(id); loadProducts(); showMsg('🗃 В архив') }
   const sheetsByColor: Record<string, any[]> = {}
   for (const s of sheets) (sheetsByColor[extractRal(s.name) || '—'] ||= []).push(s)
+  const arcSheets = materials.filter((p: any) => p.archived && /лист/i.test(p.name))   // архивные листы (для восстановления)
 
   // ── Привязка типа к изделиям (только папка «Комплектующие» — их режем из листа) ──
   const [bindSearch, setBindSearch] = useState('')
@@ -138,6 +144,20 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
                   ))}</tbody>
                 </table>
               </div>}
+          <div style={{ marginTop: 14 }}>
+            <button onClick={() => { const n = !showArc; setShowArc(n); if (n) loadArc() }} style={{ border: 'none', background: '#f1efec', color: COLORS.textMuted, borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{showArc ? '× Скрыть архив' : '🗃 Архив'}{showArc && arcTypes.length ? ` (${arcTypes.length})` : ''}</button>
+            {showArc && (
+              <div style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, marginTop: 8, overflow: 'hidden' }}>
+                {arcTypes.length === 0 ? <div style={{ padding: 14, fontSize: 13, color: COLORS.textMuted }}>Архив пуст</div>
+                  : arcTypes.map(t => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                      <span style={{ flex: 1, fontSize: 14 }}>{t.name} · {num(t.widthCm)} см</span>
+                      <button onClick={() => restoreType(t.id)} style={{ border: '1.5px solid #cfeadd', background: '#eef7f1', color: '#2e8a5e', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>↩ Вернуть</button>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -190,6 +210,20 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
                 ))}
               </div>
             ))}
+          <div style={{ marginTop: 14 }}>
+            <button onClick={() => setShowArc(v => !v)} style={{ border: 'none', background: '#f1efec', color: COLORS.textMuted, borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{showArc ? '× Скрыть архив' : '🗃 Архив'}{showArc && arcSheets.length ? ` (${arcSheets.length})` : ''}</button>
+            {showArc && (
+              <div style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, marginTop: 8, overflow: 'hidden' }}>
+                {arcSheets.length === 0 ? <div style={{ padding: 14, fontSize: 13, color: COLORS.textMuted }}>Архив пуст</div>
+                  : arcSheets.map((s: any) => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                      <span style={{ flex: 1, fontSize: 13 }}>{s.name}</span>
+                      <button onClick={() => restoreSheet(s.id)} style={{ border: '1.5px solid #cfeadd', background: '#eef7f1', color: '#2e8a5e', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>↩ Вернуть</button>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

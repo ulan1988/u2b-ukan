@@ -3,7 +3,7 @@ import { SHEET_WIDTH_CM, SHEET_LENGTH_CM, MIN_REMNANT_CM, optimizeCut } from '..
 import * as repo from '../repositories/material.repo'
 
 // ── Типы изделий ──
-export const listSpecTypes = (orgId: string) => repo.listSpecTypes(orgId)
+export const listSpecTypes = (orgId: string, includeArchived = false) => repo.listSpecTypes(orgId, includeArchived)
 export async function createSpecType(orgId: string, i: { name: string; widthCm: number; lengthCm?: number; workRate?: number }) {
   const [t] = await repo.insertSpecType({
     orgId, name: i.name, widthCm: String(i.widthCm || 0),

@@ -7,8 +7,10 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
-  const orgId = new URL(req.url).searchParams.get('orgId') || s.orgId
-  return NextResponse.json(await listSpecTypes(orgId))
+  const url = new URL(req.url)
+  const orgId = url.searchParams.get('orgId') || s.orgId
+  const all = !!url.searchParams.get('all')   // all=1 → включая архивные (для восстановления)
+  return NextResponse.json(await listSpecTypes(orgId, all))
 }
 
 export async function POST(req: NextRequest) {
