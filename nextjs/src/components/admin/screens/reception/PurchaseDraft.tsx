@@ -18,7 +18,7 @@ export default function PurchaseDraft({ draft, logists, contragents, defaultCagI
         <span style={{ fontSize: 12, fontWeight: 700, background: '#f3eeff', color: '#7a3aaa', padding: '2px 9px', borderRadius: 20 }}>🛒 ЧЕРНОВИК ЗАКУПА · {ps.length} поз.</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <select style={{ ...inpSm, width: 150 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { respUserId: e.target.value })) }}><option value="">Закупщик → всем</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-          <select style={{ ...inpSm, width: 150 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { supplierId: e.target.value })) }}><option value="">Поставщик → всем</option>{contragents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          <div style={{ width: 170 }}><ContragentPicker contragents={contragents} value="" defaultId={defaultCagId} onPick={c => c?.id && ps.forEach((p: any) => upd(p.id, { supplierId: c.id }))} placeholder="Поставщик → всем" /></div>
           <Btn variant="primary" disabled={!ready} onClick={() => onAction(draft.id, 'finalizePurchase')}>✓ Оформить закуп →</Btn>
         </div>
       </div>

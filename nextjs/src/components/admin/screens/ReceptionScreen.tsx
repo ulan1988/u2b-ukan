@@ -175,7 +175,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', background: '#f8f6f3', borderRadius: 8, padding: '5px 8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КО ВСЕМ:</span>
                 <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllLogist(e.target.value)}><option value="">Логист →</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                {kind === 'purchase' && <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllSupplier(e.target.value)}><option value="">Поставщик →</option>{allCags.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
+                {kind === 'purchase' && <div style={{ width: 160 }}><ContragentPicker contragents={allCags} value="" defaultId={defaultCagId} onPick={c => c?.id && assignAllSupplier(c.id)} placeholder="Поставщик → всем" /></div>}
               </div>
             </div>
             <div style={{ overflowX: 'auto' }}>

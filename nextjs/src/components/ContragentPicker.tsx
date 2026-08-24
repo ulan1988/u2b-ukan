@@ -22,6 +22,8 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
     base.sort((a, b) => {
       if (a.id === defaultId) return -1
       if (b.id === defaultId) return 1
+      const af = a.favorite ? 1 : 0, bf = b.favorite ? 1 : 0
+      if (af !== bf) return bf - af   // ⭐ избранные — вверх списка
       return (a.name || '').localeCompare(b.name || '', 'ru')
     })
     return base.slice(0, 100)
@@ -66,7 +68,7 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
                 : list.map(c => (
                   <div key={c.id} onClick={() => pick(c)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', cursor: 'pointer', borderTop: '1px solid #f6f3f0', background: c.id === value ? '#fff8f5' : 'transparent' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#fff8f5')} onMouseLeave={e => (e.currentTarget.style.background = c.id === value ? '#fff8f5' : 'transparent')}>
-                    <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.id === defaultId && <span title="по умолчанию" style={{ color: COLORS.primary }}>★ </span>}{c.name}</span>
+                    <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.id === defaultId && <span title="по умолчанию" style={{ color: COLORS.primary }}>★ </span>}{c.favorite && <span title="избранное" style={{ color: '#e0a500' }}>⭐ </span>}{c.name}</span>
                     {c.priceType === 'opt' && <span style={{ fontSize: 10, color: '#4a5aaa', fontWeight: 700 }}>опт</span>}
                   </div>
                 ))}

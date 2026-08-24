@@ -50,7 +50,7 @@ export async function editProduct(id: string, i: z.infer<typeof updateProductSch
 
 export async function editContragent(id: string, i: z.infer<typeof updateContragentSchema>) {
   const patch: Record<string, unknown> = {}
-  for (const k of ['name', 'kind', 'priceType', 'phone', 'comment', 'archived'] as const) {
+  for (const k of ['name', 'kind', 'priceType', 'phone', 'comment', 'favorite', 'archived'] as const) {
     if (i[k] !== undefined) patch[k] = i[k]
   }
   if ((i as any).bin !== undefined) patch.bin = (i as any).bin || null

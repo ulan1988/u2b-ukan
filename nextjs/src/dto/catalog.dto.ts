@@ -45,6 +45,7 @@ export const updateContragentSchema = z.object({
   bin: z.string().optional(),
   openingBalance: z.coerce.number().optional(),
   comment: z.string().optional(),
+  favorite: z.boolean().optional(),
   archived: z.boolean().optional(),
 })
 

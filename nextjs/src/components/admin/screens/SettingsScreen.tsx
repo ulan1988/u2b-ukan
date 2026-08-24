@@ -220,6 +220,7 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
     else setMsg('⚠ ' + (r.error || 'Ошибка'))
   }
   async function setArchived(c: any, archived: boolean) { await editContragent(c.id, { archived }); load(); setMsg(archived ? '✓ В архиве' : '✓ Восстановлен') }
+  async function setFav(c: any) { await editContragent(c.id, { favorite: !c.favorite }); load() }
   async function rename(c: any, name: string) { if (name && name !== c.name) { await editContragent(c.id, { name }); load() } }
   async function setKind(c: any, kind: string) { await editContragent(c.id, { kind }); load() }
   async function setPT(c: any, priceType: string) { await editContragent(c.id, { priceType }); load() }
@@ -249,10 +250,11 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
       </div>
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Название', 'Тип', 'Цена', 'БИН/ИИН', 'Нач. остаток', 'Телефон', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '9px 14px' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['⭐', 'Название', 'Тип', 'Цена', 'БИН/ИИН', 'Нач. остаток', 'Телефон', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '9px 14px' }}>{h}</th>)}</tr></thead>
           <tbody>
             {visible.map(c => (
               <tr key={c.id} style={{ borderTop: '1px solid #f1efec', opacity: c.archived ? 0.5 : 1 }}>
+                <td style={{ padding: '7px 10px', textAlign: 'center' }}><button onClick={() => setFav(c)} title={c.favorite ? 'Убрать из избранного' : 'В избранное'} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, filter: c.favorite ? 'none' : 'grayscale(1) opacity(0.35)' }}>⭐</button></td>
                 <td style={{ padding: '7px 14px' }}><input defaultValue={c.name} onBlur={e => rename(c, e.target.value.trim())} style={{ ...inp, padding: '6px 8px', fontWeight: 600 }} /></td>
                 <td style={{ padding: '7px 14px' }}><select value={c.kind} onChange={e => setKind(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}>{Object.entries(KIND_LBL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
                 <td style={{ padding: '7px 14px' }}><select value={c.priceType || 'retail'} onChange={e => setPT(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}><option value="retail">Розница</option><option value="opt">Опт</option></select></td>
