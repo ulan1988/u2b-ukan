@@ -27,7 +27,6 @@ function StatusBadge({ status }: { status: string }) {
     'В пути': { bg: '#fdf8e1', color: '#8a6f00' }, 'Доставлено': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Принято филиалом': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Архив': { bg: '#efece8', color: '#6b655b' },
     'К выполнению': { bg: '#f3eeff', color: '#7a3aaa' }, 'Выполнено': { bg: '#e8f5ee', color: '#2e8a5e' },
     'Производство': { bg: '#f3eeff', color: '#7a3aaa' }, 'Изготовлено': { bg: '#e8f5ee', color: '#2e8a5e' },
-    'Распил': { bg: '#f3eeff', color: '#7a3aaa' }, 'Листогиб': { bg: '#e8f1ff', color: '#2a5aaa' },
     'Принял': { bg: '#f3eeff', color: '#7a3aaa' }, 'Готов к доставке': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Отправлено': { bg: '#e8f1ff', color: '#2a5aaa' },
   }
   const s = map[status] || { bg: '#efece8', color: '#6b655b' }
@@ -116,8 +115,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // База стола мастера: плечо-1 ИЛИ прямой заказ (ЗК), не отменён, не закрыт. Частично-отправленная
   // карточка (часть позиций уже у логиста, часть в работе) остаётся тут, пока есть leg=1.
   const prodBase = (o: any) => (isProd(o) || isZK(o)) && !o.isCancelled && notClosed(o)
-  // Заказы на производство — плечо-1, ещё НЕ принятые мастером (prodPhase пуст). ЗК тут нет.
-  const production = orders.filter(o => isProd(o) && !isZK(o) && !o.isCancelled && notClosed(o) && phase(o) === '' && inDate(o))
+  // Заказы на производство — ещё НЕ принятые мастером (prodPhase пуст): плечо-1 (пришли от
+  // головного) + прямые ЗК, пока лежат на входных экранах. Без второго условия ЗК с пустой
+  // фазой не попадала НИ В ОДНУ вкладку кабинета и терялась для мастера.
+  const awaitingZK = (o: any) => isZK(o) && ['incoming', 'reception'].includes(o.screen)
+  const production = orders.filter(o => (isProd(o) || awaitingZK(o)) && !o.isCancelled && notClosed(o) && phase(o) === '' && inDate(o))
   // Стол мастера по этапам.
   const accepted = orders.filter(o => prodBase(o) && phase(o) === 'accepted' && inDate(o))
   const working = orders.filter(o => prodBase(o) && phase(o) === 'working' && inDate(o))
@@ -401,7 +403,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {tab === 'production' && <div>
           <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📋 Входящие заказы на производство. «✓ Принял» → карточка на столе мастера (вкладка 🛠️ Производство).</div>
           <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-          {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o)} />)}
+          {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o) || isZK(o)} />)}
         </div>}
         {tab === 'spec' && <div>
           <div style={{ background: '#e8f1ff', color: '#2a5aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🧰 Проект = мастер-список (не карточка). Из него по частям «➕ Создать карточку»: серым — базовое кол-во/остаток, в пустое поле впиши сколько нужно.</div>

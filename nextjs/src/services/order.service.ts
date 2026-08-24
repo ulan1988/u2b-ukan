@@ -85,14 +85,18 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     trackingLink: encodeURIComponent(id),
   }
   // Плечо позиции по поставщику: поставщик-филиал → leg 1 (через филиал), иначе → 2.
+  // Прямой заказ мастера (prodOrder) поставщика не имеет — филиал сам изготовитель, поэтому
+  // его позиции по умолчанию производственные (leg 1). Иначе карточка не попадает на стол
+  // мастера (isProd) и «Отправить логисту» (sendPositions ищет именно leg=1) не работает.
   const legMap = await legForSuppliers(i.positions.map(p => p.supplierId))
+  const defaultLeg = i.prodOrder ? 1 : 2
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)
-    leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : 2,
+    leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : defaultLeg,
     deadline: p.deadline ? new Date(p.deadline) : null,
   }))
   const history = {
@@ -287,41 +291,10 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   return { ok: true }
 }
 
-// ── Производство по позициям (кабинет мастера «Нипа листогиб») ────────────────
-// Цепочка этапов на позиции: '' (на распиле) → cut (распилено, ждёт листогиб) →
-// bent (согнуто, готово). Статус карточки = по САМОЙ отстающей позиции:
-// есть позиция на распиле → «Распил»; все распилены → «Листогиб»; все согнуты →
-// «Выполнено» (готово к логисту). Раскрой обязателен: «распилено» нельзя без cutConfirmed.
-const PROD_RANK: Record<string, number> = { '': 0, cut: 1, bent: 2 }
-export async function setProdStage(cardId: string, posId: string, stage: 'cut' | 'bent', actor?: Session | null) {
-  const [order] = await repo.getOrder(cardId)
-  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
-  const positions = await repo.positionsByCard(cardId)
-  const pos = positions.find((p: any) => p.id === posId)
-  if (!pos) return { ok: false as const, error: 'Позиция не найдена' }
-  // Только производственные позиции (leg=1, поставщик-филиал). Складские (leg=2) в производстве не участвуют.
-  if (Number(pos.leg) !== 1) return { ok: false as const, error: 'Позиция не производственная (со склада)' }
-  // Раскрой обязателен перед листогибом.
-  if (stage === 'cut' && !order.cutConfirmed) return { ok: false as const, error: 'Сначала подтвердите раскрой' }
-  // Гибка только после распила.
-  if (stage === 'bent' && (PROD_RANK[pos.prodStage || ''] ?? 0) < PROD_RANK.cut) return { ok: false as const, error: 'Позиция ещё не распилена' }
-  await repo.updatePosition(posId, { prodStage: stage })
-
-  // Пересчёт статуса карточки по минимальному этапу среди ПРОИЗВОДСТВЕННЫХ позиций (leg=1).
-  // Смешанная карточка (склад + листогиб) не застревает: складские позиции не учитываются.
-  const prodPos = positions.filter((p: any) => Number(p.leg) === 1)
-  const ranks = prodPos.map((p: any) => PROD_RANK[(p.id === posId ? stage : (p.prodStage || ''))] ?? 0)
-  const min = ranks.length ? Math.min(...ranks) : 0
-  const cardStatus = min >= PROD_RANK.bent ? 'Выполнено' : min >= PROD_RANK.cut ? 'Листогиб' : 'Распил'
-  await repo.updateOrder(cardId, { status: cardStatus })
-
-  await repo.insertHistory({
-    cardId, action: 'prodStage',
-    detail: `${pos.name1c || pos.oral || 'Позиция'} → ${stage === 'cut' ? 'распилено' : 'согнуто'}`,
-    userName: actor?.name || 'Система',
-  })
-  return { ok: true as const, cardStatus }
-}
+// ── Производство: этапы мастера живут в prod_phase ───────────────────────────
+// Старый поток раскроя (setProdStage: '' → cut → bent, статусы «Распил»/«Листогиб»)
+// удалён — он писал статус мимо prod_phase, из-за чего карточки застревали вне стола
+// мастера. Актуальная цепочка: produceAccept → produceStart → produceReady → send.
 
 // Отправка логисту (кабинет мастера): целиком или частями. Выбранные производственные
 // позиции (leg=1) → leg=2 (их видит логист), карточка → экран «Исходящие». Когда leg=1
@@ -417,12 +390,19 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
 export async function addPosition(cardId: string, i: any, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
   const n = await repo.countPositions(cardId)
+  // Плечо новой позиции: по поставщику. Без поставщика — как у соседей по карточке: в заказе
+  // мастера они производственные (leg=1), и новая позиция должна уехать логисту вместе с ними.
+  let leg = await legForSupplier(i.supplierId ?? null)
+  if (!i.supplierId) {
+    const siblings = await repo.positionsByCard(cardId)
+    if (siblings.some((p: any) => Number(p.leg) === 1)) leg = 1
+  }
   const [p] = await repo.insertPosition({
     id: `${cardId}-P${n + 1}`, cardId, productId: i.productId ?? null,
     name1c: i.name1c || '', oral: i.oral || i.name1c || '', qty: String(i.qty || 0), unit: i.unit || 'шт',
     price: String(i.price || 0), widthCm: i.widthCm != null ? String(i.widthCm) : null,
     supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null,
-    leg: await legForSupplier(i.supplierId ?? null), status: 'В работе',
+    leg, status: 'В работе',
   })
   await repo.insertHistory({ cardId, action: 'addPos', detail: `Добавлена позиция: ${i.name1c || ''}`, userName: actor?.name || 'Система' })
   // Оповещение об изменении состава: в чат карточки + сигнал логистам/админам.

@@ -14,16 +14,6 @@ export async function assignLogist(id: string, respUserId: string) {
   const r = await post(`/api/orders/${id}/assign`, { respUserId })
   return { ok: r.ok }
 }
-// Производство: подтвердить раскрой (обязателен перед листогибом).
-export async function confirmCut(id: string) {
-  const r = await post(`/api/orders/${id}/action`, { action: 'confirmCut' })
-  return { ok: r.ok, error: r.error as string | undefined }
-}
-// Производство: этап позиции — 'cut' (распилено) | 'bent' (согнуто).
-export async function setProdStage(cardId: string, posId: string, stage: 'cut' | 'bent') {
-  const r = await post(`/api/orders/${cardId}/prod`, { posId, stage })
-  return { ok: r.ok, error: r.error as string | undefined }
-}
 // Мастер → логисту: отправить целиком (posIds не задан) или частями (выбранные позиции).
 export async function sendOrder(cardId: string, posIds?: string[]) {
   const r = await post(`/api/orders/${cardId}/send`, posIds && posIds.length ? { posIds } : {})

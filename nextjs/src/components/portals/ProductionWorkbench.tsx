@@ -89,7 +89,11 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
   const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика
-  const valid = hasPos && (!needCustomer || !!cid)
+  // Изделия без цены уходили в карточку по 0 ₸ — выручка и рентабельность по ним обнулялись.
+  // Цена = «за см × см» либо ручная; строка без цены блокирует создание карточки.
+  const filled = (r: Row) => (r.name || r.productId) && Number(r.qty) > 0
+  const noPrice = rows.filter(r => filled(r) && !(piecePrice(r) > 0))
+  const valid = hasPos && (!needCustomer || !!cid) && noPrice.length === 0
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -108,6 +112,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   async function done() {
     if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
     if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
+    if (noPrice.length) { showMsg(`Укажите цену: ${noPrice.map(r => r.name || 'позиция').join(', ')}`); return }
     setBusy(true)
     try {
       if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
@@ -115,7 +120,14 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
         const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
-        if (res?.ok && res.data?.id) { await orderAction(res.data.id, 'produceAccept'); showMsg('✓ Заказ создан — к выполнению') }
+        if (res?.ok && res.data?.id) {
+          // Если приём не прошёл — карточка осталась с пустым prod_phase. Она видна во вкладке
+          // «Заказы на производство» (leg=1), мастер примет её вручную; молчать нельзя.
+          const acc: any = await orderAction(res.data.id, 'produceAccept')
+          showMsg(acc?.ok === false
+            ? `⚠ Карточка ${res.data.id} создана, но не принята — примите во вкладке «Заказы на производство»`
+            : '✓ Заказ создан — к выполнению')
+        }
         else { showMsg('⚠ ' + (res?.error || 'Не удалось создать')); setBusy(false); return }
       }
       onDone()
@@ -230,6 +242,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: '#5f5952' }}>Всего: <b style={{ color: '#26231f' }}>{totalCm}</b> см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
+        {noPrice.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: '#c0532a' }}>⚠ Без цены: {noPrice.length} поз. — впишите «тг за шт» или цену за см</span>}
         <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#7a3aaa' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : '✓ Создать карточку'}</button>
       </div>
     </div>
