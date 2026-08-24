@@ -39,6 +39,28 @@ async function hqBridgeContragent(orgId: string): Promise<string | null> {
   return cg?.id || null
 }
 
+// Головной офис (org kind='hq').
+async function hqOrgId(): Promise<string | null> {
+  const { db } = await import('../lib/db')
+  const { organizations } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [hq] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.kind, 'hq')).limit(1)
+  return hq?.id || null
+}
+
+// 2-й уровень долга: головной продаёт конечному заказчику (Машон) → расходная у головного на его имя,
+// заказчик становится должником головного (в его кабинете долг растёт). Товар у головного — из
+// зеркальной приходной (производитель→головной), поэтому расход не уходит в минус по факту.
+async function createHqSaleToClient(clientId: string, positions: any[], cardId: string) {
+  const hq = await hqOrgId(); if (!hq || !clientId) return null
+  const refsRepo = await import('../repositories/refs.repo')
+  const wh = await refsRepo.centralWarehouse(hq); if (!wh) return null
+  const lines = positions.filter((p: any) => p.productId).map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт' }))
+  if (!lines.length) return null
+  const docSvc = await import('./document.service')
+  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
+}
+
 export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string }
 
 export async function payCard(cardId: string, p: PayInput, actor?: Session | null) {
@@ -59,15 +81,29 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   const debt = Math.max(0, total - cash - kaspi - qr)
 
   // Контрагент: заказчик карточки, иначе мост на головной офис.
+  const bridge = await hqBridgeContragent(order.orgId)
   let contactId = order.contactId as string | null
   if (!contactId) {
-    contactId = await hqBridgeContragent(order.orgId)
+    contactId = bridge
     if (contactId) await repo.updateOrder(cardId, { contactId })
   }
   if (!contactId) return { ok: false as const, error: 'Нет заказчика и не найден мост на головной офис' }
 
-  // Провести расходную (у головного авто-приходная по мосту).
-  const inv = await postOrderInvoice(cardId, actor)
+  // Две логики долга:
+  //  • НЕ в долг (оплачено) → расходная у производителя на заказчика, карточка закрывается тут.
+  //  • В долг + конечный заказчик (не мост) → ЦЕПОЧКА: производитель→головной (расходная + зеркальная
+  //    приходная у головного), затем головной→Машон (расходная у головного на его имя). Должник — Машон.
+  const endClient = contactId !== bridge ? contactId : null
+  const chain = debt > 0 && debt === total && !!bridge && !!endClient
+  let inv: any
+  if (chain) {
+    await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
+    inv = await postOrderInvoice(cardId, actor)
+    await repo.updateOrder(cardId, { contactId: endClient as string })   // вернуть заказчика на карточку (для отображения)
+    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId) } catch {} }
+  } else {
+    inv = await postOrderInvoice(cardId, actor)
+  }
   if (!inv.ok) return { ok: false as const, error: inv.error }
   const [after] = await repo.getOrder(cardId)
   const docId = after.linkedDocId as string
