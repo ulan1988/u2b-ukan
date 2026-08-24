@@ -155,6 +155,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Отправить логисту: целиком (posIds не задан) или частями (выбранные позиции).
   // Пока остаются leg=1 позиции — карточка остаётся у мастера; когда всё отправлено — уходит в Исходящие.
   async function sendCard(id: string, posIds?: string[]) {
+    // Продать перед отправкой: карточку нельзя отправить логисту, пока не проведена продажа (чек).
+    const ord = orders.find((x: any) => x.id === id)
+    if (ord && !(ord.prodPhase === 'sold' || ord.linkedDocId)) { showMsg('Сначала проведите продажу: касса или «Долг к головному»'); return }
     try {
       const r = await sendOrder(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
       setSel({}); if (r.remaining && r.remaining > 0) { showMsg(`✓ Отправлено · осталось ${r.remaining}`); await refreshDetail(id) } else { setDrawerId(null); showMsg('✓ Отправлено логисту') }
@@ -172,6 +175,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, qr: Number((pay.qr || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom }
     const r = await payCard(id, body); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`💵 Продано${r.number ? ` (${r.number})` : ''}${r.debt ? ` · долг ${r.debt}` : ''}`)
+  }
+  // Долг к головному: продать всю карточку в долг (без оплаты) — контрагент по умолчанию головной.
+  async function payDebt(id: string) {
+    if (!confirm('Провести продажу в ДОЛГ к головному? (без оплаты)')) return
+    const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '' }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`🏢 Долг к головному${r.number ? ` (${r.number})` : ''}${r.debt ? ` · ${r.debt}` : ''}`)
   }
   async function doUnpay(id: string) {
     if (!confirm('Отменить продажу? Документы будут сторнированы, карточка вернётся в работу.')) return
@@ -338,8 +347,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <input value={pay.change} inputMode="decimal" onChange={e => setPay(p => ({ ...p, change: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: 80, padding: '6px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
                       <span style={{ fontSize: 12, color: '#5f5952' }}>с</span>
                       {(['cash', 'kaspi'] as const).map(cf => { const on = pay.changeFrom === cf; return <button key={cf} onClick={() => setPay(p => ({ ...p, changeFrom: on ? '' : cf }))} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{cf === 'cash' ? 'нал' : 'каспи'}</button> })}
-                      <button onClick={() => doPay(o.id)} style={{ marginLeft: 'auto', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>💵 Оплатить</button>
+                      <button onClick={() => payDebt(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Долг к головному</button>
+                      <button onClick={() => doPay(o.id)} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>💵 Оплатить</button>
                     </div>
+                    <div style={{ fontSize: 11.5, color: '#8a6f00', marginTop: 2 }}>Сначала продайте (чек), потом отправка логисту.</div>
                   </>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -381,9 +392,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   {selIds.length > 0 && selIds.length < pos.length && (
                     <button onClick={() => doSplit(o.id, selIds)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f3eeff', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>➕ Вынести в новую карточку ({selIds.length})</button>
                   )}
-                  {selIds.length > 0 && selIds.length < leg1.length
-                    ? <button onClick={() => sendCard(o.id, selIds)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить выбранные ({selIds.length}) →</button>
-                    : <button onClick={() => sendCard(o.id)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить всё логисту ({leg1.length}) →</button>}
+                  {!isSold
+                    ? <button disabled title="Сначала проведите продажу" style={{ width: '100%', border: 'none', background: '#e6e2dc', color: '#8a857c', borderRadius: 9, padding: '11px', cursor: 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🔒 Сначала продажа (касса / долг)</button>
+                    : selIds.length > 0 && selIds.length < leg1.length
+                      ? <button onClick={() => sendCard(o.id, selIds)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить выбранные ({selIds.length}) →</button>
+                      : <button onClick={() => sendCard(o.id)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить всё логисту ({leg1.length}) →</button>}
                 </div>
               )}
             </div>
@@ -518,6 +531,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
               <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>💵 ПРОДАНО · {sold.length}</div>
               {sold.map(o => {
                 const total = (o.positions || []).reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+                const leg1 = (o.positions || []).filter((p: any) => Number(p.leg) === 1)
                 return (
                   <div key={o.id} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #cfeadd', padding: '11px 13px', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -528,7 +542,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
-                      <button onClick={() => doUnpay(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
+                      {leg1.length > 0
+                        ? <button onClick={() => sendCard(o.id)} style={{ marginLeft: 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить логисту ({leg1.length})</button>
+                        : <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a5aaa', fontWeight: 700 }}>🚚 у логиста</span>}
+                      <button onClick={() => doUnpay(o.id)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
                     </div>
                   </div>
                 )
