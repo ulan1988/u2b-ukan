@@ -7,7 +7,9 @@ export const RAL_COLORS: RalColor[] = [
   { code: '9003', name: 'Белый', hex: '#F4F8F4', query: 'белый' },
   { code: '7004', name: 'Светло-серый', hex: '#9EA0A1', query: 'серый' },
   { code: '7024', name: 'Серый графит', hex: '#45494E', query: 'серый' },
+  { code: '7024М', name: 'Графит матовый', hex: '#3b3f44', query: 'серый мат' },
   { code: '8017', name: 'Шоколадный', hex: '#442F29', query: 'шоколад' },
+  { code: '8017М', name: 'Шоколад матовый', hex: '#3a2823', query: 'шоколад мат' },
   { code: '8019', name: 'Серо-коричневый', hex: '#3D3635', query: 'коричнев' },
   { code: '2004', name: 'Оранжевый', hex: '#E75B12', query: 'оранж' },
   { code: '6005', name: 'Зелёный', hex: '#0F4336', query: 'зелен' },
@@ -21,7 +23,7 @@ export const RAL_COLORS: RalColor[] = [
 export const RAL_BY_CODE: Record<string, RalColor> = Object.fromEntries(RAL_COLORS.map(c => [c.code, c]))
 
 // Избранные (ходовые) цвета — показываем всегда сверху; остальные прячем под «глазок».
-export const FAVORITE_RAL = ['9003', '7024', '7004', '8017', '1015', '2004']
+export const FAVORITE_RAL = ['9003', '7024', '7024М', '7004', '8017', '8017М', '1015', '2004']
 // Порядок цветов для модельки: сначала избранные, при showAll — дальше остальные.
 export function ralOrdered(showAll: boolean): RalColor[] {
   const favs = FAVORITE_RAL.map(code => RAL_BY_CODE[code]).filter(Boolean)
@@ -31,9 +33,13 @@ export function ralOrdered(showAll: boolean): RalColor[] {
 
 // Извлечь RAL-код из имени: RAL 1234 или голый 4-значный код из палитры.
 export function extractRal(name: string): string {
-  const m = (name || '').match(/RAL\s?(\d{4})/i)
+  const s = name || ''
+  const m = s.match(/RAL\s?(\d{4})/i)
   if (m) return m[1]
-  const bare = (name || '').match(/\b(\d{4})\b/)
+  // матовый код (напр. 8017М) — проверяем раньше глянцевого
+  const mm = s.match(/(\d{4})\s?[МM](?![0-9])/)
+  if (mm && RAL_BY_CODE[mm[1] + 'М']) return mm[1] + 'М'
+  const bare = s.match(/(\d{4})/)
   if (bare && RAL_BY_CODE[bare[1]]) return bare[1]
   return ''
 }
