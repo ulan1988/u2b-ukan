@@ -36,6 +36,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [supEditPos, setSupEditPos] = useState<string | null>(null)
   const [qtyEditPos, setQtyEditPos] = useState<string | null>(null); const [qtyVal, setQtyVal] = useState('')
   const [addingCardId, setAddingCardId] = useState<string | null>(null)
+  const [openCardId, setOpenCardId] = useState<string | null>(null)          // развёрнутая карточка (позиции — в шторке)
   const [catalogCardId, setCatalogCardId] = useState<string | null>(null)   // открыт каталог-пикер для этой карточки
   const [chatOpenPos, setChatOpenPos] = useState<string | null>(null)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
@@ -211,6 +212,31 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
 
   const empty = (icon: string, text: string) => <div style={{ background: '#fff', borderRadius: 14, padding: 36, textAlign: 'center' }}><div style={{ fontSize: 32, marginBottom: 10 }}>{icon}</div><div style={{ color: '#5f5952' }}>{text}</div></div>
 
+  // Позиции свёрнуты: одна карточка = одна строка, позиции раскрываются шторкой по тапу.
+  const groupByCard = (arr: { pos: any; order: any }[]) => {
+    const m: Record<string, { order: any; poss: any[] }> = {}
+    for (const { pos, order } of arr) (m[order.id] ||= { order, poss: [] }).poss.push(pos)
+    return Object.values(m)
+  }
+  function CardBox({ order, poss, buy }: { order: any; poss: any[]; buy?: boolean }) {
+    const open = openCardId === order.id
+    const done = poss.filter((p: any) => p.status === 'Доставлено').length
+    const inway = poss.filter((p: any) => p.status === 'В пути').length
+    return (
+      <div style={{ marginBottom: 8, background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
+        <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', cursor: 'pointer' }}>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
+          {order.fromName && <span style={{ fontSize: 12, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{order.fromName}</span>}
+          <span style={{ fontSize: 11.5, color: '#5f5952', background: '#f1efec', padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{poss.length} поз</span>
+          {inway > 0 && <span style={{ fontSize: 11, color: '#c0532a', fontWeight: 700 }}>🚚{inway}</span>}
+          {done > 0 && <span style={{ fontSize: 11, color: '#2e8a5e', fontWeight: 700 }}>✓{done}</span>}
+          <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
+        </div>
+        {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
+      </div>
+    )
+  }
+
   return (
     <div style={{ background: '#dedbd6', minHeight: '100vh', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
@@ -248,7 +274,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
                           <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontWeight: 700, letterSpacing: '.05em' }}>ЗАКАЗЧИК</div><div style={{ fontWeight: 700, fontSize: 14, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client}</div></div>
                           <span style={{ background: PRIMARY, color: '#fff', fontSize: 12, padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{items.length}</span>
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto', background: '#f4f2ef', borderRadius: '0 0 12px 12px', padding: '10px 8px 4px' }}>{items.map(({ pos, order }) => <PosCard key={pos.id} pos={pos} order={order} compact />)}</div>
+                        <div style={{ flex: 1, overflowY: 'auto', background: '#f4f2ef', borderRadius: '0 0 12px 12px', padding: '10px 8px 4px' }}>{groupByCard(items).map(g => <CardBox key={g.order.id} order={g.order} poss={g.poss} />)}</div>
                       </div>
                     ))}
                   </div>
@@ -261,7 +287,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, color: '#7a3aaa' }}>🛒 Закупки · на Центр-Склад</div>
             <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 14 }}>Закупи товар и отметь позиции доставленными.</div>
             <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-            {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : posBuy.length === 0 ? empty('✅', 'Нет активных закупов') : posBuy.map(({ pos, order }) => <PosCard key={`buy-${pos.id}`} pos={pos} order={order} />)}
+            {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : posBuy.length === 0 ? empty('✅', 'Нет активных закупов') : groupByCard(posBuy).map(g => <CardBox key={`buy-${g.order.id}`} order={g.order} poss={g.poss} buy />)}
           </div>
         )}
         {tab === 'out' && (
