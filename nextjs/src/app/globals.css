@@ -45,3 +45,7 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 @layer utilities {
   .text-balance { text-wrap: balance; }
 }
+
+/* ── Кабинет мастера (BranchPortal): узкий на телефоне, широкий на ноутбуке ── */
+.branch-shell { max-width: 480px; margin: 0 auto; }
+@media (min-width: 900px) { .branch-shell { max-width: 940px; } }

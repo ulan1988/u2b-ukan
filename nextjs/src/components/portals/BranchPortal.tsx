@@ -268,7 +268,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif", maxWidth: 480, margin: '0 auto' }}>
+    <div className="branch-shell" style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
       {addCatalogFor && <NomPicker onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
 
