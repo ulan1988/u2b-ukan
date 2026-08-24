@@ -27,7 +27,7 @@ const roleLabel = (v: string) => ROLES.find(r => r.v === v)?.l || v
 const inp: React.CSSProperties = { padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 14, outline: 'none', width: '100%' }
 
 export default function SettingsScreen({ orgId }: { orgId: string }) {
-  const [tab, setTab] = useState<'users' | 'contragents' | 'autofill' | 'projects' | 'stati' | 'units'>('users')
+  const [tab, setTab] = useState<'users' | 'clients' | 'contragents' | 'autofill' | 'projects' | 'stati' | 'units'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string }[]>([])
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'logist', orgId })
@@ -40,6 +40,8 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
   const accessUrl = (u: any) => u.role === 'branch' ? `${base}/branch/${u.slug}` : (u.role === 'client' || u.role === 'supplier_client') ? `${base}/client/${u.slug}` : u.role === 'logist' ? `${base}/rsp/${u.slug}` : u.role === 'warehouse_manager' ? `${base}/warehouse/${u.slug}` : ''
 
   const load = () => listUsers().then(setUsers)
+  const CLIENT_ROLES = ['client', 'supplier_client']   // кабинеты клиентов (вынесены в отдельную вкладку)
+  const shownUsers = tab === 'clients' ? users.filter(u => CLIENT_ROLES.includes(u.role)) : users.filter(u => !CLIENT_ROLES.includes(u.role))
   async function setPriceType(u: any, priceType: string) { await editUser(u.id, { priceType }); load(); setMsg('✓ Тип цены обновлён') }
   async function saveEdit() { if (!editing) return; const r = await editUser(editing.id, editing); if (r.ok) { setEditing(null); load(); setMsg('✓ Сохранено') } }
   async function removeUser(u: any) { if (!confirm(`Отключить пользователя «${u.name}»?`)) return; await deleteUser(u.id); load(); setMsg('✓ Отключён') }
@@ -80,7 +82,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
     <div style={{ maxWidth: 1200 }}>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['users', 'Пользователи'], ['contragents', 'Контрагенты'], ['units', 'Ед. изм.'], ['stati', 'Статьи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
+        {([['users', 'Пользователи'], ['clients', '👤 Кабинеты клиентов'], ['contragents', 'Контрагенты'], ['units', 'Ед. изм.'], ['stati', 'Статьи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
@@ -88,11 +90,13 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
       {tab === 'stati' ? <StatiPanel orgId={orgId} /> : tab === 'units' ? <UnitsPanel /> : tab === 'autofill' ? <AutofillPanel orgId={orgId} /> : tab === 'projects' ? <ProjectsPanel orgId={orgId} /> : tab === 'contragents' ? <ContragentsPanel orgId={orgId} /> : (
       <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Пользователи</div>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{tab === 'clients' ? '👤 Кабинеты клиентов' : 'Пользователи'}</div>
         <button onClick={() => setCab({ cagId: '', login: '', password: '', role: 'client' })} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7a3aaa', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>🔗 Создать кабинет (из контрагента)</button>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 0 0 1.5px #e6e2dc', marginBottom: 20, maxWidth: 720 }}>
+      {tab === 'clients'
+        ? <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>Кабинеты клиентов создаются кнопкой «🔗 Создать кабинет (из контрагента)» — привязка к контрагенту, доступ по ссылке /client/…</div>
+        : <div style={{ background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 0 0 1.5px #e6e2dc', marginBottom: 20, maxWidth: 720 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 12 }}>НОВЫЙ ПОЛЬЗОВАТЕЛЬ (сотрудник / логист / филиал)</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
           <input style={inp} placeholder="Имя" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
@@ -109,15 +113,15 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
             style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: (!f.name.trim() || !f.email.trim() || f.password.length < 4 || !f.orgId) ? 0.5 : 1 }}>Создать</button>
           {msg && <span style={{ fontSize: 13, color: COLORS.textMuted }}>{msg}</span>}
         </div>
-      </div>
+      </div>}
 
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
-        <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#5f5952', borderBottom: '1px solid #f1efec' }}>ПОЛЬЗОВАТЕЛИ ({users.length})</div>
+        <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#5f5952', borderBottom: '1px solid #f1efec' }}>{tab === 'clients' ? 'КЛИЕНТЫ' : 'ПОЛЬЗОВАТЕЛИ'} ({shownUsers.length})</div>
         <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
           <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['ИМЯ', 'РОЛЬ', 'ОРГАНИЗАЦИЯ', 'ДОСТУП', 'СТАТУС', 'ТИП ЦЕНЫ', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '10px 14px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
-            {users.map(u => {
+            {shownUsers.map(u => {
               const url = accessUrl(u)
               return (
                 <tr key={u.id} style={{ borderTop: '1px solid #f1efec' }}>
