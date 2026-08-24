@@ -102,13 +102,17 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   if (!wh) return { ok: false as const, error: 'Не найден склад производителя' }
 
   const outputs: any[] = []
+  const made: any[] = []          // позиции, реально выпущенные (для раскроя)
   const sheetCache = new Map<string, SheetInfo | null>()
-  let created = 0
+  let created = 0, skipped = 0
   for (const p of targets) {
     // Разрыв 6: имя изделия через единую формулу (иначе на складе появлялось безымянное «Изделие»).
     // Нормализуем «вид+цвет+см» из имени позиции + её ширины — товар создаётся с полной идентичностью.
     const raw = (p.name1c || p.oral || '').trim()
     const nm = itemName({ name: raw, color: ralOf(raw), cm: p.widthCm })
+    // Голое «Изделие» (нет ни цвета/РАЛ, ни см) — это ШАБЛОН (umbrella), а не складская единица:
+    // цвет неизвестен → лист выбрать нельзя. Не плодим товар-заглушку и не списываем лист.
+    if (/^изделие$/i.test(nm)) { skipped++; continue }
     let productId = p.productId as string | null
     if (!productId) {
       productId = await ensureProduct(nm)
@@ -123,7 +127,9 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
     await setProductCost(productId, cost)   // в products.price_in — по нему считается рентабельность
     outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: width || undefined })
+    made.push(p)
   }
+  if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета — укажите РАЛ (и длину), тогда выпустится товар «Изделие {цвет} {см} см»' : 'Нет изделий для внесения', skipped }
 
   // Материал списываем раскроем по складу кусков (material_pieces): −целые листы того же РАЛа,
   // остаток ≥4 см → в обрезь. Это уже построенная связка изделие↔лист (consumeForCut/optimizeCut),
@@ -131,7 +137,7 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   let consumed: any = null
   try {
     const { consumeForCut } = await import('./material.service')
-    consumed = await consumeForCut(order.orgId, targets)
+    consumed = await consumeForCut(order.orgId, made)
   } catch { /* нехватка листов не должна ронять выпуск */ }
 
   const doc = await createProduction({ orgId: order.orgId, warehouseId: wh.id, inputs: [], outputs, comment: `Производство изделий · заявка ${cardId}` } as any)
@@ -140,10 +146,10 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     : ''
   await repo.insertHistory({
     cardId, action: 'produce',
-    detail: `Внесено в базу: ${outputs.length} изделий${created ? ` (новых товаров: ${created})` : ''}${cut} · ${doc.number}`,
+    detail: `Внесено в базу: ${outputs.length} изделий${created ? ` (новых товаров: ${created})` : ''}${skipped ? ` · без цвета пропущено: ${skipped}` : ''}${cut} · ${doc.number}`,
     userName: actor?.name || 'Система',
   })
-  return { ok: true as const, number: doc.number, produced: outputs.length, created, consumed }
+  return { ok: true as const, number: doc.number, produced: outputs.length, created, skipped, consumed }
 }
 
 // Производство уже проводилось по этой карточке? Признак — запись истории action='produce'.
