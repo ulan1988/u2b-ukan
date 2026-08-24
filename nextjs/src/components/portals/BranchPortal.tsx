@@ -296,7 +296,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
 
       {/* Шторка позиций карточки мастера: смена статуса + отправка логисту (целиком/частями) */}
       {drawerId && (() => {
-        const o = (details[drawerId]?.positions ? details[drawerId] : orders.find(x => x.id === drawerId)); if (!o) return null
+        const base: any = orders.find(x => x.id === drawerId) || {}
+        const det: any = details[drawerId]?.positions ? details[drawerId] : null
+        const o: any = det ? { ...base, ...det, contactId: det.contactId || base.contactId } : base   // contactId надёжно из списка
+        if (!o.id) return null
         const pos = o.positions || []
         const leg1 = pos.filter((p: any) => Number(p.leg) === 1)   // ещё у мастера, можно отправить
         const sent = pos.filter((p: any) => Number(p.leg) !== 1)   // уже у логиста
@@ -386,8 +389,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ЗАКАЗЧИК:</span>
                   <b>{custName(o) || '—'}</b>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ПОЗИЦИИ · {pos.length}</span>
+                  <button onClick={() => setAddCatalogFor(o.id)} title="Добавить позицию (вдруг забыли)" style={{ border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 7, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>📖 ＋ Добавить</button>
                   {leg1.length > 0 && <button onClick={() => setSel(selIds.length === leg1.length ? {} : Object.fromEntries(leg1.map((p: any) => [p.id, true])))} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: PRIMARY, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{selIds.length === leg1.length ? 'Снять всё' : 'Выбрать всё'}</button>}
                 </div>
                 {pos.length === 0 ? <div style={{ color: '#837c72', fontSize: 14, padding: 8 }}>Нет позиций</div>
