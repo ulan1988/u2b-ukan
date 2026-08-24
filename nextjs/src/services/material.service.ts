@@ -154,6 +154,21 @@ export async function sheetsByColor(orgId?: string) {
   return Object.values(map)
 }
 
+// Целые листы по филиалам (для дашборда головного): сколько целых листов на складе у каждой орг.
+export async function sheetsByOrg() {
+  const refs = await import('../repositories/refs.repo')
+  const [orgs, all, prods] = await Promise.all([refs.listOrganizations(), repo.listAllMaterialPieces(), refs.listProducts()])
+  const matById = new Map((prods as any[]).map(p => [p.id, sheetIsMat(p.name)]))
+  const name = new Map((orgs as any[]).map(o => [o.id, o.name]))
+  const map: Record<string, { orgId: string; orgName: string; glyan: number; mat: number }> = {}
+  for (const p of (all as any[]).filter(x => x.kind === 'sheet')) {
+    const k = p.orgId
+    if (!map[k]) map[k] = { orgId: k, orgName: name.get(k) || '—', glyan: 0, mat: 0 }
+    map[k][matById.get(p.productId) ? 'mat' : 'glyan'] += Number(p.qty)
+  }
+  return Object.values(map).filter(o => o.glyan > 0 || o.mat > 0).sort((a, b) => (b.glyan + b.mat) - (a.glyan + a.mat))
+}
+
 // Мастер взял N листов цвета (передатчик) — списываем целые листы (глянец, FIFO).
 export async function takeSheets(orgId: string, color: string, qty: number) {
   const d = await deductSheets(orgId, color, Math.round(Number(qty) || 0))

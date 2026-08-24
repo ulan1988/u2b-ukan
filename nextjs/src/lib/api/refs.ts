@@ -66,6 +66,7 @@ export const produceToStock = (items: any[]) => post('/api/material/produce', { 
 // Кабинет-передатчик листов: остатки по цветам + списание «взял N».
 export const sheetsByColor = (orgId: string) => getArray(`/api/material/sheets?orgId=${orgId}`)
 export const sheetsAll = () => getArray('/api/material/sheets?all=1')   // все орг (для дашборда)
+export const sheetsByOrgApi = () => getArray('/api/material/sheets?byOrg=1')   // по филиалам (дашборд ГО)
 export const materialReport = (orgId: string, from: string, to: string) => getObj(`/api/material/report?orgId=${orgId}&from=${from}&to=${to}`, null as any)
 export const takeSheet = (color: string, qty: number) => post('/api/material/take', { color, qty })
 

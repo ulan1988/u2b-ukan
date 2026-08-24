@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { COLORS } from '@/lib/colors'
 import { barColor, fmtMoney } from '@/lib/adminFmt'
 import { fetchDashboard } from '@/lib/api/reports'
-import { sheetsAll } from '@/lib/api/refs'
+import { sheetsAll, sheetsByOrgApi } from '@/lib/api/refs'
 import { RalDot } from '@/lib/ral'
 import { useLiveData } from '@/lib/live'
 
@@ -35,11 +35,13 @@ export default function DashboardScreen({ orgId }: { orgId: string }) {
   const router = useRouter()
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [sheets, setSheets] = useState<any[]>([])
+  const [sheetsOrg, setSheetsOrg] = useState<any[]>([])
   const setScreen = (s: string) => router.push(`/admin/${s}`)
 
   const load = useCallback(async () => {
     try { setDashboard(await fetchDashboard(orgId) as DashboardData) } catch {}
     try { setSheets(await sheetsAll()) } catch {}
+    try { setSheetsOrg(await sheetsByOrgApi()) } catch {}
   }, [orgId])
   useLiveData(load, [orgId])
 
@@ -151,10 +153,19 @@ export default function DashboardScreen({ orgId }: { orgId: string }) {
             const totalG = sheets.reduce((a: number, s: any) => a + Number(s.glyan || 0), 0)
             return (
               <div style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 0 0 1.5px #e6e2dc', marginTop: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>📄 Целые листы</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>📄 Целые листы на складах</div>
                   <span style={{ fontSize: 13, color: '#5f5952' }}>всего {totalG} листов (глянец)</span>
                 </div>
+                {sheetsOrg.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                    {sheetsOrg.map((o: any) => (
+                      <span key={o.orgId} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, background: '#f3eeff', color: '#26231f', borderRadius: 20, padding: '5px 12px', fontSize: 13 }}>
+                        🏭 {o.orgName}: <b style={{ fontSize: 15 }}>{Number(o.glyan)}</b> лист{Number(o.mat) > 0 ? <span style={{ color: '#837c72' }}> · мат {Number(o.mat)}</span> : null}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {withGlyan.length === 0 ? <div style={{ color: '#5f5952', fontSize: 14 }}>Нет данных — мастер ещё не отметил листы (кабинет → 📄 Листы).</div>
                   : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10 }}>
                       {withGlyan.map((s: any) => (
