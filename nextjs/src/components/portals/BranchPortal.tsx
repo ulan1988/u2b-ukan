@@ -175,8 +175,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   // Ф-B: действия карточки — проект, сплит (выбранные → новая карточка).
   async function attachProject(id: string, specProjectId: string) { const r = await updateCard(id, { specProjectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(specProjectId ? '📁 Добавлено в проект' : 'Отвязано от проекта') } else showMsg('⚠ Не удалось') }
-  // Тег клиентского проекта (projects, по заказчику) — попадает в акт сверки по проектам.
-  async function attachClientProject(id: string, projectId: string) { const r = await updateCard(id, { projectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(projectId ? '🏷 Проект клиента задан' : 'Проект снят') } else showMsg('⚠ Не удалось') }
   async function doSplit(id: string, posIds: string[]) {
     const r = await splitCard(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setSel({}); setDrawerId(null); await load(); showMsg(`✓ Создана карточка ${r.id || ''}`)
@@ -367,22 +365,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     <div style={{ fontSize: 11.5, color: '#8a6f00', marginTop: 2 }}>Сначала продайте (чек), потом отправка логисту.</div>
                   </>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', width: 54, flexShrink: 0 }}>📁</span>
-                  <select value={o.specProjectId || ''} onChange={e => attachProject(o.id, e.target.value)} title="Производственный проект" style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
-                    <option value="">— произв. проект —</option>
-                    {specProjects.map((sp: any) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Проект заказчика — для акта сверки по проектам">
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', width: 54, flexShrink: 0 }}>🏷 ＋</span>
+                  <select value={o.specProjectId || ''} onChange={e => attachProject(o.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6ddf3', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                    <option value="">{o.contactId ? '— добавить в проект заказчика —' : '— сначала укажите заказчика —'}</option>
+                    {clientProjs.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
-                {o.contactId && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', width: 54, flexShrink: 0 }} title="Проект клиента — для акта сверки по проектам">🏷</span>
-                    <select value={o.projectId || ''} onChange={e => attachClientProject(o.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6ddf3', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
-                      <option value="">— проект клиента —</option>
-                      {clientProjs.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                )}
               </div>
               <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 14 }}>

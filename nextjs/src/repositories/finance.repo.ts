@@ -114,19 +114,19 @@ export async function contragentProjectTotals(orgId: string, contragentId: strin
            count(*)::int as cnt
     from documents d
     left join orders o on o.id = d.source_order_id
-    left join projects pr on pr.id = coalesce(d.project_id, o.project_id)
+    left join spec_projects pr on pr.id = coalesce(d.project_id, o.spec_project_id)
     where d.org_id=${orgId} and d.contragent_id=${contragentId}
       and d.type in ('sale','purchase','return_in','return_out') and d.status<>'cancelled'
     group by pr.id, pr.name
     order by total desc` as unknown as Promise<Array<{ projectId: string; name: string; total: number; cnt: number }>>
 }
 
-// Оплаты контрагента по проектам (payments.project_id).
+// Оплаты контрагента по проектам (payments.project_id → spec_projects).
 export async function contragentProjectPayments(orgId: string, contragentId: string) {
   return sqlClient`
     select coalesce(pr.id::text,'') as "projectId", coalesce(pr.name,'— без проекта —') as name,
            sum(case when p.direction='in' then p.amount::float else -p.amount::float end) as paid
-    from payments p left join projects pr on pr.id = p.project_id
+    from payments p left join spec_projects pr on pr.id = p.project_id
     where p.org_id=${orgId} and p.contragent_id=${contragentId}
     group by pr.id, pr.name` as unknown as Promise<Array<{ projectId: string; name: string; paid: number }>>
 }

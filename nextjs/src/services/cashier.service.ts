@@ -100,7 +100,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
     await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
     inv = await postOrderInvoice(cardId, actor)
     await repo.updateOrder(cardId, { contactId: endClient as string })   // вернуть заказчика на карточку (для отображения)
-    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).projectId) } catch {} }
+    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).specProjectId) } catch {} }
   } else {
     inv = await postOrderInvoice(cardId, actor)
   }
@@ -111,7 +111,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   // Оплаты нал/каспи в кассу (гасят дебиторку), привязка к документу.
   const acc = await ensureCashAccounts(order.orgId)
   const day = today()
-  const projectId = (order as any).projectId || null   // разбивка оплат по проекту контрагента
+  const projectId = (order as any).specProjectId || null   // разбивка оплат по проекту контрагента
   if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: docId, projectId, comment: `Касса ${cardId} · нал` })
   if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: docId, projectId, comment: `Касса ${cardId} · каспи` })
   if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: docId, projectId, comment: `Касса ${cardId} · QR` })

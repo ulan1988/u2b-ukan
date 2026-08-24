@@ -398,7 +398,8 @@ function ProjectsPanel({ orgId }: { orgId: string }) {
 
   async function addProject() {
     if (!pName.trim() || !pClient) { setMsg('Выберите контрагента и введите имя проекта'); return }
-    const r = await createProject({ name: pName, clientId: pClient }); if (r.ok || (r as any).id) { setPName(''); setMsg('✅ Проект создан'); loadClientProjects(pClient) }
+    // Проект контрагента = spec_project с заказчиком (единый источник для тега карточки и акта сверки).
+    const r = await createSpecProject({ name: pName, clientId: pClient, items: [] }); if (r.ok || (r as any).id) { setPName(''); setMsg('✅ Проект создан'); loadClientProjects(pClient) }
   }
   async function addSpec() {
     if (!spName.trim()) return

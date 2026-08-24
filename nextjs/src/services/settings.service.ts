@@ -1,13 +1,14 @@
 import { randomUUID } from 'crypto'
 import * as repo from '../repositories/settings.repo'
 
-// Проекты контрагента (по clientId, любая орг) — активные. Для тегирования карточки.
+// Проекты контрагента (spec_projects — те, что создаются на экране «📁 Проекты» с заказчиком),
+// по clientId, любая орг, активные. По ним тегируется карточка и идёт акт сверки.
 export async function listProjectsByClient(clientId?: string) {
   const { db } = await import('../lib/db')
-  const { projects } = await import('../db/schema')
+  const { specProjects } = await import('../db/schema')
   const { eq, and, desc } = await import('drizzle-orm')
-  const cond = clientId ? and(eq(projects.clientId, clientId), eq(projects.status, 'active')) : eq(projects.status, 'active')
-  return db.select({ id: projects.id, name: projects.name, clientId: projects.clientId }).from(projects).where(cond).orderBy(desc(projects.createdAt))
+  const cond = clientId ? and(eq(specProjects.clientId, clientId), eq(specProjects.status, 'active')) : eq(specProjects.status, 'active')
+  return db.select({ id: specProjects.id, name: specProjects.name, clientId: specProjects.clientId }).from(specProjects).where(cond).orderBy(desc(specProjects.createdAt))
 }
 
 export async function createProject(orgId: string, name: string, clientId?: string) {
