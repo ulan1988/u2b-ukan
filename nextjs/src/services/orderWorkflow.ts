@@ -220,6 +220,15 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   }
   // Филиал передал логисту: позиции первого плеча (leg=1) → leg=2, теперь их видит логист.
   if (action === 'branchForward') await repo.setLegForCard(id, 1, 2)
+  // «Готов к доставке» = изделия фактически изготовлены → авто-документ производства:
+  // +изделия на склад филиала, −доля листа по ширине (одна проводка, как «Производство» в 1С).
+  // Идемпотентно: повторный клик по уже проведённой карточке ничего не выпускает.
+  if (action === 'produceReady') {
+    try {
+      const { alreadyProduced, produceToBase } = await import('./producer.service')
+      if (!(await alreadyProduced(id))) await produceToBase(id, actor)
+    } catch { /* производство не должно ронять смену этапа */ }
+  }
   // Закуп оформлен → открыть связанные продажи: перенести поставщика/цену/логиста,
   // продажи становятся готовыми на столе Приёмки (openLinkedSales, как в Улкане).
   if (action === 'finalizePurchase') {
