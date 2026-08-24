@@ -8,7 +8,7 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import { COLORS } from '@/lib/colors'
-import { fetchOrders, orderAction, logout } from '@/lib/adminApi'
+import { fetchOrders, orderAction, logout, fetchUsers } from '@/lib/adminApi'
 import { fetchRefs } from '@/lib/api/refs'
 import { getOrgId, setOrgId as persistOrg } from '@/lib/org'
 import { useLiveData } from '@/lib/live'
@@ -64,12 +64,16 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   // Организация: админ может переключаться между головной и филиалами (localStorage).
   const [orgId, setOrg] = useState<string>(user.orgId)
   const [orgs, setOrgs] = useState<{ id: string; name: string; kind?: string; color?: string }[]>([])
+  // Пользователи-кабинеты филиалов (role='branch') — чтобы открыть кабинет мастера с ноутбука.
+  const [branchUsers, setBranchUsers] = useState<{ orgId: string; slug?: string; active?: boolean }[]>([])
   useEffect(() => {
     fetchRefs().then((r: any) => {
       const os = r.organizations || []; setOrgs(os)
       const saved = getOrgId(); if (saved && os.some((o: any) => o.id === saved)) setOrg(saved)
     })
+    fetchUsers().then((us: any[]) => setBranchUsers((us || []).filter(u => u.role === 'branch' && u.slug))).catch(() => {})
   }, [])
+  const branchSlug = branchUsers.find(u => u.orgId === orgId && u.active !== false)?.slug
   function switchOrg(id: string) { persistOrg(id); setOrg(id) }
   const orgColor = orgs.find(o => o.id === orgId)?.color || '#6b7280'   // цвет текущей орг — сквозной индикатор
   async function changeOrgColor(id: string, color: string) {
@@ -120,7 +124,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Сквозная цветная полоса сверху = насыщенный цвет орг */}
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} />}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} />}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}

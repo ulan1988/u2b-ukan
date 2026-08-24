@@ -34,10 +34,10 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo }: {
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
   orgs?: { id: string; name: string; kind?: string; color?: string }[]; orgId?: string; onOrg?: (id: string) => void
-  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean
+  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean; branchSlug?: string
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -63,6 +63,10 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
         ))}
       </div>}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        {branchSlug && (
+          <a href={`/branch/${branchSlug}`} target="_blank" rel="noopener" title="Открыть кабинет мастера этого филиала (заказы, приём, касса)"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: COLORS.primary, color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>🏭 Кабинет мастера</a>
+        )}
         {orgs.length > 1 && onOrg && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 2px 8px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}` }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
