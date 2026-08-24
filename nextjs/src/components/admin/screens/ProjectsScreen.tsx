@@ -47,8 +47,8 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
 
   async function saveProject() {
     if (!pName.trim()) { showMsg('Введите название проекта'); return }
+    // Позиции необязательны — можно создать пустой проект (просто имя + заказчик), позиции добавить позже.
     const items = rows.filter(r => r.name.trim()).map(r => ({ name: r.name, qty: num(r.qty), unit: r.unit || 'шт', productId: r.productId || undefined, widthCm: r.widthCm ? num(r.widthCm) : undefined, price: num(r.price), supplierId: r.supplierId || undefined }))
-    if (!items.length) { showMsg('Добавьте хотя бы одну позицию'); return }
     setBusy(true)
     const r: any = await createSpecProject({ name: pName, clientId: pClient || undefined, items })
     setBusy(false)
