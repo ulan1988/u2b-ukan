@@ -10,6 +10,7 @@ import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
+import { listProjectsByClient } from '@/lib/api/refs'
 import { itemName } from '@/lib/itemName'
 
 const PRIMARY = '#d4613a'
@@ -25,9 +26,10 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
   const [specProjectId, setSpecProjectId] = useState(order?.specProjectId || '')
+  const [projectId, setProjectId] = useState(order?.projectId || '')     // проект клиента (projects) — для акта сверки
+  const [clientProjs, setClientProjs] = useState<any[]>([])              // проекты выбранного заказчика
   const [priceCm, setPriceCm] = useState('')
-  // Проекты выбранного заказчика (Автор = clientId). Нет заказчика/проектов — список пуст.
-  const clientProjects = (specProjects || []).filter((sp: any) => cid && sp.clientId === cid)
+  useEffect(() => { if (cid) listProjectsByClient(cid).then(setClientProjs).catch(() => setClientProjs([])); else setClientProjs([]) }, [cid])
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
   const [busy, setBusy] = useState(false)
   const [catalog, setCatalog] = useState(false)
@@ -122,7 +124,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
-        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
+        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, projectId: projectId || undefined, specProjectId: specProjectId || undefined, positions }, uid)
         if (res?.ok && res.data?.id) {
           // Если приём не прошёл — карточка осталась с пустым prod_phase. Она видна во вкладке
           // «Заказы на производство» (leg=1), мастер примет её вручную; молчать нельзя.
@@ -150,17 +152,17 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЗАКАЗЧИК {needCustomer && <span style={{ color: '#c1121c' }}>*</span>}</label>
           <div style={{ borderRadius: 8, boxShadow: needCustomer && !cid ? '0 0 0 1.5px #e6a6a6' : 'none' }}>
-            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => { setCid(c.id); setSpecProjectId(''); const pt = c.priceType || 'retail'; setRows(rs => rs.map(r => { const pr = r.productId ? priceForClient(products.find((x: any) => x.id === r.productId), pt) : 0; return pr > 0 ? { ...r, price: String(pr) } : r })) }} placeholder="— выберите заказчика —" />
+            <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => { setCid(c.id); setSpecProjectId(''); setProjectId(''); const pt = c.priceType || 'retail'; setRows(rs => rs.map(r => { const pr = r.productId ? priceForClient(products.find((x: any) => x.id === r.productId), pt) : 0; return pr > 0 ? { ...r, price: String(pr) } : r })) }} placeholder="— выберите заказчика —" />
           </div>
           {needCustomer && !cid && <div style={{ fontSize: 11, color: '#c1121c', marginTop: 3 }}>Обязательно — без заказчика карточку не создать</div>}
         </div>
         {/* Проекты заказчика — появляются при выборе клиента, если у него есть проекты */}
-        {cid && clientProjects.length > 0 && (
+        {cid && clientProjs.length > 0 && (
           <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>📁 ПРОЕКТ ЗАКАЗЧИКА</label>
-            <select value={specProjectId} onChange={e => setSpecProjectId(e.target.value)} style={{ ...inp, height: 34 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#7a3aaa' }}>🏷 ＋ ДОБАВИТЬ В ПРОЕКТ</label>
+            <select value={projectId} onChange={e => setProjectId(e.target.value)} style={{ ...inp, height: 34, border: '1.5px solid #e6ddf3' }}>
               <option value="">— без проекта —</option>
-              {clientProjects.map((sp: any) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+              {clientProjs.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
         )}

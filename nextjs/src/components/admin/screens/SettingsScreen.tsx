@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listUsers, createUser, editUser, deleteUser, deleteCabinet } from '@/lib/api/auth'
-import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject, listContragents, addContragent, editContragent, listUnits, saveUnits } from '@/lib/api/refs'
+import { fetchRefs, settings as fetchSettings, categoryRules as fetchRules, saveCategoryRule, setDefaultLogist, setDefaultContragent, createProject, createSpecProject, listProjectsByClient, listContragents, addContragent, editContragent, listUnits, saveUnits } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finFavList, finFavSave } from '@/lib/api/finmoney'
 import { CATALOG_CATEGORIES } from '@/lib/nomCatalog'
@@ -384,16 +384,21 @@ function AutofillPanel({ orgId }: { orgId: string }) {
 function ProjectsPanel({ orgId }: { orgId: string }) {
   const [data, setData] = useState<any>({ projects: [], specProjects: [] })
   const [pName, setPName] = useState('')
+  const [pClient, setPClient] = useState('')                       // контрагент, которому создаём проект
+  const [cags, setCags] = useState<any[]>([])
+  const [clientProjects, setClientProjects] = useState<any[]>([])  // проекты выбранного контрагента
   const [spName, setSpName] = useState('')
   const [spItems, setSpItems] = useState<any[]>([{ name: '', qty: '1', unit: 'шт' }])
   const [msg, setMsg] = useState('')
 
   const load = () => fetchSettings(orgId).then(setData)
-  useEffect(() => { load() }, [orgId])
+  useEffect(() => { load(); fetchRefs().then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived))) }, [orgId])
+  const loadClientProjects = (cid: string) => { if (cid) listProjectsByClient(cid).then(setClientProjects); else setClientProjects([]) }
+  useEffect(() => { loadClientProjects(pClient) }, [pClient])
 
   async function addProject() {
-    if (!pName.trim()) return
-    const r = await createProject({ name: pName }); if (r.ok) { setPName(''); setMsg('✅ Проект создан'); load() }
+    if (!pName.trim() || !pClient) { setMsg('Выберите контрагента и введите имя проекта'); return }
+    const r = await createProject({ name: pName, clientId: pClient }); if (r.ok || (r as any).id) { setPName(''); setMsg('✅ Проект создан'); loadClientProjects(pClient) }
   }
   async function addSpec() {
     if (!spName.trim()) return
@@ -404,18 +409,23 @@ function ProjectsPanel({ orgId }: { orgId: string }) {
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }}>Проекты и спецпроекты видны как колонки в Фильтре. {msg}</div>
+      <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }}>Проекты контрагента — по ним идёт акт сверки и тегируются карточки. Производственные проекты — call-off производителя. {msg}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ background: '#fff', borderRadius: 14, padding: 16, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>ПРОЕКТЫ ({(data.projects || []).length})</div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input style={{ ...inp, flex: 1 }} placeholder="Название проекта" value={pName} onChange={e => setPName(e.target.value)} />
-            <button onClick={addProject} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>＋</button>
-          </div>
-          {(data.projects || []).map((p: any) => <div key={p.id} style={{ padding: '7px 0', borderTop: '1px solid #f6f3f0', fontSize: 14 }}>{p.name}</div>)}
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>📁 ПРОЕКТЫ КОНТРАГЕНТА</div>
+          <div style={{ marginBottom: 10 }}><ContragentPicker contragents={cags} value={pClient} onPick={(c: any) => setPClient(c.id)} placeholder="— сначала выберите контрагента —" /></div>
+          {!pClient ? <div style={{ fontSize: 13, color: COLORS.textMuted, padding: '8px 0' }}>Выберите контрагента — затем добавляйте ему проекты.</div>
+            : <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input style={{ ...inp, flex: 1 }} placeholder="Название проекта (напр. Школа Каскасу)" value={pName} onChange={e => setPName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addProject() }} />
+                <button onClick={addProject} disabled={!pName.trim()} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: pName.trim() ? COLORS.primary : COLORS.border, color: '#fff', fontWeight: 700, fontSize: 13, cursor: pName.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>＋ Проект</button>
+              </div>
+              {clientProjects.length === 0 ? <div style={{ fontSize: 13, color: COLORS.textMuted }}>У контрагента проектов нет</div>
+                : clientProjects.map((p: any) => <div key={p.id} style={{ padding: '7px 0', borderTop: '1px solid #f6f3f0', fontSize: 14 }}>📁 {p.name}</div>)}
+            </>}
         </div>
         <div style={{ background: '#fff', borderRadius: 14, padding: 16, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>СПЕЦПРОЕКТЫ ({(data.specProjects || []).length})</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 10 }}>🏭 ПРОИЗВОДСТВЕННЫЕ ПРОЕКТЫ ({(data.specProjects || []).length})</div>
           <input style={{ ...inp, marginBottom: 8 }} placeholder="Название спецпроекта" value={spName} onChange={e => setSpName(e.target.value)} />
           <div style={{ fontSize: 11, fontWeight: 700, color: '#837c72', marginBottom: 6 }}>СМЕТА</div>
           {spItems.map((it, i) => (
