@@ -1,7 +1,7 @@
 // Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
 import { db } from '../lib/db'
 import { orders, orderPositions, procurementLinks, products } from '../db/schema'
-import { and, eq, inArray, desc } from 'drizzle-orm'
+import { and, eq, inArray, desc, isNull } from 'drizzle-orm'
 
 // Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
 export async function saleDemand(orgId: string) {
@@ -50,6 +50,16 @@ export async function purchaseCards(orgId: string) {
 
 export const linksByPurchases = (ids: string[]) =>
   ids.length ? db.select().from(procurementLinks).where(inArray(procurementLinks.purchaseCardId, ids)) : Promise.resolve([] as any[])
+
+// Продажи, у которых связанный закуп ещё НЕ проведён (нет приходной = товар не пришёл).
+// Такие продажи логист не должен видеть в «Продаже» — сначала закуп.
+export async function salesWaitingProcure(saleIds: string[]): Promise<Set<string>> {
+  if (!saleIds.length) return new Set()
+  const rows = await db.select({ id: procurementLinks.saleCardId }).from(procurementLinks)
+    .innerJoin(orders, eq(procurementLinks.purchaseCardId, orders.id))
+    .where(and(inArray(procurementLinks.saleCardId, saleIds), isNull(orders.linkedDocId), eq(orders.isCancelled, false)))
+  return new Set(rows.map(r => r.id))
+}
 
 export const ordersByIds = (ids: string[]) =>
   ids.length ? db.select({ id: orders.id, fromName: orders.fromName, comment: orders.comment }).from(orders).where(inArray(orders.id, ids)) : Promise.resolve([] as any[])

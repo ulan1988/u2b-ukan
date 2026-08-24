@@ -124,7 +124,12 @@ export async function listForLogist(orgId: string, userId: string) {
     if (!byCard.has(r.o.id)) byCard.set(r.o.id, { ...r.o, positions: [] })
     byCard.get(r.o.id).positions.push(r.p)
   }
-  return Array.from(byCard.values())
+  const cards = Array.from(byCard.values())
+  // Продажа не видна логисту, пока связанный закуп не проведён (товар не пришёл).
+  const procRepo = await import('../repositories/procurement.repo')
+  const waiting = await procRepo.salesWaitingProcure(cards.filter(c => c.kind === 'sale').map(c => c.id))
+  for (const c of cards) c.waitingProcure = waiting.has(c.id)
+  return cards
 }
 
 // Прикрепить позиции к списку карточек + резолв имён (логист/поставщик/получатель),
