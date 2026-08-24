@@ -11,7 +11,7 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import FinanceView from '@/components/portals/FinanceView'
-import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage, clientDocs, acceptClientDoc } from '@/lib/api/orders'
+import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage, clientDocs, acceptClientDoc, updateCard } from '@/lib/api/orders'
 import { listProjectsByClient, reconcile } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 import { logout } from '@/lib/api/auth'
@@ -133,6 +133,9 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     { key: 'notifications', icon: '🔔', label: 'Уведомления', badge: unread, blink: unread > 0 },
   ]
 
+  async function attachOrderProject(orderId: string, specProjectId: string) {
+    await updateCard(orderId, { specProjectId }); await load(); setToast(specProjectId ? '📁 Заявка привязана к проекту' : 'Отвязано от проекта')
+  }
   async function saveQty(orderId: string, posId: string, qty: string) {
     setSavingPos(true); await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 })
     setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await load(); setToast('✓ Количество изменено'); setSavingPos(false)
@@ -220,6 +223,15 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
                         {open && (
                           <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f1efec' }} onClick={e => e.stopPropagation()}>
                             {o.comment && <div style={{ fontSize: 14, color: '#5f5952', marginBottom: 10 }}>Комментарий: {o.comment}</div>}
+                            {projects.length > 0 && canEditCard && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#7a3aaa', whiteSpace: 'nowrap' }}>📁 Проект:</span>
+                                <select value={o.specProjectId || ''} onChange={e => attachOrderProject(o.id, e.target.value)} style={{ flex: 1, padding: '7px 9px', borderRadius: 8, border: '1.5px solid #e6ddf3', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                                  <option value="">— без проекта —</option>
+                                  {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              </div>
+                            )}
                             {(o.positions || []).length > 0 && <>
                               <div style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 8 }}>ПОЗИЦИИ</div>
                               {o.positions.map((p: any) => {
