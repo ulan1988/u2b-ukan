@@ -169,6 +169,7 @@ export const documents = pgTable('documents', {
   status: text('status').notNull().default('draft'),      // draft|posted|paid|cancelled
   total: money('total').notNull().default('0'),
   comment: text('comment'),
+  projectId: uuid('project_id'),                          // проект контрагента (для акта сверки по проектам) — без FK, чтобы не циклить
   // Приходная накладная (1С УНФ): вх. документ поставщика, тип операции, скидка, оплата.
   inNumber: text('in_number'),                            // № накладной поставщика
   inDate: date('in_date'),                                // дата накладной поставщика
@@ -231,6 +232,7 @@ export const payments = pgTable('payments', {
   date: date('date').notNull(),
   cashAccountId: uuid('cash_account_id').references(() => cashAccounts.id),
   documentId: uuid('document_id').references(() => documents.id), // что гасит (или null = общий баланс)
+  projectId: uuid('project_id'),                          // проект контрагента (для акта сверки по проектам)
   finRowId: uuid('fin_row_id'),                           // строка «Финанс», породившая платёж (для правки/сторно) — без FK-объявления, чтобы не циклить с finRows
   comment: text('comment'),
   createdBy: uuid('created_by').references(() => users.id),

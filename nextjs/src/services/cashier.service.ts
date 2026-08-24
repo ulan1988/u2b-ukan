@@ -51,14 +51,14 @@ async function hqOrgId(): Promise<string | null> {
 // 2-й уровень долга: головной продаёт конечному заказчику (Машон) → расходная у головного на его имя,
 // заказчик становится должником головного (в его кабинете долг растёт). Товар у головного — из
 // зеркальной приходной (производитель→головной), поэтому расход не уходит в минус по факту.
-async function createHqSaleToClient(clientId: string, positions: any[], cardId: string) {
+async function createHqSaleToClient(clientId: string, positions: any[], cardId: string, projectId?: string | null) {
   const hq = await hqOrgId(); if (!hq || !clientId) return null
   const refsRepo = await import('../repositories/refs.repo')
   const wh = await refsRepo.centralWarehouse(hq); if (!wh) return null
   const lines = positions.filter((p: any) => p.productId).map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт' }))
   if (!lines.length) return null
   const docSvc = await import('./document.service')
-  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
+  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
 }
 
 export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string }
@@ -100,7 +100,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
     await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
     inv = await postOrderInvoice(cardId, actor)
     await repo.updateOrder(cardId, { contactId: endClient as string })   // вернуть заказчика на карточку (для отображения)
-    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId) } catch {} }
+    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).projectId) } catch {} }
   } else {
     inv = await postOrderInvoice(cardId, actor)
   }
@@ -111,9 +111,10 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   // Оплаты нал/каспи в кассу (гасят дебиторку), привязка к документу.
   const acc = await ensureCashAccounts(order.orgId)
   const day = today()
-  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: docId, comment: `Касса ${cardId} · нал` })
-  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: docId, comment: `Касса ${cardId} · каспи` })
-  if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: docId, comment: `Касса ${cardId} · QR` })
+  const projectId = (order as any).projectId || null   // разбивка оплат по проекту контрагента
+  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: docId, projectId, comment: `Касса ${cardId} · нал` })
+  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: docId, projectId, comment: `Касса ${cardId} · каспи` })
+  if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: docId, projectId, comment: `Касса ${cardId} · QR` })
 
   const methods = [cash && 'Наличка', kaspi && 'Каспи', qr && 'QR'].filter(Boolean) as string[]
   const label = debt > 0 ? (methods.length ? 'Частично' : 'Долг') : (methods.length > 1 ? 'Смешанная' : methods[0] || 'Наличка')

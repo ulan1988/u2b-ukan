@@ -228,12 +228,15 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
               <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', maxWidth: 1040 }}>
                 {Array.isArray(data.byProject) && data.byProject.length > 0 && (
                   <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1efec', background: '#fbf9ff' }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 8 }}>📁 ПО ПРОЕКТАМ (оборот)</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 8 }}>📁 ПО ПРОЕКТАМ</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {data.byProject.map((p: any, i: number) => (
-                        <span key={i} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, background: '#fff', border: '1.5px solid #e6ddf3', borderRadius: 20, padding: '5px 12px', fontSize: 13 }}>
-                          <b>{p.name}</b><span style={{ color: '#7a3aaa', fontWeight: 800 }}>{fmtMoney(Number(p.total))}</span><span style={{ color: '#9a938a', fontSize: 11 }}>· {p.cnt} док</span>
-                        </span>
+                        <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 12, background: '#fff', border: '1.5px solid #e6ddf3', borderRadius: 8, padding: '8px 12px', fontSize: 13, flexWrap: 'wrap' }}>
+                          <b style={{ flex: 1, minWidth: 130 }}>{p.name}</b>
+                          <span style={{ color: '#5f5952' }}>оборот <b style={{ color: '#26231f' }}>{fmtMoney(Number(p.total))}</b></span>
+                          <span style={{ color: '#5f5952' }}>оплачено <b style={{ color: '#2e8a5e' }}>{fmtMoney(Number(p.paid))}</b></span>
+                          <span style={{ color: Number(p.balance) > 0 ? '#c1121c' : '#2e8a5e', fontWeight: 800 }}>долг {fmtMoney(Number(p.balance))}</span>
+                        </div>
                       ))}
                     </div>
                   </div>

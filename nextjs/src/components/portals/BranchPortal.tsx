@@ -15,7 +15,7 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase } from '@/lib/api/orders'
-import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet } from '@/lib/api/refs'
+import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet, listProjectsByClient } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
@@ -57,6 +57,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [carveFor, setCarveFor] = useState<string | null>(null)   // проект в режиме «Создать карточку»
   const [sheets, setSheets] = useState<any[]>([]); const [takeColor, setTakeColor] = useState(''); const [takeQty, setTakeQty] = useState('')
   const [drawerId, setDrawerId] = useState<string | null>(null)   // шторка позиций заказа мастера
+  const [clientProjs, setClientProjs] = useState<any[]>([])       // проекты заказчика открытой карточки (для тега)
   const [sel, setSel] = useState<Record<string, boolean>>({})     // выбор позиций в шторке для частичной отправки
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })   // касса мастера
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
@@ -99,6 +100,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Кабинет-передатчик листов: остатки по цветам + списание «взял N».
   const loadSheets = useCallback(async () => { setSheets(await sheetsByColor(user.orgId)) }, [user.orgId])
   useEffect(() => { if (tab === 'sheets') loadSheets() }, [tab, loadSheets])
+  // Проекты заказчика открытой карточки — для тега клиентского проекта.
+  useEffect(() => {
+    if (!drawerId) { setClientProjs([]); return }
+    const o = orders.find((x: any) => x.id === drawerId)
+    if (o?.contactId) listProjectsByClient(o.contactId).then(setClientProjs).catch(() => setClientProjs([]))
+    else setClientProjs([])
+  }, [drawerId]) // eslint-disable-line react-hooks/exhaustive-deps
   const sheetQtyOf = (code: string) => { const s = sheets.find((x: any) => (x.color || '') === code); return s ? Number(s.glyan) || 0 : 0 }
   async function takeLeaf() {
     const n = Number((takeQty || '').replace(',', '.')) || 0
@@ -167,6 +175,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   // Ф-B: действия карточки — проект, сплит (выбранные → новая карточка).
   async function attachProject(id: string, specProjectId: string) { const r = await updateCard(id, { specProjectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(specProjectId ? '📁 Добавлено в проект' : 'Отвязано от проекта') } else showMsg('⚠ Не удалось') }
+  // Тег клиентского проекта (projects, по заказчику) — попадает в акт сверки по проектам.
+  async function attachClientProject(id: string, projectId: string) { const r = await updateCard(id, { projectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(projectId ? '🏷 Проект клиента задан' : 'Проект снят') } else showMsg('⚠ Не удалось') }
   async function doSplit(id: string, posIds: string[]) {
     const r = await splitCard(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setSel({}); setDrawerId(null); await load(); showMsg(`✓ Создана карточка ${r.id || ''}`)
@@ -361,6 +371,15 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     {specProjects.map((sp: any) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
                   </select>
                 </div>
+                {o.contactId && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', width: 54, flexShrink: 0 }} title="Проект клиента — для акта сверки по проектам">🏷</span>
+                    <select value={o.projectId || ''} onChange={e => attachClientProject(o.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6ddf3', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                      <option value="">— проект клиента —</option>
+                      {clientProjs.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
               <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 14 }}>

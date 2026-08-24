@@ -38,7 +38,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,    // id карточки-основания (ЗП-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
-    date, status: 'posted', total: String(total), comment: input.comment || '',
+    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null,
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves)
@@ -156,7 +156,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
-    date, status: 'posted', total: String(total), comment: input.comment || '',
+    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null,
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves, links)
@@ -199,7 +199,7 @@ export async function createReturn(input: CreateSaleInput & { sourceOrderId?: st
     id: docId, orgId: input.orgId, type: kind, number,
     sourceOrderId: srcCard || null,   // связь возврата с исходной карточкой/накладной (для «Связок»)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
-    date, status: 'posted', total: String(total), comment: input.comment || '',
+    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null,
   }
   await docRepo.insertDocumentPosting(doc, lines, moves)
   // Уведомить кабинет контрагента (поставщик/клиент), если он есть, + админов.

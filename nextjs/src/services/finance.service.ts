@@ -64,12 +64,18 @@ export async function contragentLedger(orgId: string, contragentId: string, open
 // «−» (уменьшение): приход от него, возврат от клиента, оплата от клиента.
 // Начальный остаток на дату `from` = нач.остаток справочника + сумма движений ДО from.
 export async function contragentReconciliation(orgId: string, contragentId: string, from?: string, to?: string) {
-  const [docs, pays, opening0, byProject] = await Promise.all([
+  const [docs, pays, opening0, projTurn, projPaid] = await Promise.all([
     finRepo.contragentDocs(orgId, contragentId),
     finRepo.contragentPayments(orgId, contragentId),
     finRepo.contragentOpening(orgId, contragentId),
     finRepo.contragentProjectTotals(orgId, contragentId),
+    finRepo.contragentProjectPayments(orgId, contragentId),
   ])
+  // Свести оборот и оплаты по проектам: balance = оборот − оплачено.
+  const projMap = new Map<string, { projectId: string; name: string; total: number; paid: number; cnt: number }>()
+  for (const t of projTurn) projMap.set(t.projectId, { projectId: t.projectId, name: t.name, total: Number(t.total) || 0, paid: 0, cnt: Number(t.cnt) || 0 })
+  for (const p of projPaid) { const e = projMap.get(p.projectId) || { projectId: p.projectId, name: p.name, total: 0, paid: 0, cnt: 0 }; e.paid = Number(p.paid) || 0; projMap.set(p.projectId, e) }
+  const byProject = Array.from(projMap.values()).map(e => ({ ...e, balance: e.total - e.paid })).sort((a, b) => b.total - a.total)
   const docTitle: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
   const inc = (t: string) => t === 'sale' || t === 'return_out'
   const mv = [
