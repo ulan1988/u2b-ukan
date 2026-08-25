@@ -61,7 +61,7 @@ export default function BookkeepingScreen({ orders, orgId, onAction, onReload, o
       {/* ── КАРТОЧКИ ── */}
       {tab === 'cards' && (
         cards.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952', fontSize: 14 }}>Нет карточек</div>
-          : <div style={{ maxWidth: 680 }}>{cards.map(o => (
+          : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 6 }}>{cards.map(o => (
               <div key={o.id}>
                 <OrderCard order={o} actions={[]} onAction={onAction} onOpen={onOpen} />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: -4, marginBottom: 12, paddingRight: 4, flexWrap: 'wrap' }}>
@@ -248,7 +248,7 @@ function FinancePanel({ fin }: { fin: any }) {
   if (!fin) return <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка финансов…</div>
   const cs = fin.contragents || []
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         <KpiCard label="Дебиторка (нам должны)" value={fin.receivable} color="#2e8a5e" />
         <KpiCard label="Кредиторка (мы должны)" value={fin.payable} color="#b03020" />

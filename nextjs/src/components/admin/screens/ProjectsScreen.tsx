@@ -309,7 +309,7 @@ function ReconcileDrawer({ orgId, ids, accounts, onClose, onChanged, showMsg }: 
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.3)', zIndex: 9998, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(500px,100%)', height: '100%', background: '#faf8f6', overflowY: 'auto', padding: 22, boxShadow: '-8px 0 32px rgba(0,0,0,.18)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(760px,100%)', height: '100%', background: '#faf8f6', overflowY: 'auto', padding: 26, boxShadow: '-8px 0 32px rgba(0,0,0,.18)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 18 }}>📋 Акт сверки</div>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>{ids.length} проект(а)</span>

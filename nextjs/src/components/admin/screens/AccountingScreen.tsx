@@ -82,7 +82,7 @@ export default function AccountingScreen({ orders, orgId, onAction, onOpen }: {
         : view === 'kanban'
           // Авто-канбан по заказчику (как в бывшей вкладке Входящие→К учёту)
           ? <KanbanColumns cards={list} groupBy={o => o.fromName} renderCard={o => <OrderCard key={o.id} order={o} actions={actionsFor(o)} onAction={onAction} onOpen={onOpen} />} />
-          : <div style={{ maxWidth: 680 }}>{list.map(o => <OrderCard key={o.id} order={o} actions={actionsFor(o)} onAction={onAction} onOpen={onOpen} />)}</div>}
+          : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>{list.map(o => <OrderCard key={o.id} order={o} actions={actionsFor(o)} onAction={onAction} onOpen={onOpen} />)}</div>}
     </div>
   )
 }

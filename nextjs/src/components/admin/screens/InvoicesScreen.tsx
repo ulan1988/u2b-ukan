@@ -36,7 +36,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div>
       <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 6 }}>{title}</div>
       <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>
         Из экрана «К учёту»: {kind === 'in' ? 'закуп (ЗП) и возвраты → приход на склад' : 'продажи → списание со склада'}.
