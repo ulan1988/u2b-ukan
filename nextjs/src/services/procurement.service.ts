@@ -148,6 +148,14 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   // Под-id позиций как в системе Улкана: {cardId}-P{n}, сквозной (продолжаем нумерацию
   // от уже накопленных в черновике позиций — черновик закупа накапливается).
   const base = await countPositions(draft!.id)
+  // Поставщики из правил категорий → plечо позиции (филиал-поставщик = leg 1, падает в кабинет).
+  const ruleSuppliers = items.map(it => {
+    const prod = byName.get(it.name.trim().toLowerCase())
+    const key = prod ? matchCategoryKey(prod.group || '', prod.cat || '') : ''
+    return key ? (ruleByCat[key]?.supplierId || null) : null
+  })
+  const { legForSuppliers } = await import('../lib/legDetect')
+  const legMap = await legForSuppliers(ruleSuppliers)
   const posValues = items.map((it, idx) => {
     const prod = byName.get(it.name.trim().toLowerCase())
     let supplierId: string | null = null, respUserId: string | null = null
@@ -163,7 +171,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
       id: `${draft!.id}-P${base + idx + 1}`, cardId: draft!.id,
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,
       qty: String(it.total), unit: it.unit || 'шт', price: String(isIzdelie ? 0 : (prod?.priceIn ?? 0)),
-      supplierId, respUserId, status: 'В работе',
+      supplierId, respUserId, leg: supplierId ? (legMap[supplierId] ?? 2) : 2, status: 'В работе',
     }
   })
   await repo.insertPositions(posValues)

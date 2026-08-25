@@ -171,8 +171,10 @@ export async function listOrders(orgId: string, screen?: string) {
 // своей организации. Так поставщик-филиал получает карточку к себе.
 // target — филиал «от имени» (resolveTarget): {name, orgId}. Так админ видит кабинет филиала
 // именно как этот филиал (его орг + его карточки), а не под своей HQ-сессией.
-export async function listForBranch(target: { name: string; orgId: string }) {
+export async function listForBranch(target: { name: string; orgId: string; contragentId?: string | null }) {
   const ids = new Set<string>(await repo.orderIdsBySupplierName(target.name))
+  // Карточки, где поставщик = контрагент-владелец кабинета (надёжнее имени).
+  if (target.contragentId) for (const id of await repo.orderIdsBySupplierId(target.contragentId)) ids.add(id)
   const { db } = await import('../lib/db')
   const { organizations } = await import('../db/schema')
   const { eq } = await import('drizzle-orm')

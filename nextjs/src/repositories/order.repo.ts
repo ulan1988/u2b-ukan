@@ -13,6 +13,14 @@ export const orderIdsBySupplierName = async (name: string) => {
     .where(and(eq(orders.isCancelled, false), sql`lower(trim(${contragents.name})) = ${nm}`))
   return Array.from(new Set(rows.map(r => r.id)))
 }
+// id карточек, где есть позиция с поставщиком = данный контрагент (владелец кабинета).
+export const orderIdsBySupplierId = async (contragentId: string) => {
+  if (!contragentId) return [] as string[]
+  const rows = await db.select({ id: orderPositions.cardId }).from(orderPositions)
+    .innerJoin(orders, eq(orders.id, orderPositions.cardId))
+    .where(and(eq(orders.isCancelled, false), eq(orderPositions.supplierId, contragentId)))
+  return Array.from(new Set(rows.map(r => r.id)))
+}
 export const ordersByIds = (ids: string[]) =>
   ids.length ? db.select().from(orders).where(inArray(orders.id, ids)).orderBy(desc(orders.createdAt)) : Promise.resolve([] as any[])
 
