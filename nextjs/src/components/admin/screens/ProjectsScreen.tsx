@@ -309,7 +309,7 @@ function ReconcileDrawer({ orgId, ids, accounts, onClose, onChanged, showMsg }: 
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.3)', zIndex: 9998, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(760px,100%)', height: '100%', background: '#faf8f6', overflowY: 'auto', padding: 26, boxShadow: '-8px 0 32px rgba(0,0,0,.18)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(1120px,96vw)', height: '100%', background: '#faf8f6', overflowY: 'auto', padding: 28, boxShadow: '-8px 0 32px rgba(0,0,0,.18)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 18 }}>📋 Акт сверки</div>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>{ids.length} проект(а)</span>
@@ -328,9 +328,10 @@ function ReconcileDrawer({ orgId, ids, accounts, onClose, onChanged, showMsg }: 
               </div>
             </div>
 
-            {/* По каждому проекту */}
+            {/* По каждому проекту — сеткой на всю ширину */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 10, marginBottom: 14 }}>
             {data.projects.map((p: any) => (
-              <div key={p.id} style={{ background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14, marginBottom: 10 }}>
+              <div key={p.id} style={{ background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <b style={{ fontSize: 14 }}>{p.name}</b>
                   {p.status === 'closed' && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#6b655b', background: '#efece8', padding: '2px 8px', borderRadius: 20 }}>закрыт</span>}
@@ -361,6 +362,7 @@ function ReconcileDrawer({ orgId, ids, accounts, onClose, onChanged, showMsg }: 
                 )}
               </div>
             ))}
+            </div>
 
             {/* Аванс клиента + распределение */}
             {data.multiClient ? <div style={{ fontSize: 12.5, color: '#8a6f00', background: '#fbf3d8', borderRadius: 10, padding: 12, marginTop: 6 }}>Выбраны проекты разных заказчиков — распределение аванса доступно, когда все проекты одного клиента.</div>
