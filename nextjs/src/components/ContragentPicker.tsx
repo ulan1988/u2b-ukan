@@ -13,7 +13,7 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const btnRef = useRef<HTMLButtonElement>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxH: number } | null>(null)
   const selected = contragents.find(c => c.id === value)
 
   const list = useMemo(() => {
@@ -36,7 +36,10 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
     const r = btnRef.current?.getBoundingClientRect(); if (!r) return
     const width = Math.max(r.width, 280)
     const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8))
-    setPos({ top: r.bottom + 4, left, width })
+    const spaceBelow = window.innerHeight - r.bottom - 8, spaceAbove = r.top - 8
+    // Мало места снизу (нижние строки) → открываем вверх; высоту ограничиваем доступным местом.
+    if (spaceBelow < 260 && spaceAbove > spaceBelow) setPos({ bottom: window.innerHeight - r.top + 4, left, width, maxH: Math.min(spaceAbove, window.innerHeight * 0.6) })
+    else setPos({ top: r.bottom + 4, left, width, maxH: Math.min(spaceBelow, window.innerHeight * 0.6) })
   }
   useLayoutEffect(() => {
     if (!open) return
@@ -58,7 +61,7 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
       {open && pos && createPortal(
         <>
           <div onClick={() => { setOpen(false); setQ('') }} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
-          <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.2)', border: '1.5px solid #e6e2dc', display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
+          <div style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width, zIndex: 9999, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.2)', border: '1.5px solid #e6e2dc', display: 'flex', flexDirection: 'column', maxHeight: pos.maxH }}>
             <div style={{ padding: 10, borderBottom: '1px solid #f1efec' }}>
               <input autoFocus style={inp} placeholder="Начните вводить имя…" value={q} onChange={e => setQ(e.target.value)} />
             </div>
