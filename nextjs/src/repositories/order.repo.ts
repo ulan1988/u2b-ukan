@@ -3,22 +3,24 @@ import { db } from '../lib/db'
 import { orders, orderPositions, orderHistory, products, contragents } from '../db/schema'
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
 
-// id карточек, где есть позиция с поставщиком-филиалом (совпадение имени контрагента).
+// id карточек-ПРОДАЖ, где есть позиция с поставщиком-филиалом (совпадение имени контрагента).
+// Только kind='sale' — головные ЗП-закупы в кабинет НЕ тянем (у них нет заказчика и они
+// дублируют продажу → мастер видел два заказа, один без заказчика).
 export const orderIdsBySupplierName = async (name: string) => {
   const nm = (name || '').trim().toLowerCase()
   if (!nm) return [] as string[]
   const rows = await db.select({ id: orders.id }).from(orders)
     .innerJoin(orderPositions, eq(orderPositions.cardId, orders.id))
     .innerJoin(contragents, eq(orderPositions.supplierId, contragents.id))
-    .where(and(eq(orders.isCancelled, false), sql`lower(trim(${contragents.name})) = ${nm}`))
+    .where(and(eq(orders.isCancelled, false), eq(orders.kind, 'sale'), sql`lower(trim(${contragents.name})) = ${nm}`))
   return Array.from(new Set(rows.map(r => r.id)))
 }
-// id карточек, где есть позиция с поставщиком = данный контрагент (владелец кабинета).
+// id карточек-ПРОДАЖ, где есть позиция с поставщиком = данный контрагент (владелец кабинета).
 export const orderIdsBySupplierId = async (contragentId: string) => {
   if (!contragentId) return [] as string[]
   const rows = await db.select({ id: orderPositions.cardId }).from(orderPositions)
     .innerJoin(orders, eq(orders.id, orderPositions.cardId))
-    .where(and(eq(orders.isCancelled, false), eq(orderPositions.supplierId, contragentId)))
+    .where(and(eq(orders.isCancelled, false), eq(orders.kind, 'sale'), eq(orderPositions.supplierId, contragentId)))
   return Array.from(new Set(rows.map(r => r.id)))
 }
 export const ordersByIds = (ids: string[]) =>
