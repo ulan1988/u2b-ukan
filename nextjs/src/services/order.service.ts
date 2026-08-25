@@ -210,21 +210,25 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   const positions = await repo.positionsByCard(cardId)
   const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
   const [order] = await repo.getOrder(cardId)
-  // Все доставлены → карточка едет к учёту (incoming+toacc). Откат авто-доставленной
-  // карточки возвращает её в Исходящие (как updatePos в Улкане).
-  await repo.updateOrder(cardId, allDelivered
-    ? { screen: 'incoming', delivered: new Date(), toacc: true, status: 'Доставлено' }
-    : { delivered: null, toacc: false, status: 'В работе',
-        ...(order && order.screen === 'incoming' && order.toacc ? { screen: 'outgoing' } : {}) })
   // При доставке — авто-строка в смену логиста (собирается «Доставлено» → отчёт).
   if (status === 'Доставлено' && order) {
     const delivered = posId ? positions.filter(p => p.id === posId) : positions
     for (const p of delivered) { try { await addDeliveryToShift(order.orgId, p, order) } catch {} }
   }
-  // Всё доставлено → авто-проведение накладной (приходная/расходная) с меткой «не проверено».
-  // Если товары без 1С-productId — проведение не пройдёт, карточка останется «К учёту» (ручной разбор).
-  if (allDelivered && order && !order.linkedDocId) {
-    try { const { postOrderInvoice } = await import('./invoice.service'); await postOrderInvoice(cardId, actor) } catch {}
+  if (allDelivered) {
+    // Как в 1С: на полной доставке сразу проводим документ (приходная/расходная).
+    // Успех → postOrderInvoice сам ставит screen='bookkeeping' (карточка проведена, в Бухгалтерии).
+    // Стадии «К учёту» в нормальном потоке нет.
+    let posted = !!(order && order.linkedDocId)
+    if (order && !order.linkedDocId) {
+      try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor); posted = !!(r && r.ok) } catch {}
+    }
+    // Провести не удалось (нет 1С-товара/поставщика) → карточка видна в «К учёту» как мост-просмотр.
+    if (!posted) await repo.updateOrder(cardId, { screen: 'accounting', status: 'К учёту', toacc: true, delivered: new Date() })
+  } else {
+    // Откат авто-доставленной карточки — обратно в Исходящие.
+    await repo.updateOrder(cardId, { delivered: null, toacc: false, status: 'В работе',
+      ...(order && order.screen === 'incoming' && order.toacc ? { screen: 'outgoing' } : {}) })
   }
   await repo.insertHistory({
     cardId, action: 'updatePos',

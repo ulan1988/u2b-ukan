@@ -5,26 +5,18 @@ import KanbanColumns from '@/components/admin/KanbanColumns'
 import { COLORS } from '@/lib/colors'
 import { settings as fetchSettings } from '@/lib/api/refs'
 
-// «К учёту» — единый экран (объединяет бывшую вкладку Входящие→К учёту и раздел
-// accounting). Карточки, готовые к учёту (incoming+toacc) и уже в учёте (accounting).
-// Связки сохранены: sendAcc / postAcc / returnToIncoming / cancel по состоянию карточки.
+// «К учёту» — МОСТ-ПРОСМОТР (не стадия воркфлоу). Как в 1С: документ проводится сразу
+// на доставке, карточка уходит в Бухгалтерию. Сюда попадают только те, что авто-провести
+// НЕ удалось (нет 1С-товара/поставщика) — их видно и можно провести вручную кнопкой «Провести».
 // Сверху фильтры: дата, поставщик, поисковое слово.
 const sel: React.CSSProperties = { padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 13, outline: 'none' }
 
-// Действия по состоянию карточки (все связки экрана «К учёту»).
+// Мост: единственное действие — «Провести» (проводит накладную → Бухгалтерия). Плюс отмена.
 function actionsFor(o: any): CardAction[] {
   if (o.isCancelled) return [{ action: 'restore', label: 'Восстановить' }]
-  const postponeBtn: CardAction = { action: 'postpone', label: o.postponed ? 'Снять откл.' : 'Отложить' }
-  if (o.screen === 'accounting') return [
-    { action: 'postAcc', label: 'В бухгалтерию', variant: 'primary' },
-    { action: 'returnToIncoming', label: 'Вернуть' },
-    postponeBtn,
-    { action: 'cancel', label: 'Отмена', variant: 'danger' },
-  ]
-  // готова к учёту (incoming + toacc)
   return [
-    { action: 'sendAcc', label: 'В учёт', variant: 'primary' },
-    postponeBtn,
+    { action: 'invoice', label: o.kind === 'purchase' ? 'Провести приход' : 'Провести расход', variant: 'primary' },
+    { action: 'postpone', label: o.postponed ? 'Снять откл.' : 'Отложить' },
     { action: 'cancel', label: 'Отмена', variant: 'danger' },
   ]
 }
@@ -54,17 +46,14 @@ export default function AccountingScreen({ orders, orgId, onAction, onOpen }: {
     return true
   }), [base, supplierId, q, dateFrom, dateTo])
 
-  const readyN = base.filter(o => o.screen === 'incoming').length
-  const inAccN = base.filter(o => o.screen === 'accounting').length
-
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: 20 }}>К учёту</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <span style={{ background: '#fff0ea', color: '#c0532a', borderRadius: 8, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>Готовы {readyN}</span>
-          <span style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 8, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>В учёте {inAccN}</span>
-        </div>
+        <span style={{ background: '#fff0ea', color: '#c0532a', borderRadius: 8, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>Не проведено: {base.length}</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 14 }}>
+        Мост-просмотр. Документы проводятся сразу на доставке — сюда падают только те, что авто-провести не удалось (нет 1С-товара/поставщика). Нажмите «Провести» → карточка уйдёт в Бухгалтерию.
       </div>
 
       {/* Фильтры: поиск, поставщик, даты */}

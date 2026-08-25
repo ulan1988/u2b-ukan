@@ -187,6 +187,13 @@ export const TRANSITIONS: Record<string, Transition> = {
 }
 
 export async function dispatchAction(id: string, action: string, actor: Session | null | undefined, payload: Record<string, any>) {
+  // «Провести» из «К учёту» (мост): напрямую проводим накладную → карточка в Бухгалтерию.
+  if (action === 'invoice') {
+    const { postOrderInvoice } = await import('./invoice.service')
+    try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
+    const r = await postOrderInvoice(id, actor)
+    return r.ok ? { ok: true as const } : { ok: false as const, error: r.error }
+  }
   const def = TRANSITIONS[action]
   if (!def) return { ok: false as const, error: 'Неизвестное действие' }
 
@@ -209,10 +216,11 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (action === 'sendAcc' || action === 'cancel') {
     try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
   }
-  // Массовая доставка: все позиции → «Доставлено», резерв снят.
+  // Массовая доставка: все позиции → «Доставлено», резерв снят, документ проводится сразу (1С).
   if (action === 'markAll') {
     await repo.updatePositionsByCard(id, { status: 'Доставлено' })
     try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
+    if (!order.linkedDocId) { try { const { postOrderInvoice } = await import('./invoice.service'); await postOrderInvoice(id, actor) } catch {} }
   }
   // Возврат из Исходящих: сброс позиций (кроме плеча филиала).
   if (action === 'returnOut' || action === 'returnToReception') {
