@@ -20,6 +20,7 @@ import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 import SpecProjectWorkbench from '@/components/portals/SpecProjectWorkbench'
+import ContragentPicker from '@/components/ContragentPicker'
 
 const PRIMARY = '#d4613a', BG = '#f1efec'
 type Tab = 'production' | 'spec' | 'sheets' | 'produce' | 'out' | 'new' | 'finance' | 'shift' | 'profit' | 'docs'
@@ -175,6 +176,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   // Ф-B: действия карточки — проект, сплит (выбранные → новая карточка).
   async function attachProject(id: string, specProjectId: string) { const r = await updateCard(id, { specProjectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(specProjectId ? '📁 Добавлено в проект' : 'Отвязано от проекта') } else showMsg('⚠ Не удалось') }
+  async function attachCustomer(id: string, contactId: string) {
+    const r = await updateCard(id, { contactId })
+    if (!r.ok) { showMsg('⚠ Не удалось'); return }
+    await refreshDetail(id); await load()
+    if (contactId) { listProjectsByClient(contactId).then(setClientProjs).catch(() => setClientProjs([])); showMsg('👤 Заказчик назначен') }
+    else { setClientProjs([]); showMsg('Заказчик убран') }
+  }
   async function doSplit(id: string, posIds: string[]) {
     const r = await splitCard(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setSel({}); setDrawerId(null); await load(); showMsg(`✓ Создана карточка ${r.id || ''}`)
@@ -374,9 +382,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                 </div>
               </div>
               <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 14 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ЗАКАЗЧИК:</span>
-                  <b>{custName(o) || '—'}</b>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', flexShrink: 0 }}>ЗАКАЗЧИК</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <ContragentPicker contragents={cags} value={o.contactId || ''} onPick={(c: any) => attachCustomer(o.id, c.id)} placeholder="— выберите заказчика —" />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ПОЗИЦИИ · {pos.length}</span>
