@@ -35,11 +35,23 @@ export async function specProjectsWithRemaining(orgId: string) {
     const d = drawn[it.id] || 0
     ;(byProject[it.specProjectId] ||= []).push({ ...it, drawn: d, remaining: Math.max(0, Number(it.qty) - d) })
   }
+  // Финансы по каждому проекту: оборот (клиенту) − оплачено (прямые + распред. аванс) = долг.
+  const ids = specs.map(s => s.id)
+  const finRepo = await import('../repositories/finance.repo')
+  const [turn, direct, alloc] = await Promise.all([
+    finRepo.projectsTurnover(orgId, ids), finRepo.projectsDirectPaid(orgId, ids), finRepo.projectsAllocated(orgId, ids),
+  ])
+  const tBy = new Map(turn.map(t => [t.projectId, Number(t.total) || 0]))
+  const dBy = new Map(direct.map(d => [d.projectId, Number(d.paid) || 0]))
+  const aBy = new Map(alloc.map(a => [a.projectId, Number(a.alloc) || 0]))
   return specs.map((s: any) => {
     const its = byProject[s.id] || []
     const totalQty = its.reduce((a, i) => a + Number(i.qty), 0)
     const totalDrawn = its.reduce((a, i) => a + i.drawn, 0)
-    return { ...s, items: its, totalQty, totalDrawn, remaining: Math.max(0, totalQty - totalDrawn) }
+    const total = tBy.get(s.id) || 0
+    const paid = (dBy.get(s.id) || 0) + (aBy.get(s.id) || 0)
+    return { ...s, items: its, totalQty, totalDrawn, remaining: Math.max(0, totalQty - totalDrawn),
+      fin: { total, paid, debt: total - paid } }
   })
 }
 

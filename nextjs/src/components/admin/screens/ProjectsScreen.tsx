@@ -234,7 +234,18 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
                     style={{ position: 'absolute', top: 12, right: 12, width: 22, height: 22, borderRadius: 6, cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : '#fff', border: on ? 'none' : `1.5px solid ${COLORS.border}` }}>{on ? '✓' : ''}</div>
                   <div onClick={() => openDetail(p.id)} style={{ cursor: 'pointer' }}>
                     <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: COLORS.text, paddingRight: 28 }}>{p.name} {closed && <span style={{ fontSize: 11, fontWeight: 700, color: '#6b655b', background: '#efece8', padding: '2px 8px', borderRadius: 20 }}>закрыт</span>}</div>
-                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>{p.clientId ? '👤 ' + cagName(p.clientId) : 'без заказчика'} · {p.items.length} поз.</div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>{p.clientId ? '👤 ' + cagName(p.clientId) : 'без заказчика'} · {p.items.length} поз.</div>
+                    {(() => { const f = p.fin || { total: 0, paid: 0, debt: 0 }; const mono = "'JetBrains Mono',monospace"
+                      return (
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                          {[['Оборот', f.total, COLORS.text, '#f4efe8'], ['Оплата', f.paid, '#2e8a5e', '#e8f5ee'], [f.debt >= 0 ? 'Долг' : 'Аванс', Math.abs(f.debt), f.debt > 0.01 ? '#c0392b' : '#2e8a5e', f.debt > 0.01 ? '#fbe9e4' : '#e8f5ee']].map(([l, v, c, bg]: any) => (
+                            <div key={l} style={{ flex: 1, background: bg, borderRadius: 9, padding: '7px 9px' }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.03em', color: COLORS.textMuted, textTransform: 'uppercase' }}>{l}</div>
+                              <div style={{ fontFamily: mono, fontWeight: 800, fontSize: 15, color: c, lineHeight: 1.15 }}>{money(v)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) })()}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ flex: 1, height: 6, background: COLORS.border, borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), borderRadius: 3 }} /></div>
                       <span style={{ fontSize: 12, fontWeight: 700, color: barColor(pct) }}>{pct}%</span>
