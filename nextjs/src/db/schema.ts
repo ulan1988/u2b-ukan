@@ -521,3 +521,17 @@ export const finFavorites = pgTable('fin_favorites', {
   defaultAccountId: uuid('default_account_id').references(() => cashAccounts.id),  // счёт по умолчанию (автоподстановка)
   sortOrder: integer('sort_order').notNull().default(0),
 }, t => ({ byOrg: index('fin_favorites_org_idx').on(t.orgId) }))
+
+// Распределение аванса клиента по проектам (акт сверки по проектам, закрытие).
+// Аванс = оплата клиента без проекта/документа (payments: in, project_id null, document_id null).
+// Строка распределения переносит часть аванса на проект. «Оплачено по проекту» =
+// прямые payments.project_id + Σ этих распределений. Свободный аванс = Σ авансов − Σ распределений.
+export const projectAlloc = pgTable('project_alloc', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  clientId: uuid('client_id').notNull().references(() => contragents.id),
+  projectId: uuid('project_id').notNull().references(() => specProjects.id, { onDelete: 'cascade' }),
+  amount: money('amount').notNull().default('0'),
+  comment: text('comment').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byClient: index('project_alloc_client_idx').on(t.orgId, t.clientId) }))

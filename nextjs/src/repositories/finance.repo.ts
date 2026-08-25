@@ -131,6 +131,84 @@ export async function contragentProjectPayments(orgId: string, contragentId: str
     group by pr.id, pr.name` as unknown as Promise<Array<{ projectId: string; name: string; paid: number }>>
 }
 
+// ─── Акт сверки ПО ПРОЕКТАМ (выбор нескольких + распределение аванса) ───────────
+// Оборот по выбранным проектам (расходные − возвраты), по каждому проекту.
+export async function projectsTurnover(orgId: string, ids: string[]) {
+  if (!ids.length) return [] as Array<{ projectId: string; total: number; cnt: number }>
+  // Оборот = документы клиенту проекта (d.contragent_id = pr.client_id) — так зеркальный
+  // закуп филиала (контрагент-мост) в оборот не попадает и не обнуляет продажу.
+  return sqlClient`
+    select pr.id::text as "projectId",
+           sum(case when d.type in ('sale','return_out') then d.total::float else -d.total::float end) as total,
+           count(*)::int as cnt
+    from documents d
+    left join orders o on o.id = d.source_order_id
+    join spec_projects pr on pr.id = coalesce(d.project_id, o.spec_project_id)
+    where d.org_id=${orgId} and d.status<>'cancelled'
+      and d.type in ('sale','purchase','return_in','return_out')
+      and pr.id = any(${ids}::uuid[]) and d.contragent_id = pr.client_id
+    group by pr.id` as unknown as Promise<Array<{ projectId: string; total: number; cnt: number }>>
+}
+// Прямые оплаты, привязанные к проекту (payments.project_id).
+export async function projectsDirectPaid(orgId: string, ids: string[]) {
+  if (!ids.length) return [] as Array<{ projectId: string; paid: number }>
+  return sqlClient`
+    select p.project_id::text as "projectId",
+           sum(case when p.direction='in' then p.amount::float else -p.amount::float end) as paid
+    from payments p
+    where p.org_id=${orgId} and p.project_id = any(${ids}::uuid[])
+    group by p.project_id` as unknown as Promise<Array<{ projectId: string; paid: number }>>
+}
+// Распределённый аванс по проектам (project_alloc).
+export async function projectsAllocated(orgId: string, ids: string[]) {
+  if (!ids.length) return [] as Array<{ projectId: string; alloc: number }>
+  return sqlClient`
+    select a.project_id::text as "projectId", sum(a.amount::float) as alloc
+    from project_alloc a
+    where a.org_id=${orgId} and a.project_id = any(${ids}::uuid[])
+    group by a.project_id` as unknown as Promise<Array<{ projectId: string; alloc: number }>>
+}
+// Документы выбранных проектов — для детализации в акте.
+export async function projectsDocs(orgId: string, ids: string[]) {
+  if (!ids.length) return [] as Array<any>
+  return sqlClient`
+    select pr.id::text as "projectId",
+           d.id, d.number, d.type, d.date, d.total::float as total
+    from documents d
+    left join orders o on o.id = d.source_order_id
+    join spec_projects pr on pr.id = coalesce(d.project_id, o.spec_project_id)
+    where d.org_id=${orgId} and d.status<>'cancelled'
+      and d.type in ('sale','purchase','return_in','return_out')
+      and pr.id = any(${ids}::uuid[]) and d.contragent_id = pr.client_id
+    order by d.date` as unknown as Promise<Array<any>>
+}
+// Свободный аванс клиента: оплаты in без проекта и без документа (общий кредит) − распределённое.
+export async function clientAdvancePool(orgId: string, clientId: string) {
+  const r = await sqlClient`
+    select
+      (select coalesce(sum(case when direction='in' then amount::float else -amount::float end),0)
+         from payments where org_id=${orgId} and contragent_id=${clientId}
+           and project_id is null and document_id is null) as advances,
+      (select coalesce(sum(amount::float),0)
+         from project_alloc where org_id=${orgId} and client_id=${clientId}) as allocated`
+  const row: any = (r as any)[0] || {}
+  return { advances: Number(row.advances) || 0, allocated: Number(row.allocated) || 0 }
+}
+export async function listAllocations(orgId: string, clientId: string) {
+  return sqlClient`select id, project_id::text as "projectId", amount::float as amount, comment
+    from project_alloc where org_id=${orgId} and client_id=${clientId}` as unknown as Promise<Array<{ id: string; projectId: string; amount: number; comment: string }>>
+}
+// Заменить распределение клиента набором строк (перезапись — так проще перераспределять).
+export async function replaceAllocations(orgId: string, clientId: string, rows: Array<{ projectId: string; amount: number; comment?: string }>) {
+  const { db } = await import('../lib/db')
+  const { projectAlloc } = await import('../db/schema')
+  const { and, eq } = await import('drizzle-orm')
+  await db.delete(projectAlloc).where(and(eq(projectAlloc.orgId, orgId), eq(projectAlloc.clientId, clientId)))
+  const clean = rows.filter(r => r.projectId && Number(r.amount) > 0)
+  if (clean.length) await db.insert(projectAlloc).values(clean.map(r => ({ orgId, clientId, projectId: r.projectId, amount: String(r.amount), comment: r.comment || '' })))
+  return { ok: true as const }
+}
+
 // Оплаты одного контрагента.
 export async function contragentPayments(orgId: string, contragentId: string) {
   return sqlClient`

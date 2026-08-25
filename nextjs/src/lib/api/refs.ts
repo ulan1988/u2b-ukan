@@ -53,6 +53,11 @@ export const createSpecProject = (b: any) => post('/api/spec-projects', b)
 export const listSpecProjects = (orgId: string) => getArray(`/api/spec-projects?orgId=${orgId}`)
 export const specProjectDetail = (id: string) => getObj(`/api/spec-projects/${id}`, null as any)
 export const carveCard = (projectId: string, b: any) => post(`/api/spec-projects/${projectId}/carve`, b)
+// Финанализ проектов: акт сверки нескольких вместе, аванс, распределение, закрытие.
+export const reconcileProjects = (orgId: string, ids: string[]) => getObj(`/api/spec-projects/reconcile?orgId=${orgId}&ids=${ids.join(',')}`, null as any)
+export const addProjectAdvance = (b: any) => post('/api/spec-projects/advance', b)
+export const allocateProjectAdvance = (b: any) => post('/api/spec-projects/allocate', b)
+export const setProjectStatus = (id: string, status: string, orgId: string) => post(`/api/spec-projects/${id}/status`, { status, orgId })
 // Кабинет мастера: вынести часть спец-проекта сразу к логисту (минуя производство).
 export const carveToLogist = (projectId: string, lines: { specItemId: string; qty: number }[]) => post(`/api/spec-projects/${projectId}/carve`, { mode: 'logist', lines })
 

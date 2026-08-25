@@ -5,9 +5,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtDate } from '@/lib/adminFmt'
-import { fetchRefs, listSpecProjects, specProjectDetail, createSpecProject, carveCard } from '@/lib/api/refs'
+import { fetchRefs, listSpecProjects, specProjectDetail, createSpecProject, carveCard, reconcileProjects, addProjectAdvance, allocateProjectAdvance, setProjectStatus } from '@/lib/api/refs'
 import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
+
+const money = (v: any) => (Number(v) || 0).toLocaleString('ru-RU')
 
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: `1.5px solid ${COLORS.border}`, background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, display: 'block', letterSpacing: '.04em' }
@@ -22,6 +24,10 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
   const [projects, setProjects] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [cags, setCags] = useState<any[]>([])
+  const [accounts, setAccounts] = useState<any[]>([])
+  const [sel, setSel] = useState<Record<string, boolean>>({})   // выбранные проекты для акта сверки
+  const [reconOpen, setReconOpen] = useState(false)
+  const selIds = Object.keys(sel).filter(k => sel[k])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [detail, setDetail] = useState<any>(null)          // { project, items, cards }
@@ -41,7 +47,7 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
 
   const loadList = useCallback(async () => { setLoading(true); setProjects(await listSpecProjects(orgId)); setLoading(false) }, [orgId])
   useEffect(() => { loadList() }, [loadList])
-  useEffect(() => { fetchRefs().then((r: any) => { setProducts(r.products || []); setCags((r.contragents || []).filter((c: any) => !c.archived)) }) }, [])
+  useEffect(() => { fetchRefs().then((r: any) => { setProducts(r.products || []); setCags((r.contragents || []).filter((c: any) => !c.archived)); setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === orgId && !a.archived)) }) }, [orgId])
 
   async function openDetail(id: string) { const d: any = await specProjectDetail(id); if (d) { setDetail(d); setView('detail'); setCarveQty({}); setCarveComment('') } }
 
@@ -164,7 +170,11 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
       {toast && <Toast msg={toast} />}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: COLORS.text }}>Проекты</h2>
-        <button onClick={() => setCreating(v => !v)} style={{ padding: '9px 16px', borderRadius: 8, border: creating ? `1.5px solid ${COLORS.border}` : 'none', background: creating ? '#fff' : COLORS.primary, color: creating ? COLORS.textMuted : '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>{creating ? '× Отмена' : '＋ Новый проект'}</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {selIds.length > 0 && <button onClick={() => setReconOpen(true)} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>📋 Акт сверки ({selIds.length})</button>}
+          {selIds.length > 0 && <button onClick={() => setSel({})} style={{ padding: '9px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: '#fff', color: COLORS.textMuted, cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>Снять</button>}
+          <button onClick={() => setCreating(v => !v)} style={{ padding: '9px 16px', borderRadius: 8, border: creating ? `1.5px solid ${COLORS.border}` : 'none', background: creating ? '#fff' : COLORS.primary, color: creating ? COLORS.textMuted : '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>{creating ? '× Отмена' : '＋ Новый проект'}</button>
+        </div>
       </div>
 
       {creating && (
@@ -216,20 +226,143 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
             {projects.map(p => {
               const pct = p.totalQty ? Math.round(p.totalDrawn / p.totalQty * 100) : 0
+              const on = !!sel[p.id]
+              const closed = p.status === 'closed'
               return (
-                <div key={p.id} onClick={() => openDetail(p.id)} style={{ background: COLORS.white, borderRadius: 12, boxShadow: `0 0 0 1px ${COLORS.border}`, padding: 16, cursor: 'pointer' }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: COLORS.text }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>{p.clientId ? '👤 ' + cagName(p.clientId) : 'без заказчика'} · {p.items.length} поз.</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, height: 6, background: COLORS.border, borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), borderRadius: 3 }} /></div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: barColor(pct) }}>{pct}%</span>
+                <div key={p.id} style={{ position: 'relative', background: COLORS.white, borderRadius: 12, boxShadow: on ? `0 0 0 2px #2e8a5e` : `0 0 0 1px ${COLORS.border}`, padding: 16, opacity: closed ? .62 : 1 }}>
+                  <div onClick={e => { e.stopPropagation(); setSel(s => ({ ...s, [p.id]: !s[p.id] })) }} title="Выбрать для акта сверки"
+                    style={{ position: 'absolute', top: 12, right: 12, width: 22, height: 22, borderRadius: 6, cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : '#fff', border: on ? 'none' : `1.5px solid ${COLORS.border}` }}>{on ? '✓' : ''}</div>
+                  <div onClick={() => openDetail(p.id)} style={{ cursor: 'pointer' }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: COLORS.text, paddingRight: 28 }}>{p.name} {closed && <span style={{ fontSize: 11, fontWeight: 700, color: '#6b655b', background: '#efece8', padding: '2px 8px', borderRadius: 20 }}>закрыт</span>}</div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>{p.clientId ? '👤 ' + cagName(p.clientId) : 'без заказчика'} · {p.items.length} поз.</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, height: 6, background: COLORS.border, borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), borderRadius: 3 }} /></div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: barColor(pct) }}>{pct}%</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 6 }}>вынесено {p.totalDrawn} / {p.totalQty} · остаток {p.remaining}</div>
                   </div>
-                  <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 6 }}>вынесено {p.totalDrawn} / {p.totalQty} · остаток {p.remaining}</div>
                 </div>
               )
             })}
           </div>
         )}
+
+      {reconOpen && <ReconcileDrawer orgId={orgId} ids={selIds} accounts={accounts} onClose={() => setReconOpen(false)} onChanged={loadList} showMsg={showMsg} />}
+    </div>
+  )
+}
+
+// ─── Акт сверки по выбранным проектам: суммарно + по каждому, аванс, распределение, закрытие ───
+function ReconcileDrawer({ orgId, ids, accounts, onClose, onChanged, showMsg }: {
+  orgId: string; ids: string[]; accounts: any[]; onClose: () => void; onChanged: () => void; showMsg: (m: string) => void
+}) {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [advAmount, setAdvAmount] = useState(''); const [advAcc, setAdvAcc] = useState('')
+  const [alloc, setAlloc] = useState<Record<string, string>>({})
+  const load = useCallback(async () => { setLoading(true); const d = await reconcileProjects(orgId, ids); setData(d); setLoading(false); if (d?.client) setAlloc(Object.fromEntries((d.client.allocations || []).map((a: any) => [a.projectId, String(a.amount)]))) }, [orgId, ids])
+  useEffect(() => { load() }, [load])
+
+  const client = data?.client
+  const allocSum = Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0)
+  const freeAfter = client ? client.advances - allocSum : 0
+
+  async function saveAdvance() {
+    if (!client || !(Number(advAmount) > 0)) return
+    setBusy(true)
+    const r: any = await addProjectAdvance({ orgId, clientId: client.id, amount: Number(advAmount), accountId: advAcc || undefined })
+    setBusy(false)
+    if (r?.ok) { setAdvAmount(''); showMsg('💰 Аванс внесён'); load() } else showMsg('⚠ ' + (r?.error || 'Ошибка'))
+  }
+  async function saveAlloc() {
+    if (!client) return
+    const allocations = Object.entries(alloc).map(([projectId, amount]) => ({ projectId, amount: Number(amount) || 0 })).filter(a => a.amount > 0)
+    setBusy(true)
+    const r: any = await allocateProjectAdvance({ orgId, clientId: client.id, allocations })
+    setBusy(false)
+    if (r?.ok) { showMsg('✅ Аванс распределён'); load(); onChanged() } else showMsg('⚠ ' + (r?.error || 'Ошибка'))
+  }
+  async function closeProject(p: any) {
+    const warn = Math.abs(p.balance) > 0.01 ? `Остаётся ${p.balance > 0 ? 'долг' : 'переплата'} ${money(Math.abs(p.balance))} ₸. Всё равно закрыть проект «${p.name}»?` : `Закрыть проект «${p.name}»?`
+    if (!confirm(warn)) return
+    await setProjectStatus(p.id, 'closed', orgId); showMsg('🔒 Проект закрыт'); load(); onChanged()
+  }
+  async function reopen(p: any) { await setProjectStatus(p.id, 'active', orgId); showMsg('Проект открыт'); load(); onChanged() }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.3)', zIndex: 9998, display: 'flex', justifyContent: 'flex-end' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(500px,100%)', height: '100%', background: '#faf8f6', overflowY: 'auto', padding: 22, boxShadow: '-8px 0 32px rgba(0,0,0,.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>📋 Акт сверки</div>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>{ids.length} проект(а)</span>
+          <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: '#8a837a' }}>×</button>
+        </div>
+
+        {loading ? <div style={{ color: COLORS.textMuted, padding: 20 }}>Загрузка…</div> : !data ? <div>Нет данных</div> : (
+          <>
+            {/* Суммарно */}
+            <div style={{ background: '#fff', borderRadius: 14, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 16, marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: COLORS.textMuted, marginBottom: 10 }}>СУММАРНО ПО ВЫБРАННЫМ</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {[['Оборот', data.combined.total, COLORS.text], ['Оплачено', data.combined.paid, '#2e8a5e'], [data.combined.balance >= 0 ? 'Долг' : 'Переплата', Math.abs(data.combined.balance), data.combined.balance > 0.01 ? '#c0532a' : '#2e8a5e']].map(([l, v, c]: any) => (
+                  <div key={l} style={{ flex: 1 }}><div style={{ fontSize: 11, color: COLORS.textMuted }}>{l}</div><div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 800, fontSize: 17, color: c }}>{money(v)} ₸</div></div>
+                ))}
+              </div>
+            </div>
+
+            {/* По каждому проекту */}
+            {data.projects.map((p: any) => (
+              <div key={p.id} style={{ background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <b style={{ fontSize: 14 }}>{p.name}</b>
+                  {p.status === 'closed' && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#6b655b', background: '#efece8', padding: '2px 8px', borderRadius: 20 }}>закрыт</span>}
+                  {p.status === 'closed'
+                    ? <button onClick={() => reopen(p)} style={{ marginLeft: 'auto', fontSize: 12, border: `1.5px solid ${COLORS.border}`, background: '#fff', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', color: COLORS.textMuted }}>Открыть</button>
+                    : <button onClick={() => closeProject(p)} style={{ marginLeft: 'auto', fontSize: 12, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>🔒 Закрыть</button>}
+                </div>
+                <div style={{ display: 'flex', gap: 8, fontSize: 12.5 }}>
+                  <span style={{ color: COLORS.textMuted }}>Оборот <b style={{ color: COLORS.text, fontFamily: "'JetBrains Mono',monospace" }}>{money(p.total)}</b></span>
+                  <span style={{ color: COLORS.textMuted }}>· Оплачено <b style={{ color: '#2e8a5e', fontFamily: "'JetBrains Mono',monospace" }}>{money(p.paid)}</b></span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: p.balance > 0.01 ? '#c0532a' : '#2e8a5e', fontFamily: "'JetBrains Mono',monospace" }}>{p.balance >= 0 ? 'долг ' : 'аванс '}{money(Math.abs(p.balance))} ₸</span>
+                </div>
+                {p.allocated > 0 && <div style={{ fontSize: 11, color: '#7a45a8', marginTop: 4 }}>в т.ч. из аванса: {money(p.allocated)} ₸</div>}
+              </div>
+            ))}
+
+            {/* Аванс клиента + распределение */}
+            {data.multiClient ? <div style={{ fontSize: 12.5, color: '#8a6f00', background: '#fbf3d8', borderRadius: 10, padding: 12, marginTop: 6 }}>Выбраны проекты разных заказчиков — распределение аванса доступно, когда все проекты одного клиента.</div>
+              : client && (
+              <div style={{ background: '#fff', borderRadius: 14, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 16, marginTop: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: COLORS.textMuted, marginBottom: 10 }}>АВАНС · {client.name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: COLORS.textMuted }}>Свободно к распределению</div>
+                  <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono',monospace", fontWeight: 800, fontSize: 16, color: freeAfter < -0.01 ? '#c0532a' : '#2e8a5e' }}>{money(freeAfter)} ₸</div>
+                </div>
+                {/* внести аванс */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+                  <input value={advAmount} inputMode="decimal" onChange={e => setAdvAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="сумма аванса" style={{ ...INP, flex: 1 }} />
+                  <select value={advAcc} onChange={e => setAdvAcc(e.target.value)} style={{ ...INP, width: 130, cursor: 'pointer' }}><option value="">счёт…</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+                  <button onClick={saveAdvance} disabled={busy || !(Number(advAmount) > 0)} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '0 14px', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>＋ Внести</button>
+                </div>
+                {/* распределить по проектам */}
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.textMuted, marginBottom: 8 }}>РАСПРЕДЕЛИТЬ ПО ПРОЕКТАМ</div>
+                {data.projects.map((p: any) => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                    <button onClick={() => setAlloc(a => ({ ...a, [p.id]: String(Math.max(0, p.balance + (Number(a[p.id]) || 0))) }))} title="Погасить долг" style={{ fontSize: 11, border: `1.5px solid ${COLORS.border}`, background: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', color: COLORS.textMuted, fontFamily: 'inherit' }}>= долг</button>
+                    <input value={alloc[p.id] || ''} inputMode="decimal" onChange={e => setAlloc(a => ({ ...a, [p.id]: e.target.value.replace(/[^0-9.]/g, '') }))} placeholder="0" style={{ ...INP, width: 110, textAlign: 'right' }} />
+                  </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                  <span style={{ fontSize: 12, color: freeAfter < -0.01 ? '#c0532a' : COLORS.textMuted }}>Распределено {money(allocSum)} из {money(client.advances)}</span>
+                  <button onClick={saveAlloc} disabled={busy || freeAfter < -0.01} style={{ marginLeft: 'auto', border: 'none', background: freeAfter < -0.01 ? COLORS.border : COLORS.primary, color: '#fff', borderRadius: 8, padding: '9px 16px', cursor: freeAfter < -0.01 ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>Сохранить распределение</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
