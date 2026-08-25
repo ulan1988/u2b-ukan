@@ -50,6 +50,9 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   } catch { /* зеркало не должно ронять основную накладную */ }
 
   await orderRepo.updateOrder(cardId, { linkedDocId: doc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
+  // Реальное движение проведено — снимаем резерв карточки (иначе товар остаётся «в резерве»
+  // навсегда поверх фактического расхода, и «доступно» уходит в минус).
+  try { const { deleteReservesByCard } = await import('../repositories/reserve.repo'); await deleteReservesByCard(cardId) } catch { /* резерв мог не создаваться */ }
   await orderRepo.insertHistory({
     cardId, action: 'invoice',
     detail: `${isPurchase ? 'Приходная' : 'Расходная'} накладная ${doc.number}`,
