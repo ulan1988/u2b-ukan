@@ -156,10 +156,13 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
       const rule = key ? ruleByCat[key] : null
       if (rule) { supplierId = rule.supplierId || null; respUserId = rule.respUserId || null }
     }
+    // Изделия производятся (цена = доля листа, а не закуп) → цену НЕ подставляем, вписывается
+    // при приходной накладной. Покупные товары — тянем последнюю цену закупа (priceIn).
+    const isIzdelie = /^изделие\b/i.test((it.name || '').trim())
     return {
       id: `${draft!.id}-P${base + idx + 1}`, cardId: draft!.id,
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,
-      qty: String(it.total), unit: it.unit || 'шт', price: String(prod?.priceIn ?? 0),
+      qty: String(it.total), unit: it.unit || 'шт', price: String(isIzdelie ? 0 : (prod?.priceIn ?? 0)),
       supplierId, respUserId, status: 'В работе',
     }
   })
