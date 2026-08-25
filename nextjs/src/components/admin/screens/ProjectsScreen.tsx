@@ -235,13 +235,19 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
                   <div onClick={() => openDetail(p.id)} style={{ cursor: 'pointer' }}>
                     <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: COLORS.text, paddingRight: 28 }}>{p.name} {closed && <span style={{ fontSize: 11, fontWeight: 700, color: '#6b655b', background: '#efece8', padding: '2px 8px', borderRadius: 20 }}>закрыт</span>}</div>
                     <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>{p.clientId ? '👤 ' + cagName(p.clientId) : 'без заказчика'} · {p.items.length} поз.</div>
-                    {(() => { const f = p.fin || { total: 0, paid: 0, debt: 0 }; const mono = "'JetBrains Mono',monospace"
+                    {(() => { const f = p.fin || { sum: 0, paid: 0, debt: 0, remainder: 0 }; const mono = "'JetBrains Mono',monospace"
+                      const tiles = [
+                        ['Сумма', f.sum, COLORS.text, '#f4efe8'],
+                        ['Оплата', f.paid, '#2e8a5e', '#e8f5ee'],
+                        [f.debt >= 0 ? 'Долг' : 'Аванс', Math.abs(f.debt), f.debt > 0.01 ? '#c0392b' : '#2e8a5e', f.debt > 0.01 ? '#fbe9e4' : '#e8f5ee'],
+                        ['Остаток', f.remainder, f.remainder > 0.01 ? '#b26a13' : '#2e8a5e', '#fbf3e2'],
+                      ]
                       return (
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                          {[['Оборот', f.total, COLORS.text, '#f4efe8'], ['Оплата', f.paid, '#2e8a5e', '#e8f5ee'], [f.debt >= 0 ? 'Долг' : 'Аванс', Math.abs(f.debt), f.debt > 0.01 ? '#c0392b' : '#2e8a5e', f.debt > 0.01 ? '#fbe9e4' : '#e8f5ee']].map(([l, v, c, bg]: any) => (
-                            <div key={l} style={{ flex: 1, background: bg, borderRadius: 9, padding: '7px 9px' }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.03em', color: COLORS.textMuted, textTransform: 'uppercase' }}>{l}</div>
-                              <div style={{ fontFamily: mono, fontWeight: 800, fontSize: 15, color: c, lineHeight: 1.15 }}>{money(v)}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
+                          {tiles.map(([l, v, c, bg]: any) => (
+                            <div key={l} style={{ background: bg, borderRadius: 9, padding: '7px 10px', display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.02em', color: COLORS.textMuted, textTransform: 'uppercase', minWidth: 44 }}>{l}</span>
+                              <span style={{ marginLeft: 'auto', fontFamily: mono, fontWeight: 800, fontSize: 14.5, color: c, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>
                             </div>
                           ))}
                         </div>

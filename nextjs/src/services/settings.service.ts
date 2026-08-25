@@ -48,10 +48,11 @@ export async function specProjectsWithRemaining(orgId: string) {
     const its = byProject[s.id] || []
     const totalQty = its.reduce((a, i) => a + Number(i.qty), 0)
     const totalDrawn = its.reduce((a, i) => a + i.drawn, 0)
-    const total = tBy.get(s.id) || 0
+    const sum = its.reduce((a, i) => a + Number(i.qty) * Number(i.price || 0), 0)  // полная стоимость проекта (по позициям)
+    const turnover = tBy.get(s.id) || 0                                            // отгружено клиенту
     const paid = (dBy.get(s.id) || 0) + (aBy.get(s.id) || 0)
     return { ...s, items: its, totalQty, totalDrawn, remaining: Math.max(0, totalQty - totalDrawn),
-      fin: { total, paid, debt: total - paid } }
+      fin: { sum, turnover, paid, debt: turnover - paid, remainder: sum - paid } }
   })
 }
 
