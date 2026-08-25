@@ -149,15 +149,21 @@ export async function projectsTurnover(orgId: string, ids: string[]) {
       and pr.id = any(${ids}::uuid[]) and d.contragent_id = pr.client_id
     group by pr.id` as unknown as Promise<Array<{ projectId: string; total: number; cnt: number }>>
 }
-// Прямые оплаты, привязанные к проекту (payments.project_id).
+// Оплаты проекта: платёж относим к проекту по его project_id ИЛИ по документу, который он
+// гасит (payments.document_id → doc.project_id / order.spec_project_id). Так оплаты из
+// «Финанс/Деньги» (гасят накладную, но без project_id) тоже попадают в проект.
+// Фильтр contragent = client проекта — чтобы «оплачено клиентом» (не мостовые/поставщику).
 export async function projectsDirectPaid(orgId: string, ids: string[]) {
   if (!ids.length) return [] as Array<{ projectId: string; paid: number }>
   return sqlClient`
-    select p.project_id::text as "projectId",
+    select pr.id::text as "projectId",
            sum(case when p.direction='in' then p.amount::float else -p.amount::float end) as paid
     from payments p
-    where p.org_id=${orgId} and p.project_id = any(${ids}::uuid[])
-    group by p.project_id` as unknown as Promise<Array<{ projectId: string; paid: number }>>
+    left join documents d on d.id = p.document_id
+    left join orders o on o.id = d.source_order_id
+    join spec_projects pr on pr.id = coalesce(p.project_id, d.project_id, o.spec_project_id)
+    where p.org_id=${orgId} and pr.id = any(${ids}::uuid[]) and p.contragent_id = pr.client_id
+    group by pr.id` as unknown as Promise<Array<{ projectId: string; paid: number }>>
 }
 // Распределённый аванс по проектам (project_alloc).
 export async function projectsAllocated(orgId: string, ids: string[]) {

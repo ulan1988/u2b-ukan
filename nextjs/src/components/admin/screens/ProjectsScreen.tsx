@@ -344,6 +344,21 @@ function ReconcileDrawer({ orgId, ids, accounts, onClose, onChanged, showMsg }: 
                   <span style={{ marginLeft: 'auto', fontWeight: 700, color: p.balance > 0.01 ? '#c0532a' : '#2e8a5e', fontFamily: "'JetBrains Mono',monospace" }}>{p.balance >= 0 ? 'долг ' : 'аванс '}{money(Math.abs(p.balance))} ₸</span>
                 </div>
                 {p.allocated > 0 && <div style={{ fontSize: 11, color: '#7a45a8', marginTop: 4 }}>в т.ч. из аванса: {money(p.allocated)} ₸</div>}
+                {/* Связанные фин-документы проекта (накладные) */}
+                {(p.docs || []).length > 0 && (
+                  <div style={{ marginTop: 10, borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 8 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', color: COLORS.textMuted, marginBottom: 6 }}>ДОКУМЕНТЫ ({p.docs.length})</div>
+                    {p.docs.map((d: any) => { const inc = d.type === 'sale' || d.type === 'return_out'; const tp: any = { sale: 'Расходная', purchase: 'Приходная', return_in: 'Возврат клиента', return_out: 'Возврат поставщику' }
+                      return (
+                        <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 12.5 }}>
+                          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: COLORS.primary }}>{d.number}</span>
+                          <span style={{ color: COLORS.textMuted }}>{tp[d.type] || d.type}</span>
+                          <span style={{ color: COLORS.textLight, fontSize: 11 }}>{fmtDate(d.date)}</span>
+                          <span style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: inc ? '#2e8a5e' : '#c0532a' }}>{inc ? '+' : '−'}{money(d.total)} ₸</span>
+                        </div>
+                      ) })}
+                  </div>
+                )}
               </div>
             ))}
 
