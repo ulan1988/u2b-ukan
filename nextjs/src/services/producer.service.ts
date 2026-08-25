@@ -98,7 +98,12 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   // дописанные после этого позиции — у них ещё нет product_id. Иначе выпустили бы всё повторно.
   if (await alreadyProduced(cardId)) targets = targets.filter((p: any) => !p.productId)
   if (!targets.length) return { ok: false as const, error: 'Нет изделий для внесения' }
-  const wh = await refsRepo.centralWarehouse(order.orgId)
+  // Производящий склад — филиала-ПОСТАВЩИКА позиций (leg=1), а НЕ орг-владельца карточки.
+  // Закуп головного (order.orgId=головной) с поставщиком-филиалом: выпуск должен идти на склад
+  // ФИЛИАЛА, потому что зеркальная расходная списывает именно склад филиала. Иначе выпуск падал
+  // на Центр-Склад головного, а филиал уходил в минус (двойной приход у головного).
+  const prodOrgId = await producingOrg(targets, order.orgId)
+  const wh = await refsRepo.centralWarehouse(prodOrgId)
   if (!wh) return { ok: false as const, error: 'Не найден склад производителя' }
 
   const outputs: any[] = []
@@ -153,6 +158,19 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     userName: actor?.name || 'Система',
   })
   return { ok: true as const, number: doc.number, produced: outputs.length, created, skipped, consumed }
+}
+
+// Орг, чей склад производит: если у позиций есть поставщик-филиал (контрагент привязан к
+// пользователю role=branch), берём орг этого филиала. Иначе — орг-владелец карточки.
+async function producingOrg(positions: any[], fallbackOrgId: string): Promise<string> {
+  const supIds = Array.from(new Set(positions.map((p: any) => p.supplierId).filter(Boolean))) as string[]
+  if (!supIds.length) return fallbackOrgId
+  const { db } = await import('../lib/db')
+  const { users } = await import('../db/schema')
+  const { eq, and, inArray } = await import('drizzle-orm')
+  const rows = await db.select({ orgId: users.orgId }).from(users)
+    .where(and(eq(users.role, 'branch'), inArray(users.contragentId, supIds))).limit(1)
+  return rows[0]?.orgId || fallbackOrgId
 }
 
 // Производство уже проводилось по этой карточке? Признак — запись истории action='produce'.
