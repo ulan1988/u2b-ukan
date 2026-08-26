@@ -7,6 +7,7 @@ import * as repo from '../repositories/order.repo'
 import * as refsRepo from '../repositories/refs.repo'
 import { createProduction } from './document.service'
 import { itemName } from '../lib/itemName'
+import { isIzdelie } from '../lib/lineAmount'
 import type { Session } from '../lib/auth'
 
 const SHEET_WIDTH_CM = 125
@@ -118,9 +119,9 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     // «Изделие» — полноценный SKU только при наличии И РАЛ, И см («Изделие 9003 15 см»).
     // Без цвета или без длины это ШАБЛОН (umbrella): лист выбрать нельзя, товар-заглушку не плодим.
     // (Профили/углы имеют стандартный см из типа — на них требование см не распространяем.)
-    const isIzdelie = /^изделие\b/i.test(nm)
+    const izd = isIzdelie(nm)
     const hasCm = Number(p.widthCm) > 0 || /\d+\s*см/i.test(nm)
-    if (isIzdelie && (!ralOf(nm) || !hasCm)) { skipped++; continue }
+    if (izd && (!ralOf(nm) || !hasCm)) { skipped++; continue }
     let productId = p.productId as string | null
     if (!productId) {
       productId = await ensureProduct(nm)

@@ -12,6 +12,7 @@ import { overlayFor, NomItem } from '@/lib/nomTree'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
 import { listProjectsByClient } from '@/lib/api/refs'
 import { itemName } from '@/lib/itemName'
+import { lineAmount, isIzdelie, priceForClient as priceByType } from '@/lib/lineAmount'
 
 const PRIMARY = '#d4613a'
 interface Row { id?: string; productId: string; name: string; color: string; cm: string; qty: string; price: string }
@@ -42,9 +43,10 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const advRef = useRef<any>(null)   // таймер авто-перехода на след. ячейку (пауза после набора)
   function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
-  // Автоцена по типу клиента (опт/розница) — как на головном: после настройки цены товара подтянется сама.
+  // Автоцена по типу клиента (розница/опт/спец) — тянется по прайсу заказчика.
+  // Для изделий это цена ЗА СМ; для профилей — за штуку.
   const clientPT = (contragents.find((c: any) => c.id === cid)?.priceType) || 'retail'
-  const priceForClient = (p: any, pt: string = clientPT) => Number((pt === 'opt' ? p?.priceOpt : p?.priceRetail)) || 0
+  const priceForClient = (p: any, pt: string = clientPT) => priceByType(p, pt)
 
   // Наружная моделька: сверху цвета, снизу виды из папки «Комплектующие» (Изделие/Нар.угол/H-профиль).
   const ACC = overlayFor('комплектующие')[0]?.items || []
@@ -86,9 +88,12 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), ...add])
     setCatalog(false)
   }
-  // тг за шт = цена_за_см × см (если заданы), иначе ручная цена
-  const piecePrice = (r: Row) => { const auto = (Number(priceCm) || 0) * (Number(r.cm) || 0); return auto > 0 ? auto : (Number(r.price) || 0) }
-  const rowSum = (r: Row) => (Number(r.qty) || 0) * piecePrice(r)
+  // Единая цена позиции: изделие → цена ЗА СМ (из прайса клиента или ручная r.price,
+  // иначе общая «цена/см» priceCm). Профиль/прочее → цена за штуку (r.price).
+  const rowName = (r: Row) => r.name || itemName(r as any)
+  const unitPrice = (r: Row) => Number(r.price) || (isIzdelie(rowName(r)) ? (Number(priceCm) || 0) : 0)
+  // сумма строки: изделие = qty×см×цена/см; иначе qty×цена
+  const rowSum = (r: Row) => lineAmount({ name: rowName(r), qty: r.qty, price: unitPrice(r), widthCm: r.cm })
   const totalCm = rows.reduce((s, r) => s + (Number(r.cm) || 0) * (Number(r.qty) || 0), 0)
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
@@ -96,7 +101,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   // Изделия без цены уходили в карточку по 0 ₸ — выручка и рентабельность по ним обнулялись.
   // Цена = «за см × см» либо ручная; строка без цены блокирует создание карточки.
   const filled = (r: Row) => (r.name || r.productId) && Number(r.qty) > 0
-  const noPrice = rows.filter(r => filled(r) && !(piecePrice(r) > 0))
+  const noPrice = rows.filter(r => filled(r) && !(rowSum(r) > 0))
   const valid = hasPos && (!needCustomer || !!cid) && noPrice.length === 0
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
@@ -105,7 +110,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     for (const r of rows) {
       if (!(r.name || r.productId) || !(Number(r.qty) > 0)) continue
       const name = itemName(r)
-      const body: any = { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined }
+      const body: any = { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined }
       if (r.id) { await updatePosition(cardId, r.id, body); keep.add(r.id) }
       else { const res: any = await addPosition(cardId, body); if (res?.data?.position?.id) keep.add(res.data.position.id) }
     }
@@ -122,7 +127,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
-        const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(piecePrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
+        const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
         const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
         if (res?.ok && res.data?.id) {
           // Если приём не прошёл — карточка осталась с пустым prod_phase. Она видна во вкладке
@@ -217,7 +222,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
           <thead><tr style={{ background: '#f8f6f3' }}>
-            <th style={th}>№</th><th style={{ ...th, minWidth: 150 }}>НОМЕНКЛАТУРА (цвет)</th><th style={{ ...th, textAlign: 'right' }}>СМ</th><th style={{ ...th, textAlign: 'right' }}>ШТ</th><th style={{ ...th, textAlign: 'right' }}>ТГ/ШТ</th><th style={{ ...th, textAlign: 'right' }}>СУММА</th><th style={th}></th>
+            <th style={th}>№</th><th style={{ ...th, minWidth: 150 }}>НОМЕНКЛАТУРА (цвет)</th><th style={{ ...th, textAlign: 'right' }}>СМ</th><th style={{ ...th, textAlign: 'right' }}>ШТ</th><th style={{ ...th, textAlign: 'right' }}>ЦЕНА</th><th style={{ ...th, textAlign: 'right' }}>СУММА</th><th style={th}></th>
           </tr></thead>
           <tbody>
             {rows.map((r, i) => (
@@ -226,9 +231,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
                 <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => { const pr = priceForClient(p); setRow(i, { productId: p.id, name: p.name, color: p.color || extractRal(p.name), ...(p.widthCm != null ? { cm: String(p.widthCm) } : {}), ...(pr > 0 ? { price: String(pr) } : {}) }) }} /></td>
                 <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => { const cm = e.target.value; setRow(i, { cm, name: r.name ? itemName({ name: r.name, color: r.color, cm }) : r.name }) }} placeholder="см" /></td>
                 <td style={{ padding: '4px 4px', width: 56 }}><input data-qty style={{ ...inp, width: 50, textAlign: 'right' }} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
-                <td style={{ padding: '4px 4px', width: 80, textAlign: 'right', fontSize: 13 }}>{(Number(priceCm) || 0) * (Number(r.cm) || 0) > 0
-                  ? <span title="авто: цена за см × см">{Math.round(piecePrice(r)).toLocaleString('ru-RU')}</span>
-                  : <input style={{ ...inp, width: 70, textAlign: 'right' }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder="цена" />}</td>
+                <td style={{ padding: '4px 4px', width: 84, textAlign: 'right', fontSize: 13 }}>
+                  <input style={{ ...inp, width: 74, textAlign: 'right' }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(rowName(r)) ? 'за см' : 'цена'} title={isIzdelie(rowName(r)) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} />
+                </td>
                 <td style={{ padding: '4px 6px', width: 90, textAlign: 'right', fontSize: 13, fontWeight: 700 }}>{rowSum(r) ? Math.round(rowSum(r)).toLocaleString('ru-RU') : '—'}</td>
                 <td style={{ padding: '4px 4px', width: 46, whiteSpace: 'nowrap' }}>
                   <button onClick={() => setRows(rs => [...rs.slice(0, i + 1), { ...r, id: undefined }, ...rs.slice(i + 1)])} title="Клонировать" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13 }}>📋</button>

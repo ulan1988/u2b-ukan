@@ -135,7 +135,7 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
                   <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: u.active ? '#e8f5ee' : '#faeaea', color: u.active ? '#2e8a5e' : '#b03020' }}>{u.active ? 'Активен' : 'Отключён'}</span></td>
                   <td style={{ padding: '10px 14px' }}>
                     {['client', 'supplier_client', 'branch'].includes(u.role)
-                      ? <select value={u.priceType || 'retail'} onChange={e => setPriceType(u, e.target.value)} style={{ fontSize: 13, padding: '4px 6px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontFamily: 'inherit', background: '#fff' }}><option value="retail">Розничная</option><option value="opt">Оптовая</option></select>
+                      ? <select value={u.priceType || 'retail'} onChange={e => setPriceType(u, e.target.value)} style={{ fontSize: 13, padding: '4px 6px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontFamily: 'inherit', background: '#fff' }}><option value="retail">Розничная</option><option value="opt">Оптовая</option><option value="spec">Спец</option></select>
                       : <span style={{ fontSize: 13, color: '#837c72' }}>—</span>}
                   </td>
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
@@ -241,7 +241,7 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 14, marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 200px' }}><label style={LBL}>НАЗВАНИЕ</label><input style={inp} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Имя клиента/поставщика" /></div>
         <div><label style={LBL}>ТИП</label><select style={inp} value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}>{Object.entries(KIND_LBL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-        <div><label style={LBL}>ЦЕНА</label><select style={inp} value={f.priceType} onChange={e => setF({ ...f, priceType: e.target.value })}><option value="retail">Розница</option><option value="opt">Опт</option></select></div>
+        <div><label style={LBL}>ЦЕНА</label><select style={inp} value={f.priceType} onChange={e => setF({ ...f, priceType: e.target.value })}><option value="retail">Розница</option><option value="opt">Опт</option><option value="spec">Спец</option></select></div>
         <div><label style={LBL}>ТЕЛЕФОН</label><input style={inp} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} placeholder="—" /></div>
         <div><label style={LBL}>БИН/ИИН</label><input style={{ ...inp, width: 120 }} value={f.bin} onChange={e => setF({ ...f, bin: e.target.value })} placeholder="—" /></div>
         <div><label style={LBL} title="+ нам должны, − мы должны">НАЧ. ОСТАТОК</label><input style={{ ...inp, width: 120, textAlign: 'right' }} type="number" value={f.openingBalance} onChange={e => setF({ ...f, openingBalance: e.target.value })} placeholder="0" /></div>
@@ -261,7 +261,7 @@ function ContragentsPanel({ orgId }: { orgId: string }) {
                 <td style={{ padding: '7px 10px', textAlign: 'center' }}><button onClick={() => setFav(c)} title={c.favorite ? 'Убрать из избранного' : 'В избранное'} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, filter: c.favorite ? 'none' : 'grayscale(1) opacity(0.35)' }}>⭐</button></td>
                 <td style={{ padding: '7px 14px' }}><input defaultValue={c.name} onBlur={e => rename(c, e.target.value.trim())} style={{ ...inp, padding: '6px 8px', fontWeight: 600 }} /></td>
                 <td style={{ padding: '7px 14px' }}><select value={c.kind} onChange={e => setKind(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}>{Object.entries(KIND_LBL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
-                <td style={{ padding: '7px 14px' }}><select value={c.priceType || 'retail'} onChange={e => setPT(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}><option value="retail">Розница</option><option value="opt">Опт</option></select></td>
+                <td style={{ padding: '7px 14px' }}><select value={c.priceType || 'retail'} onChange={e => setPT(c, e.target.value)} style={{ ...inp, padding: '6px 8px', width: 'auto' }}><option value="retail">Розница</option><option value="opt">Опт</option><option value="spec">Спец</option></select></td>
                 <td style={{ padding: '7px 14px' }}><input defaultValue={c.bin || ''} onBlur={e => setBin(c, e.target.value.trim())} style={{ ...inp, padding: '6px 8px', width: 110 }} placeholder="—" /></td>
                 <td style={{ padding: '7px 14px' }}><input defaultValue={Number(c.openingBalance || 0) || ''} onBlur={e => setOpening(c, e.target.value)} type="number" style={{ ...inp, padding: '6px 8px', width: 110, textAlign: 'right', color: Number(c.openingBalance || 0) > 0 ? '#2e8a5e' : Number(c.openingBalance || 0) < 0 ? '#b03020' : COLORS.text }} placeholder="0" /></td>
                 <td style={{ padding: '7px 14px', color: COLORS.textMuted }}>{c.phone || '—'}</td>

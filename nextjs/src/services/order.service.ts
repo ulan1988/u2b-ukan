@@ -490,7 +490,8 @@ export async function cardRoute(cardId: string) {
     })
   } catch { /* связи не критичны */ }
 
-  const sum = positions.reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+  const { lineAmount } = await import('../lib/lineAmount')
+  const sum = positions.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
   // Суть: ОТ КОГО (поставщик) → КОМУ (покупатель).
   const cags = await refsRepo.listContragents()
   const cagName: Record<string, string> = {}; for (const c of cags as any[]) cagName[c.id] = c.name

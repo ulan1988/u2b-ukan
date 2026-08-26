@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { cardProgress } from '@/lib/adminFmt'
 import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
+import { lineAmount } from '@/lib/lineAmount'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
@@ -311,7 +312,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         const sent = pos.filter((p: any) => Number(p.leg) !== 1)   // уже у логиста
         const selIds = leg1.filter((p: any) => sel[p.id]).map((p: any) => p.id)
         const ph = phase(o)
-        const total = pos.reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+        const total = pos.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
         const isSold = ph === 'sold' || !!o.linkedDocId
         const needBase = pos.length > 0 && pos.some((p: any) => !p.productId)
         const cashN = Number((pay.cash || '').replace(',', '.')) || 0, kaspiN = Number((pay.kaspi || '').replace(',', '.')) || 0, qrN = Number((pay.qr || '').replace(',', '.')) || 0
@@ -553,7 +554,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>💵 ПРОДАНО · {sold.length}</div>
               {sold.map(o => {
-                const total = (o.positions || []).reduce((s: number, p: any) => s + Number(p.qty || 0) * Number(p.price || 0), 0)
+                const total = (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
                 const leg1 = (o.positions || []).filter((p: any) => Number(p.leg) === 1)
                 return (
                   <div key={o.id} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #cfeadd', padding: '11px 13px', marginBottom: 8 }}>

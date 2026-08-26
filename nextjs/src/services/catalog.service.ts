@@ -8,7 +8,7 @@ import type {
 export async function addProduct(i: z.infer<typeof createProductSchema>) {
   const [p] = await repo.createProduct({
     name: i.name, unit: i.unit, category: i.category, group: i.group || '', cat: i.cat || '', subgroup: i.subgroup || '',
-    priceIn: String(i.priceIn), priceRetail: String(i.priceRetail), priceOpt: String(i.priceOpt),
+    priceIn: String(i.priceIn), priceRetail: String(i.priceRetail), priceOpt: String(i.priceOpt), priceSpec: String((i as any).priceSpec ?? 0),
   })
   return p
 }
@@ -42,6 +42,7 @@ export async function editProduct(id: string, i: z.infer<typeof updateProductSch
   if (i.priceIn !== undefined) patch.priceIn = String(i.priceIn)          // numeric → string
   if (i.priceRetail !== undefined) patch.priceRetail = String(i.priceRetail)
   if (i.priceOpt !== undefined) patch.priceOpt = String(i.priceOpt)
+  if ((i as any).priceSpec !== undefined) patch.priceSpec = String((i as any).priceSpec)
   if (i.specTypeId !== undefined) patch.specTypeId = i.specTypeId || null
   if (i.archived !== undefined) patch.archived = i.archived
   const [p] = await repo.updateProduct(id, patch)

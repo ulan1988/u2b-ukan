@@ -4,6 +4,7 @@ import * as orderRepo from '../repositories/order.repo'
 import { countPositions } from '../repositories/order.repo'
 import * as settingsRepo from '../repositories/settings.repo'
 import { docNumber } from '../lib/num'
+import { isIzdelie as isIzd } from '../lib/lineAmount'
 import { matchCategoryKey } from '../lib/nomCatalog'
 import { listRules } from '../repositories/categoryRule.repo'
 import type { Session } from '../lib/auth'
@@ -37,7 +38,7 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
   for (const saleId of saleIds) {
     const [sale] = await orderRepo.getOrder(saleId)
     if (!sale || sale.isCancelled) continue
-    const opt = cagType[sale.contactId || ''] === 'opt'
+    const clientPT = cagType[sale.contactId || ''] || 'retail'
     const positions = await orderRepo.positionsByCard(saleId)
     let touched = false
     for (const sl of links.filter(l => l.saleCardId === saleId)) {
@@ -50,7 +51,7 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
       if (orig.productId) set.productId = orig.productId
       if (!(pos.name1c || '').trim() && sl.product) set.name1c = sl.product
       const prod = orig.productId ? prodById[orig.productId] : null
-      if (prod) { const pr = Number(opt ? prod.priceOpt : prod.priceRetail); if (pr > 0) set.price = String(pr) }
+      if (prod) { const { priceForClient } = await import('../lib/lineAmount'); const pr = priceForClient(prod, clientPT); if (pr > 0) set.price = String(pr) }
       if (!pos.respUserId && defaultLogist) set.respUserId = defaultLogist
       await orderRepo.updatePosition(pos.id, set)
       touched = true
@@ -166,7 +167,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
     }
     // Изделия производятся (цена = доля листа, а не закуп) → цену НЕ подставляем, вписывается
     // при приходной накладной. Покупные товары — тянем последнюю цену закупа (priceIn).
-    const isIzdelie = /^изделие\b/i.test((it.name || '').trim())
+    const isIzdelie = isIzd(it.name)
     return {
       id: `${draft!.id}-P${base + idx + 1}`, cardId: draft!.id,
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,

@@ -4,6 +4,7 @@ import type { CreatePurchaseInput, CreateSaleInput } from '../dto/document.dto'
 import type { CreateProductionInput } from '../dto/production.dto'
 import * as docRepo from '../repositories/document.repo'
 import { docNumber, today, invoiceNumber } from '../lib/num'
+import { lineAmount } from '../lib/lineAmount'
 
 // Создать приходную накладную (закуп): проводка = документ + строки + приход склада.
 // Долг перед поставщиком не храним — он считается из документов и оплат.
@@ -18,12 +19,13 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
 
   let total = 0
   const lines = input.lines.map((l: any) => {
-    const amount = l.qty * l.price
+    const amount = lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })  // изделие: кол-во×см×цена
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
       sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
+      widthCm: l.widthCm != null ? String(l.widthCm) : null,
     }
   })
 
@@ -76,7 +78,7 @@ export async function updateDocument(id: string, patch: any) {
   const lines = await docRepo.linesWithProduct(id)
   let subtotal = 0
   for (const ln of lines) {
-    const amount = Number(ln.qty) * Number(ln.price)
+    const amount = lineAmount({ name: (ln as any).name, qty: ln.qty, price: ln.price, widthCm: (ln as any).widthCm })
     if (String(amount) !== String(ln.amount)) await docRepo.updateLine(ln.id, { amount: String(amount) })
     subtotal += amount
   }
@@ -120,12 +122,13 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
 
   let total = 0
   const lines = input.lines.map((l: any) => {
-    const amount = l.qty * l.price
+    const amount = lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })  // изделие: кол-во×см×цена
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
       sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
+      widthCm: l.widthCm != null ? String(l.widthCm) : null,
     }
   })
 
@@ -187,9 +190,9 @@ export async function createReturn(input: CreateSaleInput & { sourceOrderId?: st
 
   let total = 0
   const lines = input.lines.map((l: any) => {
-    const amount = l.qty * l.price
+    const amount = lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })
     total += amount
-    return { id: randomUUID(), documentId: docId, productId: l.productId, role: 'main', sourcePosId: l.sourcePosId || null, qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount) }
+    return { id: randomUUID(), documentId: docId, productId: l.productId, role: 'main', sourcePosId: l.sourcePosId || null, qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount), widthCm: l.widthCm != null ? String(l.widthCm) : null }
   })
   const moves = input.lines.map(l => ({
     id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId,

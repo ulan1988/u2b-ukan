@@ -68,4 +68,4 @@ export const productsByNames = (names: string[]) =>
   names.length ? db.select({ id: products.id, name: products.name, group: products.group, cat: products.category, priceIn: products.priceIn }).from(products).where(inArray(products.name, names)) : Promise.resolve([] as any[])
 
 export const productsByIds = (ids: string[]) =>
-  ids.length ? db.select({ id: products.id, name: products.name, unit: products.unit, priceRetail: products.priceRetail, priceOpt: products.priceOpt }).from(products).where(inArray(products.id, ids)) : Promise.resolve([] as any[])
+  ids.length ? db.select({ id: products.id, name: products.name, unit: products.unit, priceRetail: products.priceRetail, priceOpt: products.priceOpt, priceSpec: products.priceSpec }).from(products).where(inArray(products.id, ids)) : Promise.resolve([] as any[])

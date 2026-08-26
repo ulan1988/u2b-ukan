@@ -10,6 +10,7 @@ export const createProductSchema = z.object({
   priceIn: z.coerce.number().min(0).default(0),
   priceRetail: z.coerce.number().min(0).default(0),
   priceOpt: z.coerce.number().min(0).default(0),
+  priceSpec: z.coerce.number().min(0).default(0),
 })
 
 export const createContragentSchema = z.object({
@@ -33,6 +34,7 @@ export const updateProductSchema = z.object({
   priceIn: z.coerce.number().min(0).optional(),
   priceRetail: z.coerce.number().min(0).optional(),
   priceOpt: z.coerce.number().min(0).optional(),
+  priceSpec: z.coerce.number().min(0).optional(),
   specTypeId: z.string().uuid().nullable().optional(),   // тип изделия (спецификация)
   archived: z.boolean().optional(),
 })

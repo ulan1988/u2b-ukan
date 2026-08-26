@@ -55,7 +55,7 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   const hq = await hqOrgId(); if (!hq || !clientId) return null
   const refsRepo = await import('../repositories/refs.repo')
   const wh = await refsRepo.centralWarehouse(hq); if (!wh) return null
-  const lines = positions.filter((p: any) => p.productId).map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт' }))
+  const lines = positions.filter((p: any) => p.productId).map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт', name: p.name1c || p.oral, widthCm: p.widthCm }))
   if (!lines.length) return null
   const docSvc = await import('./document.service')
   return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
@@ -76,7 +76,8 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
     const pr = await produceToBase(cardId, actor)
     if (!pr.ok) return { ok: false as const, error: pr.error }
   }
-  const total = positions.reduce((s: number, x: any) => s + Number(x.qty || 0) * Number(x.price || 0), 0)
+  const { lineAmount } = await import('../lib/lineAmount')
+  const total = positions.reduce((s: number, x: any) => s + lineAmount({ name: x.name1c || x.oral, qty: x.qty, price: x.price, widthCm: x.widthCm }), 0)
   const cash = Math.max(0, Number(p.cash) || 0), kaspi = Math.max(0, Number(p.kaspi) || 0), qr = Math.max(0, Number(p.qr) || 0)
   const debt = Math.max(0, total - cash - kaspi - qr)
 

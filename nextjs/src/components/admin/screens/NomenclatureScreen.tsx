@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder } from '@/lib/api/refs'
 
-interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number }
+interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
 
 const INP: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: 7, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
@@ -32,11 +32,11 @@ export default function NomenclatureScreen() {
   const reloadFolders = useCallback(async () => { const f = await listFolders(); setFolders((f as any) || []) }, [])
   useEffect(() => { reloadFolders() }, [reloadFolders])
   const [priceEdit, setPriceEdit] = useState(false)
-  const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string }>>({})
+  const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string; priceSpec: string }>>({})
 
   function showMsg(msg: string) { setToast(msg); setTimeout(() => setToast(''), 2500) }
 
-  type PField = 'priceIn' | 'priceRetail' | 'priceOpt'
+  type PField = 'priceIn' | 'priceRetail' | 'priceOpt' | 'priceSpec'
   const priceVal = (item: NomItem, f: PField) => pricesDraft[item.id]?.[f] ?? String(item[f] ?? 0)
   function setPrice(item: NomItem, f: PField, val: string) {
     const clean = val.replace(/[^0-9.,]/g, '')
@@ -44,6 +44,7 @@ export default function NomenclatureScreen() {
       priceIn: prev[item.id]?.priceIn ?? String(item.priceIn ?? 0),
       priceRetail: prev[item.id]?.priceRetail ?? String(item.priceRetail ?? 0),
       priceOpt: prev[item.id]?.priceOpt ?? String(item.priceOpt ?? 0),
+      priceSpec: prev[item.id]?.priceSpec ?? String(item.priceSpec ?? 0),
       [f]: clean,
     } }))
   }
@@ -53,7 +54,7 @@ export default function NomenclatureScreen() {
     if (ids.length === 0) { setPriceEdit(false); return }
     for (const id of ids) {
       const d = pricesDraft[id]; const item = items.find(i => i.id === id); if (!item) continue
-      await editProduct(id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt) })
+      await editProduct(id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec) })
     }
     setPricesDraft({}); setPriceEdit(false); load(); showMsg('✓ Цены сохранены')
   }
@@ -62,7 +63,7 @@ export default function NomenclatureScreen() {
     setLoading(true)
     try {
       const data = await listProducts(true)
-      setItems((data as any[]).map(p => ({ ...p, priceIn: Number(p.priceIn), priceRetail: Number(p.priceRetail), priceOpt: Number(p.priceOpt) })))
+      setItems((data as any[]).map(p => ({ ...p, priceIn: Number(p.priceIn), priceRetail: Number(p.priceRetail), priceOpt: Number(p.priceOpt), priceSpec: Number(p.priceSpec) })))
     } catch { showMsg('Ошибка загрузки') }
     finally { setLoading(false) }
   }, [])
@@ -279,7 +280,7 @@ export default function NomenclatureScreen() {
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#f8f6f3' }}>
-                {['НАИМЕНОВАНИЕ', 'ЕД.', 'ГРУППА', 'КАТЕГОРИЯ', 'ПОДГРУППА', 'ПРИХОД', 'РОЗН.', 'ОПТ', ''].map(h => <th key={h} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}
+                {['НАИМЕНОВАНИЕ', 'ЕД.', 'ГРУППА', 'КАТЕГОРИЯ', 'ПОДГРУППА', 'ПРИХОД', 'РОЗН.', 'ОПТ', 'СПЕЦ', ''].map(h => <th key={h} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}
               </tr></thead>
             </table>
             <div style={{ overflowY: 'auto', flex: 1 }}>
@@ -295,7 +296,7 @@ export default function NomenclatureScreen() {
                           <td style={{ padding: '9px 14px', width: 130 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.group} onChange={e => setEditItem(p => p ? { ...p, group: e.target.value, cat: '', subgroup: '' } : p)}><option value="">—</option>{Object.keys(TREE).map(g => <option key={g} value={g}>{g}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span>}</td>
                           <td style={{ padding: '9px 14px', width: 160 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.cat} onChange={e => setEditItem(p => p ? { ...p, cat: e.target.value, subgroup: '' } : p)}><option value="">—</option>{editItem.group && Object.keys(TREE[editItem.group] || {}).map(c => <option key={c} value={c}>{c}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span>}</td>
                           <td style={{ padding: '9px 14px', width: 140 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.subgroup} onChange={e => setEditItem(p => p ? { ...p, subgroup: e.target.value } : p)}><option value="">—</option>{editItem.cat && (TREE[editItem.group]?.[editItem.cat] || []).map(s => <option key={s} value={s}>{s}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span>}</td>
-                          {(['priceIn', 'priceRetail', 'priceOpt'] as const).map(f => (
+                          {(['priceIn', 'priceRetail', 'priceOpt', 'priceSpec'] as const).map(f => (
                             <td key={f} style={{ padding: '9px 8px', width: 84 }}>{priceEdit ? <input value={priceVal(item, f)} inputMode="decimal" onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', border: `1.5px solid ${pricesDraft[item.id]?.[f] !== undefined ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, color: (item[f] ?? 0) > 0 ? '#26231f' : '#837c72' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
                           ))}
                           <td style={{ padding: '9px 14px', width: 120 }}>{editItem?.id === item.id ? <div style={{ display: 'flex', gap: 4 }}><button onClick={() => handleSave(editItem)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>✓</button><button onClick={() => setEditItem(null)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✕</button></div> : <div style={{ display: 'flex', gap: 4 }}><button onClick={() => setEditItem({ ...item })} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✏️</button><button onClick={() => handleDelete(item.id)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #faeaea', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>}</td>

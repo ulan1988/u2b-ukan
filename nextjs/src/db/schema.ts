@@ -63,6 +63,7 @@ export const products = pgTable('products', {
   priceIn: money('price_in').notNull().default('0'),      // приходная (закуп)
   priceRetail: money('price_retail').notNull().default('0'),
   priceOpt: money('price_opt').notNull().default('0'),
+  priceSpec: money('price_spec').notNull().default('0'), // спец-цена (для изделий — за см)
   specTypeId: uuid('spec_type_id').references(() => specTypes.id),  // тип изделия (спецификация: стандартный см + материал)
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
