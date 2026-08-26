@@ -13,7 +13,7 @@ import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { COLORS } from '@/lib/colors'
 import { fmtDate, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
-import { autoPrices, saveItemPrice, settings as fetchSettings, createSpecProject } from '@/lib/api/refs'
+import { autoPrices, settings as fetchSettings, createSpecProject } from '@/lib/api/refs'
 import { Btn, INP, inpSm, LBL, PAY, purple } from './reception/ui'
 import PurchaseDraft from './reception/PurchaseDraft'
 import ProcessingCard from './reception/ProcessingCard'
@@ -62,14 +62,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
   const clientPT = () => (allCags.find((c: any) => c.id === contactId)?.priceType) || 'retail'
-  // Сохранить цену изделия «на ходу» в прайс (по имени, даже если товара ещё нет в номенклатуре).
-  async function savePriceToList(i: number) {
-    const r = rows[i]; const nm = (r.name1c || '').trim(); const price = Number(r.price)
-    if (!nm || !(price > 0)) { toast('Сначала имя и цена'); return }
-    const res: any = await saveItemPrice(nm, price, clientPT())
-    toast(res?.ok ? `💾 Цена сохранена в прайс (${res.created ? 'создано' : 'обновлено'})` : '⚠ ' + (res?.error || 'Не удалось'))
-    if (res?.ok) fetchRefs().then((d: any) => setProducts(d.products || []))
-  }
   function pickProduct(i: number, p: any) { const pr = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0); setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт', ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}), price: pr > 0 ? String(pr) : '' }) }
   const assignAllLogist = (uid: string) => uid && setRows(rs => rs.map(r => ({ ...r, respUserId: uid })))
   const assignAllSupplier = (sid: string) => sid && setRows(rs => rs.map(r => ({ ...r, supplierId: sid })))
@@ -197,12 +189,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => { const cm = e.target.value; setRow(i, { widthCm: cm, name1c: r.name1c ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm }) : r.name1c }) }} /></td>
                       <td style={{ padding: '6px 4px', width: 70 }}><input data-qty style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
-                      <td style={{ padding: '6px 4px', width: 118 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'цена'} title={isIzdelie(r.name1c) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} />
-                          <button onClick={() => savePriceToList(i)} title="Сохранить цену в прайс (на ходу)" style={{ border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>💾</button>
-                        </div>
-                      </td>
+                      <td style={{ padding: '6px 4px', width: 100 }}><input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'цена'} title={isIzdelie(r.name1c) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} /></td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => setRow(i, { supplierId: c.id })} placeholder={kind === 'purchase' ? '— поставщик —' : '— производитель —'} style={{ fontSize: 13 }} /></td>
                       <td style={{ padding: '6px 4px', width: 120 }}><input style={inpSm} type="date" value={r.deadline} onChange={e => setRow(i, { deadline: e.target.value })} /></td>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { products, contragents } from '@/db/schema'
 import { inArray, eq, sql } from 'drizzle-orm'
-import { priceForClient } from '@/lib/lineAmount'
+import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { setItemPrice } from '@/services/pricing.service'
 import { sessionFromRequest } from '@/lib/auth'
 
@@ -40,17 +40,19 @@ export async function GET(req: NextRequest) {
     for (const r of rows) { const v = priceForClient(r, priceType); if (v > 0) out[r.id] = v }
   }
   if (names.length) {
-    // Изделие: цена ЗА СМ одна на вид+цвет — тянем с базового «Изделие {цвет}» (без «NN см»),
-    // а не с конкретного «Изделие {цвет} 50 см». Ищем и точное имя, и базовое.
+    // Изделие: цена ЗА СМ. Ищем по приоритету: точное имя → «Изделие {цвет}» (без «NN см»)
+    // → общий «Изделие» (umbrella, без цвета и см). Берём цену с самого конкретного найденного.
     const baseOf = (n: string) => n.replace(/\s*\d+([.,]\d+)?\s*см\s*$/i, '').trim()
-    const wanted = new Map<string, string[]>()  // lower-ключ поиска → оригинальные имена запроса
-    for (const n of names) { for (const key of [n.toLowerCase(), baseOf(n).toLowerCase()]) { const a = wanted.get(key) || []; if (!a.includes(n)) a.push(n); wanted.set(key, a) } }
-    const rows = await db.select().from(products).where(inArray(sql`lower(trim(${products.name}))`, Array.from(wanted.keys())))
-    for (const r of rows) {
-      const v = priceForClient(r, priceType); if (!(v > 0)) continue
-      const key = String(r.name).trim().toLowerCase()
-      for (const orig of (wanted.get(key) || [])) if (out[orig] == null) out[orig] = v   // точное имя приоритетнее базового не нужно — оба дают одну цену/см
+    const keysFor = (n: string) => {
+      const ks = [n.toLowerCase()]                                       // 1. точное
+      if (isIzdelie(n)) { ks.push(baseOf(n).toLowerCase()); ks.push('изделие') }  // 2. по цвету  3. общий
+      return Array.from(new Set(ks))
     }
+    const allKeys = new Set<string>(); for (const n of names) for (const k of keysFor(n)) allKeys.add(k)
+    const rows = await db.select().from(products).where(inArray(sql`lower(trim(${products.name}))`, Array.from(allKeys)))
+    const priceByKey = new Map<string, number>()
+    for (const r of rows) { const v = priceForClient(r, priceType); if (v > 0) priceByKey.set(String(r.name).trim().toLowerCase(), v) }
+    for (const n of names) { for (const k of keysFor(n)) { const v = priceByKey.get(k); if (v != null) { out[n] = v; break } } }  // первый найденный = самый конкретный
   }
   return NextResponse.json(out)
 }
