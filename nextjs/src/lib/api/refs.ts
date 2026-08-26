@@ -85,5 +85,5 @@ export const listEmployees = (orgId: string, all = false) => getArray(`/api/empl
 export const saveEmployee = (b: any) => post('/api/employees', b)
 export const archiveEmployee = (id: string) => send(`/api/employees?id=${id}`, 'DELETE')
 
-export const autoPrices = (productIds: string[], contragentId?: string) =>
-  getObj(`/api/pricing?productIds=${productIds.join(',')}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})
+export const autoPrices = (productIds: string[], contragentId?: string, names?: string[]) =>
+  getObj(`/api/pricing?productIds=${productIds.join(',')}${names && names.length ? `&names=${encodeURIComponent(names.join('|'))}` : ''}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})

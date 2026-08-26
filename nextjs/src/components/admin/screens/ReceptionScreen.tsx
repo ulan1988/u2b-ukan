@@ -9,6 +9,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
+import { priceForClient } from '@/lib/lineAmount'
 import { COLORS } from '@/lib/colors'
 import { fmtDate, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
@@ -59,15 +60,25 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
   function openForm(k: 'sale' | 'purchase') { setKind(k); setOpen(true); setRows([emptyPos()]) }
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
-  function pickProduct(i: number, p: any) { setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт', price: p.priceRetail != null ? String(p.priceRetail) : '' }) }
+  // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
+  const clientPT = () => (allCags.find((c: any) => c.id === contactId)?.priceType) || 'retail'
+  function pickProduct(i: number, p: any) { const pr = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0); setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт', ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}), price: pr > 0 ? String(pr) : '' }) }
   const assignAllLogist = (uid: string) => uid && setRows(rs => rs.map(r => ({ ...r, respUserId: uid })))
   const assignAllSupplier = (sid: string) => sid && setRows(rs => rs.map(r => ({ ...r, supplierId: sid })))
 
   async function pullPrices() {
     const ids = rows.map(r => r.productId).filter(Boolean)
-    if (!ids.length) { toast('Нет товаров из 1С для цен'); return }
-    const prices: any = await autoPrices(ids, kind === 'sale' ? (contactId || undefined) : undefined)
-    setRows(rs => rs.map(r => (r.productId && prices[r.productId] != null ? { ...r, price: String(prices[r.productId]) } : r)))
+    // Изделия часто без товара 1С — подтягиваем цену и ПО ИМЕНИ (спец/опт/розница = цена за см).
+    const names = rows.filter(r => !r.productId && (r.name1c || '').trim()).map(r => (r.name1c || '').trim())
+    if (!ids.length && !names.length) { toast('Нет позиций для цен'); return }
+    const prices: any = await autoPrices(ids, kind === 'sale' ? (contactId || undefined) : undefined, names)
+    setRows(rs => rs.map(r => {
+      const byId = r.productId && prices[r.productId] != null ? prices[r.productId] : null
+      const nm = (r.name1c || '').trim()
+      const byName = nm && prices[nm] != null ? prices[nm] : null
+      const v = byId ?? byName
+      return v != null ? { ...r, price: String(v) } : r
+    }))
     toast('Цены подтянуты')
   }
   function addFromCatalog(items: PickedPos[]) {
