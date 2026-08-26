@@ -3,8 +3,21 @@ import { db } from '@/lib/db'
 import { products, contragents } from '@/db/schema'
 import { inArray, eq, sql } from 'drizzle-orm'
 import { priceForClient } from '@/lib/lineAmount'
+import { setItemPrice } from '@/services/pricing.service'
+import { sessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
+
+// Быстрый ввод цены «на ходу»: сохранить цену/см изделия (по имени) в прайс.
+// POST { name, price, priceType? } → создаёт/обновляет базовое изделие с этой ценой.
+export async function POST(req: NextRequest) {
+  const s = await sessionFromRequest(req)
+  if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+  const b = await req.json().catch(() => ({}))
+  const r = await setItemPrice(b.name, Number(b.price), b.priceType)
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+  return NextResponse.json(r)
+}
 
 // Автоцены: цена под тип клиента (retail|opt|spec). Для изделий это цена ЗА СМ.
 // GET ?productIds=a,b,c&names=Изделие 7024 15 см|…&contragentId=… → { [id|name]: price }

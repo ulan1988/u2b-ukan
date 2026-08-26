@@ -85,5 +85,7 @@ export const listEmployees = (orgId: string, all = false) => getArray(`/api/empl
 export const saveEmployee = (b: any) => post('/api/employees', b)
 export const archiveEmployee = (id: string) => send(`/api/employees?id=${id}`, 'DELETE')
 
+// Быстрый ввод цены «на ходу»: сохранить цену/см изделия (по имени) в прайс.
+export const saveItemPrice = (name: string, price: number, priceType?: string) => post('/api/pricing', { name, price, priceType })
 export const autoPrices = (productIds: string[], contragentId?: string, names?: string[]) =>
   getObj(`/api/pricing?productIds=${productIds.join(',')}${names && names.length ? `&names=${encodeURIComponent(names.join('|'))}` : ''}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})
