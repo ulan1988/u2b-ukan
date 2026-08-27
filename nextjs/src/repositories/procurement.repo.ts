@@ -20,7 +20,8 @@ export const procuredPairs = (orgId: string) =>
   db.select({ saleCardId: procurementLinks.saleCardId, product: procurementLinks.product })
     .from(procurementLinks)
     .innerJoin(orders, eq(procurementLinks.purchaseCardId, orders.id))
-    .where(eq(orders.orgId, orgId))
+    // Отменённый закуп не считается «закуплено» — продажа возвращается в потребность автозакупа.
+    .where(and(eq(orders.orgId, orgId), eq(orders.isCancelled, false)))
 
 // Открытый черновик-накопитель закупа.
 export const openDraft = (orgId: string) =>
