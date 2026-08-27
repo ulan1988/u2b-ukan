@@ -73,7 +73,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const posInAll = visOrders.flatMap(o => (o.positions || []).filter((p: any) => p.leg === 2 && p.status !== 'Доставлено').map((p: any) => ({ pos: p, order: o })))
   // Продажа видна логисту ТОЛЬКО после закупа: карточки с непроведённым закупом (waitingProcure) скрыты.
   const posIn = posInAll.filter(x => !isPurchase(x.order) && !x.order.waitingProcure)
-  const waitingCount = new Set(posInAll.filter(x => !isPurchase(x.order) && x.order.waitingProcure).map(x => x.order.id)).size
+  const posWaiting = posInAll.filter(x => !isPurchase(x.order) && x.order.waitingProcure)   // серые: ждут прихода закупа
+  const waitingCount = new Set(posWaiting.map(x => x.order.id)).size
   const posBuy = posInAll.filter(x => isPurchase(x.order))
   const posOut = visOrders.flatMap(o => (o.positions || []).filter((p: any) => p.status === 'Доставлено').map((p: any) => ({ pos: p, order: o })))
   // Бейдж PWA: открытые назначенные карточки логиста (не доставленные), без фильтра по дате.
@@ -258,7 +259,22 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         {tab === 'in' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>💰 Продажа · по заказчикам</div>
-            {waitingCount > 0 && <div style={{ background: '#fff8ef', border: '1.5px solid #f0d9b0', borderRadius: 10, padding: '9px 14px', marginBottom: 10, fontSize: 13, color: '#8a6f00' }}>⏳ {waitingCount} заказ(ов) ждут закупа — появятся здесь, когда закуп проведён (приход на склад).</div>}
+            {waitingCount > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 6 }}>⏳ Ждут закупа ({waitingCount}) — станут активными, когда закуп проведён (приход на склад):</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, opacity: .7 }}>
+                  {groupByCard(posWaiting).map(g => (
+                    <div key={`w-${g.order.id}`} style={{ background: '#f1efec', border: '1.5px dashed #cfc7bb', borderRadius: 10, padding: '8px 12px', minWidth: 220, filter: 'grayscale(1)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#6b655b' }}>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{g.order.id}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#8a6f00', background: '#fdf3d8', padding: '1px 7px', borderRadius: 20 }}>ждёт закупа</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#6b655b', marginTop: 3 }}>{(g.order.fromName || '—')} · {g.poss.length} поз.</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
             {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>
               : posIn.length === 0 ? empty('✅', 'Нет позиций к доставке')

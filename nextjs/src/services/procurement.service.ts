@@ -58,9 +58,11 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
       touched = true   // связь найдена → продажу двигаем в Приёмку, даже если поля уже заполнены
     }
     if (touched) {
-      // Готовая продажа падает на стол Приёмки (screen reception, block processing).
-      await orderRepo.updateOrder(saleId, { screen: 'reception', block: 'processing', status: 'В обработке' })
-      await orderRepo.insertHistory({ cardId: saleId, action: 'linked', detail: `🟢 Закуплено (закуп ${purchaseCardId}) — поставщик и цена назначены, можно отгружать`, userName: 'Система' })
+      // Продажа уходит СРАЗУ к логисту (Исходящие), без повторного захода в Приёмку.
+      // Пока закуп не пришёл (нет приходной) — у логиста она серая (waitingProcure);
+      // как только закуп проведён (linked_doc_id), waitingProcure гаснет и её можно доставлять.
+      await orderRepo.updateOrder(saleId, { screen: 'outgoing', block: '', status: 'В работе' })
+      await orderRepo.insertHistory({ cardId: saleId, action: 'linked', detail: `🟢 Закуплено (закуп ${purchaseCardId}) — поставщик и цена назначены, у логиста (ждёт прихода закупа)`, userName: 'Система' })
       opened++
     }
   }
