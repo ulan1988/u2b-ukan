@@ -1,7 +1,8 @@
 // Домен: справочники (организации, товары, контрагенты, склады, кассы, остаток).
 import { getArray, getObj, post, patch, send } from './http'
 
-export const fetchRefs = () => getObj('/api/refs')       // { organizations, products, contragents, warehouses, cashAccounts }
+// orgId — видящая орг (выбранная в шапке): фильтрует контрагентов (свои + головного + мосты).
+export const fetchRefs = (orgId?: string) => getObj(`/api/refs${orgId ? `?orgId=${orgId}` : ''}`)
 
 export const listProducts = (all = false) => getArray(`/api/products${all ? '?all=1' : ''}`)
 export const addProduct = (b: any) => post('/api/products', b)

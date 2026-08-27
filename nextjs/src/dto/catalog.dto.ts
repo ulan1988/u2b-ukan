@@ -17,7 +17,7 @@ export const createContragentSchema = z.object({
   orgId: z.string().uuid(),
   name: z.string().min(1),
   kind: z.enum(['client', 'supplier', 'both']).default('client'),
-  priceType: z.enum(['retail', 'opt']).default('retail'),
+  priceType: z.enum(['retail', 'opt', 'spec']).default('retail'),
   phone: z.string().optional().default(''),
   bin: z.string().optional(),
   openingBalance: z.coerce.number().optional(),   // нач. остаток из акта сверки (+ нам должны, − мы должны)
@@ -42,7 +42,7 @@ export const updateProductSchema = z.object({
 export const updateContragentSchema = z.object({
   name: z.string().min(1).optional(),
   kind: z.enum(['client', 'supplier', 'both']).optional(),
-  priceType: z.enum(['retail', 'opt']).optional(),
+  priceType: z.enum(['retail', 'opt', 'spec']).optional(),
   phone: z.string().optional(),
   bin: z.string().optional(),
   openingBalance: z.coerce.number().optional(),

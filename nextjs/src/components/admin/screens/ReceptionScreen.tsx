@@ -48,11 +48,10 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
   function loadSettings() { fetchSettings(orgId).then((s: any) => { setSpecs((s.specProjects || []).filter((p: any) => p.status === 'active')); setDefaultCagId(s.defaultContragentId || '') }) }
   useEffect(() => {
-    fetchRefs().then((r: any) => {
-      const inOrg = (x: any) => !x.orgId || x.orgId === orgId
+    fetchRefs(orgId).then((r: any) => {
       setProducts(r.products || [])
-      // Один общий список контрагентов — клиент может быть и поставщиком, не делим.
-      setAllCags((r.contragents || []).filter(inOrg))
+      // Контрагенты уже отфильтрованы бэком по видящей орг (свои + головного + мосты) — не режем.
+      setAllCags(r.contragents || [])
     })
     fetchUsers().then((us: any[]) => setLogists(us.filter(u => u.role === 'logist' && u.orgId === orgId)))
     loadSettings()

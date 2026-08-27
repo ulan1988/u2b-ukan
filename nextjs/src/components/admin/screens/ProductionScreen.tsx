@@ -27,7 +27,7 @@ export default function ProductionScreen({ orgId }: { orgId: string }) {
   const showMsg = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2500) }
 
   useEffect(() => {
-    fetchRefs().then((r: any) => {
+    fetchRefs(orgId).then((r: any) => {
       setProducts(r.products || [])
       const wh = (r.warehouses || []).find((w: any) => w.orgId === orgId && w.isCentral) || (r.warehouses || []).find((w: any) => w.orgId === orgId)
       setWarehouseId(wh?.id || '')

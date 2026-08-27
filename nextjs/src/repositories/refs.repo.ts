@@ -1,7 +1,7 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
 import { organizations, contragents, warehouses, products, cashAccounts, specTypes } from '../db/schema'
-import { and, eq, or, getTableColumns } from 'drizzle-orm'
+import { and, eq, or, isNotNull, getTableColumns } from 'drizzle-orm'
 
 export const listOrganizations = () =>
   db.select().from(organizations).where(eq(organizations.archived, false))
@@ -33,8 +33,20 @@ export const listProducts = () =>
     .from(products).leftJoin(specTypes, eq(products.specTypeId, specTypes.id))
     .where(eq(products.archived, false))
 
-export const listContragents = () =>
-  db.select().from(contragents).where(eq(contragents.archived, false))
+// Контрагенты по видящей орг: свои (viewerOrgId) + головного (шарятся вниз) + мосты (orgRefId,
+// «наш филиал как контрагент» — нужны для меж-орг потоков, видны всегда). Головной видит только
+// свои; филиал — свои и головного; контрагенты филиала головному не видны. Без viewerOrgId — все.
+export const listContragents = async (viewerOrgId?: string | null) => {
+  if (!viewerOrgId) return db.select().from(contragents).where(eq(contragents.archived, false))
+  const [hq] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.kind, 'hq')).limit(1)
+  const ownOrHq = hq && hq.id !== viewerOrgId
+    ? or(eq(contragents.orgId, viewerOrgId), eq(contragents.orgId, hq.id))
+    : eq(contragents.orgId, viewerOrgId)
+  return db.select().from(contragents).where(and(
+    eq(contragents.archived, false),
+    or(ownOrHq, isNotNull(contragents.orgRefId)),   // + мосты всегда
+  ))
+}
 
 export const listCashAccounts = () =>
   db.select().from(cashAccounts).where(eq(cashAccounts.archived, false))

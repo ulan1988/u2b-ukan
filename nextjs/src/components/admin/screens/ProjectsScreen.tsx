@@ -47,7 +47,7 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
 
   const loadList = useCallback(async () => { setLoading(true); setProjects(await listSpecProjects(orgId)); setLoading(false) }, [orgId])
   useEffect(() => { loadList() }, [loadList])
-  useEffect(() => { fetchRefs().then((r: any) => { setProducts(r.products || []); setCags((r.contragents || []).filter((c: any) => !c.archived)); setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === orgId && !a.archived)) }) }, [orgId])
+  useEffect(() => { fetchRefs(orgId).then((r: any) => { setProducts(r.products || []); setCags((r.contragents || []).filter((c: any) => !c.archived)); setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === orgId && !a.archived)) }) }, [orgId])
 
   async function openDetail(id: string) { const d: any = await specProjectDetail(id); if (d) { setDetail(d); setView('detail'); setCarveQty({}); setCarveComment('') } }
 

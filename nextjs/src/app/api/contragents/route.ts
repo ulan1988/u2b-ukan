@@ -3,12 +3,16 @@ import { createContragentSchema } from '@/dto/catalog.dto'
 import { addContragent } from '@/services/catalog.service'
 import { listContragents } from '@/repositories/refs.repo'
 import { listAllContragents } from '@/repositories/catalog.repo'
+import { sessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  const all = new URL(req.url).searchParams.get('all')
-  return NextResponse.json(all ? await listAllContragents() : await listContragents())
+  const url = new URL(req.url)
+  if (url.searchParams.get('all')) return NextResponse.json(await listAllContragents())
+  const s = await sessionFromRequest(req)
+  const viewerOrg = url.searchParams.get('orgId') || s?.orgId || null
+  return NextResponse.json(await listContragents(viewerOrg))
 }
 
 export async function POST(req: NextRequest) {
