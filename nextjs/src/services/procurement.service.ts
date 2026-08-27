@@ -44,17 +44,18 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
     for (const sl of links.filter(l => l.saleCardId === saleId)) {
       const orig = supByProduct[normNom(sl.product || '')]
       if (!orig) continue
-      const pos = positions.find((p: any) => normNom(p.name1c || p.oral || '') === normNom(sl.product || '') && !p.supplierId)
+      // Матчим по товару БЕЗ требования пустого поставщика — иначе продажа с уже
+      // проставленным поставщиком (вручную/автозакупом) не двигалась в Приёмку и висела во Входящих.
+      const pos = positions.find((p: any) => normNom(p.name1c || p.oral || '') === normNom(sl.product || ''))
       if (!pos) continue
-      const { legForSupplier } = await import('../lib/legDetect')
-      const set: any = { supplierId: orig.supplierId, leg: await legForSupplier(orig.supplierId) }
-      if (orig.productId) set.productId = orig.productId
+      const set: any = {}
+      if (!pos.supplierId && orig.supplierId) { const { legForSupplier } = await import('../lib/legDetect'); set.supplierId = orig.supplierId; set.leg = await legForSupplier(orig.supplierId) }
+      if (orig.productId && !pos.productId) set.productId = orig.productId
       if (!(pos.name1c || '').trim() && sl.product) set.name1c = sl.product
-      const prod = orig.productId ? prodById[orig.productId] : null
-      if (prod) { const { priceForClient } = await import('../lib/lineAmount'); const pr = priceForClient(prod, clientPT); if (pr > 0) set.price = String(pr) }
+      if (!(Number(pos.price) > 0)) { const prod = orig.productId ? prodById[orig.productId] : null; if (prod) { const { priceForClient } = await import('../lib/lineAmount'); const pr = priceForClient(prod, clientPT); if (pr > 0) set.price = String(pr) } }
       if (!pos.respUserId && defaultLogist) set.respUserId = defaultLogist
-      await orderRepo.updatePosition(pos.id, set)
-      touched = true
+      if (Object.keys(set).length) await orderRepo.updatePosition(pos.id, set)
+      touched = true   // связь найдена → продажу двигаем в Приёмку, даже если поля уже заполнены
     }
     if (touched) {
       // Готовая продажа падает на стол Приёмки (screen reception, block processing).
