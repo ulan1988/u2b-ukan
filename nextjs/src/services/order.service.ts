@@ -208,7 +208,12 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   else await repo.updatePositionsByCard(cardId, { status })
 
   const positions = await repo.positionsByCard(cardId)
-  const allDelivered = positions.length > 0 && positions.every(p => p.status === 'Доставлено')
+  // «Всё доставлено» считаем по позициям, которые ВОЗИТ ЛОГИСТ (leg=2). Позиции leg=1
+  // (производство филиала) логист не доставляет — они идут своим циклом (кабинет мастера),
+  // и не должны навсегда блокировать проводку приходной/расходной.
+  const deliverable = positions.filter(p => Number(p.leg) !== 1)
+  const base = deliverable.length ? deliverable : positions
+  const allDelivered = base.length > 0 && base.every(p => p.status === 'Доставлено')
   const [order] = await repo.getOrder(cardId)
   // При доставке — авто-строка в смену логиста (собирается «Доставлено» → отчёт).
   if (status === 'Доставлено' && order) {
