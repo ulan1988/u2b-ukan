@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const b = await req.json().catch(() => null)
   if (!b?.name) return NextResponse.json({ error: 'Название обязательно' }, { status: 400 })
-  return NextResponse.json(await createSpecProject(s.orgId, b.name, b.clientId || null, b.items || []), { status: 201 })
+  return NextResponse.json(await createSpecProject(s.orgId, b.name, b.clientId || null, b.items || [], !!b.transit), { status: 201 })
 }
 
 // Список проектов с остатками (кол-во / вынесено / остаток).

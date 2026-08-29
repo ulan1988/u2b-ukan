@@ -12,9 +12,9 @@ export async function listProjectsByClient(clientId?: string) {
 }
 
 interface SpecItemInput { name: string; qty: number; unit?: string; productId?: string; widthCm?: number; price?: number; supplierId?: string }
-export async function createSpecProject(orgId: string, name: string, clientId: string | null, items: SpecItemInput[]) {
+export async function createSpecProject(orgId: string, name: string, clientId: string | null, items: SpecItemInput[], transit?: boolean) {
   const id = randomUUID()
-  await repo.insertSpecProject({ id, orgId, name, clientId: clientId ?? null })
+  await repo.insertSpecProject({ id, orgId, name, clientId: clientId ?? null, transit: !!transit } as any)
   await repo.insertSpecItems(items.filter(i => i.name).map(i => ({
     specProjectId: id, name: i.name, qty: String(i.qty || 0), unit: i.unit || 'шт',
     productId: i.productId ?? null,
@@ -85,14 +85,13 @@ export async function carveCard(orgId: string, specProjectId: string,
   const byId = new Map((items as any[]).map(i => [i.id, i]))
   const use = lines.filter(l => l.specItemId && Number(l.qty) > 0)
   if (!use.length) return { ok: false as const, error: 'Нечего выносить — укажите количество' }
-  // Заказчик карточки: явно заданный, иначе Автор проекта (spec_projects.clientId).
-  if (!meta.contactId) {
-    const { db } = await import('../lib/db')
-    const { specProjects } = await import('../db/schema')
-    const { eq } = await import('drizzle-orm')
-    const [proj] = await db.select({ clientId: specProjects.clientId }).from(specProjects).where(eq(specProjects.id, specProjectId)).limit(1)
-    if (proj?.clientId) meta = { ...meta, contactId: proj.clientId }
-  }
+  // Проект: заказчик (если не задан) + флаг «Сквозная» (вынесенные карточки наследуют).
+  const { db } = await import('../lib/db')
+  const { specProjects } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [proj] = await db.select({ clientId: specProjects.clientId, transit: specProjects.transit }).from(specProjects).where(eq(specProjects.id, specProjectId)).limit(1)
+  if (!meta.contactId && proj?.clientId) meta = { ...meta, contactId: proj.clientId }
+  const projTransit = !!proj?.transit
   for (const l of use) {
     const it = byId.get(l.specItemId)
     if (!it) return { ok: false as const, error: 'Позиция проекта не найдена' }
@@ -111,7 +110,7 @@ export async function carveCard(orgId: string, specProjectId: string,
   const { createOrder } = await import('./order.service')
   const res: any = await createOrder({
     orgId, kind: 'sale', prodOrder: meta.prod, screen: 'reception', block: 'processing',
-    specProjectId, contactId: meta.contactId, fromName: meta.fromName || '',
+    specProjectId, contactId: meta.contactId, fromName: meta.fromName || '', transit: projTransit,
     source: 'admin_manual', comment: meta.comment || '', deadline: meta.deadline,
     positions,
   } as any, actor)

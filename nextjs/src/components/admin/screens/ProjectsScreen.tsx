@@ -36,7 +36,7 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
 
   // Форма создания проекта
   const [creating, setCreating] = useState(false)
-  const [pName, setPName] = useState(''); const [pClient, setPClient] = useState('')
+  const [pName, setPName] = useState(''); const [pClient, setPClient] = useState(''); const [pTransit, setPTransit] = useState(false)
   const [rows, setRows] = useState<ItemRow[]>([blankRow()])
   const setRow = (i: number, patch: Partial<ItemRow>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
 
@@ -56,9 +56,9 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
     // Позиции необязательны — можно создать пустой проект (просто имя + заказчик), позиции добавить позже.
     const items = rows.filter(r => r.name.trim()).map(r => ({ name: r.name, qty: num(r.qty), unit: r.unit || 'шт', productId: r.productId || undefined, widthCm: r.widthCm ? num(r.widthCm) : undefined, price: num(r.price), supplierId: r.supplierId || undefined }))
     setBusy(true)
-    const r: any = await createSpecProject({ name: pName, clientId: pClient || undefined, items })
+    const r: any = await createSpecProject({ name: pName, clientId: pClient || undefined, items, transit: pTransit })
     setBusy(false)
-    if (r?.id || r?.ok) { setCreating(false); setPName(''); setPClient(''); setRows([blankRow()]); showMsg('✅ Проект создан'); loadList() }
+    if (r?.id || r?.ok) { setCreating(false); setPName(''); setPClient(''); setPTransit(false); setRows([blankRow()]); showMsg('✅ Проект создан'); loadList() }
     else showMsg('⚠ ' + (r?.error || 'Не удалось создать'))
   }
 
@@ -182,6 +182,11 @@ export default function ProjectsScreen({ orgId, onOpen, onReload }: { orgId: str
           <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 240px' }}><label style={LBL}>НАЗВАНИЕ ПРОЕКТА</label><input style={INP} value={pName} onChange={e => setPName(e.target.value)} placeholder="напр. Дом Ахметова — кровля" /></div>
             <div style={{ flex: '1 1 240px' }}><label style={LBL}>ЗАКАЗЧИК</label><ContragentPicker contragents={cags} value={pClient} onPick={(c: any) => setPClient(c.id)} placeholder="— выбрать —" /></div>
+            <div style={{ flex: '1 1 240px', display: 'flex', alignItems: 'flex-end' }}>
+              <label title="Все вынесенные карточки проекта — сквозные (товар мимо склада, только деньги)" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: pTransit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: pTransit ? '#f3eeff' : '#fff', border: `1.5px solid ${pTransit ? '#d8c4ec' : COLORS.border}`, borderRadius: 8, padding: '8px 12px' }}>
+                <input type="checkbox" checked={pTransit} onChange={e => setPTransit(e.target.checked)} /> 🔀 Сквозной проект (транзит)
+              </label>
+            </div>
           </div>
           <label style={LBL}>ПОЛНЫЙ СПИСОК ПОЗИЦИЙ</label>
           <div style={{ overflowX: 'auto' }}>
