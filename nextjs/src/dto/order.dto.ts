@@ -7,6 +7,7 @@ export const orderPositionInput = z.object({
   qty: z.coerce.number().min(0).default(0),
   unit: z.string().optional().default('шт'),
   price: z.coerce.number().min(0).default(0),
+  costPrice: z.coerce.number().min(0).optional(),   // сквозная: закупочная цена (что платим поставщику)
   widthCm: z.coerce.number().optional(),                   // ширина изделия в см (раскрой)
   respUserId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
@@ -27,6 +28,7 @@ export const createOrderSchema = z.object({
   block: z.string().optional(),
   isDraft: z.boolean().optional(),
   specProjectId: z.string().uuid().optional(),
+  transit: z.boolean().optional(),                        // сквозная продажа (drop-ship)
   comment: z.string().optional().default(''),
   phone: z.string().optional(),
   deadline: z.string().optional(),

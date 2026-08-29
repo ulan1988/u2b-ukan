@@ -17,6 +17,11 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   const lines = positions.filter(p => p.productId).map(p => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт', sourcePosId: p.id, name: p.name1c || p.oral, widthCm: p.widthCm }))
   if (!lines.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
 
+  // ── СКВОЗНАЯ ПРОДАЖА (drop-ship): товар мимо склада, только деньги/долги ──────────
+  // Расходная заказчику (продажа, по price) + закуп поставщику (по costPrice) — обе БЕЗ склада.
+  // Дебиторка заказчика += продажа; кредиторка поставщика += закуп; маржа = продажа − закуп.
+  if ((o as any).transit && o.kind === 'sale') return postTransitSale(o, positions, actor)
+
   const isPurchase = o.kind === 'purchase'
   const wh = isPurchase && o.toWarehouseId ? { id: o.toWarehouseId } : await refsRepo.centralWarehouse(o.orgId)
   if (!wh) return { ok: false as const, error: 'Не найден склад (создайте центральный склад)' }
@@ -59,4 +64,31 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
     userName: actor?.name || 'Система',
   })
   return { ok: true as const, number: doc.number }
+}
+
+// Сквозная продажа: две накладные БЕЗ склада. Расходная заказчику (price) → его дебиторка;
+// закуп поставщику (costPrice) → кредиторка поставщика. Товар на склад не приходует/не списывает.
+async function postTransitSale(o: any, positions: any[], actor?: Session | null) {
+  const wh = await refsRepo.centralWarehouse(o.orgId)
+  if (!wh) return { ok: false as const, error: 'Не найден склад орг' }
+  const clientId = o.contactId
+  const supplierId = positions.find((p: any) => p.supplierId)?.supplierId
+  if (!clientId) return { ok: false as const, error: 'Сквозная: не указан заказчик' }
+  if (!supplierId) return { ok: false as const, error: 'Сквозная: не указан поставщик (у кого берём товар)' }
+  const withProd = positions.filter((p: any) => p.productId)
+  if (!withProd.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
+  const acceptDate = o.delivered ? toYMD(o.delivered as any) : today()
+  const base = (price: (p: any) => number) => withProd.map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: price(p), unit: p.unit || 'шт', sourcePosId: p.id, name: p.name1c || p.oral, widthCm: p.widthCm }))
+  const projectId = o.specProjectId || null
+
+  // 1) Продажа заказчику (дебиторка) — по продажной цене, без склада.
+  const saleDoc = await docSvc.createSale({ orgId: o.orgId, contragentId: clientId, warehouseId: wh.id, lines: base(p => Number(p.price) || 0), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · продажа (транзит от поставщика) · ${o.id}`, noStock: true } as any)
+  // 2) Закуп у поставщика (кредиторка) — по закупочной цене, без склада.
+  const buyDoc = await docSvc.createPurchase({ orgId: o.orgId, contragentId: supplierId, warehouseId: wh.id, lines: base(p => Number(p.costPrice) || 0), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · закуп у поставщика (транзит к заказчику) · ${o.id}`, noStock: true } as any)
+
+  const margin = withProd.reduce((s: number, p: any) => s + Number(p.qty) * (Number(p.price) - Number(p.costPrice)), 0)
+  await orderRepo.updateOrder(o.id, { linkedDocId: saleDoc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
+  try { const { deleteReservesByCard } = await import('../repositories/reserve.repo'); await deleteReservesByCard(o.id) } catch {}
+  await orderRepo.insertHistory({ cardId: o.id, action: 'invoice', detail: `Сквозная: продажа ${saleDoc.number} + закуп ${buyDoc.number}, маржа ${Math.round(margin)} ₸ (склад не тронут)`, userName: actor?.name || 'Система' })
+  return { ok: true as const, number: saleDoc.number }
 }

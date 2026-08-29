@@ -43,6 +43,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [comment, setComment] = useState('')
   const [rows, setRows] = useState<any[]>([emptyPos()])
   const [showCatalog, setShowCatalog] = useState(false)
+  const [transit, setTransit] = useState(false)   // сквозная продажа (drop-ship): товар мимо склада
   const [busy, setBusy] = useState(false)
   const advRef = useRef<any>(null)   // таймер авто-перехода СМ → КОЛ-ВО (пауза после набора)
 
@@ -61,7 +62,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
   const clientPT = () => (allCags.find((c: any) => c.id === contactId)?.priceType) || 'retail'
-  function pickProduct(i: number, p: any) { const pr = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0); setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт', ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}), price: pr > 0 ? String(pr) : '' }) }
+  function pickProduct(i: number, p: any) { const pr = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0); const cost = Number(p.priceRetail) || 0; setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт', ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}), price: pr > 0 ? String(pr) : '', ...(transit && cost > 0 ? { costPrice: String(cost) } : {}) }) }
   const assignAllLogist = (uid: string) => uid && setRows(rs => rs.map(r => ({ ...r, respUserId: uid })))
   const assignAllSupplier = (sid: string) => sid && setRows(rs => rs.map(r => ({ ...r, supplierId: sid })))
 
@@ -93,19 +94,20 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     const positions = rows.filter(r => r.name1c || r.productId).map(r => { const nm = itemName({ name: r.name1c, color: extractRal(r.name1c), cm: r.widthCm }); return ({
       productId: r.productId || undefined, name1c: nm, oral: nm, qty: Number(r.qty) || 0, unit: r.unit,
       widthCm: r.widthCm ? Number(r.widthCm) : undefined,
-      price: Number(r.price) || 0, respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
+      price: Number(r.price) || 0, costPrice: transit ? (Number(r.costPrice) || 0) : undefined,
+      respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
       deadline: r.deadline || undefined, payment: r.payment || '',
     }) })
     const body: any = {
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
-      specProjectId: specId || undefined,
+      specProjectId: specId || undefined, transit: kind === 'sale' ? transit : undefined,
       screen: asDraft ? 'incoming' : 'reception', block: asDraft ? '' : 'processing', isDraft: asDraft,
     }
     if (kind === 'sale') { body.contactId = contactId || undefined; body.fromName = client?.name || '' }
     else body.fromName = 'Центр-Склад'
     const r: any = await createOrder(body)
     setBusy(false)
-    if (r.id || r.ok) { setOpen(false); setContactId(''); setSpecId(''); setPhone(''); setDeadline(''); setComment(''); setRows([emptyPos()]); onReload(); toast(asDraft ? 'Черновик сохранён' : 'Отправлено') }
+    if (r.id || r.ok) { setOpen(false); setContactId(''); setSpecId(''); setPhone(''); setDeadline(''); setComment(''); setTransit(false); setRows([emptyPos()]); onReload(); toast(asDraft ? 'Черновик сохранён' : 'Отправлено') }
   }
 
   const waiting = orders.filter(o => o.screen === 'reception' && o.block !== 'processing' && !o.isCancelled)
@@ -146,7 +148,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               </button>
             )
           })}
-          {open && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: kind === 'purchase' ? purple : COLORS.primary }}>{kind === 'purchase' ? 'ЗАКУП · получатель Центр-Склад' : 'ПРОДАЖА'}</span>}
+          {open && kind === 'sale' && (
+            <label title="Товар идёт от поставщика сразу заказчику, минуя склад — только деньги/долги" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: transit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: transit ? '#f3eeff' : 'transparent', border: `1.5px solid ${transit ? '#d8c4ec' : '#e6e2dc'}`, borderRadius: 8, padding: '6px 12px' }}>
+              <input type="checkbox" checked={transit} onChange={e => setTransit(e.target.checked)} /> 🔀 Сквозная (транзит, мимо склада)
+            </label>
+          )}
+          {open && kind === 'purchase' && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
         </div>
 
         {open && (
@@ -188,7 +195,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => { const cm = e.target.value; setRow(i, { widthCm: cm, name1c: r.name1c ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm }) : r.name1c }) }} /></td>
                       <td style={{ padding: '6px 4px', width: 70 }}><input data-qty style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
-                      <td style={{ padding: '6px 4px', width: 100 }}><input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'цена'} title={isIzdelie(r.name1c) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} /></td>
+                      <td style={{ padding: '6px 4px', width: transit ? 150 : 100 }}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'прод.'} title="продажная цена (заказчику)" />
+                          {transit && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику) — по умолчанию розничная из каталога" />}
+                        </div>
+                      </td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => setRow(i, { supplierId: c.id })} placeholder={kind === 'purchase' ? '— поставщик —' : '— производитель —'} style={{ fontSize: 13 }} /></td>
                       <td style={{ padding: '6px 4px', width: 120 }}><input style={inpSm} type="date" value={r.deadline} onChange={e => setRow(i, { deadline: e.target.value })} /></td>

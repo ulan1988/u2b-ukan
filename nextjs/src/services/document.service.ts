@@ -29,8 +29,8 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     }
   })
 
-  // Приход на склад: +qty по каждой строке.
-  const moves = input.lines.map(l => ({
+  // Приход на склад: +qty по каждой строке. Сквозная (noStock) — склад НЕ трогаем.
+  const moves = (input as any).noStock ? [] : input.lines.map(l => ({
     id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId,
     productId: l.productId, qty: String(l.qty), documentId: docId, date,
   }))
@@ -132,8 +132,8 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     }
   })
 
-  // Списание со склада: −qty по каждой строке.
-  const moves = input.lines.map(l => ({
+  // Списание со склада: −qty по каждой строке. Сквозная (noStock) — склад НЕ трогаем.
+  const moves = (input as any).noStock ? [] : input.lines.map(l => ({
     id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId,
     productId: l.productId, qty: String(-l.qty), documentId: docId, date,
   }))

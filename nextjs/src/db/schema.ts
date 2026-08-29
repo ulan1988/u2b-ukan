@@ -288,6 +288,7 @@ export const orders = pgTable('orders', {
   contactId: uuid('contact_id').references(() => contragents.id),   // клиент-заказчик
   toWarehouseId: uuid('to_warehouse_id').references(() => warehouses.id), // Центр-Склад для закупа
   specProjectId: uuid('spec_project_id'),                 // → spec_projects.id (проект контрагента; единая система проектов)
+  transit: boolean('transit').notNull().default(false),   // сквозная продажа (drop-ship): товар мимо склада, только деньги
   comment: text('comment').notNull().default(''),
   phone: text('phone'),
   deadline: timestamp('deadline'),
@@ -332,6 +333,7 @@ export const orderPositions = pgTable('order_positions', {
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),
   price: money('price').notNull().default('0'),
+  costPrice: money('cost_price').notNull().default('0'),   // сквозная: закупочная цена (что платим поставщику); продажная = price
   widthCm: qtyCol('width_cm'),                             // ширина изделия в см (раскрой у мастера-производителя)
   respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
@@ -400,6 +402,7 @@ export const specProjects = pgTable('spec_projects', {
   clientId: uuid('client_id').references(() => contragents.id),
   description: text('description').notNull().default(''),
   status: text('status').notNull().default('active'),
+  transit: boolean('transit').notNull().default(false),   // сквозной проект: вынесенные карточки — сквозные
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('spec_projects_org_idx').on(t.orgId) }))
 

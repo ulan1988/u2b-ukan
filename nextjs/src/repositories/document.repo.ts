@@ -30,8 +30,8 @@ export async function insertDocumentPosting(doc: NewDoc, lines: NewLine[], moves
   const q: any[] = [
     db.insert(documents).values(doc),
     db.insert(documentLines).values(lines),
-    db.insert(stockMovements).values(moves),
   ]
+  if (moves.length) q.push(db.insert(stockMovements).values(moves))   // сквозная: движений нет — не вставляем пустой массив
   if (links && links.length) q.push(db.insert(docLinks).values(links))
   await db.batch(q as [any, ...any[]])
 }
