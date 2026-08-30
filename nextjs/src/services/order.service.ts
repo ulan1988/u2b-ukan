@@ -186,8 +186,8 @@ export async function listForBranch(target: { name: string; orgId: string; contr
 }
 
 // Заявки клиента (кабинет): созданные им (fromId).
-export async function listForClient(orgId: string, userId: string) {
-  return withPositions(await repo.ordersForClient(orgId, userId))
+export async function listForClient(orgId: string, userId: string, contragentId?: string | null) {
+  return withPositions(await repo.ordersForClient(orgId, userId, contragentId))
 }
 
 // «Провести все»: карточки К учёту (кроме отложенных) → в бухгалтерию.

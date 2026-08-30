@@ -69,8 +69,16 @@ export const listByScreen = (orgId: string, screen: string) =>
 export const listByOrg = (orgId: string) =>
   db.select().from(orders).where(eq(orders.orgId, orgId)).orderBy(desc(orders.createdAt))
 
-export const ordersForClient = (orgId: string, userId: string) =>
-  db.select().from(orders).where(and(eq(orders.orgId, orgId), eq(orders.fromId, userId))).orderBy(desc(orders.createdAt))
+// Заявки кабинета клиента: и те, что он подал сам (fromId), и те, где он ЗАКАЗЧИК (contactId) —
+// напр. продажа/сквозная, оформленная админом на этого контрагента. Иначе кабинет пустой,
+// хотя по клиенту сегодня были операции.
+export const ordersForClient = (orgId: string, userId: string, contragentId?: string | null) =>
+  db.select().from(orders).where(and(
+    eq(orders.orgId, orgId),
+    contragentId
+      ? or(eq(orders.fromId, userId), eq(orders.contactId, contragentId))
+      : eq(orders.fromId, userId),
+  )).orderBy(desc(orders.createdAt))
 
 export const positionsByCards = (cardIds: string[]) =>
   cardIds.length
