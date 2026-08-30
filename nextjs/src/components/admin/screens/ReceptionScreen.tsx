@@ -108,7 +108,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       : { screen: 'reception', block: 'processing' }
     const body: any = {
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
-      specProjectId: specId || undefined, transit: kind === 'sale' ? transit : undefined, transitAgent: kind === 'sale' && transit ? transitAgent : undefined,
+      specProjectId: specId || undefined, transit, transitAgent: transit ? transitAgent : undefined,
       screen: dest.screen, block: dest.block, isDraft: asDraft,
     }
     if (kind === 'sale') { body.contactId = contactId || undefined; body.fromName = client?.name || '' }
@@ -156,13 +156,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               </button>
             )
           })}
-          {open && kind === 'sale' && (
-            <label title="Товар идёт от поставщика сразу заказчику, минуя склад — только деньги/долги" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: transit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: transit ? '#f3eeff' : 'transparent', border: `1.5px solid ${transit ? '#d8c4ec' : '#e6e2dc'}`, borderRadius: 8, padding: '6px 12px' }}>
+          {open && kind === 'purchase' && !transit && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
+          {open && (
+            <label title="Товар идёт мимо склада (drop-ship) — только деньги/долги, приход/расход склада НЕ трогается" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: kind === 'purchase' && !transit ? 0 : 'auto', fontSize: 13, fontWeight: 700, color: transit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: transit ? '#f3eeff' : 'transparent', border: `1.5px solid ${transit ? '#d8c4ec' : '#e6e2dc'}`, borderRadius: 8, padding: '6px 12px' }}>
               <input type="checkbox" checked={transit} onChange={e => setTransit(e.target.checked)} /> 🔀 Сквозная (транзит, мимо склада)
             </label>
           )}
-          {open && kind === 'sale' && transit && <input value={transitAgent} onChange={e => setTransitAgent(e.target.value)} placeholder="Сквозной агент (напр. Берик)" title="Кому реально записан долг перед поставщиком — инфо" style={{ ...INP, maxWidth: 220, borderColor: '#d8c4ec' }} />}
-          {open && kind === 'purchase' && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
+          {open && transit && <input value={transitAgent} onChange={e => setTransitAgent(e.target.value)} placeholder="Сквозной агент (напр. Берик)" title="Кому реально записан долг перед поставщиком — инфо" style={{ ...INP, maxWidth: 220, borderColor: '#d8c4ec' }} />}
         </div>
 
         {open && (
