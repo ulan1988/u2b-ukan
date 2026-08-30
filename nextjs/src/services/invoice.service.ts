@@ -14,6 +14,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   if (o.linkedDocId) return { ok: false as const, error: 'Накладная уже проведена' }
 
   const positions = await orderRepo.positionsByCard(cardId)
+  await ensureProductIdsByName(positions)   // позиции без productId, но с совпадающим именем товара — подхватываем (иначе выпадали из накладной)
   const lines = positions.filter(p => p.productId).map(p => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт', sourcePosId: p.id, name: p.name1c || p.oral, widthCm: p.widthCm }))
   if (!lines.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
 
@@ -66,9 +67,28 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   return { ok: true as const, number: doc.number }
 }
 
+// Подхватить productId по имени для позиций, где он пуст (иначе позиция выпадает из накладной).
+// Матчим по точному имени товара из каталога; если товара нет — позиция остаётся без productId
+// (её в документ включить нельзя — нужен товар в номенклатуре).
+async function ensureProductIdsByName(positions: any[]) {
+  const need = positions.filter(p => !p.productId && (p.name1c || p.oral))
+  if (!need.length) return
+  const { db } = await import('../lib/db')
+  const { products } = await import('../db/schema')
+  const { sql, inArray } = await import('drizzle-orm')
+  const names = Array.from(new Set(need.map(p => String(p.name1c || p.oral).trim().toLowerCase())))
+  const prods = await db.select({ id: products.id, name: products.name }).from(products).where(inArray(sql`lower(trim(${products.name}))`, names))
+  const byName = new Map(prods.map(p => [String(p.name).trim().toLowerCase(), p.id]))
+  for (const p of need) {
+    const pid = byName.get(String(p.name1c || p.oral).trim().toLowerCase())
+    if (pid) { p.productId = pid; try { await orderRepo.updatePosition(p.id, { productId: pid }) } catch {} }
+  }
+}
+
 // Сквозная продажа: две накладные БЕЗ склада. Расходная заказчику (price) → его дебиторка;
 // закуп поставщику (costPrice) → кредиторка поставщика. Товар на склад не приходует/не списывает.
 async function postTransitSale(o: any, positions: any[], actor?: Session | null) {
+  await ensureProductIdsByName(positions)   // подхватить товар по имени, иначе позиция выпадёт из накладной
   const wh = await refsRepo.centralWarehouse(o.orgId)
   if (!wh) return { ok: false as const, error: 'Не найден склад орг' }
   const clientId = o.contactId

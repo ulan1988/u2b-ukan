@@ -109,7 +109,9 @@ export const positionsForLogist = (orgId: string, userId: string) =>
     .where(and(
       eq(orders.orgId, orgId), eq(orders.isCancelled, false),
       or(
-        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming'])),
+        // Свои позиции: активные экраны + проведённые/архив — чтобы «Выполнено · доставлено мной»
+        // показывало доставленное и после проводки накладной (иначе история пропадала).
+        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming', 'bookkeeping', 'archive'])),
         and(isNull(orderPositions.respUserId), eq(orders.screen, 'outgoing')),
       ),
     )).orderBy(desc(orders.createdAt))
