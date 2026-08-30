@@ -60,8 +60,8 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
                 {docs.map(d => {
                   const notReviewed = d.status !== 'cancelled' && !d.reviewed
                   return (
-                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', background: notReviewed ? '#fff8e1' : 'transparent' }} title={notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
-                    <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number}</td>
+                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', background: d.transit ? '#fff4ea' : notReviewed ? '#fff8e1' : 'transparent' }} title={d.transit ? 'Сквозная — товар мимо склада' : notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
+                    <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{fmtDate(d.date)}</td>
                     <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(Number(d.total))} ₸</td>

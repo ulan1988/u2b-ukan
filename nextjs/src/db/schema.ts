@@ -180,6 +180,7 @@ export const documents = pgTable('documents', {
   discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
   paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
   reviewed: boolean('reviewed').notNull().default(false), // проверена оператором? авто-проведённая = false (жёлтая метка «не проверено»)
+  transit: boolean('transit').notNull().default(false),   // сквозная (drop-ship) — товар мимо склада (оранжевая метка)
   contragentAccepted: boolean('contragent_accepted').notNull().default(false), // принял ли контрагент документ/возврат в своём кабинете
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),

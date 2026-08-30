@@ -69,6 +69,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{o.number}</span>
               <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>
               {o.status !== 'cancelled' && !f.reviewed && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#fff3cd', color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>}
+              {o.transit && <span title="Сквозная продажа — товар шёл мимо склада (drop-ship)" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#ffe8d6', color: '#c2570f', fontWeight: 700 }}>🔀 Сквозная · мимо склада</span>}
               <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
             </div>
 

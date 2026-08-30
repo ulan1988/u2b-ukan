@@ -40,7 +40,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,    // id карточки-основания (ЗП-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
-    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null,
+    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves)
@@ -159,7 +159,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
-    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null,
+    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves, links)

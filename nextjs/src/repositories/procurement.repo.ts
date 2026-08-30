@@ -9,6 +9,7 @@ export async function saleDemand(orgId: string) {
     eq(orders.orgId, orgId), eq(orders.kind, 'sale'),
     inArray(orders.screen, ['incoming', 'reception']),
     eq(orders.isDraft, false), eq(orders.isCancelled, false),
+    eq(orders.transit, false),   // сквозные (drop-ship) в автозакуп НЕ попадают — товар мимо склада
   ))
   if (!cards.length) return { cards: [], positions: [] as any[] }
   const positions = await db.select().from(orderPositions).where(inArray(orderPositions.cardId, cards.map(c => c.id)))
