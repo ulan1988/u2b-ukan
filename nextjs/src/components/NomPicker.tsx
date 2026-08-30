@@ -28,7 +28,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [cm, setCm] = useState('')
   const [text, setText] = useState('')
   const [rows, setRows] = useState<PickedPos[]>([])
-  const [pad, setPad] = useState<null | { name1c: string; oral: string; unit: string; digits: string; widthCm?: number }>(null)
+  const [pad, setPad] = useState<null | { name1c: string; oral: string; unit: string; digits: string; widthCm?: number; askCm?: boolean; baseLabel?: string; cmStr?: string }>(null)
   const padRef = useRef(pad); padRef.current = pad
 
   const overlays = overlayFor(selC || selG)   // накладки-слова (толщина/покрытие) — по выбранной папке
@@ -138,23 +138,32 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     let willSelect = false
     setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else { next[levelKey] = itemKey; willSelect = true } return next })
     if (!isMeasure) setCm('')
-    // Выбрали ВИД (напр. «J - профиль») и он без см → сразу спрашиваем количество «как есть»
-    // (имя = вид + цвет + доп.слова), без отдельной кнопки «Добавить как есть». Изделие (measure)
-    // требует см — там pad не открываем, показываем поле длины.
-    if (willSelect && levelKey === 'kind' && !isMeasure) {
+    // Выбрали ВИД → сразу окно ввода (без отдельной кнопки «Добавить как есть»). Обычный вид
+    // (J/H-профиль, углы) — только количество. Изделие (measure) — окно с полем СМ + количество
+    // (имя = «Изделие {цвет} {см} см» соберётся автоматически).
+    if (willSelect && levelKey === 'kind') {
       const it = overlays.find(l => l.key === levelKey)?.items.find(i => i.key === itemKey)
-      const n = [it?.label, colorLabel, text.trim()].filter(Boolean).join(' ').trim()
-      if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '', widthCm: undefined })
+      const base = [it?.label, colorLabel, text.trim()].filter(Boolean).join(' ').trim()
+      if (base) {
+        if (isMeasure) setPad({ name1c: '', oral: base, unit: 'шт', digits: '', askCm: true, baseLabel: base, cmStr: '' })
+        else setPad({ name1c: '', oral: base, unit: 'шт', digits: '', widthCm: undefined })
+      }
     }
   }
   function commitPad() {
     const p = padRef.current; if (!p) return
     const qty = parseInt(p.digits || '0', 10) || 0; if (qty <= 0) return
-    setRows(prev => [...prev, { name1c: p.name1c, oral: p.oral, qty, unit: p.unit, widthCm: p.widthCm }]); setPad(null)
+    if (p.askCm && !(p.cmStr && p.cmStr.trim())) return   // изделие: длина (см) обязательна
+    const cmNum = p.cmStr ? Number(p.cmStr) : p.widthCm
+    const oral = p.askCm ? `${p.baseLabel}${p.cmStr ? ` ${p.cmStr} см` : ''}`.trim() : p.oral
+    setRows(prev => [...prev, { name1c: p.name1c, oral, qty, unit: p.unit, widthCm: cmNum }]); setPad(null)
   }
   useEffect(() => {
     if (!pad) return
     function onKey(e: KeyboardEvent) {
+      // Если фокус в текстовом поле (ввод см) — не перехватываем цифры на счётчик кол-ва.
+      const ael = document.activeElement as HTMLElement | null
+      if (ael && ael.tagName === 'INPUT') { if (e.key === 'Enter') { e.preventDefault(); commitPad() } return }
       if (e.key >= '0' && e.key <= '9') { e.preventDefault(); setPad(p => p && p.digits.length < 6 ? { ...p, digits: (p.digits === '0' ? '' : p.digits) + e.key } : p) }
       else if (e.key === 'Backspace') { e.preventDefault(); setPad(p => p ? { ...p, digits: p.digits.slice(0, -1) } : p) }
       else if (e.key === 'Enter') { e.preventDefault(); commitPad() }
@@ -272,7 +281,16 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
       {pad && (
         <div onClick={() => setPad(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,18,16,.5)', zIndex: 100001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, padding: 18, width: '100%', maxWidth: 320 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><RalDot code={extractRal(pad.name1c || pad.oral)} size={20} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pad.name1c || pad.oral}</div><div style={{ fontSize: 12, color: '#5f5952' }}>количество, {pad.unit}</div></div></div>
+            {(() => { const liveName = pad.askCm ? `${pad.baseLabel}${pad.cmStr ? ` ${pad.cmStr} см` : ''}`.trim() : (pad.name1c || pad.oral); return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><RalDot code={extractRal(liveName)} size={20} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{liveName}</div><div style={{ fontSize: 12, color: '#5f5952' }}>{pad.askCm ? 'длина (см) + количество' : `количество, ${pad.unit}`}</div></div></div>
+            ) })()}
+            {pad.askCm && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff8f5', border: `1.5px solid ${pad.cmStr ? PRIMARY : '#f0d9cc'}`, borderRadius: 10, padding: '8px 12px', marginBottom: 12 }}>
+                <span style={{ fontSize: 14, color: '#5f5952', fontWeight: 700 }}>📏 Длина:</span>
+                <input autoFocus value={pad.cmStr || ''} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); setPad(p => p ? { ...p, cmStr: v } : p) }} inputMode="numeric" placeholder="см" style={{ width: 90, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${pad.cmStr ? PRIMARY : '#e6e2dc'}`, fontSize: 16, fontFamily: 'inherit', outline: 'none', textAlign: 'center', fontWeight: 700 }} />
+                <span style={{ fontSize: 14, color: '#5f5952' }}>см</span>
+              </div>
+            )}
             <div style={{ background: '#f8f6f3', borderRadius: 12, padding: '16px 18px', textAlign: 'right', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 34, fontWeight: 700, minHeight: 30, color: pad.digits ? '#26231f' : '#cfc9c0', marginBottom: 12 }}>{pad.digits || '0'}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map(d => <button key={d} onClick={() => setPad(p => p && p.digits.length < 6 ? { ...p, digits: (p.digits === '0' ? '' : p.digits) + d } : p)} style={keyBtn}>{d}</button>)}
