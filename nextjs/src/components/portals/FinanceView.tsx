@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 
 interface Txn { id: string; date: string; kind: string; label: string; number?: string; amount: number; sign: '+' | '-' }
-interface FinData { debt: number; weOwe?: number; paid: number; balance: number; accrued?: number; returns?: number; currency: string; transactions: Txn[]; configured: boolean }
+interface FinData { debt: number; weOwe?: number; paid: number; balance: number; accrued?: number; returns?: number; transitAgentDebt?: number; transitAgent?: string; currency: string; transactions: Txn[]; configured: boolean }
 const fmtMoney = (n: number, cur = '₸') => `${(n || 0).toLocaleString('ru-RU')} ${cur}`
 const fmtDate = (s: string) => { try { return new Date(s).toLocaleDateString('ru-RU') } catch { return s } }
 const iconFor = (kind: string) => kind === 'payment' ? '⬆️' : kind.startsWith('return') ? '↩' : '🧾'
@@ -35,6 +35,7 @@ export default function FinanceView({ uid }: { uid?: string }) {
             {tile('МЫ ДОЛЖНЫ', fmtMoney(weOwe, cur), '#2e8a5e', weOwe > 0 ? '#f0f8f2' : '#fff')}
           </div>
           {returns > 0 && <div style={{ background: '#fff8f5', border: '1.5px solid #f3c8b0', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: '#c0532a' }}>↩ Возвраты на <b>{fmtMoney(returns, cur)}</b> уже вычтены из вашего долга.</div>}
+          {(data?.transitAgentDebt || 0) > 0 && <div style={{ background: '#fff4ea', border: '1.5px solid #f3ceac', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: '#c2570f' }}>🔀 <b>Сквозной агент{data?.transitAgent ? ` · ${data.transitAgent}` : ''}: {fmtMoney(data?.transitAgentDebt || 0, cur)}</b> <span style={{ color: '#8a6f00' }}>— справочно (транзит, мимо склада; в ваш баланс НЕ входит)</span></div>}
           {!data?.configured && <div style={{ background: '#fdf8e1', border: '1.5px solid #f0d98a', borderRadius: 12, padding: '14px 16px', marginBottom: 16, fontSize: 14, color: '#8a6f00' }}>⏳ Финансовый учёт настраивается. Здесь появятся ваш долг, оплаты и остаток.</div>}
           <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em', marginBottom: 8 }}>ОПЕРАЦИИ</div>
           {(!data || data.transactions.length === 0) ? <div style={{ background: '#fff', borderRadius: 12, padding: 28, textAlign: 'center', color: '#5f5952', fontSize: 14, boxShadow: '0 0 0 1px #e6e2dc' }}>Пока нет операций</div>

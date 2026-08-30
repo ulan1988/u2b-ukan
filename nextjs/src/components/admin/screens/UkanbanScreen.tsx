@@ -226,6 +226,9 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
           : !data ? <div style={emptyBox}>Нет данных</div>
             : (
               <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', maxWidth: 1040 }}>
+                {Number(data.transitAgentDebt) > 0 && (
+                  <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1efec', background: '#fff4ea', fontSize: 13, color: '#c2570f', fontWeight: 700 }}>🔀 Сквозной агент{data.transitAgent ? ` · ${data.transitAgent}` : ''}: {fmtMoney(Number(data.transitAgentDebt))} <span style={{ color: '#8a6f00', fontWeight: 500 }}>— справочно (транзит, мимо склада; в акт/финанс НЕ входит)</span></div>
+                )}
                 {Array.isArray(data.byProject) && data.byProject.length > 0 && (
                   <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1efec', background: '#fbf9ff' }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 8 }}>📁 ПО ПРОЕКТАМ</div>

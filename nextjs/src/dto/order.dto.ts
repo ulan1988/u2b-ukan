@@ -29,6 +29,7 @@ export const createOrderSchema = z.object({
   isDraft: z.boolean().optional(),
   specProjectId: z.string().uuid().optional(),
   transit: z.boolean().optional(),                        // сквозная продажа (drop-ship)
+  transitAgent: z.string().optional(),                     // имя сквозного агента (Берик) — инфо
   comment: z.string().optional().default(''),
   phone: z.string().optional(),
   deadline: z.string().optional(),

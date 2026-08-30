@@ -97,11 +97,12 @@ export async function contragentOpening(orgId: string, contragentId: string) {
 // Все документы (накладные/возвраты) одного контрагента — для выписки в кабинете.
 export async function contragentDocs(orgId: string, contragentId: string) {
   return sqlClient`
-    select id, number, type, date::text as date, total::float as total, status
-    from documents
-    where org_id=${orgId} and contragent_id=${contragentId}
-      and type in ('sale','purchase','return_in','return_out') and status<>'cancelled'
-    order by date desc, created_at desc` as unknown as Promise<Array<{ id: string; number: string; type: string; date: string; total: number; status: string }>>
+    select d.id, d.number, d.type, d.date::text as date, d.total::float as total, d.status,
+           d.transit, coalesce(o.transit_agent,'') as "transitAgent"
+    from documents d left join orders o on o.id = d.source_order_id
+    where d.org_id=${orgId} and d.contragent_id=${contragentId}
+      and d.type in ('sale','purchase','return_in','return_out') and d.status<>'cancelled'
+    order by d.date desc, d.created_at desc` as unknown as Promise<Array<{ id: string; number: string; type: string; date: string; total: number; status: string; transit: boolean; transitAgent: string }>>
 }
 
 // Разбивка оборота контрагента по проектам (через карточку-основание документа: sourceOrderId → order.projectId).

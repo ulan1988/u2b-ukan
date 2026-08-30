@@ -44,6 +44,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [rows, setRows] = useState<any[]>([emptyPos()])
   const [showCatalog, setShowCatalog] = useState(false)
   const [transit, setTransit] = useState(false)   // сквозная продажа (drop-ship): товар мимо склада
+  const [transitAgent, setTransitAgent] = useState('')   // имя сквозного агента (напр. Берик) — инфо
   const [busy, setBusy] = useState(false)
   const advRef = useRef<any>(null)   // таймер авто-перехода СМ → КОЛ-ВО (пауза после набора)
 
@@ -100,14 +101,14 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     }) })
     const body: any = {
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
-      specProjectId: specId || undefined, transit: kind === 'sale' ? transit : undefined,
+      specProjectId: specId || undefined, transit: kind === 'sale' ? transit : undefined, transitAgent: kind === 'sale' && transit ? transitAgent : undefined,
       screen: asDraft ? 'incoming' : 'reception', block: asDraft ? '' : 'processing', isDraft: asDraft,
     }
     if (kind === 'sale') { body.contactId = contactId || undefined; body.fromName = client?.name || '' }
     else body.fromName = 'Центр-Склад'
     const r: any = await createOrder(body)
     setBusy(false)
-    if (r.id || r.ok) { setOpen(false); setContactId(''); setSpecId(''); setPhone(''); setDeadline(''); setComment(''); setTransit(false); setRows([emptyPos()]); onReload(); toast(asDraft ? 'Черновик сохранён' : 'Отправлено') }
+    if (r.id || r.ok) { setOpen(false); setContactId(''); setSpecId(''); setPhone(''); setDeadline(''); setComment(''); setTransit(false); setTransitAgent(''); setRows([emptyPos()]); onReload(); toast(asDraft ? 'Черновик сохранён' : 'Отправлено') }
   }
 
   const waiting = orders.filter(o => o.screen === 'reception' && o.block !== 'processing' && !o.isCancelled)
@@ -153,6 +154,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               <input type="checkbox" checked={transit} onChange={e => setTransit(e.target.checked)} /> 🔀 Сквозная (транзит, мимо склада)
             </label>
           )}
+          {open && kind === 'sale' && transit && <input value={transitAgent} onChange={e => setTransitAgent(e.target.value)} placeholder="Сквозной агент (напр. Берик)" title="Кому реально записан долг перед поставщиком — инфо" style={{ ...INP, maxWidth: 220, borderColor: '#d8c4ec' }} />}
           {open && kind === 'purchase' && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
         </div>
 

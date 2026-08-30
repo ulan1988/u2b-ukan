@@ -290,6 +290,7 @@ export const orders = pgTable('orders', {
   toWarehouseId: uuid('to_warehouse_id').references(() => warehouses.id), // Центр-Склад для закупа
   specProjectId: uuid('spec_project_id'),                 // → spec_projects.id (проект контрагента; единая система проектов)
   transit: boolean('transit').notNull().default(false),   // сквозная продажа (drop-ship): товар мимо склада, только деньги
+  transitAgent: text('transit_agent').notNull().default(''), // сквозной агент (кому реально записан долг перед поставщиком, напр. «Берик») — инфо
   comment: text('comment').notNull().default(''),
   phone: text('phone'),
   deadline: timestamp('deadline'),

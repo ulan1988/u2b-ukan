@@ -79,7 +79,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
     source: i.source, isDraft: i.isDraft ?? false,
     fromName: i.fromName, fromId: i.fromId ?? null, contactId: i.contactId ?? null,
-    specProjectId: i.specProjectId ?? null, transit: (i as any).transit ?? false,
+    specProjectId: i.specProjectId ?? null, transit: (i as any).transit ?? false, transitAgent: (i as any).transitAgent ?? '',
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
@@ -396,6 +396,7 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
   if (patch.phone !== undefined) set.phone = patch.phone
   if (patch.specProjectId !== undefined) set.specProjectId = patch.specProjectId || null
   if (patch.transit !== undefined) set.transit = !!patch.transit
+  if (patch.transitAgent !== undefined) set.transitAgent = String(patch.transitAgent || '')
   if (patch.payment !== undefined) set.payment = patch.payment || ''
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)
   await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })

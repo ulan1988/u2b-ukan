@@ -31,12 +31,19 @@ export async function contragentLedger(orgId: string, contragentId: string, open
     finRepo.contragentDocs(orgId, contragentId),
     finRepo.contragentPayments(orgId, contragentId),
   ])
-  const sum = (t: string) => docs.filter(d => d.type === t).reduce((s, d) => s + d.total, 0)
+  // Транзит-ЗАКУП (приходная поставщику) НЕ в финансе — это долг «сквозного агента» перед
+  // поставщиком, не наш. Транзит-ПРОДАЖА (заказчику) остаётся реальным долгом (он должен нам).
+  const realDocs = docs.filter(d => !(d.transit && d.type === 'purchase'))
+  const sum = (t: string) => realDocs.filter(d => d.type === t).reduce((s, d) => s + d.total, 0)
   const payIn = pays.filter(p => p.direction === 'in').reduce((s, p) => s + p.amount, 0)
   const payOut = pays.filter(p => p.direction === 'out').reduce((s, p) => s + p.amount, 0)
   const sales = sum('sale'), purchases = sum('purchase'), retIn = sum('return_in'), retOut = sum('return_out')
   const theyOwe = (opening > 0 ? opening : 0) + sales - retIn - payIn      // их долг нам
   const weOwe = (opening < 0 ? -opening : 0) + purchases - retOut - payOut // мы им должны
+  // Инфо-блок «Сквозной агент»: транзитный долг перед этим поставщиком (не в финансе).
+  const transitDocs = docs.filter(d => d.transit && d.type === 'purchase')
+  const transitDebt = transitDocs.reduce((s, d) => s + d.total, 0)
+  const transitAgent = Array.from(new Set(transitDocs.map(d => d.transitAgent).filter(Boolean))).join(', ')
 
   // Операции для выписки. sign: '+' увеличивает их долг нам, '−' уменьшает.
   const meta: Record<string, { label: string; sign: '+' | '-' }> = {
@@ -45,8 +52,9 @@ export async function contragentLedger(orgId: string, contragentId: string, open
     purchase: { label: 'Ваша поставка нам', sign: '-' },
     return_out: { label: '↩ Возврат вам', sign: '+' },
   }
+  // Выписка — без транзитных документов (они не в финансе, показываются отдельным блоком).
   const txns = [
-    ...docs.map(d => ({ id: d.id, date: d.date, kind: d.type, label: meta[d.type]?.label || d.type, number: d.number, amount: d.total, sign: meta[d.type]?.sign || '+' })),
+    ...realDocs.map(d => ({ id: d.id, date: d.date, kind: d.type, label: meta[d.type]?.label || d.type, number: d.number, amount: d.total, sign: meta[d.type]?.sign || '+' })),
     ...pays.map(p => ({ id: p.id, date: p.date, kind: 'payment', label: p.direction === 'in' ? 'Оплата от вас' : 'Оплата вам', number: '', amount: p.amount, sign: p.direction === 'in' ? '-' : '+' as '+' | '-' })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1))
 
@@ -54,6 +62,7 @@ export async function contragentLedger(orgId: string, contragentId: string, open
     configured: true, currency: '₸',
     debt: theyOwe, weOwe, paid: payIn, balance: theyOwe,
     accrued: (opening > 0 ? opening : 0) + sales, returns: retIn,
+    transitAgentDebt: transitDebt, transitAgent,   // инфо: сквозной агент (не в финансе)
     transactions: txns,
   }
 }
@@ -78,8 +87,14 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
   const byProject = Array.from(projMap.values()).map(e => ({ ...e, balance: e.total - e.paid })).sort((a, b) => b.total - a.total)
   const docTitle: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
   const inc = (t: string) => t === 'sale' || t === 'return_out'
+  // Транзит-закуп (поставщику) не входит в акт сверки — отдельно (инфо «сквозной агент»).
+  // Транзит-продажа заказчику остаётся в акте (реальный долг покупателя).
+  const realDocs = (docs as any[]).filter(d => !(d.transit && d.type === 'purchase'))
+  const transitDocs = (docs as any[]).filter(d => d.transit && d.type === 'purchase')
+  const transitAgentDebt = transitDocs.reduce((s, d) => s + Number(d.total || 0), 0)
+  const transitAgent = Array.from(new Set(transitDocs.map(d => d.transitAgent).filter(Boolean))).join(', ')
   const mv = [
-    ...docs.map(d => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total, docId: d.id as string | null, type: d.type })),
+    ...realDocs.map((d: any) => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total, docId: d.id as string | null, type: d.type })),
     ...pays.map(p => ({ date: p.date, title: (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику'), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0, docId: null as string | null, type: 'pay' })),
   ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
@@ -96,7 +111,7 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
     sumInc += m.inc; sumDec += m.dec
     rows.push({ date: m.date, title: m.title, opening: start, inc: m.inc, dec: m.dec, balance: running, docId: m.docId, type: m.type })
   }
-  return { opening, rows, totals: { opening, inc: sumInc, dec: sumDec, closing: running }, byProject, currency: '₸' }
+  return { opening, rows, totals: { opening, inc: sumInc, dec: sumDec, closing: running }, byProject, transitAgentDebt, transitAgent, currency: '₸' }
 }
 
 // Рентабельность: по каждой продаже выручка − себестоимость = прибыль, маржа %.
