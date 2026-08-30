@@ -83,7 +83,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     toast('Цены подтянуты')
   }
   function addFromCatalog(items: PickedPos[]) {
-    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => { const cm = it.widthCm != null ? String(it.widthCm) : ''; const nm = itemName({ name: it.name1c || it.oral, color: extractRal(it.name1c || it.oral), cm }); return { ...emptyPos(), name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit } })])
+    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => { const cm = it.widthCm != null ? String(it.widthCm) : ''; const raw = it.name1c || it.oral; const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm }) : raw; return { ...emptyPos(), productId: (it as any).productId || undefined, name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit } })])
     setShowCatalog(false)
   }
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
@@ -95,7 +95,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     // Сквозная СТРОКА: чекбокс на позиции (r.transit) ИЛИ карточка целиком сквозная (transit).
     const rowTransit = (r: any) => !!(r.transit || transit)
     const filled = rows.filter(r => r.name1c || r.productId)
-    const positions = filled.map(r => { const nm = itemName({ name: r.name1c, color: extractRal(r.name1c), cm: r.widthCm }); const tr = rowTransit(r); return ({
+    // Формула имени (пересбор «{вид} {цвет} {см} см») — ТОЛЬКО для изделий. Реальный товар из
+    // каталога оставляем как есть, иначе см/4-значное число в названии превращает его в ДРУГОЙ товар.
+    const positions = filled.map(r => { const nm = isIzdelie(r.name1c) ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm: r.widthCm }) : r.name1c; const tr = rowTransit(r); return ({
       productId: r.productId || undefined, name1c: nm, oral: nm, qty: Number(r.qty) || 0, unit: r.unit,
       widthCm: r.widthCm ? Number(r.widthCm) : undefined,
       price: Number(r.price) || 0, transit: tr, costPrice: tr ? (Number(r.costPrice) || 0) : undefined,
@@ -212,7 +214,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                           <div style={{ flex: 1 }}><NomInline products={products} value={r.productId} name={r.name1c} onPick={p => pickProduct(i, p)} /></div>
                         </div>
                       </td>
-                      <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => { const cm = e.target.value; setRow(i, { widthCm: cm, name1c: r.name1c ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm }) : r.name1c }) }} /></td>
+                      <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => { const cm = e.target.value; setRow(i, { widthCm: cm, name1c: isIzdelie(r.name1c) ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm }) : r.name1c }) }} /></td>
                       <td style={{ padding: '6px 4px', width: 70 }}><input data-qty style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: rt ? 150 : 100 }}>
