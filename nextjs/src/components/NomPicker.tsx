@@ -135,8 +135,17 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   function pickCat(c: string) { setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
   function pickSub(s: string) { setSelS(prev => prev === s ? '' : s) }
   function pickItem(levelKey: string, itemKey: string, isMeasure: boolean) {
-    setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else next[levelKey] = itemKey; return next })
+    let willSelect = false
+    setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else { next[levelKey] = itemKey; willSelect = true } return next })
     if (!isMeasure) setCm('')
+    // Выбрали ВИД (напр. «J - профиль») и он без см → сразу спрашиваем количество «как есть»
+    // (имя = вид + цвет + доп.слова), без отдельной кнопки «Добавить как есть». Изделие (measure)
+    // требует см — там pad не открываем, показываем поле длины.
+    if (willSelect && levelKey === 'kind' && !isMeasure) {
+      const it = overlays.find(l => l.key === levelKey)?.items.find(i => i.key === itemKey)
+      const n = [it?.label, colorLabel, text.trim()].filter(Boolean).join(' ').trim()
+      if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '', widthCm: undefined })
+    }
   }
   function commitPad() {
     const p = padRef.current; if (!p) return
