@@ -28,14 +28,14 @@ export default function FinanceView({ uid }: { uid?: string }) {
       <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 16 }}>Ваш баланс по расчётам. Данные ведёт менеджер.</div>
       {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${(data?.transitAgentDebt || 0) > 0 ? 5 : 4}, 1fr)`, gap: 10, marginBottom: 16 }}>
             {tile('ВЫ ДОЛЖНЫ', fmtMoney(debt, cur), '#c1121c', '#fff')}
             {tile('ВОЗВРАТЫ', fmtMoney(returns, cur), '#c0532a', returns > 0 ? '#fff8f5' : '#fff')}
             {tile('ОПЛАЧЕНО', fmtMoney(paid, cur), '#2e8a5e', '#fff')}
             {tile('МЫ ДОЛЖНЫ', fmtMoney(weOwe, cur), '#2e8a5e', weOwe > 0 ? '#f0f8f2' : '#fff')}
+            {(data?.transitAgentDebt || 0) > 0 && tile(`ДОЛГ ${(data?.transitAgent || '').toUpperCase()}`.trim(), fmtMoney(data?.transitAgentDebt || 0, cur), '#c2570f', '#fff4ea')}
           </div>
           {returns > 0 && <div style={{ background: '#fff8f5', border: '1.5px solid #f3c8b0', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: '#c0532a' }}>↩ Возвраты на <b>{fmtMoney(returns, cur)}</b> уже вычтены из вашего долга.</div>}
-          {(data?.transitAgentDebt || 0) > 0 && <div style={{ background: '#fff4ea', border: '1.5px solid #f3ceac', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: '#c2570f' }}>🔀 <b>Сквозной агент{data?.transitAgent ? ` · ${data.transitAgent}` : ''}: {fmtMoney(data?.transitAgentDebt || 0, cur)}</b> <span style={{ color: '#8a6f00' }}>— справочно (транзит, мимо склада; в ваш баланс НЕ входит)</span></div>}
           {!data?.configured && <div style={{ background: '#fdf8e1', border: '1.5px solid #f0d98a', borderRadius: 12, padding: '14px 16px', marginBottom: 16, fontSize: 14, color: '#8a6f00' }}>⏳ Финансовый учёт настраивается. Здесь появятся ваш долг, оплаты и остаток.</div>}
           <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em', marginBottom: 8 }}>ОПЕРАЦИИ</div>
           {(!data || data.transactions.length === 0) ? <div style={{ background: '#fff', borderRadius: 12, padding: 28, textAlign: 'center', color: '#5f5952', fontSize: 14, boxShadow: '0 0 0 1px #e6e2dc' }}>Пока нет операций</div>
