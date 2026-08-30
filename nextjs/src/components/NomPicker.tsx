@@ -135,8 +135,10 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   function pickCat(c: string) { setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
   function pickSub(s: string) { setSelS(prev => prev === s ? '' : s) }
   function pickItem(levelKey: string, itemKey: string, isMeasure: boolean) {
-    let willSelect = false
-    setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else { next[levelKey] = itemKey; willSelect = true } return next })
+    // willSelect считаем из ТЕКУЩЕГО sel (замыкание), а НЕ внутри updater — иначе флаг
+    // вычисляется при рендере (после проверки ниже) и pad не открывается.
+    const willSelect = sel[levelKey] !== itemKey
+    setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else next[levelKey] = itemKey; return next })
     if (!isMeasure) setCm('')
     // Выбрали ВИД → сразу окно ввода (без отдельной кнопки «Добавить как есть»). Обычный вид
     // (J/H-профиль, углы) — только количество. Изделие (measure) — окно с полем СМ + количество
