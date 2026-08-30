@@ -24,11 +24,13 @@ export default function PurchaseDraft({ draft, logists, contragents, defaultCagI
       </div>
       <div style={{ padding: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-          <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ (ширина)', 'КОЛ-ВО (шт)', 'ЦЕНА (ПРИХОД)', 'СУММА', 'ЗАКУПЩИК', 'ПОСТАВЩИК'].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ background: '#f1efec' }}>{['🔀 НАИМЕНОВАНИЕ', 'СМ (ширина)', 'КОЛ-ВО (шт)', 'ЦЕНА (ПРИХОД)', 'СУММА', 'ЗАКУПЩИК', 'ПОСТАВЩИК'].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
             {ps.map((pos: any) => (
-              <tr key={pos.id} style={{ borderBottom: '1px solid #f1efec' }}>
-                <td style={{ padding: '6px 8px', fontSize: 13, fontWeight: 500 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><RalDot code={extractRal(pos.name1c || pos.oral || '')} size={12} />{pos.name1c || pos.oral}</span></td>
+              <tr key={pos.id} style={{ borderBottom: '1px solid #f1efec', background: pos.transit ? '#faf7ff' : undefined }}>
+                <td style={{ padding: '6px 8px', fontSize: 13, fontWeight: 500 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <label title="Сквозная строка — товар мимо склада (drop-ship), прямо заказчику" style={{ cursor: 'pointer', display: 'inline-flex' }}><input type="checkbox" checked={!!pos.transit} onChange={e => upd(pos.id, { transit: e.target.checked })} /></label>
+                  <RalDot code={extractRal(pos.name1c || pos.oral || '')} size={12} />{pos.name1c || pos.oral}{pos.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#7a3aaa', background: '#f3eeff', borderRadius: 6, padding: '1px 6px' }}>🔀 сквозная</span>}</span></td>
                 <td style={{ padding: '6px 8px', width: 80 }}><input key={`${pos.id}-w-${pos.widthCm}`} type="number" defaultValue={pos.widthCm != null ? Number(pos.widthCm) : ''} placeholder="см" style={{ ...inpSm, width: 64, textAlign: 'right' }} onBlur={e => { const cur = pos.widthCm != null ? Number(pos.widthCm) : null; const w = e.target.value === '' ? null : Number(e.target.value); if (w !== cur) upd(pos.id, { widthCm: w }) }} /></td>
                 <td style={{ padding: '6px 8px', width: 90 }}><input key={`${pos.id}-q-${pos.qty}`} type="number" defaultValue={Number(pos.qty)} style={{ ...inpSm, width: 70, textAlign: 'right' }} onBlur={e => { const q = Number(e.target.value) || 0; if (q !== Number(pos.qty)) upd(pos.id, { qty: q }) }} /> <span style={{ fontSize: 12, color: '#837c72' }}>{pos.unit}</span></td>
                 <td style={{ padding: '6px 8px', width: 110 }}><input key={`${pos.id}-p-${pos.price}`} type="number" defaultValue={Number(pos.price) || ''} placeholder="0" style={{ ...inpSm, width: 96, textAlign: 'right', fontWeight: 600 }} onBlur={e => { const pr = Number(e.target.value) || 0; if (pr !== Number(pos.price)) upd(pos.id, { price: pr }) }} /></td>
