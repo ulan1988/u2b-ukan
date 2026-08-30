@@ -99,10 +99,17 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
       deadline: r.deadline || undefined, payment: r.payment || '',
     }) })
+    // Маршрут: черновик → Входящие. Обычная продажа → Входящие/В ожидании (в АВТОЗАКУП, минуя
+    // стол приёмки — иначе двойная работа). Сквозная продажа → сразу к логисту (закупа нет).
+    // Закуп (ручной) → стол приёмки.
+    const dest = asDraft ? { screen: 'incoming', block: '' }
+      : kind === 'sale' && transit ? { screen: 'outgoing', block: '' }
+      : kind === 'sale' ? { screen: 'reception', block: '' }   // В ожидании → в потребность автозакупа, но НЕ на стол приёмки
+      : { screen: 'reception', block: 'processing' }
     const body: any = {
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
       specProjectId: specId || undefined, transit: kind === 'sale' ? transit : undefined, transitAgent: kind === 'sale' && transit ? transitAgent : undefined,
-      screen: asDraft ? 'incoming' : 'reception', block: asDraft ? '' : 'processing', isDraft: asDraft,
+      screen: dest.screen, block: dest.block, isDraft: asDraft,
     }
     if (kind === 'sale') { body.contactId = contactId || undefined; body.fromName = client?.name || '' }
     else body.fromName = 'Центр-Склад'
