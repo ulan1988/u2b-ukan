@@ -12,7 +12,10 @@ export async function saleDemand(orgId: string) {
     eq(orders.transit, false),   // сквозные (drop-ship) в автозакуп НЕ попадают — товар мимо склада
   ))
   if (!cards.length) return { cards: [], positions: [] as any[] }
-  const positions = await db.select().from(orderPositions).where(inArray(orderPositions.cardId, cards.map(c => c.id)))
+  // Сквозные ПОЗИЦИИ (мимо склада) в автозакуп не идут — карточка может быть смешанной (часть строк сквозные).
+  const positions = await db.select().from(orderPositions).where(and(
+    inArray(orderPositions.cardId, cards.map(c => c.id)), eq(orderPositions.transit, false),
+  ))
   return { cards, positions }
 }
 

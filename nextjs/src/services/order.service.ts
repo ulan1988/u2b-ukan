@@ -94,6 +94,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     costPrice: String((p as any).costPrice ?? 0),
+    transit: !!(p as any).transit,                          // сквозная строка (мимо склада)
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)
@@ -290,6 +291,7 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.unit !== undefined) set.unit = patch.unit
   if (patch.price !== undefined) set.price = String(patch.price)
   if (patch.costPrice !== undefined) set.costPrice = String(Number(patch.costPrice) || 0)
+  if (patch.transit !== undefined) set.transit = !!patch.transit
   if (patch.widthCm !== undefined) set.widthCm = patch.widthCm != null && patch.widthCm !== '' ? String(patch.widthCm) : null
   if (patch.supplierId !== undefined) { set.supplierId = patch.supplierId || null; set.leg = await legForSupplier(patch.supplierId || null) }
   if (patch.respUserId !== undefined) set.respUserId = patch.respUserId || null
@@ -366,6 +368,7 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
     id: `${newId}-P${idx + 1}`, cardId: newId, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     costPrice: String((p as any).costPrice ?? 0),
+    transit: !!(p as any).transit,
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     specItemId: p.specItemId ?? null, leg: p.leg ?? 1, status: p.status || 'В работе',

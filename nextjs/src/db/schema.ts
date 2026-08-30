@@ -336,6 +336,7 @@ export const orderPositions = pgTable('order_positions', {
   unit: text('unit').notNull().default('шт'),
   price: money('price').notNull().default('0'),
   costPrice: money('cost_price').notNull().default('0'),   // сквозная: закупочная цена (что платим поставщику); продажная = price
+  transit: boolean('transit').notNull().default(false),   // сквозная позиция (drop-ship, мимо склада) — на уровне позиции
   widthCm: qtyCol('width_cm'),                             // ширина изделия в см (раскрой у мастера-производителя)
   respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)

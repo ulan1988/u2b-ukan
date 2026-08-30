@@ -8,6 +8,7 @@ export const orderPositionInput = z.object({
   unit: z.string().optional().default('шт'),
   price: z.coerce.number().min(0).default(0),
   costPrice: z.coerce.number().min(0).optional(),   // сквозная: закупочная цена (что платим поставщику)
+  transit: z.boolean().optional(),                         // сквозная СТРОКА (drop-ship, мимо склада)
   widthCm: z.coerce.number().optional(),                   // ширина изделия в см (раскрой)
   respUserId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
