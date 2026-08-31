@@ -26,6 +26,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const [f, setF] = useState<any>({})            // редактируемая шапка
   const [lines, setLines] = useState<any[]>([])  // редактируемые строки
   const [discMode, setDiscMode] = useState<'pct' | 'sum'>('pct')
+  const [priceCm, setPriceCm] = useState<string>('')   // одна цена за см на все изделия (см. калькулятор)
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState('')
   const [returning, setReturning] = useState(false)
@@ -34,8 +35,13 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     if (!d) return
     setData(d)
     setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
-    setLines((d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) })))
+    const mapped = (d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) }))
+    setLines(mapped)
+    const izd = mapped.find((l: any) => isIzdelie(l.name) && Number(l.price) > 0)   // цена за см (общая) — из первой изделия
+    setPriceCm(izd ? String(Number(izd.price)) : '')
   }) }, [id])
+  // Применить одну цену за см ко всем изделиям (у изделия price = цена за 1 см).
+  const applyPriceCm = (v: string) => { setPriceCm(v); setLines(ls => ls.map(l => isIzdelie(l.name) ? { ...l, price: v } : l)) }
 
   const subtotal = lines.reduce((s, l) => s + amtOf(l), 0)
   const discountSum = discMode === 'pct' ? Math.round(subtotal * (Number(f.discountPct) || 0)) / 100 : (Number(f.discountSum) || 0)
@@ -99,8 +105,15 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
 
             {tab === 'goods' ? (
               <div style={{ padding: 20, background: '#faf8f6', maxHeight: 340, overflowY: 'auto' }}>
+                {lines.some(l => isIzdelie(l.name)) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, background: '#f5eefc', border: '1.5px solid #e0cef0', borderRadius: 10, padding: '10px 14px' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#7a3aaa' }}>📏 ЦЕНА ЗА СМ (изделия):</span>
+                    <input style={{ ...inp, width: 110, textAlign: 'right', fontWeight: 700, borderColor: '#d8c4ec' }} type="number" value={priceCm} onChange={e => applyPriceCm(e.target.value)} placeholder="₸ / см" />
+                    <span style={{ fontSize: 12, color: '#8a6f00' }}>₸/шт = см × цена за см · сумма = шт × ₸/шт</span>
+                  </div>
+                )}
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', 'Цена (за см — изделие)', 'Сумма', 'Коммент'].map((h, i) => <th key={h} style={{ textAlign: i >= 2 && i <= 6 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                  <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент'].map((h, i) => <th key={h} style={{ textAlign: i >= 2 && i <= 6 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                   <tbody>
                     {lines.map((l, i) => { const izd = isIzdelie(l.name); return (
                       <tr key={l.id} style={{ borderTop: '1px solid #efece8' }}>
@@ -109,7 +122,9 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(l.qty)}</td>
                         <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} /></td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
-                        <td style={{ padding: '6px 4px', width: 96 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} title={izd ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'цена за единицу'} />{izd && <div style={{ fontSize: 9.5, color: '#7a3aaa', textAlign: 'right', marginTop: 1 }}>за см</div>}</td>
+                        <td style={{ padding: '6px 4px', width: 96 }}>{izd
+                          ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
+                          : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} title="цена за единицу" />}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
                         <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, comment: e.target.value } : x))} /></td>
                       </tr>
