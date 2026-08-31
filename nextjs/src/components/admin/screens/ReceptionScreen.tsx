@@ -219,9 +219,10 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: rt ? 150 : 100 }}>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'прод.'} title="продажная цена (заказчику)" />
+                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'прод.'} title={isIzdelie(r.name1c) ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'продажная цена (заказчику)'} />
                           {rt && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику) — по умолчанию розничная из каталога" />}
                         </div>
+                        {isIzdelie(r.name1c) && <div style={{ fontSize: 9.5, color: '#7a3aaa', textAlign: 'right', marginTop: 1 }}>за см</div>}
                       </td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => setRow(i, { supplierId: c.id })} placeholder={kind === 'purchase' ? '— поставщик —' : '— производитель —'} style={{ fontSize: 13 }} /></td>
