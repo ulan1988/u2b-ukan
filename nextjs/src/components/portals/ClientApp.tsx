@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { cardProgress } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
+import { itemName } from '@/lib/itemName'
+import { isIzdelie } from '@/lib/lineAmount'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import ChatWidget from '@/components/ChatWidget'
@@ -296,7 +298,25 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div>
                     <label style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', marginBottom: 8, display: 'block', letterSpacing: '.03em' }}>ТОВАРЫ ИЗ КАТАЛОГА{catalogPos.length ? ` · ${catalogPos.length}` : ''}</label>
-                    {catalogPos.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>{catalogPos.map((p, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8f6f3', borderRadius: 8, padding: '8px 10px' }}><RalDot code={extractRal(p.name1c || p.oral)} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span><span style={{ fontSize: 13, color: '#5f5952', flexShrink: 0, fontWeight: 600 }}>{p.qty} {p.unit}</span><button type="button" onClick={() => setCatalogPos(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button></div>)}</div>}
+                    {catalogPos.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>{catalogPos.map((p, i) => {
+                      const izd = isIzdelie(p.name1c || p.oral)
+                      const disp = (p.name1c || p.oral).replace(/\s*\d+\s*см\s*$/i, '').trim()
+                      const updCat = (patch: any) => setCatalogPos(prev => prev.map((x, j) => {
+                        if (j !== i) return x
+                        const next: any = { ...x, ...patch }
+                        if (isIzdelie(next.name1c || next.oral)) { const nm = itemName({ name: next.name1c || next.oral, color: extractRal(next.name1c || next.oral), cm: next.widthCm }); next.name1c = nm; next.oral = nm }
+                        return next
+                      }))
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f8f6f3', borderRadius: 8, padding: '8px 10px' }}>
+                          <RalDot code={extractRal(p.name1c || p.oral)} />
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{disp}</span>
+                          {izd && <><input value={p.widthCm != null ? String(p.widthCm) : ''} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); updCat({ widthCm: v ? Number(v) : undefined }) }} inputMode="numeric" placeholder="см" style={{ width: 52, padding: '5px 6px', borderRadius: 6, border: '1.5px solid #e6ddf3', fontSize: 13, textAlign: 'center', fontWeight: 700, fontFamily: 'inherit', outline: 'none', flexShrink: 0 }} /><span style={{ fontSize: 12, color: '#837c72', flexShrink: 0 }}>см</span></>}
+                          <input value={String(p.qty)} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); updCat({ qty: v ? Number(v) : 0 }) }} inputMode="numeric" style={{ width: 52, padding: '5px 6px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontSize: 13, textAlign: 'center', fontWeight: 700, fontFamily: 'inherit', outline: 'none', flexShrink: 0 }} /><span style={{ fontSize: 12, color: '#837c72', flexShrink: 0 }}>{p.unit}</span>
+                          <button type="button" onClick={() => setCatalogPos(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
+                        </div>
+                      )
+                    })}</div>}
                     <button type="button" onClick={() => setShowCatalog(true)} style={{ width: '100%', padding: '13px', border: `1.5px ${catalogPos.length ? 'solid' : 'dashed'} #d4613a`, background: catalogPos.length ? '#fff' : '#fff8f5', color: '#d4613a', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>📖 {catalogPos.length ? 'Добавить ещё товар' : 'Выбрать товары из каталога'}</button>
                   </div>
                   {projects.length > 0 && (
