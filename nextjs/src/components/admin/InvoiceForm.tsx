@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument } from '@/lib/api/docs'
+import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
+
+// «20.000 см» → «20 см» для показа (лишние нули из имени товара)
+const cleanNm = (s: string) => String(s || '').replace(/(\d+)\.0+(\s*см)/gi, '$1$2')
+const cmOf = (l: any) => { const n = Number(l?.widthCm); return n > 0 ? String(n) : '' }
+const amtOf = (l: any) => lineAmount({ name: l.name, qty: Number(l.qty) || 0, price: Number(l.price) || 0, widthCm: l.widthCm })
 
 // Форма накладной (1С УНФ), зеркальная: приходная (закуп) и расходная (продажа).
 // Тип определяется по doc.type. Правим «бумажные» поля: вх.номер/дата (только приходная),
@@ -31,7 +37,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setLines((d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) })))
   }) }, [id])
 
-  const subtotal = lines.reduce((s, l) => s + l.qty * (Number(l.price) || 0), 0)
+  const subtotal = lines.reduce((s, l) => s + amtOf(l), 0)
   const discountSum = discMode === 'pct' ? Math.round(subtotal * (Number(f.discountPct) || 0)) / 100 : (Number(f.discountSum) || 0)
   const total = Math.max(0, subtotal - discountSum)
   const remain = total - (Number(f.paidSum) || 0)
@@ -94,19 +100,20 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
             {tab === 'goods' ? (
               <div style={{ padding: 20, background: '#faf8f6', maxHeight: 340, overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['№', 'Номенклатура', 'Кол-во', 'Ед.', 'Цена', 'Сумма', 'Коммент'].map((h, i) => <th key={h} style={{ textAlign: i >= 2 && i <= 5 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                  <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', 'Цена (за см — изделие)', 'Сумма', 'Коммент'].map((h, i) => <th key={h} style={{ textAlign: i >= 2 && i <= 6 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                   <tbody>
-                    {lines.map((l, i) => (
+                    {lines.map((l, i) => { const izd = isIzdelie(l.name); return (
                       <tr key={l.id} style={{ borderTop: '1px solid #efece8' }}>
                         <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : i + 1 : i + 1}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 500 }}>{l.name}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(l.qty)}</td>
                         <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} /></td>
-                        <td style={{ padding: '6px 4px', width: 90 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} /></td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(l.qty * (Number(l.price) || 0))}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
+                        <td style={{ padding: '6px 4px', width: 96 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} title={izd ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'цена за единицу'} />{izd && <div style={{ fontSize: 9.5, color: '#7a3aaa', textAlign: 'right', marginTop: 1 }}>за см</div>}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
                         <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, comment: e.target.value } : x))} /></td>
                       </tr>
-                    ))}
+                    ) })}
                   </tbody>
                 </table>
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>Кол-во и склад менять нельзя (это движение склада) — правится отдельно.</div>

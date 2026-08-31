@@ -11,7 +11,9 @@ export function itemName({ name, color, cm }: { name?: string; color?: string; c
     const low = n.toLowerCase()
     if (!low.includes(label.toLowerCase()) && !low.includes(String(color).toLowerCase())) n += ' ' + label
   }
-  const cmStr = cm != null && String(cm).trim() !== '' ? String(cm).trim() : ''
+  // Нормализуем см: «20.000» → «20», «20.50» → «20.5» (иначе в имя товара лезут лишние нули).
+  let cmStr = cm != null && String(cm).trim() !== '' ? String(cm).trim() : ''
+  if (cmStr && Number.isFinite(Number(cmStr))) cmStr = String(Number(cmStr))
   if (cmStr) n += ` ${cmStr} см`
   return n
 }
