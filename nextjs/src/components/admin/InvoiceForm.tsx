@@ -27,6 +27,8 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const [lines, setLines] = useState<any[]>([])  // редактируемые строки
   const [discMode, setDiscMode] = useState<'pct' | 'sum'>('pct')
   const [priceCm, setPriceCm] = useState<string>('')   // одна цена за см на все изделия (см. калькулятор)
+  const [blocks, setBlocks] = useState<string[]>([])    // блоки внутри накладной (= накладные поставщика)
+  const [dragId, setDragId] = useState<string | null>(null)   // перетаскиваемая строка
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState('')
   const [returning, setReturning] = useState(false)
@@ -35,13 +37,34 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     if (!d) return
     setData(d)
     setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
-    const mapped = (d.lines || []).map((l: any) => ({ ...l, price: Number(l.price), qty: Number(l.qty) }))
+    const mapped = (d.lines || []).map((l: any, i: number) => ({ ...l, price: Number(l.price), qty: Number(l.qty), block: l.block || '', sortOrder: l.sortOrder != null ? Number(l.sortOrder) : i }))
     setLines(mapped)
+    setBlocks(Array.from(new Set(mapped.map((l: any) => l.block).filter(Boolean))) as string[])
     const izd = mapped.find((l: any) => isIzdelie(l.name) && Number(l.price) > 0)   // цена за см (общая) — из первой изделия
     setPriceCm(izd ? String(Number(izd.price)) : '')
   }) }, [id])
   // Применить одну цену за см ко всем изделиям (у изделия price = цена за 1 см).
   const applyPriceCm = (v: string) => { setPriceCm(v); setLines(ls => ls.map(l => isIzdelie(l.name) ? { ...l, price: v } : l)) }
+
+  // ── Блоки внутри накладной (раскладка по накладным поставщика) ──────────────────
+  const addBlock = () => { const n = `Накладная ${blocks.length + 1}`; setBlocks(b => [...b, n]) }
+  const renameBlock = (old: string, nn: string) => { setBlocks(b => b.map(x => x === old ? nn : x)); setLines(ls => ls.map(l => (l.block || '') === old ? { ...l, block: nn } : l)) }
+  const deleteBlock = (bn: string) => { setBlocks(b => b.filter(x => x !== bn)); setLines(ls => ls.map(l => (l.block || '') === bn ? { ...l, block: '' } : l)) }
+  // Перенести строку в блок targetBlock, вставив перед beforeId (или в конец блока), пересчитать порядок.
+  const moveLine = (draggedId: string, targetBlock: string, beforeId: string | null) => {
+    setLines(ls => {
+      const arr = ls.map(l => ({ ...l }))
+      const di = arr.findIndex(l => l.id === draggedId); if (di < 0) return ls
+      const [dr] = arr.splice(di, 1); dr.block = targetBlock
+      let at: number
+      if (beforeId) { at = arr.findIndex(l => l.id === beforeId); if (at < 0) at = arr.length }
+      else { let last = -1; arr.forEach((l, i) => { if ((l.block || '') === targetBlock) last = i }); at = last + 1 }
+      arr.splice(at, 0, dr)
+      return arr.map((l, i) => ({ ...l, sortOrder: i }))
+    })
+    setDragId(null)
+  }
+  const updLine = (lid: string, patch: any) => setLines(ls => ls.map(x => x.id === lid ? { ...x, ...patch } : x))
 
   const subtotal = lines.reduce((s, l) => s + amtOf(l), 0)
   const discountSum = discMode === 'pct' ? Math.round(subtotal * (Number(f.discountPct) || 0)) / 100 : (Number(f.discountSum) || 0)
@@ -52,7 +75,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setBusy(true)
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
-      lines: lines.map(l => ({ id: l.id, price: Number(l.price) || 0, unit: l.unit, comment: l.comment })),
+      lines: lines.map((l, i) => ({ id: l.id, price: Number(l.price) || 0, unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
     else patch.discountSum = Number(f.discountSum) || 0
@@ -112,26 +135,52 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                     <span style={{ fontSize: 12, color: '#8a6f00' }}>₸/шт = см × цена за см · сумма = шт × ₸/шт</span>
                   </div>
                 )}
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент'].map((h, i) => <th key={h} style={{ textAlign: i >= 2 && i <= 6 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {lines.map((l, i) => { const izd = isIzdelie(l.name); return (
-                      <tr key={l.id} style={{ borderTop: '1px solid #efece8' }}>
-                        <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : i + 1 : i + 1}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(l.qty)}</td>
-                        <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} /></td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
-                        <td style={{ padding: '6px 4px', width: 96 }}>{izd
-                          ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
-                          : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} placeholder="0" title="цена за единицу" />}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
-                        <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, comment: e.target.value } : x))} /></td>
-                      </tr>
-                    ) })}
-                  </tbody>
-                </table>
-                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>Кол-во и склад менять нельзя (это движение склада) — правится отдельно.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <button onClick={addBlock} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px dashed #b79bd6', background: '#faf5ff', color: '#7a3aaa', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>＋ Блок (накладная поставщика)</button>
+                  {blocks.length > 0 && <span style={{ fontSize: 12, color: COLORS.textMuted }}>Перетаскивай строки за ⠿ между блоками</span>}
+                </div>
+                {(blocks.length ? ['', ...blocks] : ['']).map(bn => {
+                  const gl = lines.filter(l => (l.block || '') === bn)
+                  const sub = gl.reduce((s, l) => s + amtOf(l), 0)
+                  const named = bn !== ''
+                  return (
+                    <div key={bn || '__none'} onDragOver={e => e.preventDefault()} onDrop={e => { if (dragId) moveLine(dragId, bn, null) }}
+                      style={{ marginBottom: 12, border: `1.5px solid ${named ? '#e0cef0' : '#efece8'}`, borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+                      {(named || blocks.length > 0) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: named ? '#f5eefc' : '#f8f6f3', borderBottom: '1px solid #efece8' }}>
+                          {named
+                            ? <input value={bn} onChange={e => renameBlock(bn, e.target.value)} style={{ ...inp, width: 220, fontWeight: 700, padding: '5px 8px', borderColor: '#d8c4ec' }} />
+                            : <span style={{ fontWeight: 700, fontSize: 13, color: COLORS.textMuted }}>📄 Без блока</span>}
+                          <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: '#7a3aaa' }}>Σ {fmtMoney(sub)} ₸</span>
+                          {named && <button onClick={() => deleteBlock(bn)} title="Удалить блок (строки → Без блока)" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>✕</button>}
+                        </div>
+                      )}
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', '№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент'].map((h, i) => <th key={i} style={{ textAlign: i >= 3 && i <= 7 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                        <tbody>
+                          {gl.length === 0 && <tr><td colSpan={9} style={{ padding: '14px 8px', textAlign: 'center', color: '#b8b1a6', fontSize: 12 }}>— перетащи строку сюда —</td></tr>}
+                          {gl.map(l => { const izd = isIzdelie(l.name); return (
+                            <tr key={l.id} draggable onDragStart={() => setDragId(l.id)} onDragEnd={() => setDragId(null)} onDragOver={e => e.preventDefault()} onDrop={e => { e.stopPropagation(); if (dragId && dragId !== l.id) moveLine(dragId, l.block || '', l.id) }}
+                              style={{ borderTop: '1px solid #efece8', opacity: dragId === l.id ? 0.4 : 1, background: dragId === l.id ? '#f5eefc' : undefined }}>
+                              <td style={{ padding: '6px 4px', color: '#c9c2b8', cursor: 'grab', textAlign: 'center' }} title="Перетащить">⠿</td>
+                              <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : '' : ''}</td>
+                              <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(l.qty)}</td>
+                              <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => updLine(l.id, { unit: e.target.value })} /></td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
+                              <td style={{ padding: '6px 4px', width: 96 }}>{izd
+                                ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
+                                : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price || ''} onChange={e => updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
+                              <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
+                            </tr>
+                          ) })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })}
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>Кол-во и склад менять нельзя (это движение склада). Блоки — раскладка по накладным поставщика; перетаскивай строки за ⠿.</div>
               </div>
             ) : (
               <div style={{ padding: 20, background: '#faf8f6' }}>

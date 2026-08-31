@@ -71,6 +71,8 @@ export async function updateDocument(id: string, patch: any) {
       if (l.price !== undefined) set.price = String(Number(l.price) || 0)
       if (l.unit !== undefined) set.unit = l.unit
       if (l.comment !== undefined) set.comment = l.comment
+      if (l.block !== undefined) set.block = String(l.block || '')                 // блок (накладная поставщика)
+      if (l.sortOrder !== undefined) set.sortOrder = Number(l.sortOrder) || 0       // порядок (перетаскивание)
       if (Object.keys(set).length) await docRepo.updateLine(l.id, set)
     }
   }

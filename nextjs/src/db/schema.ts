@@ -209,6 +209,8 @@ export const documentLines = pgTable('document_lines', {
   areaM2: qtyCol('area_m2'),
   rate: money('rate'),                                    // ставка за м²
   comment: text('comment'),
+  block: text('block').notNull().default(''),             // блок внутри накладной (= накладная поставщика), группировка/раскладка
+  sortOrder: integer('sort_order').notNull().default(0),  // порядок строки (перетаскивание внутри/между блоками)
 }, t => ({ byDoc: index('document_lines_doc_idx').on(t.documentId) }))
 
 // Цепочка приход↔расход (рентабельность / «блокчейн»)

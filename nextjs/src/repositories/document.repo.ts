@@ -118,8 +118,9 @@ export const linesWithProduct = (docId: string) =>
     qty: documentLines.qty, unit: documentLines.unit, price: documentLines.price,
     amount: documentLines.amount, comment: documentLines.comment, sourcePosId: documentLines.sourcePosId,
     role: documentLines.role, lengthCm: documentLines.lengthCm, widthCm: documentLines.widthCm, rate: documentLines.rate,
+    block: documentLines.block, sortOrder: documentLines.sortOrder,
   }).from(documentLines).innerJoin(products, eq(documentLines.productId, products.id))
-    .where(eq(documentLines.documentId, docId)).orderBy(asc(documentLines.id))
+    .where(eq(documentLines.documentId, docId)).orderBy(asc(documentLines.sortOrder), asc(documentLines.id))
 
 export const contragentById = (id: string) =>
   db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId }).from(contragents).where(eq(contragents.id, id)).limit(1)
