@@ -35,6 +35,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [updating, setUpdating] = useState<string | null>(null)
   const [supEditPos, setSupEditPos] = useState<string | null>(null)
   const [qtyEditPos, setQtyEditPos] = useState<string | null>(null); const [qtyVal, setQtyVal] = useState('')
+  const [confDelPos, setConfDelPos] = useState<string | null>(null)   // подтверждение удаления в два тапа (чтобы не убрать случайно)
   const [addingCardId, setAddingCardId] = useState<string | null>(null)
   const [openCardId, setOpenCardId] = useState<string | null>(null)          // развёрнутая карточка (позиции — в шторке)
   const [catalogCardId, setCatalogCardId] = useState<string | null>(null)   // открыт каталог-пикер для этой карточки
@@ -92,7 +93,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   async function saveSupplier(cardId: string, posId: string, supplierId: string) { await updatePosition(cardId, posId, { supplierId }); showMsg('✓ Поставщик изменён'); setSupEditPos(null); load() }
   // Логист правит кол-во / убирает позицию перед доставкой (недовоз, брак, ошибка).
   async function savePosQty(cardId: string, posId: string) { await updatePosition(cardId, posId, { qty: Number(qtyVal.replace(',', '.')) || 0 }); showMsg('✓ Кол-во изменено'); setQtyEditPos(null); setQtyVal(''); load() }
-  async function removePos(cardId: string, posId: string) { if (!confirm('Убрать позицию из карточки?')) return; const r = await deletePosition(cardId, posId); if (r.ok) { showMsg('✓ Позиция убрана'); load() } else showMsg('⚠ Не удалось убрать') }
+  async function removePos(cardId: string, posId: string) { setConfDelPos(null); const r = await deletePosition(cardId, posId); if (r.ok) { showMsg('✓ Позиция убрана'); load() } else showMsg('⚠ Не удалось убрать') }
   async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
   // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
   async function handleAccept(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'logistAccept'); if (r.ok) { showMsg('✓ Продажа принята → в работу'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось принять')); setUpdating(null) }
@@ -180,7 +181,9 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isPurchase(order) ? '#f3eeff' : '#e8f5ee', color: isPurchase(order) ? '#7a3aaa' : '#2e8a5e' }}>{isPurchase(order) ? '🛒 ЗАКУП' : 'ПРОДАЖА'}</span>
           {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
           <span style={{ fontSize: 12, background: pos.status === 'Доставлено' ? '#e8f5ee' : '#fff0ea', color: pos.status === 'Доставлено' ? '#2e8a5e' : '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{pos.status}</span>
-          {editable && <button onClick={() => removePos(order.id, pos.id)} title="Убрать позицию" style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 7, padding: '2px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Убрать</button>}
+          {editable && (confDelPos === pos.id
+            ? <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 12, color: '#b03020', fontWeight: 700 }}>Убрать?</span><button onClick={() => removePos(order.id, pos.id)} style={{ border: 'none', background: '#c1121c', color: '#fff', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>Да</button><button onClick={() => setConfDelPos(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Нет</button></span>
+            : <button onClick={() => setConfDelPos(pos.id)} title="Убрать позицию" style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#b8b1a6', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', padding: '2px 4px', lineHeight: 1 }}>🗑</button>)}
         </div>
         {order.screen === 'reception' && !isPurchase(order)
           ? <button onClick={() => handleAccept(order.id)} disabled={updating === order.id} style={{ marginTop: compact ? 8 : 12, width: '100%', padding: compact ? '9px' : '12px', borderRadius: compact ? 8 : 10, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: compact ? 12.5 : 14, cursor: 'pointer', fontFamily: 'inherit', opacity: updating === order.id ? 0.6 : 1 }}>✅ Принять продажу → в работу</button>
