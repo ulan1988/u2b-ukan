@@ -78,13 +78,13 @@ export async function demandSummary(orgId: string) {
   for (const c of cards) cardName[c.id] = c.fromName || c.id
   const procuredSet = new Set(procured.map(p => `${p.saleCardId}::${(p.product || '').trim().toLowerCase()}`))
 
-  const byProduct: Record<string, { name: string; unit: string; total: number; rows: { cardId: string; from: string; qty: number }[] }> = {}
+  const byProduct: Record<string, { name: string; unit: string; total: number; widthCm?: number | null; rows: { cardId: string; from: string; qty: number }[] }> = {}
   for (const p of positions) {
     const name = (p.name1c || p.oral || '').trim()
     if (!name) continue
     if (procuredSet.has(`${p.cardId}::${name.toLowerCase()}`)) continue     // уже закуплено
     const key = name.toLowerCase()
-    if (!byProduct[key]) byProduct[key] = { name, unit: p.unit || 'шт', total: 0, rows: [] }
+    if (!byProduct[key]) byProduct[key] = { name, unit: p.unit || 'шт', total: 0, widthCm: p.widthCm != null ? Number(p.widthCm) : null, rows: [] }
     byProduct[key].total += Number(p.qty)
     byProduct[key].rows.push({ cardId: p.cardId, from: cardName[p.cardId] || p.cardId, qty: Number(p.qty) })
   }
@@ -128,7 +128,7 @@ export async function chainReport(orgId: string) {
 
 // «В закуп»: складываем товары в черновик-накопитель (find-or-create), пишем
 // связи, автоцену priceIn, автоподстановку поставщик/логист по группе.
-export async function stage(orgId: string, items: { name: string; unit: string; total: number; rows: { cardId: string; qty: number }[] }[], actor?: Session | null) {
+export async function stage(orgId: string, items: { name: string; unit: string; total: number; widthCm?: number | null; rows: { cardId: string; qty: number }[] }[], actor?: Session | null) {
   if (!items.length) return { ok: false as const, error: 'Нет товаров' }
 
   // черновик-накопитель
@@ -171,10 +171,14 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
     // Изделия производятся (цена = доля листа, а не закуп) → цену НЕ подставляем, вписывается
     // при приходной накладной. Покупные товары — тянем последнюю цену закупа (priceIn).
     const isIzdelie = isIzd(it.name)
+    // Ширина (см): из позиции, иначе вытащить из имени «… 20 см» — иначе колонка СМ в черновике пустая.
+    const mCm = (it.name || '').match(/(\d+)\s*см\s*$/i)
+    const wcm = it.widthCm != null ? Number(it.widthCm) : (mCm ? Number(mCm[1]) : null)
     return {
       id: `${draft!.id}-P${base + idx + 1}`, cardId: draft!.id,
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,
       qty: String(it.total), unit: it.unit || 'шт', price: String(isIzdelie ? 0 : (prod?.priceIn ?? 0)),
+      widthCm: wcm != null ? String(wcm) : null,
       supplierId, respUserId, leg: supplierId ? (legMap[supplierId] ?? 2) : 2, status: 'В работе',
     }
   })
