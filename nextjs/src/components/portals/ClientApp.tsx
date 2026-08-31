@@ -153,7 +153,9 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
     setNewLoading(true)
     try {
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
-      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions })
+      // uid при просмотре-как (админ смотрит кабинет клиента) — иначе заявка создаётся от админа,
+      // заказчик (contactId=контрагент кабинета) теряется и заказ не виден клиенту.
+      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions }, viewAs ? user.id : undefined)
       if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); setNewProject(''); load() }
       else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))
     } catch (err: any) { setToast('⚠ Ошибка: ' + (err?.message || 'сеть недоступна')) }
