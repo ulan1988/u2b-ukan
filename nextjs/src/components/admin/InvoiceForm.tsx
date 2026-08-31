@@ -124,7 +124,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
                         <td style={{ padding: '6px 4px', width: 96 }}>{izd
                           ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
-                          : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} title="цена за единицу" />}</td>
+                          : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} placeholder="0" title="цена за единицу" />}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
                         <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => setLines(ls => ls.map((x, j) => j === i ? { ...x, comment: e.target.value } : x))} /></td>
                       </tr>
@@ -137,7 +137,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
               <div style={{ padding: 20, background: '#faf8f6' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, maxWidth: 520 }}>
                   <div><label style={lbl}>ВСЕГО К ОПЛАТЕ</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700 }} value={fmtMoney(total) + ' ₸'} disabled /></div>
-                  <div><label style={lbl}>ОПЛАЧЕНО</label><input style={inp} type="number" value={f.paidSum} onChange={e => setF({ ...f, paidSum: e.target.value })} /></div>
+                  <div><label style={lbl}>ОПЛАЧЕНО</label><input style={inp} type="number" value={f.paidSum || ''} onChange={e => setF({ ...f, paidSum: e.target.value })} placeholder="0" /></div>
                   <div><label style={lbl}>ОСТАТОК</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700, color: remain > 0.001 ? '#b03020' : '#2e8a5e' }} value={fmtMoney(remain) + ' ₸'} disabled /></div>
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>Свяжется с финмодулем ({isSale ? 'долг заказчика' : 'долг перед поставщиком'}) на следующем этапе.</div>
@@ -149,7 +149,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
               <span style={{ fontSize: 13, color: COLORS.textMuted }}>Подытог: <b style={{ color: COLORS.text }}>{fmtMoney(subtotal)} ₸</b></span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 13, color: COLORS.textMuted }}>Скидка:</span>
-                <input style={{ ...inp, width: 70, padding: '4px 6px', textAlign: 'right' }} type="number" value={discMode === 'pct' ? f.discountPct : f.discountSum}
+                <input style={{ ...inp, width: 70, padding: '4px 6px', textAlign: 'right' }} type="number" value={(discMode === 'pct' ? f.discountPct : f.discountSum) || ''} placeholder="0"
                   onChange={e => setF({ ...f, [discMode === 'pct' ? 'discountPct' : 'discountSum']: e.target.value })} />
                 <select style={{ ...inp, width: 60, padding: '4px 6px' }} value={discMode} onChange={e => setDiscMode(e.target.value as any)}>
                   <option value="pct">%</option><option value="sum">₸</option>
