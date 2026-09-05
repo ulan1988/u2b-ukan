@@ -83,3 +83,17 @@ export const createClientOrder = (body: any, uid?: string) => post(`/api/client/
 export const clientDocs = (uid?: string) => getOne<{ purchases: any[]; sales: any[]; returns: any[] }>(`/api/client/docs${uid ? `?uid=${uid}` : ''}`)
 export const acceptClientDoc = (id: string, uid?: string) => post(`/api/client/docs/${id}/accept${uid ? `?uid=${uid}` : ''}`)
 export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(id)}`)
+
+// Касса продавца (филиал-магазин): пробить чек одним запросом — позиции + оплата.
+export async function sellCheck(body: {
+  uid?: string; contactId?: string; comment?: string
+  cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
+  positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+}) {
+  const r = await post('/api/branch/sell', body)
+  return {
+    ok: r.ok, error: r.error as string | undefined,
+    id: r.data?.id as string | undefined, number: r.data?.number as string | undefined,
+    total: r.data?.total as number | undefined, debt: r.data?.debt as number | undefined,
+  }
+}

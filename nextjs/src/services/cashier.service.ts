@@ -39,6 +39,16 @@ async function hqBridgeContragent(orgId: string): Promise<string | null> {
   return cg?.id || null
 }
 
+// Вид организации (hq | producer_seller | seller) — от него зависит логика кассы:
+// цепочка долга через головной есть только у производителя, магазин-продавец держит долг у себя.
+async function orgKindOf(orgId: string): Promise<string> {
+  const { db } = await import('../lib/db')
+  const { organizations } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [o] = await db.select({ kind: organizations.kind }).from(organizations).where(eq(organizations.id, orgId)).limit(1)
+  return o?.kind || 'seller'
+}
+
 // Головной офис (org kind='hq').
 async function hqOrgId(): Promise<string | null> {
   const { db } = await import('../lib/db')
@@ -69,9 +79,12 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   if (order.linkedDocId) return { ok: false as const, error: 'Уже продано — сначала отмените продажу' }
   const positions = await repo.positionsByCard(cardId)
   if (!positions.length) return { ok: false as const, error: 'Нет позиций' }
-  // Производственный цикл: изделия должны быть в базе (товар на складе). Если у позиции нет
-  // product_id — автоматически вносим в базу (создаём товар + выпуск на склад), затем продаём.
-  if (positions.some((x: any) => !x.productId)) {
+  const orgKind = await orgKindOf(order.orgId)
+  // Производственный цикл (только у филиала-производителя): изделия должны быть в базе (товар
+  // на складе). Если у позиции нет product_id — вносим в базу (товар + выпуск на склад), затем
+  // продаём. У магазина-продавца производства нет: товар берётся из номенклатуры, а позиции без
+  // product_id подхватит `ensureProductIdsByName` при проведении накладной.
+  if (orgKind === 'producer_seller' && positions.some((x: any) => !x.productId)) {
     const { produceToBase } = await import('./producer.service')
     const pr = await produceToBase(cardId, actor)
     if (!pr.ok) return { ok: false as const, error: pr.error }
@@ -94,8 +107,10 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   //  • НЕ в долг (оплачено) → расходная у производителя на заказчика, карточка закрывается тут.
   //  • В долг + конечный заказчик (не мост) → ЦЕПОЧКА: производитель→головной (расходная + зеркальная
   //    приходная у головного), затем головной→Машон (расходная у головного на его имя). Должник — Машон.
+  // Цепочка — только у производителя: он продаёт исключительно через головной. Магазин-продавец
+  // (Кристалл) торгует своим товаром со своего склада, долг остаётся дебиторкой филиала.
   const endClient = contactId !== bridge ? contactId : null
-  const chain = debt > 0 && debt === total && !!bridge && !!endClient
+  const chain = orgKind === 'producer_seller' && debt > 0 && debt === total && !!bridge && !!endClient
   let inv: any
   if (chain) {
     await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
@@ -141,4 +156,59 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
   await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'reception', status: 'Готов к доставке', prodPhase: 'ready', paidCash: '0', paidKaspi: '0', paidQr: '0', changeSum: '0', changeFrom: '', payment: '', delivered: null })
   await repo.insertHistory({ cardId, action: 'unpay', detail: 'Продажа отменена — карточка снова в работе', userName: actor?.name || 'Система' })
   return { ok: true as const, cancelled: docs.length }
+}
+
+// ── Касса продавца (филиал-магазин, напр. «Магазин Кристалл») ────────────────────────────
+// Продавец с телефона набирает товар из каталога (NomPicker) и сразу пробивает чек: одна
+// кнопка = карточка-продажа в книге филиала + проведение расходной (склад филиала −) + оплаты.
+// Отличие от кассы мастера: производства нет, товар берётся из номенклатуры (по имени), долг
+// остаётся дебиторкой филиала (без цепочки через головной).
+
+// «Розничный покупатель» филиала — контрагент по умолчанию, когда чек без выбора клиента.
+const RETAIL_NAME = 'Розничный покупатель'
+async function ensureRetailContragent(orgId: string): Promise<string> {
+  const { db } = await import('../lib/db')
+  const { contragents } = await import('../db/schema')
+  const { and, eq, sql } = await import('drizzle-orm')
+  const [hit] = await db.select({ id: contragents.id }).from(contragents)
+    .where(and(eq(contragents.orgId, orgId), sql`lower(trim(${contragents.name})) = ${RETAIL_NAME.toLowerCase()}`)).limit(1)
+  if (hit) return hit.id
+  const { addContragent } = await import('./catalog.service')
+  const c = await addContragent({ orgId, name: RETAIL_NAME, kind: 'client', priceType: 'retail', phone: '' } as any)
+  return c.id
+}
+
+export interface SellInput {
+  contactId?: string
+  comment?: string
+  cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
+  positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+}
+
+export async function sellDirect(orgId: string, i: SellInput, actor?: Session | null) {
+  if (!i.positions?.length) return { ok: false as const, error: 'Пустой чек' }
+  const { ensureProduct } = await import('./producer.service')
+  const { createOrder } = await import('./order.service')
+
+  // Товар из справочника: по имени; нет такого — заводим (иначе позиция выпадет из накладной).
+  const positions = [] as any[]
+  for (const p of i.positions) {
+    const name = (p.name1c || '').trim()
+    positions.push({
+      productId: p.productId || await ensureProduct(name),
+      name1c: name, oral: p.oral || name,
+      qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0,
+      widthCm: p.widthCm != null ? Number(p.widthCm) : undefined,
+    })
+  }
+  const contactId = i.contactId || await ensureRetailContragent(orgId)
+  const { id } = await createOrder({
+    orgId, kind: 'sale', source: 'cashier', screen: 'bookkeeping', contactId,
+    comment: i.comment || 'Касса магазина', positions,
+  } as any, actor)
+
+  const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
+  if (!res.ok) return res
+  await repo.updateOrder(id, { status: 'Доставлено' })
+  return { ...res, id }
 }

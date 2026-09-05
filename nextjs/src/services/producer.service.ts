@@ -73,7 +73,7 @@ async function setProductCost(productId: string, cost: number) {
 
 // Найти/создать товар по имени (goods, папка «Комплектующие»). Имя = идентичность изделия
 // (напр. «Изделие 9003 15 см») — по нему считается рентабельность конкретного товара.
-async function ensureProduct(name: string): Promise<string> {
+export async function ensureProduct(name: string): Promise<string> {
   const { db } = await import('../lib/db')
   const { products } = await import('../db/schema')
   const { sql } = await import('drizzle-orm')

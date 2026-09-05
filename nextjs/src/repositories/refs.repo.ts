@@ -50,3 +50,9 @@ export const listContragents = async (viewerOrgId?: string | null) => {
 
 export const listCashAccounts = () =>
   db.select().from(cashAccounts).where(eq(cashAccounts.archived, false))
+
+// Организация по id — нужен её kind (hq | producer_seller | seller), от него зависит вид кабинета.
+export const orgById = async (id: string) => {
+  const [o] = await db.select().from(organizations).where(eq(organizations.id, id)).limit(1)
+  return o || null
+}
