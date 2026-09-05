@@ -20,6 +20,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [wsel, setWsel] = useState<Record<string, boolean>>({})    // ЗП: выбранные сотрудники (сумма = оклад)
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация мастер→филиал
   const [remit, setRemit] = useState('')                        // сдать головному
+  const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
   const [month, setMonth] = useState<any>(null)
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
@@ -133,6 +134,57 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: chk.ok ? '#e8f5ee' : '#faeaea', borderRadius: 10, padding: '10px 16px', marginBottom: 18, fontSize: 15 }}>
           <b style={{ color: chk.ok ? '#2e8a5e' : '#b03020', fontSize: 16 }}>{chk.ok ? '✅ Проверка: сходится' : `❌ Расхождение ${m(chk.diff)}`}</b>
           <span style={{ color: COLORS.textMuted, marginLeft: 'auto' }}>Нал + Каспи + QR + Долг = Продано · {(data.cards || []).length} продаж</span>
+        </div>
+
+        {/* Журнал чеков дня — у магазина продажи собираются по ЧЕКАМ (в других орг это расходные накладные) */}
+        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px 10px' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🧾 ЧЕКИ ДНЯ</span>
+            <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{(data.cards || []).length} шт</span>
+            <b style={{ marginLeft: 'auto', fontSize: 15 }}>{m(inc.total)} ₸</b>
+          </div>
+          {(data.cards || []).length === 0
+            ? <div style={{ padding: '18px 16px 22px', textAlign: 'center', color: COLORS.textMuted, fontSize: 13.5 }}>За этот день чеков нет</div>
+            : (data.cards || []).map((c: any) => {
+              const open = openCheck === c.id
+              const time = c.ts ? new Date(c.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''
+              const paid = Number(c.paidCash || 0) + Number(c.paidKaspi || 0) + Number(c.paidQr || 0)
+              const debt = Math.max(0, Number(c.total || 0) - paid)
+              return (
+                <div key={c.id} style={{ borderTop: `1px solid ${COLORS.borderLight}` }}>
+                  <div onClick={() => setOpenCheck(open ? '' : c.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', cursor: 'pointer', background: open ? COLORS.bgCard : 'transparent' }}>
+                    <span style={{ fontSize: 12, color: COLORS.textLight, width: 42 }}>{time}</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#2e8a5e', width: 130 }}>{c.docNumber || c.id}</span>
+                    <span style={{ fontSize: 13.5, width: 110, color: c.seller ? COLORS.text : COLORS.textLight }}>{c.seller ? `👤 ${c.seller}` : '—'}</span>
+                    <span style={{ fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.customer || 'Розница'}</span>
+                    <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 74 }}>{c.cnt} поз.</span>
+                    <span style={{ fontSize: 12.5, width: 120, color: debt > 0 ? COLORS.primaryDark : COLORS.textLight }}>
+                      {c.payment || '—'}{debt > 0 ? ` · долг ${m(debt)}` : ''}
+                    </span>
+                    <b style={{ fontSize: 14.5, width: 110, textAlign: 'right' }}>{m(c.total)} ₸</b>
+                    <span style={{ color: COLORS.textLight, fontSize: 12, width: 14 }}>{open ? '▾' : '▸'}</span>
+                  </div>
+                  {open && (
+                    <div style={{ padding: '2px 16px 12px 70px', background: COLORS.bgCard }}>
+                      {(c.lines || []).map((l: any, i: number) => {
+                        const sum = /^изделие/i.test(l.name || '') && Number(l.widthCm) > 0
+                          ? Number(l.qty) * Number(l.widthCm) * Number(l.price)
+                          : Number(l.qty) * Number(l.price)
+                        return (
+                          <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0', fontSize: 13, color: COLORS.textSubtle }}>
+                            <span style={{ flex: 1, minWidth: 0 }}>{l.name}</span>
+                            <span style={{ width: 110, textAlign: 'right', color: COLORS.textLight }}>{Number(l.qty)} {l.unit || 'шт'}{Number(l.widthCm) > 0 ? ` × ${Number(l.widthCm)} см` : ''}</span>
+                            <span style={{ width: 90, textAlign: 'right', color: COLORS.textLight }}>{m(l.price)}</span>
+                            <span style={{ width: 100, textAlign: 'right', fontWeight: 600 }}>{m(sum)}</span>
+                          </div>
+                        )
+                      })}
+                      {Number(c.changeSum) > 0 && <div style={{ fontSize: 12.5, color: COLORS.textLight, paddingTop: 4 }}>сдача {m(c.changeSum)} ₸</div>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>

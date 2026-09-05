@@ -18,15 +18,24 @@ export async function masterShift(orgId: string, date: string) {
     join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id = o.id
     where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
   ` as unknown as Array<any>)[0] || { cash: 0, kaspi: 0, qr: 0, total: 0 }
+  // Чеки дня: карточка + кто пробил (seller), покупатель, номер накладной, состав (для журнала кассы).
   const cards = await sqlClient`
-    select o.id, o.payment, o.paid_cash::float "paidCash", o.paid_kaspi::float "paidKaspi", o.paid_qr::float "paidQr", t.total::float total, c.name customer
+    select o.id, o.payment, o.seller, o.paid_cash::float "paidCash", o.paid_kaspi::float "paidKaspi", o.paid_qr::float "paidQr",
+      o.change_sum::float "changeSum", t.total::float total, t.cnt::int cnt, c.name customer, d.number "docNumber", o.updated_at ts
     from orders o
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
-    join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id = o.id
+    join (select card_id, sum(qty*price) total, count(*) cnt from order_positions group by card_id) t on t.card_id = o.id
     left join contragents c on c.id = o.contact_id
     where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
     order by o.updated_at desc
   ` as unknown as Array<any>
+  // Состав чеков одним запросом — журнал раскрывается без похода за каждой карточкой.
+  const ids = cards.map((c: any) => c.id)
+  const lines = ids.length ? await sqlClient`
+    select card_id "cardId", coalesce(name1c, oral) name, qty::float qty, price::float price, width_cm::float "widthCm", unit
+    from order_positions where card_id = any(${ids}) order by id
+  ` as unknown as Array<any> : []
+  for (const c of cards) (c as any).lines = lines.filter((l: any) => l.cardId === c.id)
 
   const cash = num(incRow.cash), kaspi = num(incRow.kaspi), qr = num(incRow.qr), total = num(incRow.total)
   const paid = cash + kaspi + qr
