@@ -15,6 +15,8 @@ export const sellPositionSchema = z.object({
 export const sellSchema = z.object({
   uid: z.string().uuid().optional(),              // просмотр-как: пишем от имени филиала (см. viewas)
   contactId: z.string().uuid().optional(),        // покупатель; пусто → «Розничный покупатель»
+  sellerId: z.string().uuid().optional(),         // продавец за кассой (employees.id) — выбирается на телефоне
+  seller: z.string().optional().default(''),      // его имя на момент чека
   comment: z.string().optional().default(''),
   cash: z.coerce.number().nonnegative().optional().default(0),
   kaspi: z.coerce.number().nonnegative().optional().default(0),

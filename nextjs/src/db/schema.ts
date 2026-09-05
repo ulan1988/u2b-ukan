@@ -317,6 +317,8 @@ export const orders = pgTable('orders', {
   paidQr: money('paid_qr').notNull().default('0'),        // получено QR/переводом (→ Банковский счёт)
   changeSum: money('change_sum').notNull().default('0'),  // выдана сдача
   changeFrom: text('change_from').notNull().default(''),  // сдача с чего: '' | cash | kaspi
+  sellerId: uuid('seller_id'),                            // → employees.id: кто из продавцов пробил чек (касса магазина)
+  seller: text('seller').notNull().default(''),           // имя продавца на момент чека (без join)
   trackingLink: text('tracking_link').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
   leg: integer('leg').notNull().default(2),               // 1 = первое плечо (филиал-поставщик), 2 = обычная

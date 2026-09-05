@@ -180,6 +180,8 @@ async function ensureRetailContragent(orgId: string): Promise<string> {
 
 export interface SellInput {
   contactId?: string
+  sellerId?: string        // продавец за кассой (employees.id) — выбран на телефоне и держится до смены
+  seller?: string          // его имя на момент чека
   comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
@@ -202,13 +204,17 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
     })
   }
   const contactId = i.contactId || await ensureRetailContragent(orgId)
+  const seller = (i.seller || '').trim()
   const { id } = await createOrder({
     orgId, kind: 'sale', source: 'cashier', screen: 'bookkeeping', contactId,
+    fromName: seller,                                     // в списках чек подписан продавцом
     comment: i.comment || 'Касса магазина', positions,
   } as any, actor)
+  // Продавец на чеке: id — для отчёта «кто сколько продал», имя — чтобы показывать без join.
+  if (seller || i.sellerId) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null } as any)
 
   const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
   if (!res.ok) return res
   await repo.updateOrder(id, { status: 'Доставлено' })
-  return { ...res, id }
+  return { ...res, id, seller }
 }

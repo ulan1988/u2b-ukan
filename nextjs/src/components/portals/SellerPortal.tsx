@@ -37,6 +37,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
   const [stockRows, setStockRows] = useState<any[]>([])
+  // Продавец за кассой: выбирается на своём телефоне и держится (localStorage), пока не сменят.
+  const [staff, setStaff] = useState<any[]>([])
+  const [seller, setSeller] = useState<{ id: string; name: string } | null>(null)
+  const [pickSeller, setPickSeller] = useState(false)
+  const [sellerReady, setSellerReady] = useState(false)
 
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3500) }
 
@@ -47,6 +52,21 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       setWarehouses((r.warehouses || []).filter((w: any) => w.orgId === user.orgId))
     })
   }, [user.orgId])
+
+  const SELLER_KEY = `u2b_seller_${user.orgId}`
+  useEffect(() => {
+    fetch(`/api/employees?orgId=${user.orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setStaff(Array.isArray(d) ? d : []))
+    try {
+      const raw = localStorage.getItem(SELLER_KEY)
+      if (raw) setSeller(JSON.parse(raw))
+    } catch {}
+    setSellerReady(true)
+  }, [user.orgId, SELLER_KEY])
+
+  function chooseSeller(s: { id: string; name: string } | null) {
+    setSeller(s); setPickSeller(false)
+    try { s ? localStorage.setItem(SELLER_KEY, JSON.stringify(s)) : localStorage.removeItem(SELLER_KEY) } catch {}
+  }
 
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   useEffect(() => { load() }, [load])
@@ -102,6 +122,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setBusy(true)
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined,
+      sellerId: seller?.id, seller: seller?.name,
       cash: cashN, kaspi: kaspiN, qr: qrN, change: num(pay.change), changeFrom: pay.changeFrom,
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
     })
@@ -127,13 +148,50 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
   const input = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const, width: '100%' }
 
+  // Экран выбора продавца: показывается при первом заходе с этого телефона и по кнопке «сменить».
+  // Выбор хранится локально на устройстве — продавец не перевыбирает его на каждый чек.
+  if (sellerReady && (!seller || pickSeller)) {
+    return (
+      <div style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif", display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: '#26231f', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 22 }}>🏪</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Кто за кассой?</div>
+            <div style={{ fontSize: 12, color: '#b8b1a6' }}>{orgName || user.name}</div>
+          </div>
+          {seller && <button onClick={() => setPickSeller(false)} style={{ background: '#3a3630', border: 'none', color: '#d8d2c8', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Отмена</button>}
+        </div>
+        <div style={{ padding: 16, maxWidth: 520, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box' }}>
+          {staff.length === 0 && (
+            <div style={{ background: '#fff', borderRadius: 12, padding: 24, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>
+              Продавцы ещё не заведены — добавьте сотрудников филиала в админке (Настройки → Сотрудники).
+            </div>
+          )}
+          {staff.map((e: any) => {
+            const on = seller?.id === e.id
+            return (
+              <button key={e.id} onClick={() => chooseSeller({ id: e.id, name: e.name })} style={{ border: on ? 'none' : '1.5px solid #e6e2dc', background: on ? PRIMARY : '#fff', color: on ? '#fff' : '#26231f', borderRadius: 14, padding: '20px 18px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 19, fontWeight: 800, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 24 }}>👤</span>
+                <span style={{ flex: 1 }}>{e.name}</span>
+                {e.position && <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? '#ffe8de' : '#8a8377' }}>{e.position}</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif", paddingBottom: 74 }}>
       <div style={{ background: '#26231f', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 50 }}>
         <span style={{ fontSize: 22 }}>🏪</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>Касса магазина</div>
-          <div style={{ fontSize: 12, color: '#b8b1a6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{orgName || user.name}</div>
+          <button onClick={() => setPickSeller(true)} title="Сменить продавца" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: '#b8b1a6', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ color: '#f0c8b6', fontWeight: 700 }}>👤 {seller?.name || 'продавец не выбран'}</span>
+            <span style={{ textDecoration: 'underline' }}>сменить</span>
+          </button>
         </div>
         <div style={{ textAlign: 'right', marginRight: 6 }}>
           <div style={{ fontSize: 11, color: '#b8b1a6' }}>сегодня</div>
@@ -231,7 +289,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#2e8a5e' }}>{o.id}</div>
-                  <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.fromName || o.contactName || 'Розница'} · {o.payment || '—'}</div>
+                  <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.contactName || o.fromName || 'Розница'} · {o.payment || '—'}</div>
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 800 }}>{money(Number(o.total || 0))} ₸</div>
                 <button onClick={() => doUnpay(o.id)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩</button>

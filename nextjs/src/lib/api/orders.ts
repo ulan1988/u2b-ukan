@@ -86,7 +86,7 @@ export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(
 
 // Касса продавца (филиал-магазин): пробить чек одним запросом — позиции + оплата.
 export async function sellCheck(body: {
-  uid?: string; contactId?: string; comment?: string
+  uid?: string; contactId?: string; sellerId?: string; seller?: string; comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
 }) {

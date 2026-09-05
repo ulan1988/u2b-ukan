@@ -7,7 +7,7 @@ import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
-// Касса продавца: пробить чек — { positions[], contactId?, cash, kaspi, qr, change, uid }.
+// Касса продавца: пробить чек — { positions[], contactId?, sellerId?, seller?, cash, kaspi, qr, change, uid }.
 // Одним вызовом: карточка-продажа в книге филиала + расходная (склад −) + оплаты.
 export async function POST(req: NextRequest) {
   const s = await sessionFromRequest(req)
