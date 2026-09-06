@@ -107,6 +107,13 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const visible = q ? orders.filter(o => `${o.id} ${o.fromName} ${o.comment}`.toLowerCase().includes(q)) : orders
   const title = NAV.find(n => n.key === screen)?.label || ''
 
+  // Меню под выбранную орг: у ФИЛИАЛА (листогиб/магазин, kind ≠ hq) свои кабинеты (касса/стол
+  // мастера) — прячем головные экраны потока заявок, чтобы не попадались на глаз лишними.
+  const selKind = orgs.find(o => o.id === orgId)?.kind
+  const isBranchOrg = !!selKind && selKind !== 'hq'
+  const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
+  const nav = isBranchOrg ? NAV.filter(n => !BRANCH_HIDE.includes(n.key)) : NAV
+
   const ctx: Ctx = { user, orders, visible, loading, orgId, act, reload: load, openCard }
 
   return (
@@ -114,7 +121,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
       {sideOpen && <div className="mobile-overlay" onClick={() => setSideOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 99, display: 'none' }} />}
 
-      <Sidebar nav={NAV} screen={screen} counts={counts} user={user}
+      <Sidebar nav={nav} screen={screen} counts={counts} user={user}
         onNav={k => { router.push(`/admin/${k}`); setSideOpen(false) }} onRefresh={load}
         onLogout={async () => { await logout(); location.href = '/login' }}
         open={sideOpen} onClose={() => setSideOpen(false)} />
