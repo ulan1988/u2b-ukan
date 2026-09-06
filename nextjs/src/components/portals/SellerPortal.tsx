@@ -527,10 +527,6 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         {([
           { key: 'cash' as Tab, icon: '💵', label: 'Касса' },
           { key: 'checks' as Tab, icon: '🧾', label: 'Чеки' },
-          { key: 'stock' as Tab, icon: '📦', label: 'Склад' },
-          { key: 'shift' as Tab, icon: '📅', label: 'Смена' },
-          { key: 'docs' as Tab, icon: '📄', label: 'Док-ты' },
-          { key: 'finance' as Tab, icon: '💰', label: 'Финансы' },
         ]).map(({ key, icon, label }) => {
           const active = tab === key
           return (
