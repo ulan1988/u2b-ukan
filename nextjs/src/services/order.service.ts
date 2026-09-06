@@ -155,9 +155,36 @@ async function withPositions(rows: any[]) {
       supplier: p.supplierId ? (cagName[p.supplierId] || '') : '',
     })
   }
+  // Номер проведённой накладной (№ чека) + возвраты по карточке — для журнала чеков кассы магазина.
+  const { sqlClient } = await import('../lib/db')
+  const docIds = rows.map(r => r.linkedDocId).filter(Boolean) as string[]
+  const docNum: Record<string, string> = {}
+  if (docIds.length) {
+    const dn = await sqlClient`select id, number from documents where id = any(${docIds})` as unknown as Array<any>
+    for (const d of dn) docNum[d.id] = d.number
+  }
+  const cardIds = rows.map(r => r.id)
+  const retSum: Record<string, number> = {}
+  const retPos: Record<string, string[]> = {}
+  if (cardIds.length) {
+    const rs = await sqlClient`
+      select source_order_id cid, coalesce(sum(total),0)::float s from documents
+      where type='return_in' and status<>'cancelled' and source_order_id = any(${cardIds})
+      group by source_order_id` as unknown as Array<any>
+    for (const r of rs) retSum[r.cid] = Number(r.s) || 0
+    const rp = await sqlClient`
+      select d.source_order_id cid, dl.source_pos_id pid from document_lines dl
+      join documents d on d.id = dl.document_id
+      where d.type='return_in' and d.status<>'cancelled' and d.source_order_id = any(${cardIds}) and dl.source_pos_id is not null
+    ` as unknown as Array<any>
+    for (const r of rp) (retPos[r.cid] ||= []).push(r.pid)
+  }
   return rows.map(o => ({
     ...o,
     positions: byCard[o.id] || [],
+    docNumber: o.linkedDocId ? (docNum[o.linkedDocId] || '') : '',
+    returnedSum: retSum[o.id] || 0,
+    returnedPosIds: retPos[o.id] || [],
     // Пункт назначения: закуп → Центр-Склад, продажа → клиент-получатель.
     toName: o.kind === 'purchase' ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || '') : ''),
   }))

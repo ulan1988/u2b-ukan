@@ -15,7 +15,7 @@ import DocsView from '@/components/portals/DocsView'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, unpostSale } from '@/lib/api/orders'
+import { branchOrders, sellCheck, returnSale } from '@/lib/api/orders'
 import { fetchRefs, stock as fetchStock } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -27,6 +27,13 @@ type Tab = 'cash' | 'checks' | 'stock' | 'shift' | 'docs' | 'finance'
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
+// Локальный день (YYYY-MM-DD), без UTC-сдвига — как today() на сервере.
+const localDay = (d?: any) => {
+  const x = d ? new Date(d) : new Date()
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+}
+// Сумма чека из позиций (в orders нет поля total — считаем по строкам).
+const cardTotal = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
 
 // Рабочие папки продавца — реальные категории базы (Водосток 87, Евро брус 72,
 // Комплектующие 35, Металлочерепица 48). «Комплектующие» — базы «Без цвета»:
@@ -52,6 +59,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
   const [stockRows, setStockRows] = useState<any[]>([])
+  const [accounts, setAccounts] = useState<any[]>([])
+  // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
+  const [checksDay, setChecksDay] = useState(localDay())
+  const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
+  const [retSel, setRetSel] = useState<Set<string>>(new Set())
+  const [retAcc, setRetAcc] = useState('')
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [color, setColor] = useState('')
@@ -71,6 +84,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       setCags((r.contragents || []).filter((c: any) => !c.archived))
       setProducts(r.products || [])
       setWarehouses((r.warehouses || []).filter((w: any) => w.orgId === user.orgId))
+      setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
     })
   }, [user.orgId])
 
@@ -213,18 +227,33 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
   }
 
-  async function doUnpay(id: string) {
-    const r = await unpostSale(id)
+  // Возврат: открыть шторку по чеку (все позиции отмечены, ещё не возвращённые).
+  function openReturn(o: any) {
+    const returned = new Set<string>(o.returnedPosIds || [])
+    const sel = new Set<string>((o.positions || []).filter((p: any) => !returned.has(p.id)).map((p: any) => p.id))
+    setRetFor(o); setRetSel(sel)
+    setRetAcc(accounts[0]?.id || '')
+  }
+  function toggleRetPos(id: string) {
+    setRetSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  async function doReturn() {
+    if (!retFor) return
+    if (!retAcc) { showMsg('⚠ Выберите счёт возврата'); return }
+    if (retSel.size === 0) { showMsg('⚠ Отметьте позиции к возврату'); return }
+    setBusy(true)
+    const r = await returnSale({ uid: user.id, cardId: retFor.id, posIds: Array.from(retSel), accountId: retAcc })
+    setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    await load(); showMsg('↩ Продажа отменена')
+    setRetFor(null); await load()
+    showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
   }
 
   const sold = checks.filter((o: any) => o.prodPhase === 'sold' || o.linkedDocId)
-  const soldToday = sold.filter((o: any) => {
-    const d = o.delivered || o.createdAt
-    return d && new Date(d).toDateString() === new Date().toDateString()
-  })
-  const todaySum = soldToday.reduce((s: number, o: any) => s + Number(o.total || 0), 0)
+  const soldDay = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === checksDay)
+  const daySum = soldDay.reduce((s: number, o: any) => s + cardTotal(o), 0)
+  const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
+  const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
 
   const inp = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const, width: '100%' }
   const checkH = rows.length ? (payOpen ? 330 : 214) : 0
@@ -362,17 +391,39 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         <div style={{ padding: 12, maxWidth: 760, margin: '0 auto', paddingBottom: 86 }}>
           {tab === 'checks' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {sold.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Продаж пока нет</div>}
-              {sold.map((o: any) => (
-                <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: GREEN }}>{o.id}</div>
-                    <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.contactName || o.fromName || 'Розница'} · {o.payment || '—'}</div>
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 800 }}>{money(Number(o.total || 0))} ₸</div>
-                  <button onClick={() => doUnpay(o.id)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩</button>
+              {/* фильтр по дню: сегодня / выбор даты + итог дня */}
+              <div style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setChecksDay(localDay())} style={{ border: checksDay === localDay() ? 'none' : '1.5px solid #e6e2dc', background: checksDay === localDay() ? PRIMARY : '#fff', color: checksDay === localDay() ? '#fff' : DARK, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>Сегодня</button>
+                <input type="date" value={checksDay} max={localDay()} onChange={e => setChecksDay(e.target.value || localDay())} style={{ border: '1.5px solid #e6e2dc', borderRadius: 9, padding: '7px 10px', fontFamily: 'inherit', fontSize: 13.5, color: DARK }} />
+                <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                  <div style={{ fontSize: 10.5, color: '#a09889' }}>{soldDay.length} чек.</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 800 }}>{money(daySum)} ₸</div>
                 </div>
-              ))}
+              </div>
+              {soldDay.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>{checksDay === localDay() ? 'Сегодня продаж ещё нет' : 'За этот день продаж нет'}</div>}
+              {soldDay.map((o: any) => {
+                const t = cardTotal(o)
+                const retSum = Number(o.returnedSum || 0)
+                const time = new Date(o.delivered || o.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                const allBack = (o.returnedPosIds || []).length >= (o.positions || []).length && (o.positions || []).length > 0
+                return (
+                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: GREEN }}>№ {o.docNumber || o.id}</span>
+                        <span style={{ fontSize: 11.5, color: '#a09889' }}>{time}</span>
+                        {allBack && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c0532a', background: '#fbe9e1', borderRadius: 6, padding: '2px 6px' }}>возврат</span>}
+                      </div>
+                      <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.toName || o.contactName || o.fromName || 'Розница'} · {o.payment || '—'} · {(o.positions || []).length} поз.</div>
+                      {retSum > 0 && <div style={{ fontSize: 11.5, color: '#c0532a', fontWeight: 700 }}>↩ возвращено {money(retSum)} ₸</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK }}>{money(t)} ₸</div>
+                    </div>
+                    {!allBack && <button onClick={() => openReturn(o)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -483,6 +534,71 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           )
         })}
       </div>
+
+      {/* ВОЗВРАТ — шторка: выбрать позиции + счёт возврата, сумма считается на лету */}
+      {retFor && (() => {
+        const returned = new Set<string>(retFor.returnedPosIds || [])
+        const poss = (retFor.positions || [])
+        const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
+        const total = cardTotal(retFor)
+        const paid = (Number(retFor.paidCash) || 0) + (Number(retFor.paidKaspi) || 0) + (Number(retFor.paidQr) || 0)
+        const curDebt = Math.max(0, total - paid - Number(retFor.returnedSum || 0))
+        const refund = Math.max(0, selTotal - curDebt)
+        return (
+          <div onClick={() => setRetFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>↩ Возврат по чеку</div>
+                  <div style={{ fontSize: 12, color: '#8a8377', fontFamily: 'monospace' }}>№ {retFor.docNumber || retFor.id}</div>
+                </div>
+                <button onClick={() => setRetFor(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+              </div>
+              <div style={{ padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setRetSel(new Set(poss.filter((p: any) => !returned.has(p.id)).map((p: any) => p.id)))} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Весь чек</button>
+                  <button onClick={() => setRetSel(new Set())} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Снять всё</button>
+                </div>
+                {poss.map((p: any) => {
+                  const back = returned.has(p.id)
+                  const on = retSel.has(p.id)
+                  const sum = lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm })
+                  return (
+                    <div key={p.id} onClick={() => !back && toggleRetPos(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${on ? PRIMARY : '#eee9e2'}`, background: back ? '#f7f5f2' : on ? '#fdf6f2' : '#fff', cursor: back ? 'default' : 'pointer', opacity: back ? 0.6 : 1 }}>
+                      <span style={{ width: 22, height: 22, borderRadius: 6, border: back ? 'none' : `2px solid ${on ? PRIMARY : '#cfc8bd'}`, background: on ? PRIMARY : back ? '#ddd6cc' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{(on || back) ? '✓' : ''}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, color: DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</div>
+                        <div style={{ fontSize: 11.5, color: '#a09889' }}>{p.qty}{p.widthCm ? `×${p.widthCm}см` : ''}{back ? ' · уже возвращена' : ''}</div>
+                      </div>
+                      <span style={{ fontSize: 13.5, fontWeight: 800 }}>{money(sum)}</span>
+                    </div>
+                  )
+                })}
+                {/* счёт возврата */}
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: '#5f5952', marginBottom: 6, fontWeight: 700 }}>Счёт возврата</div>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                    {accounts.length === 0 && <span style={{ fontSize: 12.5, color: '#c0532a' }}>Нет счетов кассы</span>}
+                    {accounts.map((a: any) => {
+                      const on = retAcc === a.id
+                      return <button key={a.id} onClick={() => setRetAcc(a.id)} style={{ border: on ? 'none' : '1.5px solid #e6e2dc', background: on ? DARK : '#fff', color: on ? '#fff' : '#4a443c', borderRadius: 9, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>{a.name}</button>
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: 14, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
+                  <span>К возврату</span><span style={{ marginLeft: 'auto', fontWeight: 800, color: DARK }}>{money(selTotal)} ₸</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
+                  <span>Со счёта (остальное — в долг)</span><span style={{ marginLeft: 'auto', fontWeight: 800, color: refund > 0 ? '#c0532a' : GREEN }}>{money(refund)} ₸</span>
+                </div>
+                <button disabled={busy || retSel.size === 0 || !retAcc} onClick={doReturn} style={{ border: 'none', background: (busy || retSel.size === 0 || !retAcc) ? '#d8b6a6' : '#c0532a', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || retSel.size === 0 || !retAcc) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `↩ Провести возврат · ${money(selTotal)} ₸`}</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {showCatalog && <NomPicker onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
       <PushSetup />

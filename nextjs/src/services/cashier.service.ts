@@ -158,6 +158,68 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
   return { ok: true as const, cancelled: docs.length }
 }
 
+// Возврат по чеку (касса магазина): выбранные позиции (или весь чек) → возвратная накладная
+// (return_in: товар +склад филиала, −долг заказчика), затем деньги — сначала ГАСИМ ДОЛГ по чеку,
+// оставшееся ВОЗВРАЩАЕМ со СЧЁТА ВОЗВРАТА (payment out). Исходная продажа остаётся (учёт цел),
+// возврат — отдельный документ. Повторный возврат тех же позиций не пробьётся (source_pos_id).
+export async function returnSale(cardId: string, opts: { posIds?: string[]; accountId: string }, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
+  if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
+  if (!opts.accountId) return { ok: false as const, error: 'Выберите счёт возврата' }
+  if (!order.contactId) return { ok: false as const, error: 'У чека нет заказчика' }
+  const positions = await repo.positionsByCard(cardId)
+  if (!positions.length) return { ok: false as const, error: 'Нет позиций' }
+
+  const { sqlClient } = await import('../lib/db')
+  // Уже возвращённые позиции (source_pos_id в проведённых return_in этой карточки) — не возвращаем дважды.
+  const doneRows = await sqlClient`
+    select dl.source_pos_id pid from document_lines dl
+    join documents d on d.id = dl.document_id
+    where d.type='return_in' and d.status<>'cancelled' and d.source_order_id=${cardId} and dl.source_pos_id is not null
+  ` as unknown as Array<{ pid: string }>
+  const done = new Set(doneRows.map(r => r.pid))
+
+  let sel = positions.filter((p: any) => !done.has(p.id))
+  if (opts.posIds?.length) sel = sel.filter((p: any) => opts.posIds!.includes(p.id))
+  if (!sel.length) return { ok: false as const, error: 'Нечего возвращать (позиции уже возвращены)' }
+
+  const { lineAmount } = await import('../lib/lineAmount')
+  const amtOf = (p: any) => lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm })
+  const R = sel.reduce((s: number, p: any) => s + amtOf(p), 0)
+
+  const refsRepo = await import('../repositories/refs.repo')
+  const wh = await refsRepo.centralWarehouse(order.orgId)
+  if (!wh) return { ok: false as const, error: 'Склад филиала не найден' }
+
+  // Текущий долг по чеку: всего − оплачено − уже применённый кредит возвратов (возвращено − возвращено налом).
+  const total = positions.reduce((s: number, p: any) => s + amtOf(p), 0)
+  const paid = (Number(order.paidCash) || 0) + (Number(order.paidKaspi) || 0) + (Number(order.paidQr) || 0)
+  const prevRet = Number((await sqlClient`
+    select coalesce(sum(total),0)::float s from documents
+    where type='return_in' and status<>'cancelled' and source_order_id=${cardId}
+  ` as unknown as Array<any>)[0]?.s) || 0
+  const prevRefund = Number((await sqlClient`
+    select coalesce(sum(amount),0)::float s from payments
+    where direction='out' and org_id=${order.orgId} and comment like ${'Возврат ' + cardId + '%'}
+  ` as unknown as Array<any>)[0]?.s) || 0
+  const currentDebt = Math.max(0, total - paid - (prevRet - prevRefund))
+  const refund = Math.max(0, R - currentDebt)
+
+  // Возвратная накладная: товар обратно на склад филиала, кредит контрагенту (−долг).
+  const { createReturn } = await import('./document.service')
+  const lines = sel.map((p: any) => ({ productId: p.productId, name: p.name1c || p.oral, qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0, widthCm: p.widthCm != null ? Number(p.widthCm) : undefined, sourcePosId: p.id }))
+  const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Возврат по чеку ${cardId}`, projectId: (order as any).specProjectId || null } as any, 'return_in')
+
+  // Деньги: остаток после гашения долга — со счёта возврата (payment out).
+  if (refund > 0) {
+    await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refund), date: today(), cashAccountId: opts.accountId, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
+  }
+  const debtCleared = Math.min(R, currentDebt)
+  await repo.insertHistory({ cardId, action: 'return', detail: `Возврат ${ret.number}: ${sel.length} поз. на ${R} ₸ (долг −${debtCleared}, со счёта −${refund})`, userName: actor?.name || 'Система' })
+  return { ok: true as const, number: ret.number, returned: R, refund, debtCleared, fullyReturned: done.size + sel.length >= positions.length }
+}
+
 // ── Касса продавца (филиал-магазин, напр. «Магазин Кристалл») ────────────────────────────
 // Продавец с телефона набирает товар из каталога (NomPicker) и сразу пробивает чек: одна
 // кнопка = карточка-продажа в книге филиала + проведение расходной (склад филиала −) + оплаты.
