@@ -43,6 +43,8 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
   const overdue = orders.filter(isOverdue).length
   const toAcc = orders.filter(o => o.screen === 'accounting' && !o.isCancelled).length
+  // Вид кабинета филиала зависит от орг: магазин-продавец (seller) → касса, производитель → стол мастера.
+  const isSellerOrg = orgs.find(o => o.id === orgId)?.kind === 'seller'
   const pills = [
     { label: `Активных: ${active}`, bg: '#fff0ea', color: '#c0532a' },
     { label: `В работе: ${working}`, bg: '#fdf8e1', color: '#8a6f00' },
@@ -64,8 +66,8 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
       </div>}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
         {branchSlug && (
-          <a href={`/branch/${branchSlug}`} target="_blank" rel="noopener" title="Открыть кабинет мастера этого филиала (заказы, приём, касса)"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: COLORS.primary, color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>🏭 Кабинет мастера</a>
+          <a href={`/branch/${branchSlug}`} target="_blank" rel="noopener" title={isSellerOrg ? 'Открыть кассу этого магазина' : 'Открыть кабинет мастера этого филиала (заказы, приём, касса)'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: COLORS.primary, color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>{isSellerOrg ? '🏪 Касса магазина' : '🏭 Кабинет мастера'}</a>
         )}
         {orgs.length > 1 && onOrg && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 2px 8px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}` }}>
