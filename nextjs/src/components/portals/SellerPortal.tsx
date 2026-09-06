@@ -9,20 +9,17 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import ContragentPicker from '@/components/ContragentPicker'
-import FinanceView from '@/components/portals/FinanceView'
-import ShiftView from '@/components/portals/ShiftView'
-import DocsView from '@/components/portals/DocsView'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
 import { branchOrders, sellCheck, returnSale } from '@/lib/api/orders'
-import { fetchRefs, stock as fetchStock } from '@/lib/api/refs'
+import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
 
 const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e'
-type Tab = 'cash' | 'checks' | 'stock' | 'shift' | 'docs' | 'finance'
+type Tab = 'cash' | 'checks'
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
@@ -51,14 +48,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [tab, setTab] = useState<Tab>('cash')
   const [toast, setToast] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([])
-  const [warehouses, setWarehouses] = useState<any[]>([])
   const [rows, setRows] = useState<Row[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
   const [payOpen, setPayOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
-  const [stockRows, setStockRows] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
   const [checksDay, setChecksDay] = useState(localDay())
@@ -84,7 +79,6 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     fetchRefs().then((r: any) => {
       setCags((r.contragents || []).filter((c: any) => !c.archived))
       setProducts(r.products || [])
-      setWarehouses((r.warehouses || []).filter((w: any) => w.orgId === user.orgId))
       setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
     })
   }, [user.orgId])
@@ -107,13 +101,6 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   useEffect(() => { load() }, [load])
   useLiveData(() => { if (!showCatalog && !busy) load() }, [])
-
-  // Остатки своего склада (центральный склад филиала).
-  useEffect(() => {
-    if (tab !== 'stock' || !warehouses.length) return
-    const wh = warehouses.find((w: any) => w.isCentral) || warehouses[0]
-    fetchStock(user.orgId, wh.id).then(setStockRows)
-  }, [tab, warehouses, user.orgId])
 
   const byName = useMemo(() => {
     const m: Record<string, any> = {}
@@ -433,26 +420,6 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               })}
             </div>
           )}
-
-          {tab === 'stock' && (
-            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
-              {stockRows.filter((s: any) => Number(s.qty) !== 0).length === 0
-                ? <div style={{ padding: 30, textAlign: 'center', color: '#8a8377' }}>Склад пуст</div>
-                : stockRows.filter((s: any) => Number(s.qty) !== 0).map((s: any) => {
-                  const p = products.find(x => x.id === s.productId)
-                  return (
-                    <div key={s.productId} style={{ padding: '10px 12px', borderBottom: '1px solid #f4f1ed', display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <div style={{ flex: 1, fontSize: 14 }}>{p?.name || s.productId}</div>
-                      <div style={{ fontSize: 14.5, fontWeight: 800, color: Number(s.qty) < 0 ? '#c0532a' : DARK }}>{Number(s.qty).toLocaleString('ru-RU')} {p?.unit || 'шт'}</div>
-                    </div>
-                  )
-                })}
-            </div>
-          )}
-
-          {tab === 'shift' && <ShiftView uid={user.id} />}
-          {tab === 'docs' && <DocsView orgId={user.orgId} />}
-          {tab === 'finance' && <FinanceView />}
         </div>
       )}
 
