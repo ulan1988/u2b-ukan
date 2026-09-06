@@ -26,10 +26,10 @@ export const sellSchema = z.object({
   positions: z.array(sellPositionSchema).min(1),
 })
 
-// Возврат по чеку: выбранные позиции (пусто → весь чек) + счёт возврата (откуда вернуть деньги).
+// Возврат по чеку: позиции с кол-вом (пусто → весь чек, остаток по каждой) + счёт возврата.
 export const returnSchema = z.object({
   uid: z.string().uuid().optional(),
   cardId: z.string().min(1),
-  posIds: z.array(z.string()).optional(),         // пусто → весь чек
+  items: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive() })).optional(), // пусто → весь чек
   accountId: z.string().uuid(),                   // счёт возврата (cash_accounts.id)
 })

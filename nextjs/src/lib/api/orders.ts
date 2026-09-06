@@ -33,8 +33,8 @@ export async function unpostSale(cardId: string) {
   const r = await send(`/api/orders/${cardId}/pay`, 'DELETE')
   return { ok: r.ok, error: r.error as string | undefined }
 }
-// Возврат по чеку (касса магазина): позиции (пусто → весь чек) + счёт возврата.
-export async function returnSale(body: { uid?: string; cardId: string; posIds?: string[]; accountId: string }) {
+// Возврат по чеку (касса магазина): позиции с кол-вом (пусто → весь чек) + счёт возврата.
+export async function returnSale(body: { uid?: string; cardId: string; items?: { posId: string; qty: number }[]; accountId: string }) {
   const r = await post('/api/branch/return', body)
   return {
     ok: r.ok, error: r.error as string | undefined,

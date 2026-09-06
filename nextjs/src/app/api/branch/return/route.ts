@@ -14,9 +14,9 @@ export async function POST(req: NextRequest) {
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const parsed = returnSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Неверные данные возврата' }, { status: 400 })
-  const { uid, cardId, posIds, accountId } = parsed.data
+  const { uid, cardId, items, accountId } = parsed.data
   await resolveTarget(s, uid)   // просмотр-как: доступ филиала (см. viewas)
-  const res: any = await returnSale(cardId, { posIds, accountId }, s)
+  const res: any = await returnSale(cardId, { items, accountId }, s)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   await pushSignal()
   return NextResponse.json(res)

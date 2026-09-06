@@ -162,7 +162,7 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
 // (return_in: товар +склад филиала, −долг заказчика), затем деньги — сначала ГАСИМ ДОЛГ по чеку,
 // оставшееся ВОЗВРАЩАЕМ со СЧЁТА ВОЗВРАТА (payment out). Исходная продажа остаётся (учёт цел),
 // возврат — отдельный документ. Повторный возврат тех же позиций не пробьётся (source_pos_id).
-export async function returnSale(cardId: string, opts: { posIds?: string[]; accountId: string }, actor?: Session | null) {
+export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number }[]; accountId: string }, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
@@ -172,28 +172,37 @@ export async function returnSale(cardId: string, opts: { posIds?: string[]; acco
   if (!positions.length) return { ok: false as const, error: 'Нет позиций' }
 
   const { sqlClient } = await import('../lib/db')
-  // Уже возвращённые позиции (source_pos_id в проведённых return_in этой карточки) — не возвращаем дважды.
+  // Уже возвращённое КОЛ-ВО по каждой позиции (по source_pos_id в проведённых return_in карточки).
   const doneRows = await sqlClient`
-    select dl.source_pos_id pid from document_lines dl
+    select dl.source_pos_id pid, coalesce(sum(dl.qty),0)::float q from document_lines dl
     join documents d on d.id = dl.document_id
     where d.type='return_in' and d.status<>'cancelled' and d.source_order_id=${cardId} and dl.source_pos_id is not null
-  ` as unknown as Array<{ pid: string }>
-  const done = new Set(doneRows.map(r => r.pid))
+    group by dl.source_pos_id
+  ` as unknown as Array<{ pid: string; q: number }>
+  const retQ: Record<string, number> = {}
+  for (const r of doneRows) retQ[r.pid] = Number(r.q) || 0
 
-  let sel = positions.filter((p: any) => !done.has(p.id))
-  if (opts.posIds?.length) sel = sel.filter((p: any) => opts.posIds!.includes(p.id))
-  if (!sel.length) return { ok: false as const, error: 'Нечего возвращать (позиции уже возвращены)' }
+  // Что возвращаем: заданные позиции с кол-вом (клампим к остатку) или весь остаток чека.
+  const req = opts.items?.length ? opts.items : positions.map((p: any) => ({ posId: p.id, qty: Number(p.qty) }))
+  const sel: { pos: any; qty: number }[] = []
+  for (const it of req) {
+    const p = positions.find((x: any) => x.id === it.posId); if (!p) continue
+    const remaining = Number(p.qty) - (retQ[p.id] || 0)
+    const q = Math.min(Number(it.qty) || 0, remaining)
+    if (q > 0.0000001) sel.push({ pos: p, qty: q })
+  }
+  if (!sel.length) return { ok: false as const, error: 'Нечего возвращать (кол-во исчерпано)' }
 
   const { lineAmount } = await import('../lib/lineAmount')
-  const amtOf = (p: any) => lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm })
-  const R = sel.reduce((s: number, p: any) => s + amtOf(p), 0)
+  const amtOf = (p: any, qty: number) => lineAmount({ name: p.name1c || p.oral, qty, price: p.price, widthCm: p.widthCm })
+  const R = sel.reduce((s, x) => s + amtOf(x.pos, x.qty), 0)
 
   const refsRepo = await import('../repositories/refs.repo')
   const wh = await refsRepo.centralWarehouse(order.orgId)
   if (!wh) return { ok: false as const, error: 'Склад филиала не найден' }
 
   // Текущий долг по чеку: всего − оплачено − уже применённый кредит возвратов (возвращено − возвращено налом).
-  const total = positions.reduce((s: number, p: any) => s + amtOf(p), 0)
+  const total = positions.reduce((s: number, p: any) => s + amtOf(p, Number(p.qty)), 0)
   const paid = (Number(order.paidCash) || 0) + (Number(order.paidKaspi) || 0) + (Number(order.paidQr) || 0)
   const prevRet = Number((await sqlClient`
     select coalesce(sum(total),0)::float s from documents
@@ -208,7 +217,7 @@ export async function returnSale(cardId: string, opts: { posIds?: string[]; acco
 
   // Возвратная накладная: товар обратно на склад филиала, кредит контрагенту (−долг).
   const { createReturn } = await import('./document.service')
-  const lines = sel.map((p: any) => ({ productId: p.productId, name: p.name1c || p.oral, qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0, widthCm: p.widthCm != null ? Number(p.widthCm) : undefined, sourcePosId: p.id }))
+  const lines = sel.map(x => ({ productId: x.pos.productId, name: x.pos.name1c || x.pos.oral, qty: x.qty, unit: x.pos.unit || 'шт', price: Number(x.pos.price) || 0, widthCm: x.pos.widthCm != null ? Number(x.pos.widthCm) : undefined, sourcePosId: x.pos.id }))
   const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Возврат по чеку ${cardId}`, projectId: (order as any).specProjectId || null } as any, 'return_in')
 
   // Деньги: остаток после гашения долга — со счёта возврата (payment out).
@@ -216,8 +225,10 @@ export async function returnSale(cardId: string, opts: { posIds?: string[]; acco
     await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refund), date: today(), cashAccountId: opts.accountId, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
   }
   const debtCleared = Math.min(R, currentDebt)
+  // Чек полностью возвращён, когда по каждой позиции возвращённое + текущее ≥ проданного.
+  const fullyReturned = positions.every((p: any) => (retQ[p.id] || 0) + (sel.find(x => x.pos.id === p.id)?.qty || 0) >= Number(p.qty) - 0.0000001)
   await repo.insertHistory({ cardId, action: 'return', detail: `Возврат ${ret.number}: ${sel.length} поз. на ${R} ₸ (долг −${debtCleared}, со счёта −${refund})`, userName: actor?.name || 'Система' })
-  return { ok: true as const, number: ret.number, returned: R, refund, debtCleared, fullyReturned: done.size + sel.length >= positions.length }
+  return { ok: true as const, number: ret.number, returned: R, refund, debtCleared, fullyReturned }
 }
 
 // ── Касса продавца (филиал-магазин, напр. «Магазин Кристалл») ────────────────────────────

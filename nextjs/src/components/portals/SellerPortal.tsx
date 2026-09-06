@@ -64,6 +64,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [checksDay, setChecksDay] = useState(localDay())
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
+  const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
   const [retAcc, setRetAcc] = useState('')
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
@@ -227,22 +228,28 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
   }
 
-  // Возврат: открыть шторку по чеку (все позиции отмечены, ещё не возвращённые).
+  // Остаток к возврату по позиции = продано − уже возвращено.
+  const retRemain = (o: any, p: any) => Number(p.qty) - Number((o.returnedByPos || {})[p.id] || 0)
+  // Возврат: открыть шторку по чеку (все ещё не возвращённые позиции отмечены на полный остаток).
   function openReturn(o: any) {
-    const returned = new Set<string>(o.returnedPosIds || [])
-    const sel = new Set<string>((o.positions || []).filter((p: any) => !returned.has(p.id)).map((p: any) => p.id))
-    setRetFor(o); setRetSel(sel)
+    const sel = new Set<string>(); const qty: Record<string, number> = {}
+    for (const p of (o.positions || [])) { const rem = retRemain(o, p); if (rem > 0) { sel.add(p.id); qty[p.id] = rem } }
+    setRetFor(o); setRetSel(sel); setRetQty(qty)
     setRetAcc(accounts[0]?.id || '')
   }
   function toggleRetPos(id: string) {
     setRetSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
+  function setRetQ(id: string, v: number, max: number) {
+    setRetQty(m => ({ ...m, [id]: Math.max(0, Math.min(v, max)) }))
+  }
   async function doReturn() {
     if (!retFor) return
     if (!retAcc) { showMsg('⚠ Выберите счёт возврата'); return }
-    if (retSel.size === 0) { showMsg('⚠ Отметьте позиции к возврату'); return }
+    const items = Array.from(retSel).map(id => ({ posId: id, qty: retQty[id] || 0 })).filter(i => i.qty > 0)
+    if (items.length === 0) { showMsg('⚠ Отметьте позиции и кол-во к возврату'); return }
     setBusy(true)
-    const r = await returnSale({ uid: user.id, cardId: retFor.id, posIds: Array.from(retSel), accountId: retAcc })
+    const r = await returnSale({ uid: user.id, cardId: retFor.id, items, accountId: retAcc })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setRetFor(null); await load()
@@ -405,7 +412,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 const t = cardTotal(o)
                 const retSum = Number(o.returnedSum || 0)
                 const time = new Date(o.delivered || o.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-                const allBack = (o.returnedPosIds || []).length >= (o.positions || []).length && (o.positions || []).length > 0
+                const allBack = (o.positions || []).length > 0 && (o.positions || []).every((p: any) => retRemain(o, p) <= 0.0000001)
                 return (
                   <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -535,15 +542,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         })}
       </div>
 
-      {/* ВОЗВРАТ — шторка: выбрать позиции + счёт возврата, сумма считается на лету */}
+      {/* ВОЗВРАТ — шторка: выбрать позиции, КОЛ-ВО к возврату и счёт; сумма считается на лету */}
       {retFor && (() => {
-        const returned = new Set<string>(retFor.returnedPosIds || [])
         const poss = (retFor.positions || [])
-        const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
+        const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: retQty[p.id] || 0, price: p.price, widthCm: p.widthCm }), 0)
         const total = cardTotal(retFor)
         const paid = (Number(retFor.paidCash) || 0) + (Number(retFor.paidKaspi) || 0) + (Number(retFor.paidQr) || 0)
         const curDebt = Math.max(0, total - paid - Number(retFor.returnedSum || 0))
         const refund = Math.max(0, selTotal - curDebt)
+        const selectAll = () => { const s = new Set<string>(); const q: Record<string, number> = {}; for (const p of poss) { const rem = retRemain(retFor, p); if (rem > 0) { s.add(p.id); q[p.id] = rem } } setRetSel(s); setRetQty(q) }
         return (
           <div onClick={() => setRetFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
@@ -556,21 +563,38 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
               <div style={{ padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setRetSel(new Set(poss.filter((p: any) => !returned.has(p.id)).map((p: any) => p.id)))} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Весь чек</button>
+                  <button onClick={selectAll} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Весь чек</button>
                   <button onClick={() => setRetSel(new Set())} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Снять всё</button>
                 </div>
                 {poss.map((p: any) => {
-                  const back = returned.has(p.id)
+                  const rem = retRemain(retFor, p)
+                  const back = rem <= 0.0000001
                   const on = retSel.has(p.id)
-                  const sum = lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm })
+                  const q = retQty[p.id] || 0
+                  const perCm = isIzdelie(p.name1c || p.oral)
+                  const sum = lineAmount({ name: p.name1c || p.oral, qty: q, price: p.price, widthCm: p.widthCm })
                   return (
-                    <div key={p.id} onClick={() => !back && toggleRetPos(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${on ? PRIMARY : '#eee9e2'}`, background: back ? '#f7f5f2' : on ? '#fdf6f2' : '#fff', cursor: back ? 'default' : 'pointer', opacity: back ? 0.6 : 1 }}>
-                      <span style={{ width: 22, height: 22, borderRadius: 6, border: back ? 'none' : `2px solid ${on ? PRIMARY : '#cfc8bd'}`, background: on ? PRIMARY : back ? '#ddd6cc' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{(on || back) ? '✓' : ''}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, color: DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</div>
-                        <div style={{ fontSize: 11.5, color: '#a09889' }}>{p.qty}{p.widthCm ? `×${p.widthCm}см` : ''}{back ? ' · уже возвращена' : ''}</div>
+                    <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${on ? PRIMARY : '#eee9e2'}`, background: back ? '#f7f5f2' : on ? '#fdf6f2' : '#fff', opacity: back ? 0.6 : 1 }}>
+                      <div onClick={() => !back && toggleRetPos(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: back ? 'default' : 'pointer' }}>
+                        <span style={{ width: 22, height: 22, borderRadius: 6, border: back ? 'none' : `2px solid ${on ? PRIMARY : '#cfc8bd'}`, background: on ? PRIMARY : back ? '#ddd6cc' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{(on || back) ? '✓' : ''}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, color: DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</div>
+                          <div style={{ fontSize: 11.5, color: '#a09889' }}>продано {Number(p.qty)}{p.widthCm ? `×${p.widthCm}см` : ''} · {back ? 'всё возвращено' : `можно вернуть ${rem}`}</div>
+                        </div>
+                        {on && <span style={{ fontSize: 13.5, fontWeight: 800 }}>{money(sum)}</span>}
                       </div>
-                      <span style={{ fontSize: 13.5, fontWeight: 800 }}>{money(sum)}</span>
+                      {/* редактор кол-ва к возврату (не для полностью возвращённых) */}
+                      {on && !back && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
+                          <span style={{ fontSize: 12, color: '#5f5952' }}>Кол-во к возврату</span>
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <button onClick={() => setRetQ(p.id, q - 1, rem)} style={{ width: 32, height: 32, borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 17, cursor: 'pointer', color: '#6b645b' }}>−</button>
+                            <input value={q} inputMode="decimal" onChange={e => setRetQ(p.id, num(e.target.value.replace(/[^0-9.,]/g, '')), rem)} style={{ ...inp, width: 60, padding: '7px 6px', fontSize: 14, textAlign: 'center' }} />
+                            <button onClick={() => setRetQ(p.id, q + 1, rem)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: PRIMARY, color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>+</button>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#a09889', width: 38, textAlign: 'right' }}>/ {rem}{perCm ? ' шт' : ''}</span>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -593,7 +617,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
                   <span>Со счёта (остальное — в долг)</span><span style={{ marginLeft: 'auto', fontWeight: 800, color: refund > 0 ? '#c0532a' : GREEN }}>{money(refund)} ₸</span>
                 </div>
-                <button disabled={busy || retSel.size === 0 || !retAcc} onClick={doReturn} style={{ border: 'none', background: (busy || retSel.size === 0 || !retAcc) ? '#d8b6a6' : '#c0532a', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || retSel.size === 0 || !retAcc) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `↩ Провести возврат · ${money(selTotal)} ₸`}</button>
+                <button disabled={busy || selTotal <= 0 || !retAcc} onClick={doReturn} style={{ border: 'none', background: (busy || selTotal <= 0 || !retAcc) ? '#d8b6a6' : '#c0532a', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || selTotal <= 0 || !retAcc) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `↩ Провести возврат · ${money(selTotal)} ₸`}</button>
               </div>
             </div>
           </div>

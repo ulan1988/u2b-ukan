@@ -165,7 +165,7 @@ async function withPositions(rows: any[]) {
   }
   const cardIds = rows.map(r => r.id)
   const retSum: Record<string, number> = {}
-  const retPos: Record<string, string[]> = {}
+  const retByPos: Record<string, Record<string, number>> = {}   // card → posId → возвращённое кол-во
   if (cardIds.length) {
     const rs = await sqlClient`
       select source_order_id cid, coalesce(sum(total),0)::float s from documents
@@ -173,18 +173,19 @@ async function withPositions(rows: any[]) {
       group by source_order_id` as unknown as Array<any>
     for (const r of rs) retSum[r.cid] = Number(r.s) || 0
     const rp = await sqlClient`
-      select d.source_order_id cid, dl.source_pos_id pid from document_lines dl
+      select d.source_order_id cid, dl.source_pos_id pid, coalesce(sum(dl.qty),0)::float q from document_lines dl
       join documents d on d.id = dl.document_id
       where d.type='return_in' and d.status<>'cancelled' and d.source_order_id = any(${cardIds}) and dl.source_pos_id is not null
+      group by d.source_order_id, dl.source_pos_id
     ` as unknown as Array<any>
-    for (const r of rp) (retPos[r.cid] ||= []).push(r.pid)
+    for (const r of rp) (retByPos[r.cid] ||= {})[r.pid] = Number(r.q) || 0
   }
   return rows.map(o => ({
     ...o,
     positions: byCard[o.id] || [],
     docNumber: o.linkedDocId ? (docNum[o.linkedDocId] || '') : '',
     returnedSum: retSum[o.id] || 0,
-    returnedPosIds: retPos[o.id] || [],
+    returnedByPos: retByPos[o.id] || {},
     // Пункт назначения: закуп → Центр-Склад, продажа → клиент-получатель.
     toName: o.kind === 'purchase' ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || '') : ''),
   }))
