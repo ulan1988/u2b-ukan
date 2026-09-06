@@ -124,20 +124,78 @@ export async function cashReport(orgId: string, from: string, to: string) {
       coalesce(sum(case when article<>'ЗП' and tot<0 then -tot else 0 end),0)::float as "current"
     from rr group by date
   ` as unknown as Array<any>
+  // Возврат по дням: сумма возвратных накладных (return_in) филиала.
+  const rets = await sqlClient`
+    select date::text as "day", coalesce(sum(total),0)::float ret from documents
+    where org_id=${orgId} and type='return_in' and status<>'cancelled' and date between ${from} and ${to}
+    group by date
+  ` as unknown as Array<any>
+  // Себестоимость по дням (для маржи = отпуск − себестоимость, price_in товара).
+  const costs = await sqlClient`
+    select d.date::text as "day", coalesce(sum(op.qty * coalesce(p.price_in,0)),0)::float cost
+    from orders o
+    join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
+    join order_positions op on op.card_id=o.id
+    left join products p on p.id=op.product_id
+    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    group by d.date
+  ` as unknown as Array<any>
+  const costByDay: Record<string, number> = {}; for (const c of costs) costByDay[c.day] = num(c.cost)
+  const retByDay: Record<string, number> = {}; for (const r of rets) retByDay[r.day] = num(r.ret)
+
   const byDay: Record<string, any> = {}
   const ensure = (day: string) => (byDay[day] = byDay[day] || { day, cash: 0, kaspi: 0, qr: 0, sold: 0, cnt: 0, salary: 0, current: 0 })
   for (const s of sales) { const r = ensure(s.day); r.cash = num(s.cash); r.kaspi = num(s.kaspi); r.qr = num(s.qr); r.sold = num(s.sold); r.cnt = num(s.cnt) }
   for (const e of exps) { const r = ensure(e.day); r.salary = num(e.salary); r.current = num(e.current) }
+
+  // ── Остатки по счетам нарастающим ─────────────────────────────────────────────
+  // Движения счёта = продажи/возвраты (payments) + «Деньги» (fin_row_amounts, вкл. переводы).
+  const accounts = await sqlClient`select id::text id, name from cash_accounts where org_id=${orgId} and archived=false order by sort_order, name` as unknown as Array<any>
+  const payMoves = await sqlClient`
+    select cash_account_id::text acc, date::text as "day", coalesce(sum(case when direction='in' then amount else -amount end),0)::float net
+    from payments where org_id=${orgId} and cash_account_id is not null and date between ${from} and ${to} group by cash_account_id, date
+  ` as unknown as Array<any>
+  const finMoves = await sqlClient`
+    select a.account_id::text acc, r.date::text as "day", coalesce(sum(a.amount),0)::float net
+    from fin_rows r join fin_row_amounts a on a.row_id=r.id
+    where r.org_id=${orgId} and r.date between ${from} and ${to} group by a.account_id, r.date
+  ` as unknown as Array<any>
+  // Стартовый остаток на начало периода = все движения по счёту ДО from (авто из истории).
+  const payOpen = await sqlClient`
+    select cash_account_id::text acc, coalesce(sum(case when direction='in' then amount else -amount end),0)::float net
+    from payments where org_id=${orgId} and cash_account_id is not null and date < ${from} group by cash_account_id
+  ` as unknown as Array<any>
+  const finOpen = await sqlClient`
+    select a.account_id::text acc, coalesce(sum(a.amount),0)::float net
+    from fin_rows r join fin_row_amounts a on a.row_id=r.id where r.org_id=${orgId} and r.date < ${from} group by a.account_id
+  ` as unknown as Array<any>
+  const opening: Record<string, number> = {}; for (const a of accounts) opening[a.id] = 0
+  for (const r of [...payOpen, ...finOpen]) opening[r.acc] = (opening[r.acc] || 0) + num(r.net)
+  const movByDay: Record<string, Record<string, number>> = {}
+  for (const r of [...payMoves, ...finMoves]) { (movByDay[r.day] = movByDay[r.day] || {})[r.acc] = (movByDay[r.day][r.acc] || 0) + num(r.net) }
+  const movDays = Object.keys(movByDay).sort()
+
   const days = Object.values(byDay).map((r: any) => {
     const paid = r.cash + r.kaspi + r.qr
     const debt = Math.max(0, r.sold - paid)
-    return { ...r, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
+    const cost = costByDay[r.day] || 0, ret = retByDay[r.day] || 0
+    const margin = r.sold - cost                         // маржа = отпуск − себестоимость
+    const split60 = margin * 0.6, split40 = margin * 0.4
+    // Остаток каждого счёта на конец дня = стартовый + все движения по датам ≤ этот день.
+    const bal: Record<string, number> = { ...opening }
+    for (const md of movDays) { if (md <= r.day) { const mm = movByDay[md]; for (const acc in mm) bal[acc] = (bal[acc] || 0) + mm[acc] } }
+    return { ...r, ret, cost, margin, split60, split40, zpPlus40: r.salary + split40, bal, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
   }).sort((a: any, b: any) => a.day.localeCompare(b.day))
+
   const totals = days.reduce((t: any, d: any) => ({
     cash: t.cash + d.cash, kaspi: t.kaspi + d.kaspi, qr: t.qr + d.qr, debt: t.debt + d.debt,
-    sold: t.sold + d.sold, salary: t.salary + d.salary, current: t.current + d.current, expense: t.expense + d.expense, cnt: t.cnt + d.cnt,
-  }), { cash: 0, kaspi: 0, qr: 0, debt: 0, sold: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
-  return { from, to, days, totals, ok: days.every((d: any) => d.ok) }
+    sold: t.sold + d.sold, ret: t.ret + d.ret, margin: t.margin + d.margin, split60: t.split60 + d.split60, split40: t.split40 + d.split40, zpPlus40: t.zpPlus40 + d.zpPlus40,
+    salary: t.salary + d.salary, current: t.current + d.current, expense: t.expense + d.expense, cnt: t.cnt + d.cnt,
+  }), { cash: 0, kaspi: 0, qr: 0, debt: 0, sold: 0, ret: 0, margin: 0, split60: 0, split40: 0, zpPlus40: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
+  // Итоговый остаток на конец периода по каждому счёту.
+  const endBal: Record<string, number> = { ...opening }
+  for (const md in movByDay) for (const acc in movByDay[md]) endBal[acc] = (endBal[acc] || 0) + movByDay[md][acc]
+  return { from, to, days, totals, accounts, opening, endBal, ok: days.every((d: any) => d.ok) }
 }
 
 export interface ExpenseInput { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }
