@@ -93,8 +93,34 @@ export async function masterShift(orgId: string, date: string) {
   // Статьи расходов (как в 1С: 7100/7200/7400) — для «текущего расхода».
   const expenseArticles = await sqlClient`select id::text, name, activity, direction from fin_expense_articles where org_id=${orgId} and archived=false and is_group=false order by activity, sort_order, name` as unknown as Array<any>
 
+  // ── ОТЧЁТ ДНЯ (как Excel «Отчет дня») ──────────────────────────────────────────
+  // Наценка дня = продано − себестоимость (price_in проданных позиций).
+  const costRow = (await sqlClient`
+    select coalesce(sum(op.qty*coalesce(p.price_in,0)),0)::float cost
+    from orders o join documents d on d.id=o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
+    join order_positions op on op.card_id=o.id
+    left join products p on p.id=op.product_id
+    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+  ` as unknown as Array<any>)[0] || { cost: 0 }
+  const margin = Math.max(0, total - num(costRow.cost))
+  // Продавцы на смене = кто пробил чек в этот день (между ними делится 40% наценки).
+  const sellersDay = await sqlClient`
+    select coalesce(nullif(trim(o.seller),''),'—') name
+    from orders o join documents d on d.id=o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
+    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false and coalesce(trim(o.seller),'')<>''
+    group by 1 order by 1
+  ` as unknown as Array<any>
+  const wageByName: Record<string, number> = {}; for (const s of staff) wageByName[(s.name || '').trim().toLowerCase()] = num(s.dailyWage)
+  const N = sellersDay.length
+  const bonusEach = N > 0 ? (margin * 0.4) / N : 0     // 40% наценки поровну между продавцами
+  const reportSellers = sellersDay.map((s: any) => { const oklad = wageByName[(s.name || '').trim().toLowerCase()] || 0; return { name: s.name, oklad, bonus: bonusEach, zp: oklad + bonusEach } })
+  const zpTotal = reportSellers.reduce((a: number, r: any) => a + r.zp, 0)   // ЗП = Σ(оклад + 40%/N)
+  const shopExp = currentTotal                          // расходы магазина/административные
+  const dayResult = total - zpTotal - shopExp           // итого дня = продажа − ЗП − расходы
+  const report = { sold: total, margin, marginPct: total > 0 ? margin / total : 0, cash, kaspi, qr, debt, sellers: reportSellers, zpTotal, shopExp, result: dayResult }
+
   return {
-    date, income, check, cards, staff, expenseArticles,
+    date, income, check, cards, staff, expenseArticles, report,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,

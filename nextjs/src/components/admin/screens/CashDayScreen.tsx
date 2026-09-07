@@ -163,6 +163,45 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           {accts.length > 0 && <div style={{ padding: '8px 14px', fontSize: 12, color: COLORS.textLight, borderTop: `1px solid ${COLORS.borderLight}` }}>Старт остатков на 1-е число (из истории): {accts.map((a: any) => `${a.name} ${m((month.opening || {})[a.id] || 0)}`).join(' · ')}</div>}
         </div>
       })()) : !data ? <div style={{ ...card, textAlign: 'center', color: COLORS.textMuted }}>Нет данных</div> : <>
+        {/* ОТЧЁТ ДНЯ (как Excel «Отчет дня»): ПРОДАЖА · РАСХОД · ИТОГ — считается при закрытии смены */}
+        {data.report && (() => {
+          const r = data.report
+          const sub: React.CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: '.04em', color: COLORS.textSubtle, marginBottom: 6 }
+          const line: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13.5 }
+          return (
+            <div style={{ ...card, marginBottom: 16, borderLeft: `4px solid ${COLORS.primary}` }}>
+              <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 12 }}>📄 ОТЧЁТ ДНЯ</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
+                {/* ПРОДАЖА */}
+                <div>
+                  <div style={sub}>ПРОДАЖА</div>
+                  <div style={line}><span>Продано</span><b>{m(r.sold)} ₸</b></div>
+                  <div style={line}><span>Наценка</span><b style={{ color: '#2e8a5e' }}>{m(r.margin)} ₸ · {Math.round((r.marginPct || 0) * 100)}%</b></div>
+                  <div style={line}><span>Долг</span><b style={{ color: COLORS.primaryDark }}>{m(r.debt)} ₸</b></div>
+                  <div style={{ ...line, color: COLORS.textLight, fontSize: 12.5, borderTop: `1px solid ${COLORS.borderLight}`, marginTop: 4, paddingTop: 6 }}><span>нал {m(r.cash)} · каспи {m(r.kaspi)} · QR {m(r.qr)}</span></div>
+                </div>
+                {/* РАСХОД */}
+                <div>
+                  <div style={sub}>РАСХОД</div>
+                  {(r.sellers || []).map((s: any, i: number) => (
+                    <div key={i} style={{ ...line, fontSize: 12.5 }}><span>👤 {s.name}<span style={{ color: COLORS.textLight }}> · оклад {m(s.oklad)} + 40% {m(s.bonus)}</span></span><b>{m(s.zp)}</b></div>
+                  ))}
+                  <div style={{ ...line, fontWeight: 800, borderTop: `1px solid ${COLORS.borderLight}`, marginTop: 2, paddingTop: 6 }}><span>ЗП всего</span><b>{m(r.zpTotal)} ₸</b></div>
+                  <div style={line}><span>Расходы магазина</span><b style={{ color: COLORS.primaryDark }}>{m(r.shopExp)} ₸</b></div>
+                </div>
+                {/* ИТОГ */}
+                <div style={{ background: '#eef7f1', borderRadius: 10, padding: '10px 14px' }}>
+                  <div style={sub}>ИТОГ</div>
+                  <div style={line}><span>Продажа</span><span>{m(r.sold)}</span></div>
+                  <div style={line}><span>− ЗП</span><span>{m(r.zpTotal)}</span></div>
+                  <div style={line}><span>− Расходы</span><span>{m(r.shopExp)}</span></div>
+                  <div style={{ ...line, fontWeight: 800, fontSize: 18, color: '#2e8a5e', borderTop: `1px solid #cfe6d8`, marginTop: 4, paddingTop: 8 }}><span>Итого</span><span>{m(r.result)} ₸</span></div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Доходы */}
         <div style={{ fontSize: 13, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ (продажи)</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
