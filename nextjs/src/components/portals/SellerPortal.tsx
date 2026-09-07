@@ -35,11 +35,13 @@ const cardTotal = (o: any) => (o.positions || []).reduce((s: number, p: any) => 
 // Рабочие папки продавца — реальные категории базы (Водосток 87, Евро брус 72,
 // Комплектующие 35, Металлочерепица 48). «Комплектующие» — базы «Без цвета»:
 // конкретный товар собирается как цвет + см (та же формула, что у мастера — lib/itemName).
+// levels — поля дерева для «подпапок» внутри раздела (компактные чипы над цветами):
+// Водосток дробится cat→subgroup (Дёке/Модерн → Дёке люкс/…), остальные — только subgroup.
 const FOLDERS = [
-  { key: 'vodostok', label: 'Водосток', match: (p: any) => norm(p.group) === 'водосток' },
-  { key: 'evrobrus', label: 'Евро брус', match: (p: any) => norm(p.cat) === 'евро брус' },
-  { key: 'kompl', label: 'Комплект.', match: (p: any) => norm(p.cat).includes('комплект'), build: true },
-  { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица' },
+  { key: 'vodostok', label: 'Водосток', match: (p: any) => norm(p.group) === 'водосток', levels: ['cat', 'subgroup'] },
+  { key: 'evrobrus', label: 'Евро брус', match: (p: any) => norm(p.cat) === 'евро брус', levels: ['subgroup'] },
+  { key: 'kompl', label: 'Комплект.', match: (p: any) => norm(p.cat).includes('комплект'), build: true, levels: ['subgroup'] },
+  { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица', levels: ['subgroup'] },
 ]
 
 interface Row { key: string; name1c: string; oral: string; qty: number; unit: string; price: number; widthCm?: number; productId?: string }
@@ -63,6 +65,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [retAcc, setRetAcc] = useState('')
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
+  const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
   const [color, setColor] = useState('')
   const [allColors, setAllColors] = useState(false)
   const [q, setQ] = useState('')
@@ -125,8 +128,25 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
   // Товары открытой папки: фильтр по цвету (RAL из имени) и поиску.
   const activeFolder = FOLDERS.find(f => f.key === folder) || FOLDERS[0]
+  const levels: string[] = (activeFolder as any).levels || []
+  // Подпапки по уровням: чипы над цветами. Уровень i показывается, если родитель выбран
+  // и есть >1 варианта (иначе выбирать нечего — не занимаем место).
+  const subRows = useMemo(() => {
+    const rows: { level: number; field: string; vals: string[] }[] = []
+    let scope = products.filter(activeFolder.match)
+    for (let i = 0; i < levels.length; i++) {
+      const field = levels[i]
+      const vals = Array.from(new Set(scope.map((p: any) => (p[field] || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru'))
+      if (vals.length > 1) rows.push({ level: i, field, vals })
+      if (path[i]) scope = scope.filter((p: any) => (p[field] || '').trim() === path[i]); else break
+    }
+    return rows
+  }, [products, activeFolder, levels, path])
+
   const list = useMemo(() => {
     let base = products.filter(activeFolder.match)
+    // Подпапка: сузить по выбранным уровням дерева.
+    for (let i = 0; i < levels.length; i++) if (path[i]) base = base.filter((p: any) => (p[levels[i]] || '').trim() === path[i])
     if (activeFolder.build) {
       // Комплектующие: показываем только базы «Без цвета» — цвет и см добавляются при выборе.
       base = base.filter(p => !extractRal(p.name))
@@ -136,7 +156,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const s = norm(q)
     if (s) base = base.filter(p => norm(p.name).includes(s))
     return base.slice(0, 150)
-  }, [products, activeFolder, color, q])
+  }, [products, activeFolder, levels, path, color, q])
 
   const inCheck = useMemo(() => {
     const m: Record<string, Row> = {}
@@ -313,11 +333,24 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             {FOLDERS.map(f => {
               const on = folder === f.key
               return (
-                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null) }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
+                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]) }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
               )
             })}
             <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
           </div>
+
+          {/* подпапки раздела — компактные чипы (уровни дерева), появляются только при наличии выбора */}
+          {subRows.map(row => (
+            <div key={row.level} style={{ display: 'flex', gap: 6, padding: '7px 10px', background: '#faf8f5', borderBottom: '1px solid #efeae3', overflowX: 'auto' }}>
+              {row.vals.map(v => {
+                const on = path[row.level] === v
+                return (
+                  <button key={v} onClick={() => setPath(prev => { const next = prev.slice(0, row.level); if (prev[row.level] !== v) next[row.level] = v; return next })}
+                    style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #e2ddd5', background: on ? PRIMARY : '#fff', color: on ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{v}</button>
+                )
+              })}
+            </div>
+          ))}
 
           {/* цвет */}
           <div style={{ background: '#fff', padding: '9px 10px 10px', borderBottom: '1px solid #e6e2dc', display: 'flex', gap: 9, overflowX: 'auto' }}>
