@@ -150,6 +150,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (activeFolder.build) {
       // Комплектующие: показываем только базы «Без цвета» — цвет и см добавляются при выборе.
       base = base.filter(p => !extractRal(p.name))
+      // «Изделие» (per-cm) — сразу наверх, остальные комплектующие ниже.
+      base = [...base].sort((a, b) => (isIzdelie(b.name) ? 1 : 0) - (isIzdelie(a.name) ? 1 : 0))
     } else if (color) {
       base = base.filter(p => extractRal(p.name) === color)
     }
@@ -183,6 +185,25 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!wasIn && q > 0) {
       pullPrices([{ key: '', name1c: p.name, oral: p.name, qty: q, unit: p.unit || 'шт', price: 0, productId: p.id }], contactId)
         .then(([priced]) => { if (priced?.price) setRows(rs => rs.map(r => (r.productId === p.id && !r.price) ? { ...r, price: priced.price } : r)) })
+    }
+  }
+
+  // Комплектующее (не Изделие): ввод кол-ва прямо в строке. Имя = база + выбранный цвет
+  // (без см). Идентичность строки чека — по имени (name1c), т.к. product_id может быть пуст.
+  function upsertKomplekt(base: any, str: string) {
+    const q = num(str)
+    const name = itemName({ name: base.name, color })
+    const pid = byName[norm(name)]?.id
+    const wasIn = rows.some(r => r.name1c === name)
+    setRows(rs => {
+      const i = rs.findIndex(r => r.name1c === name)
+      if (q <= 0) return i >= 0 ? rs.filter((_, j) => j !== i) : rs
+      if (i >= 0) return rs.map((r, j) => j === i ? { ...r, qty: q } : r)
+      return [...rs, { key: `${Date.now()}-k`, name1c: name, oral: name, qty: q, unit: base.unit || 'шт', price: 0, productId: pid }]
+    })
+    if (!wasIn && q > 0) {
+      pullPrices([{ key: '', name1c: name, oral: name, qty: q, unit: base.unit || 'шт', price: 0, productId: pid }], contactId)
+        .then(([priced]) => { if (priced?.price) setRows(rs => rs.map(r => (r.name1c === name && !r.price) ? { ...r, price: priced.price } : r)) })
     }
   }
 
@@ -419,20 +440,24 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
             {list.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: '#8a8377', fontSize: 13.5 }}>{color ? 'В этом цвете ничего нет — снимите цвет или выберите другой' : 'Ничего не найдено'}</div>}
             {list.map(p => {
-              const row = inCheck[p.id]
+              const izd = activeFolder.build && isIzdelie(p.name)   // «Изделие» — нужен см (сборка)
+              // Строка в чеке: обычный товар — по productId; комплектующее — по собранному имени.
+              const row = activeFolder.build && !izd ? rows.find(r => r.name1c === itemName({ name: p.name, color })) : inCheck[p.id]
               const price = Number(p.priceRetail) || 0
               return (
-                <div key={p.id} onClick={() => { if (activeFolder.build && !row) tapProduct(p) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: row ? '#fdf6f2' : '#fff', cursor: activeFolder.build ? 'pointer' : 'default' }}>
+                <div key={p.id} onClick={() => { if (izd && !build) tapProduct(p) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: row ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25 }}>{p.name}</div>
-                    <div style={{ fontSize: 11.5, color: '#a09889' }}>{price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</div>
+                    <div style={{ fontSize: 11.5, color: '#a09889' }}>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</div>
                   </div>
-                  {activeFolder.build ? (
-                    // Комплектующие собираются (цвет+см) — оставляем кнопку добавления.
+                  {izd ? (
+                    // Изделие: см задаётся в карточке (per-cm) — кнопка открывает выбор см+кол-во.
                     <span style={{ width: 40, height: 40, borderRadius: 11, background: PRIMARY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 700, flexShrink: 0 }}>+</span>
                   ) : (
-                    // Обычный товар — просто ввод кол-ва (без дефолта и ±).
-                    <input value={row ? String(row.qty) : ''} inputMode="decimal" placeholder="кол-во" onClick={e => e.stopPropagation()} onChange={e => upsertQty(p, e.target.value.replace(/[^0-9.,]/g, ''))} style={{ width: 74, padding: '9px 8px', borderRadius: 10, border: `1.5px solid ${row ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />
+                    // Обычный товар / комплектующее — просто ввод кол-ва (без дефолта и ±).
+                    <input value={row ? String(row.qty) : ''} inputMode="decimal" placeholder="кол-во" onClick={e => e.stopPropagation()}
+                      onChange={e => (activeFolder.build ? upsertKomplekt(p, e.target.value.replace(/[^0-9.,]/g, '')) : upsertQty(p, e.target.value.replace(/[^0-9.,]/g, '')))}
+                      style={{ width: 74, padding: '9px 8px', borderRadius: 10, border: `1.5px solid ${row ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />
                   )}
                 </div>
               )
