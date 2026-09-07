@@ -24,6 +24,9 @@ type Tab = 'cash' | 'checks'
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
+// Толщина из имени товара: «…0,45мм» → «0,45мм» (для фильтра толщины в каталоге).
+const thickOf = (name: string) => { const m = (name || '').match(/(\d+(?:[.,]\d+)?)\s*мм/i); return m ? m[1].replace('.', ',') + 'мм' : '' }
+const thickNum = (t: string) => Number((t || '').replace('мм', '').replace(',', '.')) || 0
 // Локальный день (YYYY-MM-DD), без UTC-сдвига — как today() на сервере.
 const localDay = (d?: any) => {
   const x = d ? new Date(d) : new Date()
@@ -69,6 +72,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
+  const [thick, setThick] = useState('')           // фильтр толщины (0,35мм / 0,4мм / 0,45мм)
   const [color, setColor] = useState('')
   const [allColors, setAllColors] = useState(false)
   const [q, setQ] = useState('')
@@ -147,10 +151,20 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     return rows
   }, [products, activeFolder, levels, path])
 
+  // Толщины раздела (с учётом выбранной подпапки) — чипы фильтра толщины.
+  const thicks = useMemo(() => {
+    let scope = products.filter(activeFolder.match)
+    for (let i = 0; i < levels.length; i++) if (path[i]) scope = scope.filter((p: any) => (p[levels[i]] || '').trim() === path[i])
+    const set = new Set<string>()
+    for (const p of scope) { const t = thickOf(p.name); if (t) set.add(t) }
+    return Array.from(set).sort((a, b) => thickNum(a) - thickNum(b))
+  }, [products, activeFolder, levels, path])
+
   const list = useMemo(() => {
     let base = products.filter(activeFolder.match)
     // Подпапка: сузить по выбранным уровням дерева.
     for (let i = 0; i < levels.length; i++) if (path[i]) base = base.filter((p: any) => (p[levels[i]] || '').trim() === path[i])
+    if (thick) base = base.filter((p: any) => thickOf(p.name) === thick)
     if (activeFolder.build) {
       // Комплектующие: показываем только базы «Без цвета» — цвет и см добавляются при выборе.
       base = base.filter(p => !extractRal(p.name))
@@ -162,7 +176,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const s = norm(q)
     if (s) base = base.filter(p => norm(p.name).includes(s))
     return base.slice(0, 150)
-  }, [products, activeFolder, levels, path, color, q])
+  }, [products, activeFolder, levels, path, thick, color, q])
 
   const inCheck = useMemo(() => {
     const m: Record<string, Row> = {}
@@ -380,7 +394,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             {FOLDERS.map(f => {
               const on = folder === f.key
               return (
-                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]) }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
+                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick('') }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
               )
             })}
             <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
@@ -392,12 +406,24 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               {row.vals.map(v => {
                 const on = path[row.level] === v
                 return (
-                  <button key={v} onClick={() => setPath(prev => { const next = prev.slice(0, row.level); if (prev[row.level] !== v) next[row.level] = v; return next })}
+                  <button key={v} onClick={() => { setThick(''); setPath(prev => { const next = prev.slice(0, row.level); if (prev[row.level] !== v) next[row.level] = v; return next }) }}
                     style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #e2ddd5', background: on ? PRIMARY : '#fff', color: on ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{v}</button>
                 )
               })}
             </div>
           ))}
+
+          {/* толщина — фильтр (авто из имён товаров раздела) */}
+          {thicks.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, padding: '7px 10px', background: '#f4f6f8', borderBottom: '1px solid #e6eaef', overflowX: 'auto', alignItems: 'center' }}>
+              <span style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, flexShrink: 0 }}>толщина:</span>
+              <button onClick={() => setThick('')} style={{ flexShrink: 0, border: thick === '' ? 'none' : '1.5px solid #cfd6df', background: thick === '' ? DARK : '#fff', color: thick === '' ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: thick === '' ? 800 : 600, whiteSpace: 'nowrap' }}>все</button>
+              {thicks.map(tk => {
+                const on = thick === tk
+                return <button key={tk} onClick={() => setThick(on ? '' : tk)} style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #cfd6df', background: on ? '#2a5aaa' : '#fff', color: on ? '#fff' : '#3a4a5f', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{tk}</button>
+              })}
+            </div>
+          )}
 
           {/* цвет */}
           <div style={{ background: '#fff', padding: '9px 10px 10px', borderBottom: '1px solid #e6e2dc', display: 'flex', gap: 9, overflowX: 'auto' }}>
