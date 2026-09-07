@@ -169,6 +169,23 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setRows(rs => [...rs, priced])
   }
 
+  // Прямой ввод кол-ва в строке товара (без дефолта/степпера): пусто/0 → убрать из чека,
+  // >0 → добавить/обновить. Цену подтягиваем при первом добавлении (в фоне).
+  function upsertQty(p: any, str: string) {
+    const q = num(str)
+    const wasIn = rows.some(r => r.productId === p.id)
+    setRows(rs => {
+      const i = rs.findIndex(r => r.productId === p.id)
+      if (q <= 0) return i >= 0 ? rs.filter((_, j) => j !== i) : rs
+      if (i >= 0) return rs.map((r, j) => j === i ? { ...r, qty: q } : r)
+      return [...rs, { key: `${Date.now()}-${p.id}`, name1c: p.name, oral: p.name, qty: q, unit: p.unit || 'шт', price: 0, productId: p.id }]
+    })
+    if (!wasIn && q > 0) {
+      pullPrices([{ key: '', name1c: p.name, oral: p.name, qty: q, unit: p.unit || 'шт', price: 0, productId: p.id }], contactId)
+        .then(([priced]) => { if (priced?.price) setRows(rs => rs.map(r => (r.productId === p.id && !r.price) ? { ...r, price: priced.price } : r)) })
+    }
+  }
+
   function tapProduct(p: any) {
     // Комплектующее (база «Без цвета») — собираем: цвет сверху + см, если это «Изделие».
     if (activeFolder.build) {
@@ -395,19 +412,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               const row = inCheck[p.id]
               const price = Number(p.priceRetail) || 0
               return (
-                <div key={p.id} onClick={() => !row && tapProduct(p)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: row ? '#fdf6f2' : '#fff', cursor: 'pointer' }}>
+                <div key={p.id} onClick={() => { if (activeFolder.build && !row) tapProduct(p) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: row ? '#fdf6f2' : '#fff', cursor: activeFolder.build ? 'pointer' : 'default' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25 }}>{p.name}</div>
                     <div style={{ fontSize: 11.5, color: '#a09889' }}>{price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</div>
                   </div>
-                  {row ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <button onClick={e => { e.stopPropagation(); row.qty <= 1 ? setRows(rs => rs.filter(x => x.key !== row.key)) : patchRow(row.key, { qty: row.qty - 1 }) }} style={{ width: 34, height: 34, borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 17, cursor: 'pointer', color: '#6b645b' }}>−</button>
-                      <span style={{ fontSize: 15, fontWeight: 800, minWidth: 20, textAlign: 'center' }}>{row.qty}</span>
-                      <button onClick={e => { e.stopPropagation(); patchRow(row.key, { qty: row.qty + 1 }) }} style={{ width: 34, height: 34, borderRadius: 9, border: 'none', background: PRIMARY, color: '#fff', fontSize: 19, fontWeight: 700, cursor: 'pointer' }}>+</button>
-                    </div>
-                  ) : (
+                  {activeFolder.build ? (
+                    // Комплектующие собираются (цвет+см) — оставляем кнопку добавления.
                     <span style={{ width: 40, height: 40, borderRadius: 11, background: PRIMARY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 700, flexShrink: 0 }}>+</span>
+                  ) : (
+                    // Обычный товар — просто ввод кол-ва (без дефолта и ±).
+                    <input value={row ? String(row.qty) : ''} inputMode="decimal" placeholder="кол-во" onClick={e => e.stopPropagation()} onChange={e => upsertQty(p, e.target.value.replace(/[^0-9.,]/g, ''))} style={{ width: 74, padding: '9px 8px', borderRadius: 10, border: `1.5px solid ${row ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />
                   )}
                 </div>
               )
