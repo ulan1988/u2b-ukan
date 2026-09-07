@@ -39,7 +39,7 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
 
   const loadTypes = useCallback(async () => setTypes(await listSpecTypes(orgId)), [orgId])
   const loadStock = useCallback(async () => setStock(await materialStock(orgId)), [orgId])
-  const loadProducts = useCallback(async () => { const all = await listProducts(true); setProducts(all); setMaterials(all.filter((p: any) => p.category === 'material')) }, [])
+  const loadProducts = useCallback(async () => { const all = await listProducts(undefined, true); setProducts(all); setMaterials(all.filter((p: any) => p.category === 'material')) }, [])
   useEffect(() => { loadTypes(); loadStock(); loadProducts() }, [loadTypes, loadStock, loadProducts])
 
   // ── Типы изделий ──

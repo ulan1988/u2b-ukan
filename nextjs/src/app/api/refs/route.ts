@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const viewerOrg = new URL(req.url).searchParams.get('orgId') || s?.orgId || null
   const [organizations, suppliers, clients, contragents, warehouses, products, cashAccounts] = await Promise.all([
     refs.listOrganizations(), refs.listSuppliers(), refs.listClients(), refs.listContragents(viewerOrg),
-    refs.listWarehouses(), refs.listProducts(), refs.listCashAccounts(),
+    refs.listWarehouses(), refs.listProducts(viewerOrg || undefined), refs.listCashAccounts(),
   ])
   return NextResponse.json({ organizations, suppliers, clients, contragents, warehouses, products, cashAccounts })
 }

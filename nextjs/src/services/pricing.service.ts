@@ -6,7 +6,19 @@ import { isIzdelie } from '../lib/lineAmount'
 const baseName = (n: string) => (n || '').replace(/\s*\d+([.,]\d+)?\s*см\s*$/i, '').trim()
 const fieldFor = (pt?: string) => pt === 'spec' ? 'priceSpec' : pt === 'opt' ? 'priceOpt' : 'priceRetail'
 
-export async function setItemPrice(name: string, price: number, priceType?: string) {
+// Цена продажи пишется в product_prices ВЫБРАННОЙ орг (не в шаблон products), чтобы цена одной
+// орг не подставлялась другой. Без orgId — старое поведение (в шаблон, для совместимости).
+async function upsertOrgPrice(orgId: string, productId: string, field: string, price: number) {
+  const { db } = await import('../lib/db')
+  const { productPrices } = await import('../db/schema')
+  const { and, eq } = await import('drizzle-orm')
+  const [ex] = await db.select().from(productPrices).where(and(eq(productPrices.orgId, orgId), eq(productPrices.productId, productId))).limit(1)
+  const val = String(Math.round(Number(price)))
+  if (ex) await db.update(productPrices).set({ [field]: val } as any).where(eq(productPrices.id, ex.id))
+  else await db.insert(productPrices).values({ orgId, productId, priceRetail: '0', priceOpt: '0', priceSpec: '0', [field]: val } as any)
+}
+
+export async function setItemPrice(name: string, price: number, priceType?: string, orgId?: string) {
   const nm = (name || '').trim()
   if (!nm || !(Number(price) >= 0)) return { ok: false as const, error: 'Имя и цена обязательны' }
   // Для изделия цена/см — на базовое имя; для прочего — на само имя.
@@ -21,15 +33,17 @@ export async function setItemPrice(name: string, price: number, priceType?: stri
   const [exist] = await db.select({ id: products.id, name: products.name }).from(products)
     .where(sql`lower(trim(${products.name})) = ${target.toLowerCase()}`).limit(1)
   if (exist) {
-    await db.update(products).set({ [field]: String(Math.round(Number(price))) } as any).where(sql`${products.id} = ${exist.id}`)
+    if (orgId) await upsertOrgPrice(orgId, exist.id, field, price)
+    else await db.update(products).set({ [field]: String(Math.round(Number(price))) } as any).where(sql`${products.id} = ${exist.id}`)
     return { ok: true as const, name: exist.name, field, created: false }
   }
-  // Нет товара — создаём базовое изделие в «Комплектующие» (как ensureProduct в producer).
+  // Нет товара — создаём базовый шаблон в «Комплектующие» (как ensureProduct в producer), цену — на орг.
   const [base] = await db.select({ group: products.group, cat: products.cat }).from(products)
     .where(sql`lower(coalesce(${products.group},'')||' '||coalesce(${products.cat},'')) like '%комплект%'`).limit(1)
   const [created] = await db.insert(products).values({
     name: target, unit: 'шт', category: 'goods', group: base?.group || 'Товары', cat: base?.cat || 'Комплектующие',
-    [field]: String(Math.round(Number(price))),
+    ...(orgId ? {} : { [field]: String(Math.round(Number(price))) }),
   } as any).returning({ id: products.id, name: products.name })
+  if (orgId) await upsertOrgPrice(orgId, created.id, field, price)
   return { ok: true as const, name: created.name, field, created: true }
 }

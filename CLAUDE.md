@@ -14,6 +14,7 @@
 - Компоненты НЕ вызывают fetch напрямую — через `lib/api/*`. UI-токены: `lib/colors`, формат: `lib/adminFmt`.
 - Номера документов: `lib/num`. Даты — локальный день (`today()`), не UTC-срез.
 - Справочники (products/contragents/warehouses/users) — общие; Улкан НЕ дублирует, только FK.
+- **Цены продажи — ПО ОРГ** (`product_prices` orgId+productId: розница/опт/спец): `products` = общий ШАБЛОН (имя/дерево/тип + **закуп `priceIn` общий**), а цены продажи свои у каждой орг (головной свои, филиал свои, друг на друга НЕ влияют; нет строки → 0 «впишите в чеке», цена другой орг НЕ подставляется). Чтение — `refs.listProducts(orgId)`/`listAllProducts(orgId)` накладывают `product_prices` (иначе розница/опт/спец = 0); `/api/refs` и `/api/products` берут орг из `?orgId` иначе сессии; `/api/pricing` (GET/POST) тоже орг-зависим. Запись — `catalog.service.editProduct/addProduct(…, orgId)` и `pricing.service.setItemPrice(…, orgId)` пишут в `product_prices[orgId]`. Номенклатура (`NomenclatureScreen`) правит цены ВЫБРАННОЙ в шапке орг (`useAdmin().orgId`, бейдж «💰 цены: {орг}»); имя/дерево/закуп — общий шаблон. Миграция: старые цены продажи ушли головному, шаблон `products` обнулён по продаже (закуп сохранён).
 
 ## Организации (прод-база)
 - **U2B головной** `hq` — `e015c65a…`, склад Центр-Склад.

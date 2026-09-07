@@ -4,7 +4,11 @@ import { getArray, getObj, post, patch, send } from './http'
 // orgId — видящая орг (выбранная в шапке): фильтрует контрагентов (свои + головного + мосты).
 export const fetchRefs = (orgId?: string) => getObj(`/api/refs${orgId ? `?orgId=${orgId}` : ''}`)
 
-export const listProducts = (all = false) => getArray(`/api/products${all ? '?all=1' : ''}`)
+// orgId → цены продажи этой орг; all → включая архивные (для номенклатуры).
+export const listProducts = (orgId?: string, all = false) => {
+  const qs = [all ? 'all=1' : '', orgId ? `orgId=${orgId}` : ''].filter(Boolean).join('&')
+  return getArray(`/api/products${qs ? `?${qs}` : ''}`)
+}
 export const addProduct = (b: any) => post('/api/products', b)
 export const editProduct = (id: string, b: any) => patch(`/api/products/${id}`, b)
 export const archiveProduct = (id: string) => patch(`/api/products/${id}`, { archived: true })

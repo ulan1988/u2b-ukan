@@ -15,11 +15,19 @@ export const createCashAccount = (v: typeof cashAccounts.$inferInsert) => db.ins
 
 export const updateProduct = (id: string, patch: Partial<typeof products.$inferInsert>) =>
   db.update(products).set(patch).where(eq(products.id, id)).returning()
+export const getProduct = (id: string) => db.select().from(products).where(eq(products.id, id)).limit(1)
 export const updateContragent = (id: string, patch: Partial<typeof contragents.$inferInsert>) =>
   db.update(contragents).set(patch).where(eq(contragents.id, id)).returning()
 
-// Управление справочником — включая архивные (для UI правки).
-export const listAllProducts = () => db.select().from(products)
+// Управление справочником — включая архивные (для UI правки). С orgId — цены продажи этой орг.
+export const listAllProducts = async (orgId?: string) => {
+  const rows = await db.select().from(products)
+  if (!orgId) return rows
+  const { productPrices } = await import('../db/schema')
+  const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
+  const m = new Map(pp.map(x => [x.productId, x]))
+  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0' } })
+}
 export const listAllContragents = () => db.select().from(contragents)
 
 // ── Папки номенклатуры ─────────────────────────────────────────────────

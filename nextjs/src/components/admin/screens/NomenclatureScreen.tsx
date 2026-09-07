@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder } from '@/lib/api/refs'
+import { useAdmin } from '@/components/admin/AdminChrome'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
 
@@ -11,6 +12,7 @@ const INP: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRad
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
 
 export default function NomenclatureScreen() {
+  const { orgId, orgName } = useAdmin()   // цены продажи показываем/правим для выбранной орг
   const [items, setItems] = useState<NomItem[]>([])
   const [loading, setLoading] = useState(false)
   const [selGroup, setSelGroup] = useState<string | null>(null)
@@ -54,7 +56,8 @@ export default function NomenclatureScreen() {
     if (ids.length === 0) { setPriceEdit(false); return }
     for (const id of ids) {
       const d = pricesDraft[id]; const item = items.find(i => i.id === id); if (!item) continue
-      await editProduct(id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec) })
+      // Закуп (priceIn) — общий шаблон; розница/опт/спец — цены выбранной орг (orgId).
+      await editProduct(id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec), orgId })
     }
     setPricesDraft({}); setPriceEdit(false); load(); showMsg('✓ Цены сохранены')
   }
@@ -62,11 +65,11 @@ export default function NomenclatureScreen() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await listProducts(true)
+      const data = await listProducts(orgId, true)
       setItems((data as any[]).map(p => ({ ...p, priceIn: Number(p.priceIn), priceRetail: Number(p.priceRetail), priceOpt: Number(p.priceOpt), priceSpec: Number(p.priceSpec) })))
     } catch { showMsg('Ошибка загрузки') }
     finally { setLoading(false) }
-  }, [])
+  }, [orgId])
   useEffect(() => { load() }, [load])
 
   const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
@@ -95,7 +98,7 @@ export default function NomenclatureScreen() {
   }
   async function handleCreate() {
     if (!newItem.name) { showMsg('Введите название'); return }
-    const r = await addProduct(newItem)
+    const r = await addProduct({ ...newItem, orgId })
     if (!r.ok) { showMsg('Ошибка'); return }
     setShowAdd(false)
     setNewItem({ name: '', unit: 'шт', group: selGroup || '', cat: selCat || '', subgroup: selSubgroup || '' })
@@ -170,7 +173,8 @@ export default function NomenclatureScreen() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexShrink: 0, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: 20 }}>📦 Номенклатура</div>
         <span style={{ fontSize: 14, color: '#5f5952' }}>{visible.length} позиций{items.length !== visible.length ? ` · ${items.length - visible.length} в архиве` : ''}</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span title="Имя/дерево/закуп — общий шаблон. Розница/опт/спец — цены этой орг." style={{ fontSize: 12.5, fontWeight: 700, color: '#2a5aaa', background: '#eef3fb', border: '1px solid #d3e0f3', borderRadius: 8, padding: '6px 10px', whiteSpace: 'nowrap' }}>💰 цены: {orgName || 'орг не выбрана'}</span>
           <input style={{ ...INP, width: 240 }} placeholder="🔍 Поиск по названию..." value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) { setSelGroup(null); setSelCat(null); setSelSubgroup(null) } }} />
           <button onClick={() => setShowArchived(v => !v)} title="Показать/скрыть архивные" style={{ padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${showArchived ? '#d4613a' : '#e6e2dc'}`, background: showArchived ? '#fff0ea' : '#fff', color: showArchived ? '#c0532a' : '#5f5952', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', fontWeight: showArchived ? 700 : 500 }}>🗃 Архив</button>
           <button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳</button>

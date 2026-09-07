@@ -69,6 +69,18 @@ export const products = pgTable('products', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name) }))
 
+// Цены ПРОДАЖИ по организации: `products` — общий шаблон (имя/дерево/тип + закуп-себестоимость),
+// а розница/опт/спец — СВОИ у каждой орг (головной ставит свои, филиал свои, не влияют друг на
+// друга). Нет строки для орг → цена 0 («впишите в чеке»), цена другой орг НЕ подставляется.
+export const productPrices = pgTable('product_prices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  priceRetail: money('price_retail').notNull().default('0'),
+  priceOpt: money('price_opt').notNull().default('0'),
+  priceSpec: money('price_spec').notNull().default('0'),
+}, t => ({ uniq: uniqueIndex('product_prices_org_product_uniq').on(t.orgId, t.productId) }))
+
 // Тип изделия (спецификация): стандартная ширина (см раскроя листа) + длина + ставка работы.
 // Один тип (Н-профиль=18) применяется ко всем цветным вариантам товара.
 export const specTypes = pgTable('spec_types', {

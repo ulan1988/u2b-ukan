@@ -1,6 +1,6 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
-import { organizations, contragents, warehouses, products, cashAccounts, specTypes } from '../db/schema'
+import { organizations, contragents, warehouses, products, cashAccounts, specTypes, productPrices } from '../db/schema'
 import { and, eq, or, isNotNull, getTableColumns } from 'drizzle-orm'
 
 export const listOrganizations = () =>
@@ -28,10 +28,17 @@ export const centralWarehouse = async (orgId: string) => {
 }
 
 // Товары для форм/пикеров + стандартный см и имя типа (спецификация) через join.
-export const listProducts = () =>
-  db.select({ ...getTableColumns(products), stdWidthCm: specTypes.widthCm, typeName: specTypes.name })
+// Товары для форм/пикеров. С orgId — цены ПРОДАЖИ (розница/опт/спец) берутся из product_prices
+// этой орг (нет строки → 0, цена другой орг не подставляется). Закуп (priceIn) — общий шаблон.
+export const listProducts = async (orgId?: string) => {
+  const rows = await db.select({ ...getTableColumns(products), stdWidthCm: specTypes.widthCm, typeName: specTypes.name })
     .from(products).leftJoin(specTypes, eq(products.specTypeId, specTypes.id))
     .where(eq(products.archived, false))
+  if (!orgId) return rows
+  const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
+  const m = new Map(pp.map(x => [x.productId, x]))
+  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0' } })
+}
 
 // Контрагенты по видящей орг: свои (viewerOrgId) + головного (шарятся вниз) + мосты (orgRefId,
 // «наш филиал как контрагент» — нужны для меж-орг потоков, видны всегда). Головной видит только

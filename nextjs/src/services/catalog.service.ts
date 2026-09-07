@@ -5,11 +5,28 @@ import type {
   updateProductSchema, updateContragentSchema,
 } from '../dto/catalog.dto'
 
-export async function addProduct(i: z.infer<typeof createProductSchema>) {
+// Цены ПРОДАЖИ по орг — в product_prices (upsert). Товар/шаблон (имя/дерево/закуп) в products.
+async function upsertOrgPrices(orgId: string, productId: string, fields: Record<string, string>) {
+  const { db } = await import('../lib/db')
+  const { productPrices } = await import('../db/schema')
+  const { and, eq } = await import('drizzle-orm')
+  const [ex] = await db.select().from(productPrices).where(and(eq(productPrices.orgId, orgId), eq(productPrices.productId, productId))).limit(1)
+  if (ex) await db.update(productPrices).set(fields).where(eq(productPrices.id, ex.id))
+  else await db.insert(productPrices).values({ orgId, productId, priceRetail: '0', priceOpt: '0', priceSpec: '0', ...fields })
+}
+
+export async function addProduct(i: z.infer<typeof createProductSchema>, orgId?: string) {
+  // Шаблон: имя/дерево + закуп (общий). Цены продажи не пишем в шаблон.
   const [p] = await repo.createProduct({
     name: i.name, unit: i.unit, category: i.category, group: i.group || '', cat: i.cat || '', subgroup: i.subgroup || '',
-    priceIn: String(i.priceIn), priceRetail: String(i.priceRetail), priceOpt: String(i.priceOpt), priceSpec: String((i as any).priceSpec ?? 0),
+    priceIn: String(i.priceIn), priceRetail: '0', priceOpt: '0', priceSpec: '0',
   })
+  // Цены продажи (если заданы) — на орг создателя.
+  const sell: Record<string, string> = {}
+  if (Number(i.priceRetail) > 0) sell.priceRetail = String(i.priceRetail)
+  if (Number(i.priceOpt) > 0) sell.priceOpt = String(i.priceOpt)
+  if (Number((i as any).priceSpec ?? 0) > 0) sell.priceSpec = String((i as any).priceSpec)
+  if (orgId && Object.keys(sell).length) await upsertOrgPrices(orgId, p.id, sell)
   return p
 }
 
@@ -31,7 +48,8 @@ export async function addCashAccount(i: z.infer<typeof createCashAccountSchema>)
   return a
 }
 
-export async function editProduct(id: string, i: z.infer<typeof updateProductSchema>) {
+export async function editProduct(id: string, i: z.infer<typeof updateProductSchema>, orgId?: string) {
+  // Шаблон (общий): имя/ед./дерево/тип/архив + закуп-себестоимость (priceIn).
   const patch: Record<string, unknown> = {}
   if (i.name !== undefined) patch.name = i.name
   if (i.unit !== undefined) patch.unit = i.unit
@@ -39,13 +57,19 @@ export async function editProduct(id: string, i: z.infer<typeof updateProductSch
   if (i.group !== undefined) patch.group = i.group
   if (i.cat !== undefined) patch.cat = i.cat
   if (i.subgroup !== undefined) patch.subgroup = i.subgroup
-  if (i.priceIn !== undefined) patch.priceIn = String(i.priceIn)          // numeric → string
-  if (i.priceRetail !== undefined) patch.priceRetail = String(i.priceRetail)
-  if (i.priceOpt !== undefined) patch.priceOpt = String(i.priceOpt)
-  if ((i as any).priceSpec !== undefined) patch.priceSpec = String((i as any).priceSpec)
+  if (i.priceIn !== undefined) patch.priceIn = String(i.priceIn)          // закуп — общий шаблон
   if (i.specTypeId !== undefined) patch.specTypeId = i.specTypeId || null
   if (i.archived !== undefined) patch.archived = i.archived
-  const [p] = await repo.updateProduct(id, patch)
+  // Цены ПРОДАЖИ — в product_prices выбранной орг (без орг — в шаблон, как раньше).
+  const sell: Record<string, string> = {}
+  if (i.priceRetail !== undefined) sell.priceRetail = String(i.priceRetail)
+  if (i.priceOpt !== undefined) sell.priceOpt = String(i.priceOpt)
+  if ((i as any).priceSpec !== undefined) sell.priceSpec = String((i as any).priceSpec)
+  if (Object.keys(sell).length) {
+    if (orgId) await upsertOrgPrices(orgId, id, sell)
+    else Object.assign(patch, sell)   // редактирование шаблона (без орг)
+  }
+  const [p] = Object.keys(patch).length ? await repo.updateProduct(id, patch) : await repo.getProduct(id)
   return p
 }
 

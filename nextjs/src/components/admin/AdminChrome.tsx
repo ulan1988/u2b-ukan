@@ -39,7 +39,7 @@ export const NAV: NavItem[] = [
 ]
 
 interface Ctx {
-  user: any; orders: any[]; visible: any[]; loading: boolean; orgId: string
+  user: any; orders: any[]; visible: any[]; loading: boolean; orgId: string; orgName: string
   act: (id: string, action: string) => Promise<void>; reload: () => Promise<void>; openCard: (o: any) => void
 }
 const AdminContext = createContext<Ctx | null>(null)
@@ -114,7 +114,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
   const nav = isBranchOrg ? NAV.filter(n => !BRANCH_HIDE.includes(n.key)) : NAV
 
-  const ctx: Ctx = { user, orders, visible, loading, orgId, act, reload: load, openCard }
+  const orgName = orgs.find(o => o.id === orgId)?.name || ''
+  const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: COLORS.bg, fontFamily: "'Golos Text', system-ui, sans-serif", overflow: 'hidden' }}>

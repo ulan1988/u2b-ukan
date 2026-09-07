@@ -7,12 +7,16 @@ import { listAllProducts } from '@/repositories/catalog.repo'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  const all = new URL(req.url).searchParams.get('all')
-  return NextResponse.json(all ? await listAllProducts() : await listProducts())
+  const sp = new URL(req.url).searchParams
+  const all = sp.get('all')
+  const orgId = sp.get('orgId') || undefined   // цены продажи этой орг (иначе шаблон без цен)
+  return NextResponse.json(all ? await listAllProducts(orgId) : await listProducts(orgId))
 }
 
 export async function POST(req: NextRequest) {
-  const parsed = createProductSchema.safeParse(await req.json().catch(() => null))
+  const body = await req.json().catch(() => null)
+  const parsed = createProductSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля', issues: parsed.error.flatten() }, { status: 400 })
-  return NextResponse.json(await addProduct(parsed.data), { status: 201 })
+  const orgId = (body && body.orgId) || undefined   // цены продажи — на эту орг
+  return NextResponse.json(await addProduct(parsed.data, orgId), { status: 201 })
 }

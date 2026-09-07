@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { products, contragents } from '@/db/schema'
+import { products, contragents, productPrices } from '@/db/schema'
 import { inArray, eq, sql } from 'drizzle-orm'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { setItemPrice } from '@/services/pricing.service'
@@ -8,13 +8,23 @@ import { sessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-// Быстрый ввод цены «на ходу»: сохранить цену/см изделия (по имени) в прайс.
-// POST { name, price, priceType? } → создаёт/обновляет базовое изделие с этой ценой.
+// Цены продажи товара для орг: наложить product_prices этой орг на шаблон (нет строки → 0).
+async function overlayOrgPrices(orgId: string | undefined, rows: any[]) {
+  if (!orgId || !rows.length) return rows.map(r => orgId ? { ...r, priceRetail: '0', priceOpt: '0', priceSpec: '0' } : r)
+  const ids = rows.map(r => r.id)
+  const pp = await db.select().from(productPrices).where(inArray(productPrices.productId, ids))
+  const m = new Map(pp.filter(x => x.orgId === orgId).map(x => [x.productId, x]))
+  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0' } })
+}
+
+// Быстрый ввод цены «на ходу»: сохранить цену/см изделия (по имени) в прайс ВЫБРАННОЙ орг.
+// POST { name, price, priceType?, orgId? } → шаблон (если нет) + цена продажи на орг.
 export async function POST(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
-  const r = await setItemPrice(b.name, Number(b.price), b.priceType)
+  const orgId = b.orgId || s.orgId    // по умолчанию — орг сессии
+  const r = await setItemPrice(b.name, Number(b.price), b.priceType, orgId)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
   return NextResponse.json(r)
 }
@@ -29,6 +39,9 @@ export async function GET(req: NextRequest) {
   const contragentId = p.get('contragentId')
   if (!ids.length && !names.length) return NextResponse.json({})
 
+  const s = await sessionFromRequest(req)
+  const orgId = p.get('orgId') || s?.orgId || undefined   // цены продажи этой орг
+
   let priceType = 'retail'
   if (contragentId) {
     const [c] = await db.select({ pt: contragents.priceType }).from(contragents).where(eq(contragents.id, contragentId)).limit(1)
@@ -36,7 +49,7 @@ export async function GET(req: NextRequest) {
   }
   const out: Record<string, number> = {}
   if (ids.length) {
-    const rows = await db.select().from(products).where(inArray(products.id, ids))
+    const rows = await overlayOrgPrices(orgId, await db.select().from(products).where(inArray(products.id, ids)))
     for (const r of rows) { const v = priceForClient(r, priceType); if (v > 0) out[r.id] = v }
   }
   if (names.length) {
@@ -49,7 +62,7 @@ export async function GET(req: NextRequest) {
       return Array.from(new Set(ks))
     }
     const allKeys = new Set<string>(); for (const n of names) for (const k of keysFor(n)) allKeys.add(k)
-    const rows = await db.select().from(products).where(inArray(sql`lower(trim(${products.name}))`, Array.from(allKeys)))
+    const rows = await overlayOrgPrices(orgId, await db.select().from(products).where(inArray(sql`lower(trim(${products.name}))`, Array.from(allKeys))))
     const priceByKey = new Map<string, number>()
     for (const r of rows) { const v = priceForClient(r, priceType); if (v > 0) priceByKey.set(String(r.name).trim().toLowerCase(), v) }
     for (const n of names) { for (const k of keysFor(n)) { const v = priceByKey.get(k); if (v != null) { out[n] = v; break } } }  // первый найденный = самый конкретный
