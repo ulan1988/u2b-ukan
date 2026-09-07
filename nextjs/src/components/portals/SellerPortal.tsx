@@ -59,6 +59,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [accounts, setAccounts] = useState<any[]>([])
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
   const [checksDay, setChecksDay] = useState(localDay())
+  const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
@@ -485,7 +486,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 const time = new Date(o.delivered || o.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
                 const allBack = (o.positions || []).length > 0 && (o.positions || []).every((p: any) => retRemain(o, p) <= 0.0000001)
                 return (
-                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div key={o.id} onClick={() => setViewChk(o)} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: GREEN }}>№ {o.docNumber || o.id}</span>
@@ -498,7 +499,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 15, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK }}>{money(t)} ₸</div>
                     </div>
-                    {!allBack && <button onClick={() => openReturn(o)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
+                    {!allBack && <button onClick={e => { e.stopPropagation(); openReturn(o) }} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
                   </div>
                 )
               })}
@@ -665,6 +666,57 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <span>Со счёта (остальное — в долг)</span><span style={{ marginLeft: 'auto', fontWeight: 800, color: refund > 0 ? '#c0532a' : GREEN }}>{money(refund)} ₸</span>
                 </div>
                 <button disabled={busy || selTotal <= 0 || !retAcc} onClick={doReturn} style={{ border: 'none', background: (busy || selTotal <= 0 || !retAcc) ? '#d8b6a6' : '#c0532a', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || selTotal <= 0 || !retAcc) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `↩ Провести возврат · ${money(selTotal)} ₸`}</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* СОСТАВ ЧЕКА — шторка по тапу на чек */}
+      {viewChk && (() => {
+        const o = viewChk
+        const poss = o.positions || []
+        const t = cardTotal(o)
+        const paidCash = Number(o.paidCash) || 0, paidKaspi = Number(o.paidKaspi) || 0, paidQr = Number(o.paidQr) || 0
+        const paid = paidCash + paidKaspi + paidQr
+        const debt = Math.max(0, t - paid)
+        const time = new Date(o.delivered || o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        const retSum = Number(o.returnedSum || 0)
+        return (
+          <div onClick={() => setViewChk(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>🧾 Чек № {o.docNumber || o.id}</div>
+                  <div style={{ fontSize: 12, color: '#8a8377' }}>{time}{o.seller ? ` · 👤 ${o.seller}` : ''} · {o.toName || o.contactName || o.fromName || 'Розница'}</div>
+                </div>
+                <button onClick={() => setViewChk(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+              </div>
+              <div style={{ padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {poss.map((p: any) => {
+                  const sum = lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm })
+                  const back = Number((o.returnedByPos || {})[p.id] || 0)
+                  return (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '7px 0', borderBottom: '1px solid #f4f1ed' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, color: DARK }}>{p.name1c || p.oral}</div>
+                        <div style={{ fontSize: 11.5, color: '#a09889' }}>{Number(p.qty)}{p.widthCm ? `×${p.widthCm}см` : ''} × {money(Number(p.price) || 0)}{back > 0 ? ` · ↩ возвращено ${back}` : ''}</div>
+                      </div>
+                      <span style={{ fontSize: 13.5, fontWeight: 800 }}>{money(sum)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ padding: 14, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ display: 'flex', fontSize: 13, color: '#5f5952' }}><span>Оплата</span><span style={{ marginLeft: 'auto' }}>{[paidCash && `нал ${money(paidCash)}`, paidKaspi && `каспи ${money(paidKaspi)}`, paidQr && `QR ${money(paidQr)}`].filter(Boolean).join(' · ') || '—'}</span></div>
+                {debt > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Долг</span><span style={{ marginLeft: 'auto' }}>{money(debt)} ₸</span></div>}
+                {Number(o.changeSum) > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#5f5952' }}><span>Сдача</span><span style={{ marginLeft: 'auto' }}>{money(Number(o.changeSum))} ₸</span></div>}
+                {retSum > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Возвращено</span><span style={{ marginLeft: 'auto' }}>{money(retSum)} ₸</span></div>}
+                <div style={{ display: 'flex', alignItems: 'center', paddingTop: 6, borderTop: '1px solid #f1ede8' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ИТОГО · {poss.length} поз.</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 19, fontWeight: 800 }}>{money(t)} ₸</span>
+                </div>
+                <button onClick={() => { const c = viewChk; setViewChk(null); openReturn(c) }} style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>↩ Возврат по чеку</button>
               </div>
             </div>
           </div>
