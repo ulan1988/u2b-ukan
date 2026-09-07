@@ -112,9 +112,11 @@ export default function NomenclatureScreen() {
   const countCat = (g: string, c: string) => visible.filter(i => inCat(i, g, c)).length
   const countSubgroup = (g: string, c: string, s: string) => visible.filter(i => inCat(i, g, c) && norm(i.subgroup) === norm(s)).length
 
+  // Карандаш ✏ = построчная правка ЦЕН (имя/дерево не трогаем — это общий шаблон).
   async function handleSave(item: NomItem) {
-    await editProduct(item.id, { name: item.name, unit: item.unit, group: item.group, cat: item.cat, subgroup: item.subgroup })
-    setEditItem(null); load(); showMsg('✓ Сохранено')
+    const d = pricesDraft[item.id]
+    if (d) await editProduct(item.id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec), orgId })
+    setEditItem(null); setPricesDraft(prev => { const n = { ...prev }; delete n[item.id]; return n }); load(); showMsg('✓ Цены сохранены')
   }
   async function handleCreate() {
     if (!newItem.name) { showMsg('Введите название'); return }
@@ -327,14 +329,19 @@ export default function NomenclatureScreen() {
                     <tbody>
                       {filtered.map(item => (
                         <tr key={item.id} style={{ borderTop: '1px solid #f1efec' }}>
-                          <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{editItem?.id === item.id ? <input style={{ ...INP, fontSize: 13 }} value={editItem.name} onChange={e => setEditItem(p => p ? { ...p, name: e.target.value } : p)} autoFocus /> : item.name}</td>
-                          <td style={{ padding: '9px 14px', width: 80 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13, width: 70, padding: '6px 6px' }} value={editItem.unit} onChange={e => setEditItem(p => p ? { ...p, unit: e.target.value } : p)}>{!units.some((u: any) => u.name === editItem.unit) && editItem.unit && <option value={editItem.unit}>{editItem.unit}</option>}{units.map((u: any) => <option key={u.id} value={u.name}>{u.name}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span>}</td>
-                          <td style={{ padding: '9px 14px', width: 130 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.group} onChange={e => setEditItem(p => p ? { ...p, group: e.target.value, cat: '', subgroup: '' } : p)}><option value="">—</option>{Object.keys(TREE).map(g => <option key={g} value={g}>{g}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span>}</td>
-                          <td style={{ padding: '9px 14px', width: 160 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.cat} onChange={e => setEditItem(p => p ? { ...p, cat: e.target.value, subgroup: '' } : p)}><option value="">—</option>{editItem.group && Object.keys(TREE[editItem.group] || {}).map(c => <option key={c} value={c}>{c}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span>}</td>
-                          <td style={{ padding: '9px 14px', width: 140 }}>{editItem?.id === item.id ? <select style={{ ...INP, fontSize: 13 }} value={editItem.subgroup} onChange={e => setEditItem(p => p ? { ...p, subgroup: e.target.value } : p)}><option value="">—</option>{editItem.cat && (TREE[editItem.group]?.[editItem.cat] || []).map(s => <option key={s} value={s}>{s}</option>)}</select> : <span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span>}</td>
-                          {(['priceIn', 'priceRetail', 'priceOpt', 'priceSpec'] as const).map(f => (
-                            <td key={f} style={{ padding: '9px 8px', width: 84 }}>{priceEdit ? <input value={priceVal(item, f)} inputMode="decimal" onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', border: `1.5px solid ${pricesDraft[item.id]?.[f] !== undefined ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, color: (item[f] ?? 0) > 0 ? '#26231f' : '#837c72' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
-                          ))}
+                          {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки */}
+                          <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{item.name}</td>
+                          <td style={{ padding: '9px 14px', width: 80 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>
+                          <td style={{ padding: '9px 14px', width: 130 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span></td>
+                          <td style={{ padding: '9px 14px', width: 160 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span></td>
+                          <td style={{ padding: '9px 14px', width: 140 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span></td>
+                          {/* Цены: правятся построчно (карандаш ✏ этой строки) или в общем режиме «Редактировать цены» */}
+                          {(['priceIn', 'priceRetail', 'priceOpt', 'priceSpec'] as const).map(f => {
+                            const editable = priceEdit || editItem?.id === item.id
+                            return (
+                              <td key={f} style={{ padding: '9px 8px', width: 84 }}>{editable ? <input value={priceVal(item, f)} inputMode="decimal" autoFocus={editItem?.id === item.id && f === 'priceIn'} onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', border: `1.5px solid ${(pricesDraft[item.id]?.[f] !== undefined || editItem?.id === item.id) ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, color: (item[f] ?? 0) > 0 ? '#26231f' : '#837c72' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
+                            )
+                          })}
                           <td style={{ padding: '9px 14px', width: 120 }}>{editItem?.id === item.id ? <div style={{ display: 'flex', gap: 4 }}><button onClick={() => handleSave(editItem)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>✓</button><button onClick={() => setEditItem(null)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✕</button></div> : <div style={{ display: 'flex', gap: 4 }}><button onClick={() => setEditItem({ ...item })} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✏️</button><button onClick={() => handleDelete(item.id)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #faeaea', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>}</td>
                         </tr>
                       ))}
