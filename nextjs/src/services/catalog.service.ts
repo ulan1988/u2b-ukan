@@ -48,6 +48,32 @@ export async function addCashAccount(i: z.infer<typeof createCashAccountSchema>)
   return a
 }
 
+// Массовая установка цен «на всех показанных»: приход (общий шаблон) + розница/опт/спец
+// (в product_prices выбранной орг). Пустые поля не трогаем. Одним апсертом.
+export async function bulkSetPrices(ids: string[], fields: { priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }, orgId?: string) {
+  if (!ids.length) return { ok: false as const, error: 'Нет товаров' }
+  const { db } = await import('../lib/db')
+  const { products, productPrices } = await import('../db/schema')
+  const { inArray } = await import('drizzle-orm')
+  // Приход (себестоимость) — общий шаблон.
+  if (fields.priceIn !== undefined) await db.update(products).set({ priceIn: String(fields.priceIn) }).where(inArray(products.id, ids))
+  // Цены продажи.
+  const sell: Record<string, string> = {}
+  if (fields.priceRetail !== undefined) sell.priceRetail = String(fields.priceRetail)
+  if (fields.priceOpt !== undefined) sell.priceOpt = String(fields.priceOpt)
+  if (fields.priceSpec !== undefined) sell.priceSpec = String(fields.priceSpec)
+  if (Object.keys(sell).length) {
+    if (orgId) {
+      await db.insert(productPrices)
+        .values(ids.map(id => ({ orgId, productId: id, priceRetail: '0', priceOpt: '0', priceSpec: '0', ...sell })))
+        .onConflictDoUpdate({ target: [productPrices.orgId, productPrices.productId], set: sell })
+    } else {
+      await db.update(products).set(sell).where(inArray(products.id, ids))
+    }
+  }
+  return { ok: true as const, count: ids.length }
+}
+
 export async function editProduct(id: string, i: z.infer<typeof updateProductSchema>, orgId?: string) {
   // Шаблон (общий): имя/ед./дерево/тип/архив + закуп-себестоимость (priceIn).
   const patch: Record<string, unknown> = {}

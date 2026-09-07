@@ -10,6 +10,8 @@ export const listProducts = (orgId?: string, all = false) => {
   return getArray(`/api/products${qs ? `?${qs}` : ''}`)
 }
 export const addProduct = (b: any) => post('/api/products', b)
+// Массовая установка цен на список товаров (для выбранной орг).
+export const bulkSetPrices = (b: { ids: string[]; orgId?: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }) => post('/api/products/bulk-price', b)
 export const editProduct = (id: string, b: any) => patch(`/api/products/${id}`, b)
 export const archiveProduct = (id: string) => patch(`/api/products/${id}`, { archived: true })
 

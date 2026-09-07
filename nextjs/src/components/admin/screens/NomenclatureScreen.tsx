@@ -3,7 +3,7 @@
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
@@ -35,6 +35,8 @@ export default function NomenclatureScreen() {
   useEffect(() => { reloadFolders() }, [reloadFolders])
   const [priceEdit, setPriceEdit] = useState(false)
   const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string; priceSpec: string }>>({})
+  const [bulk, setBulk] = useState({ priceIn: '', priceRetail: '', priceOpt: '', priceSpec: '' })   // цена «на всех показанных»
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   function showMsg(msg: string) { setToast(msg); setTimeout(() => setToast(''), 2500) }
 
@@ -60,6 +62,24 @@ export default function NomenclatureScreen() {
       await editProduct(id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec), orgId })
     }
     setPricesDraft({}); setPriceEdit(false); load(); showMsg('✓ Цены сохранены')
+  }
+
+  // Цена «на всех показанных»: заполненные поля → всем товарам текущего фильтра (для выбранной орг).
+  async function applyBulk() {
+    const fields: Record<string, number> = {}
+    for (const k of ['priceIn', 'priceRetail', 'priceOpt', 'priceSpec'] as const) {
+      const s = (bulk[k] || '').trim(); if (s === '') continue
+      const v = Number(s.replace(',', '.')); if (!Number.isNaN(v)) fields[k] = v
+    }
+    if (!Object.keys(fields).length) { showMsg('Впишите цену в строке сверху'); return }
+    const ids = filtered.map(i => i.id)
+    if (!ids.length) { showMsg('Нет товаров в списке'); return }
+    if (!confirm(`Поставить цену для ${ids.length} товаров — «${orgName || 'орг не выбрана'}»?`)) return
+    setBulkBusy(true)
+    const r = await bulkSetPrices({ ids, orgId, ...fields })
+    setBulkBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Ошибка')); return }
+    setBulk({ priceIn: '', priceRetail: '', priceOpt: '', priceSpec: '' }); load(); showMsg(`✓ Цена применена к ${r.data?.count ?? ids.length} товарам`)
   }
 
   const load = useCallback(async () => {
@@ -279,6 +299,18 @@ export default function NomenclatureScreen() {
             {selSubgroup && <><span>›</span><span style={{ color: '#26231f', fontWeight: 600 }}>{selSubgroup}</span></>}
             {search && <span style={{ color: '#26231f', fontWeight: 600 }}>Поиск: «{search}»</span>}
             <span style={{ marginLeft: 'auto', color: '#5f5952' }}>{filtered.length} позиций</span>
+          </div>
+
+          {/* ЦЕНА НА ВСЕХ ПОКАЗАННЫХ: вписать цену → применить ко всем товарам текущего фильтра (для выбранной орг) */}
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#c0532a', whiteSpace: 'nowrap' }}>💰 Цена на всех ({filtered.length})</span>
+            {([['priceIn', 'Приход'], ['priceRetail', 'Розн.'], ['priceOpt', 'Опт'], ['priceSpec', 'Спец']] as const).map(([k, lbl]) => (
+              <label key={k} style={{ fontSize: 11, color: '#5f5952', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {lbl}
+                <input value={bulk[k]} inputMode="decimal" placeholder="—" onChange={e => setBulk(b => ({ ...b, [k]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ width: 90, padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </label>
+            ))}
+            <button onClick={applyBulk} disabled={bulkBusy} style={{ marginLeft: 'auto', padding: '9px 16px', borderRadius: 8, border: 'none', background: bulkBusy ? '#d8b6a6' : '#2e8a5e', color: '#fff', cursor: bulkBusy ? 'default' : 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{bulkBusy ? '…' : '✓ Применить ко всем'}</button>
           </div>
 
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column' }}>
