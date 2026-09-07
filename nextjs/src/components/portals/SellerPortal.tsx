@@ -27,6 +27,7 @@ const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').
 // Толщина из имени товара: «…0,45мм» → «0,45мм» (для фильтра толщины в каталоге).
 const thickOf = (name: string) => { const m = (name || '').match(/(\d+(?:[.,]\d+)?)\s*мм/i); return m ? m[1].replace('.', ',') + 'мм' : '' }
 const thickNum = (t: string) => Number((t || '').replace('мм', '').replace(',', '.')) || 0
+const THICK_SET = ['0,35мм', '0,4мм', '0,45мм']   // толщина только для Евро бруса — строго этот набор
 // Локальный день (YYYY-MM-DD), без UTC-сдвига — как today() на сервере.
 const localDay = (d?: any) => {
   const x = d ? new Date(d) : new Date()
@@ -43,7 +44,7 @@ const cardTotal = (o: any) => Math.max(0, cardSubtotal(o) - (Number(o.discountSu
 // Водосток дробится cat→subgroup (Дёке/Модерн → Дёке люкс/…), остальные — только subgroup.
 const FOLDERS = [
   { key: 'vodostok', label: 'Водосток', match: (p: any) => norm(p.group) === 'водосток', levels: ['cat', 'subgroup'] },
-  { key: 'evrobrus', label: 'Евро брус', match: (p: any) => norm(p.cat) === 'евро брус', levels: ['subgroup'] },
+  { key: 'evrobrus', label: 'Евро брус', match: (p: any) => norm(p.cat) === 'евро брус', levels: ['subgroup'], thickness: true },
   { key: 'kompl', label: 'Комплект.', match: (p: any) => norm(p.cat).includes('комплект'), build: true, levels: ['subgroup'] },
   { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица', levels: ['subgroup'] },
 ]
@@ -151,13 +152,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     return rows
   }, [products, activeFolder, levels, path])
 
-  // Толщины раздела (с учётом выбранной подпапки) — чипы фильтра толщины.
+  // Толщины — ТОЛЬКО для Евро бруса и строго набор 0,35/0,4/0,45 (показываем те, что есть в товарах).
   const thicks = useMemo(() => {
+    if (!(activeFolder as any).thickness) return []
     let scope = products.filter(activeFolder.match)
     for (let i = 0; i < levels.length; i++) if (path[i]) scope = scope.filter((p: any) => (p[levels[i]] || '').trim() === path[i])
-    const set = new Set<string>()
-    for (const p of scope) { const t = thickOf(p.name); if (t) set.add(t) }
-    return Array.from(set).sort((a, b) => thickNum(a) - thickNum(b))
+    const present = new Set(scope.map((p: any) => thickOf(p.name)))
+    return THICK_SET.filter(t => present.has(t))
   }, [products, activeFolder, levels, path])
 
   const list = useMemo(() => {
@@ -413,8 +414,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             </div>
           ))}
 
-          {/* толщина — фильтр (авто из имён товаров раздела) */}
-          {thicks.length > 1 && (
+          {/* толщина — фильтр (только Евро брус, набор 0,35/0,4/0,45) */}
+          {thicks.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '7px 10px', background: '#f4f6f8', borderBottom: '1px solid #e6eaef', overflowX: 'auto', alignItems: 'center' }}>
               <span style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, flexShrink: 0 }}>толщина:</span>
               <button onClick={() => setThick('')} style={{ flexShrink: 0, border: thick === '' ? 'none' : '1.5px solid #cfd6df', background: thick === '' ? DARK : '#fff', color: thick === '' ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: thick === '' ? 800 : 600, whiteSpace: 'nowrap' }}>все</button>
