@@ -371,6 +371,16 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
           {/* цвет */}
           <div style={{ background: '#fff', padding: '9px 10px 10px', borderBottom: '1px solid #e6e2dc', display: 'flex', gap: 9, overflowX: 'auto' }}>
+            {/* «без цвета» — сброс фильтра цвета: показать все товары папки (по умолчанию активно) */}
+            {(() => {
+              const on = color === ''
+              return (
+                <button onClick={() => setColor('')} title="Без фильтра по цвету — показать все" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <span style={{ width: 46, height: 46, borderRadius: 13, background: 'linear-gradient(45deg, transparent 44%, #c1121c 44%, #c1121c 56%, transparent 56%), #fff', boxShadow: on ? `0 0 0 3px ${PRIMARY}, inset 0 0 0 1px #ddd8d0` : '0 0 0 1px #ddd8d0' }} />
+                  <span style={{ fontSize: 10.5, fontWeight: on ? 800 : 600, color: on ? DARK : '#6b645b', whiteSpace: 'nowrap' }}>без цвета</span>
+                </button>
+              )
+            })()}
             {ralOrdered(allColors).map(c => {
               const on = color === c.code
               return (
