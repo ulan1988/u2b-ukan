@@ -79,7 +79,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3500) }
 
   useEffect(() => {
-    fetchRefs().then((r: any) => {
+    fetchRefs(user.orgId).then((r: any) => {   // цены/справочники СВОЕЙ орг (не сессии зрителя-админа)
       setCags((r.contragents || []).filter((c: any) => !c.archived))
       setProducts(r.products || [])
       setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
@@ -117,6 +117,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!names.length) return items
     const p = new URLSearchParams({ names: names.join('|') })
     if (client) p.set('contragentId', client)
+    p.set('orgId', user.orgId)   // розничные цены СВОЕЙ орг (не сессии зрителя)
     const ids = items.map(r => r.productId).filter(Boolean) as string[]
     if (ids.length) p.set('productIds', ids.join(','))
     const map: Record<string, number> = await fetch(`/api/pricing?${p}`).then(r => r.ok ? r.json() : {}).catch(() => ({}))
@@ -124,7 +125,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       const v = (r.productId && map[r.productId]) || map[r.name1c] || 0
       return v > 0 && !r.price ? { ...r, price: v } : r
     })
-  }, [])
+  }, [user.orgId])
 
   // Товары открытой папки: фильтр по цвету (RAL из имени) и поиску.
   const activeFolder = FOLDERS.find(f => f.key === folder) || FOLDERS[0]
