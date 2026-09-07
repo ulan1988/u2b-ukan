@@ -23,6 +23,8 @@ export const sellSchema = z.object({
   qr: z.coerce.number().nonnegative().optional().default(0),
   change: z.coerce.number().nonnegative().optional().default(0),
   changeFrom: z.string().optional().default(''),
+  discountSum: z.coerce.number().nonnegative().optional().default(0),   // скидка по чеку (₸)
+  discountPct: z.coerce.number().nonnegative().optional().default(0),   // скидка по чеку (%), инфо
   positions: z.array(sellPositionSchema).min(1),
 })
 

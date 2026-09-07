@@ -98,6 +98,7 @@ export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(
 export async function sellCheck(body: {
   uid?: string; contactId?: string; sellerId?: string; seller?: string; comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
+  discountSum?: number; discountPct?: number
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
 }) {
   const r = await post('/api/branch/sell', body)

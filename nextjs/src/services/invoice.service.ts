@@ -58,7 +58,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
     // ПРОДАЖА: заказчику ОДНА расходная на все строки (реальный долг). По сквозным строкам
     // склад не трогается (флаг transit у строки), по обычным — списывается.
     const clientLines = withProd.map(p => mkLine(p, Number(p.price) || 0, isTransit(p)))
-    const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: clientLines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false }
+    const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: clientLines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false, discountSum: Number((o as any).discountSum) || 0 }
     mainDoc = await docSvc.createSale(input); numbers.push(mainDoc.number)
 
     // Сквозные строки → приходная(ые) поставщику по costPrice (долг сквозного агента, не наш финанс).

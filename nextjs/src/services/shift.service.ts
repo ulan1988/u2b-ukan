@@ -12,7 +12,7 @@ export async function masterShift(orgId: string, date: string) {
   // Доходы: проданные карточки за день (по дате расходной накладной).
   const incRow = (await sqlClient`
     select coalesce(sum(o.paid_cash),0)::float cash, coalesce(sum(o.paid_kaspi),0)::float kaspi,
-      coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total),0)::float total
+      coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total - coalesce(o.discount_sum,0)),0)::float total
     from orders o
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
     join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id = o.id
@@ -21,7 +21,7 @@ export async function masterShift(orgId: string, date: string) {
   // Чеки дня: карточка + кто пробил (seller), покупатель, номер накладной, состав (для журнала кассы).
   const cards = await sqlClient`
     select o.id, o.payment, o.seller, o.paid_cash::float "paidCash", o.paid_kaspi::float "paidKaspi", o.paid_qr::float "paidQr",
-      o.change_sum::float "changeSum", t.total::float total, t.cnt::int cnt, c.name customer, d.number "docNumber", o.updated_at ts
+      o.change_sum::float "changeSum", (t.total - coalesce(o.discount_sum,0))::float total, o.discount_sum::float "discountSum", t.cnt::int cnt, c.name customer, d.number "docNumber", o.updated_at ts
     from orders o
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
     join (select card_id, sum(qty*price) total, count(*) cnt from order_positions group by card_id) t on t.card_id = o.id
@@ -133,7 +133,7 @@ export async function masterShift(orgId: string, date: string) {
 export async function cashReport(orgId: string, from: string, to: string) {
   const sales = await sqlClient`
     select d.date::text as "day", coalesce(sum(o.paid_cash),0)::float cash, coalesce(sum(o.paid_kaspi),0)::float kaspi,
-      coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total),0)::float sold, count(*)::int cnt
+      coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total - coalesce(o.discount_sum,0)),0)::float sold, count(*)::int cnt
     from orders o
     join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
     join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id=o.id

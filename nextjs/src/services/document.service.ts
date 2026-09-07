@@ -156,16 +156,21 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     // если need>0 — продали больше, чем закуплено; остаток без связи (в отчёте — по priceIn).
   }
 
+  // Скидка по чеку (касса): итог = Σпозиций − скидка. % — инфо, сумма (discountSum) — источник истины.
+  const disc = Math.max(0, Math.min(Number((input as any).discountSum) || 0, total))
+  const netTotal = total - disc
   const doc = {
     id: docId, orgId: input.orgId, type: 'sale', operation: 'shipment',
     number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
     contragentId: input.contragentId, warehouseId: input.warehouseId,
-    date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
+    date, status: 'posted', total: String(netTotal),
+    discountSum: String(disc), discountPct: String(disc > 0 && total > 0 ? Math.round(disc / total * 10000) / 100 : 0),
+    comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves, links)
-  return { id: docId, number: doc.number, total }
+  return { id: docId, number: doc.number, total: netTotal }
 }
 
 export const listSales = (orgId: string) => docRepo.listInvoices(orgId, 'sale')

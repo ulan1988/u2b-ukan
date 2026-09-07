@@ -90,7 +90,10 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
     if (!pr.ok) return { ok: false as const, error: pr.error }
   }
   const { lineAmount } = await import('../lib/lineAmount')
-  const total = positions.reduce((s: number, x: any) => s + lineAmount({ name: x.name1c || x.oral, qty: x.qty, price: x.price, widthCm: x.widthCm }), 0)
+  const subtotal = positions.reduce((s: number, x: any) => s + lineAmount({ name: x.name1c || x.oral, qty: x.qty, price: x.price, widthCm: x.widthCm }), 0)
+  // Скидка по чеку: итог = Σпозиций − скидка (хранится на заказе, попадает в накладную).
+  const disc = Math.max(0, Math.min(Number((order as any).discountSum) || 0, subtotal))
+  const total = subtotal - disc
   const cash = Math.max(0, Number(p.cash) || 0), kaspi = Math.max(0, Number(p.kaspi) || 0), qr = Math.max(0, Number(p.qr) || 0)
   const debt = Math.max(0, total - cash - kaspi - qr)
 
@@ -201,8 +204,8 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   const wh = await refsRepo.centralWarehouse(order.orgId)
   if (!wh) return { ok: false as const, error: 'Склад филиала не найден' }
 
-  // Текущий долг по чеку: всего − оплачено − уже применённый кредит возвратов (возвращено − возвращено налом).
-  const total = positions.reduce((s: number, p: any) => s + amtOf(p, Number(p.qty)), 0)
+  // Текущий долг по чеку: всего(−скидка) − оплачено − уже применённый кредит возвратов.
+  const total = Math.max(0, positions.reduce((s: number, p: any) => s + amtOf(p, Number(p.qty)), 0) - (Number((order as any).discountSum) || 0))
   const paid = (Number(order.paidCash) || 0) + (Number(order.paidKaspi) || 0) + (Number(order.paidQr) || 0)
   const prevRet = Number((await sqlClient`
     select coalesce(sum(total),0)::float s from documents
@@ -257,6 +260,7 @@ export interface SellInput {
   seller?: string          // его имя на момент чека
   comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
+  discountSum?: number; discountPct?: number     // скидка по чеку (₸ и/или % — инфо)
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
 }
 
@@ -284,7 +288,9 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
     comment: i.comment || 'Касса магазина', positions,
   } as any, actor)
   // Продавец на чеке: id — для отчёта «кто сколько продал», имя — чтобы показывать без join.
-  if (seller || i.sellerId) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null } as any)
+  // Скидка по чеку — на заказ (payCard/накладная её учтут).
+  const disc = Math.max(0, Number(i.discountSum) || 0), dpct = Math.max(0, Number(i.discountPct) || 0)
+  if (seller || i.sellerId || disc || dpct) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null, discountSum: String(disc), discountPct: String(dpct) } as any)
 
   const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
   if (!res.ok) return res

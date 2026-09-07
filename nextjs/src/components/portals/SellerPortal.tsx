@@ -29,8 +29,9 @@ const localDay = (d?: any) => {
   const x = d ? new Date(d) : new Date()
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
 }
-// Сумма чека из позиций (в orders нет поля total — считаем по строкам).
-const cardTotal = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
+// Сумма чека из позиций (в orders нет поля total — считаем по строкам), минус скидка по чеку.
+const cardSubtotal = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
+const cardTotal = (o: any) => Math.max(0, cardSubtotal(o) - (Number(o.discountSum) || 0))
 
 // Рабочие папки продавца — реальные категории базы (Водосток 87, Евро брус 72,
 // Комплектующие 35, Металлочерепица 48). «Комплектующие» — базы «Без цвета»:
@@ -54,6 +55,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
   const [payOpen, setPayOpen] = useState(false)
+  const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })   // скидка по чеку: ₸ или %
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
@@ -239,8 +241,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   }
 
   const total = rows.reduce((s, r) => s + lineAmount({ name: r.name1c, qty: r.qty, price: r.price, widthCm: r.widthCm }), 0)
+  // Скидка по чеку: ₸ напрямую или % от суммы. Итог к оплате = сумма − скидка.
+  const discPctN = disc.mode === 'pct' ? num(disc.val) : 0
+  const discSum = Math.min(total, Math.max(0, disc.mode === 'pct' ? Math.round(total * discPctN / 100) : num(disc.val)))
+  const net = Math.max(0, total - discSum)
   const cashN = num(pay.cash), kaspiN = num(pay.kaspi), qrN = num(pay.qr)
-  const debtN = Math.max(0, total - cashN - kaspiN - qrN)
+  const debtN = Math.max(0, net - cashN - kaspiN - qrN)
   const client = cags.find(c => c.id === contactId)
   const noPrice = rows.some(r => !r.price)
 
@@ -251,8 +257,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!rows.length) return
     if (noPrice) { showMsg('⚠ Есть позиции без цены — впишите цену в чеке'); return }
     await doSell({
-      cash: how === 'cash' ? total : 0,
-      kaspi: how === 'kaspi' ? total : 0,
+      cash: how === 'cash' ? net : 0,
+      kaspi: how === 'kaspi' ? net : 0,
       qr: 0, change: 0, changeFrom: '',
     })
   }
@@ -265,12 +271,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined,
       sellerId: seller?.id, seller: seller?.name,
+      discountSum: discSum, discountPct: discPctN,
       ...body,
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
     })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось пробить чек')); return }
-    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setContactId(''); setPayOpen(false)
+    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
     await load()
     showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
   }
@@ -310,7 +317,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
 
   const inp = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const, width: '100%' }
-  const checkH = rows.length ? (payOpen ? 330 : 214) : 0
+  const checkH = rows.length ? (payOpen ? 378 : 262) : 0
 
   // Экран выбора продавца: показывается при первом заходе с этого телефона и по кнопке «сменить».
   if (sellerReady && (!seller || pickSeller)) {
@@ -539,10 +546,23 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               })}
             </div>
 
+            {/* скидка по чеку: ₸ или % */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 5 }}>
+              <span style={{ fontSize: 12.5, color: '#5f5952' }}>Скидка</span>
+              <div style={{ display: 'flex', border: '1.5px solid #e6e2dc', borderRadius: 9, overflow: 'hidden', flexShrink: 0 }}>
+                {(['sum', 'pct'] as const).map(mo => <button key={mo} onClick={() => setDisc(d => ({ ...d, mode: mo }))} style={{ border: 'none', background: disc.mode === mo ? PRIMARY : '#fff', color: disc.mode === mo ? '#fff' : '#6b645b', padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 800 }}>{mo === 'sum' ? '₸' : '%'}</button>)}
+              </div>
+              <input value={disc.val} inputMode="decimal" placeholder="0" onChange={e => setDisc(d => ({ ...d, val: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ ...inp, width: 84, fontSize: 14 }} />
+              {discSum > 0 && <span style={{ marginLeft: 'auto', fontSize: 13, color: '#c0532a', fontWeight: 800 }}>−{money(discSum)} ₸</span>}
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 5, borderTop: '1px solid #f1ede8' }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ИТОГО</span>
               <span style={{ fontSize: 12, color: '#a09889' }}>{rows.length} поз.</span>
-              <span style={{ marginLeft: 'auto', fontSize: 19, fontWeight: 800 }}>{money(total)} ₸</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                {discSum > 0 && <span style={{ fontSize: 13.5, color: '#a09889', textDecoration: 'line-through', fontWeight: 600 }}>{money(total)}</span>}
+                <span style={{ fontSize: 19, fontWeight: 800 }}>{money(net)} ₸</span>
+              </span>
             </div>
 
             {payOpen ? (
@@ -559,7 +579,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 </div>
                 <div style={{ display: 'flex', gap: 7 }}>
                   <button onClick={() => setPayOpen(false)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#6b645b', borderRadius: 11, padding: '13px 14px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>↑ Свернуть</button>
-                  <button disabled={busy} onClick={() => doSell()} style={{ flex: 1, border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '13px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `💵 Продать · ${money(total)} ₸`}</button>
+                  <button disabled={busy} onClick={() => doSell()} style={{ flex: 1, border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '13px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `💵 Продать · ${money(net)} ₸`}</button>
                 </div>
               </>
             ) : (
@@ -709,6 +729,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
               <div style={{ padding: 14, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <div style={{ display: 'flex', fontSize: 13, color: '#5f5952' }}><span>Оплата</span><span style={{ marginLeft: 'auto' }}>{[paidCash && `нал ${money(paidCash)}`, paidKaspi && `каспи ${money(paidKaspi)}`, paidQr && `QR ${money(paidQr)}`].filter(Boolean).join(' · ') || '—'}</span></div>
+                {Number(o.discountSum) > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Скидка</span><span style={{ marginLeft: 'auto' }}>−{money(Number(o.discountSum))} ₸{Number(o.discountPct) > 0 ? ` (${Number(o.discountPct)}%)` : ''}</span></div>}
                 {debt > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Долг</span><span style={{ marginLeft: 'auto' }}>{money(debt)} ₸</span></div>}
                 {Number(o.changeSum) > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#5f5952' }}><span>Сдача</span><span style={{ marginLeft: 'auto' }}>{money(Number(o.changeSum))} ₸</span></div>}
                 {retSum > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Возвращено</span><span style={{ marginLeft: 'auto' }}>{money(retSum)} ₸</span></div>}

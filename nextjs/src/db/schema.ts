@@ -329,6 +329,8 @@ export const orders = pgTable('orders', {
   paidQr: money('paid_qr').notNull().default('0'),        // получено QR/переводом (→ Банковский счёт)
   changeSum: money('change_sum').notNull().default('0'),  // выдана сдача
   changeFrom: text('change_from').notNull().default(''),  // сдача с чего: '' | cash | kaspi
+  discountSum: money('discount_sum').notNull().default('0'), // скидка по чеку (₸); итог = Σпозиций − скидка
+  discountPct: money('discount_pct').notNull().default('0'), // скидка по чеку (%), инфо (сумма — в discountSum)
   sellerId: uuid('seller_id'),                            // → employees.id: кто из продавцов пробил чек (касса магазина)
   seller: text('seller').notNull().default(''),           // имя продавца на момент чека (без join)
   trackingLink: text('tracking_link').notNull().default(''),
