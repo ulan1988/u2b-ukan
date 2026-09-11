@@ -108,11 +108,14 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const title = NAV.find(n => n.key === screen)?.label || ''
 
   // Меню под выбранную орг: у ФИЛИАЛА (листогиб/магазин, kind ≠ hq) свои кабинеты (касса/стол
-  // мастера) — прячем головные экраны потока заявок, чтобы не попадались на глаз лишними.
+  // мастера) — прячем головные экраны потока заявок. У МАГАЗИНА (seller) вдобавок нет
+  // производства/материала/проектов — прячем и их (не нужны, не грузят данные).
   const selKind = orgs.find(o => o.id === orgId)?.kind
   const isBranchOrg = !!selKind && selKind !== 'hq'
+  const isSellerOrg = selKind === 'seller'
   const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
-  const nav = isBranchOrg ? NAV.filter(n => !BRANCH_HIDE.includes(n.key)) : NAV
+  const SELLER_HIDE = ['production', 'material', 'projects']
+  const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)))
 
   const orgName = orgs.find(o => o.id === orgId)?.name || ''
   const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
