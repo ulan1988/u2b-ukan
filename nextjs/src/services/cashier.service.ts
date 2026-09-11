@@ -268,13 +268,25 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   if (!i.positions?.length) return { ok: false as const, error: 'Пустой чек' }
   const { ensureProduct } = await import('./producer.service')
   const { createOrder } = await import('./order.service')
+  // Магазин (seller) НЕ плодит новые SKU в общей номенклатуре — только берёт существующие
+  // (продажа идёт из каталога, где товар уже есть). Производитель может заводить (изделия).
+  const orgKind = await orgKindOf(orgId)
+  const lookupOnly = orgKind === 'seller'
+  const findByName = async (name: string): Promise<string | undefined> => {
+    const { db } = await import('../lib/db')
+    const { products } = await import('../db/schema')
+    const { sql } = await import('drizzle-orm')
+    const [ex] = await db.select({ id: products.id }).from(products).where(sql`lower(trim(${products.name})) = ${name.toLowerCase()}`).limit(1)
+    return ex?.id
+  }
 
-  // Товар из справочника: по имени; нет такого — заводим (иначе позиция выпадет из накладной).
+  // Товар из справочника: по имени. Производитель — заводит, если нет; магазин — только ищет.
   const positions = [] as any[]
   for (const p of i.positions) {
     const name = (p.name1c || '').trim()
+    const pid = p.productId || (lookupOnly ? await findByName(name) : await ensureProduct(name))
     positions.push({
-      productId: p.productId || await ensureProduct(name),
+      productId: pid,
       name1c: name, oral: p.oral || name,
       qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0,
       widthCm: p.widthCm != null ? Number(p.widthCm) : undefined,
