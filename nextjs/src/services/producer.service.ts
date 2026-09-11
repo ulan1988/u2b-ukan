@@ -112,29 +112,34 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   const sheetCache = new Map<string, SheetInfo | null>()
   let created = 0, skipped = 0
   for (const p of targets) {
-    // Разрыв 6: имя изделия через единую формулу (иначе на складе появлялось безымянное «Изделие»).
-    // Нормализуем «вид+цвет+см» из имени позиции + её ширины — товар создаётся с полной идентичностью.
     const raw = (p.name1c || p.oral || '').trim()
     const nm = itemName({ name: raw, color: ralOf(raw), cm: p.widthCm })
-    // «Изделие» — полноценный SKU только при наличии И РАЛ, И см («Изделие 9003 15 см»).
-    // Без цвета или без длины это ШАБЛОН (umbrella): лист выбрать нельзя, товар-заглушку не плодим.
-    // (Профили/углы имеют стандартный см из типа — на них требование см не распространяем.)
     const izd = isIzdelie(nm)
     const hasCm = Number(p.widthCm) > 0 || /\d+\s*см/i.test(nm)
+    // Изделие требует РАЛ и см (иначе лист не выбрать) — без них пропускаем.
     if (izd && (!ralOf(nm) || !hasCm)) { skipped++; continue }
-    let productId = p.productId as string | null
-    if (!productId) {
-      productId = await ensureProduct(nm)
-      await repo.updatePosition(p.id, { productId })
-      created++
-    }
     const width = p.widthCm != null ? Number(p.widthCm) : 0
-    // Себестоимость изделия = доля листа по ширине: цена_целого_листа(цвет) × ширина / 125.
+    // Себестоимость = доля листа по ширине: цена_целого_листа(цвет) × ширина / 125.
     const color = ralOf(nm)
     if (!sheetCache.has(color)) sheetCache.set(color, await sheetForColor(order.orgId, color))
     const sheet = sheetCache.get(color) || null
     const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
-    await setProductCost(productId, cost)   // в products.price_in — по нему считается рентабельность
+
+    // ИЗДЕЛИЕ — под единый товар «Изделие» (umbrella), БЕЗ per-cm SKU: цвет/см/цена/себестоимость
+    // живут в строке (номенклатура остаётся чистой схемой). Профили/прочее — товар по имени (как было).
+    let productId = p.productId as string | null
+    if (izd) {
+      productId = await ensureProduct('Изделие')
+    } else if (!productId) {
+      productId = await ensureProduct(nm)
+      created++
+    }
+    const patch: any = {}
+    if (productId !== p.productId) patch.productId = productId
+    if (cost > 0) patch.costPrice = String(Math.round(cost))   // себестоимость строки (доля листа)
+    if (Object.keys(patch).length) await repo.updatePosition(p.id, patch)
+    if (!izd) await setProductCost(productId as string, cost)  // профилям — в price_in товара; umbrella не трогаем
+
     outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: width || undefined })
     made.push(p)
   }

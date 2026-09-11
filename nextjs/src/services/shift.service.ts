@@ -96,7 +96,7 @@ export async function masterShift(orgId: string, date: string) {
   // ── ОТЧЁТ ДНЯ (как Excel «Отчет дня») ──────────────────────────────────────────
   // Наценка дня = продано − себестоимость (price_in проданных позиций).
   const costRow = (await sqlClient`
-    select coalesce(sum(op.qty*coalesce(p.price_in,0)),0)::float cost
+    select coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), p.price_in::float, 0)),0)::float cost
     from orders o join documents d on d.id=o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
     join order_positions op on op.card_id=o.id
     left join products p on p.id=op.product_id
@@ -158,7 +158,7 @@ export async function cashReport(orgId: string, from: string, to: string) {
   ` as unknown as Array<any>
   // Себестоимость по дням (для маржи = отпуск − себестоимость, price_in товара).
   const costs = await sqlClient`
-    select d.date::text as "day", coalesce(sum(op.qty * coalesce(p.price_in,0)),0)::float cost
+    select d.date::text as "day", coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), p.price_in::float, 0)),0)::float cost
     from orders o
     join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
     join order_positions op on op.card_id=o.id
