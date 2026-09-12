@@ -202,6 +202,26 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           )
         })()}
 
+        {/* ДОЛГИ (дебиторка) — непогашенные чеки орг (не по дню) */}
+        {(data.debts || []).length > 0 && (
+          <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden', borderLeft: `4px solid ${COLORS.primaryDark}` }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px 10px' }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.primaryDark, letterSpacing: '.04em' }}>💳 ДОЛГИ</span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{(data.debts || []).length} чек.</span>
+              <b style={{ marginLeft: 'auto', fontSize: 16, color: COLORS.primaryDark }}>{m(data.debtTotal)} ₸</b>
+            </div>
+            {(data.debts || []).map((x: any) => (
+              <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{x.customer || 'Розница'}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: 12.5, color: '#2e8a5e', width: 150 }}>{x.docNumber || x.id}</span>
+                <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 100 }}>{x.seller ? `👤 ${x.seller}` : '—'}</span>
+                <b style={{ fontSize: 14.5, width: 110, textAlign: 'right', color: COLORS.primaryDark }}>{m(x.debt)} ₸</b>
+              </div>
+            ))}
+            <div style={{ padding: '6px 16px 10px', fontSize: 11.5, color: COLORS.textLight }}>Погашение долгов — в кассе продавца (вкладка «Долги»).</div>
+          </div>
+        )}
+
         {/* Доходы */}
         <div style={{ fontSize: 13, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ (продажи)</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>

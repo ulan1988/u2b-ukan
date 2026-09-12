@@ -119,8 +119,23 @@ export async function masterShift(orgId: string, date: string) {
   const dayResult = total - zpTotal - shopExp           // итого дня = продажа − ЗП − расходы
   const report = { sold: total, margin, marginPct: total > 0 ? margin / total : 0, cash, kaspi, qr, debt, sellers: reportSellers, zpTotal, shopExp, result: dayResult }
 
+  // ── ДОЛГИ (дебиторка): непогашенные чеки орг = итог − скидка − всего оплачено > 0 (не по дню) ──
+  const debts = await sqlClient`
+    select o.id, coalesce(c.name, o.from_name, 'Розница') customer, d.number "docNumber", o.updated_at ts, o.seller,
+      (t.total - coalesce(o.discount_sum,0) - coalesce(pin.paid,0))::float debt
+    from orders o
+    join documents d on d.id=o.linked_doc_id and d.status<>'cancelled'
+    join (select card_id, sum(case when lower(coalesce(name1c,oral)) like 'изделие%' and coalesce(width_cm,0)>0 then qty*width_cm*price else qty*price end) total from order_positions group by card_id) t on t.card_id=o.id
+    left join (select document_id did, coalesce(sum(amount),0) paid from payments where direction='in' group by document_id) pin on pin.did=o.linked_doc_id
+    left join contragents c on c.id=o.contact_id
+    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+      and (t.total - coalesce(o.discount_sum,0) - coalesce(pin.paid,0)) > 0.5
+    order by o.updated_at desc
+  ` as unknown as Array<any>
+  const debtTotal = debts.reduce((a: number, x: any) => a + num(x.debt), 0)
+
   return {
-    date, income, check, cards, staff, expenseArticles, report,
+    date, income, check, cards, staff, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
