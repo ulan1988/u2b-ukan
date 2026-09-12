@@ -12,14 +12,14 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, returnSale } from '@/lib/api/orders'
+import { branchOrders, sellCheck, returnSale, payDebt } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
 
 const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e'
-type Tab = 'cash' | 'checks'
+type Tab = 'cash' | 'checks' | 'debts'
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
@@ -38,6 +38,8 @@ const localDay = (d?: any) => {
 // Сумма чека из позиций (в orders нет поля total — считаем по строкам), минус скидка по чеку.
 const cardSubtotal = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
 const cardTotal = (o: any) => Math.max(0, cardSubtotal(o) - (Number(o.discountSum) || 0))
+// Остаток долга по чеку = итог(net) − всего оплачено (продажа + погашения).
+const checkDebt = (o: any) => Math.max(0, cardTotal(o) - (Number(o.paidTotal) || 0))
 
 // Рабочие папки продавца — реальные категории базы (Водосток 87, Евро брус 72,
 // Комплектующие 35, Металлочерепица 48). «Комплектующие» — базы «Без цвета»:
@@ -72,6 +74,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
   const [retAcc, setRetAcc] = useState('')
+  const [debtAmt, setDebtAmt] = useState<Record<string, string>>({})   // сумма погашения по чеку
+  const [debtAcc, setDebtAcc] = useState('')                            // счёт прихода для погашения
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
@@ -102,7 +106,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     fetchRefs(user.orgId).then((r: any) => {   // цены/справочники СВОЕЙ орг (не сессии зрителя-админа)
       setCags((r.contragents || []).filter((c: any) => !c.archived))
       setProducts(r.products || [])
-      setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
+      const accs = (r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId)
+      setAccounts(accs); setDebtAcc(prev => prev || accs[0]?.id || '')
     })
   }, [user.orgId])
 
@@ -314,6 +319,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!rows.length) { showMsg('⚠ Чек пустой'); return }
     if (noPrice) { showMsg('⚠ Есть позиции без цены'); return }
     const body = p || { cash: cashN, kaspi: kaspiN, qr: qrN, change: num(pay.change), changeFrom: pay.changeFrom }
+    // Долг — только на выбранного покупателя (Розница в долг не оформляем: неизвестно кто должен).
+    const willDebt = net - (Number(body.cash) || 0) - (Number(body.kaspi) || 0) - (Number(body.qr) || 0)
+    if (willDebt > 0.5 && !contactId) { setShowClient(true); showMsg('⚠ Для продажи в долг выберите покупателя'); return }
     setBusy(true)
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined,
@@ -357,7 +365,23 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
   }
 
+  // Погашение долга по чеку (сумма + счёт прихода).
+  async function doRepay(o: any) {
+    const debt = checkDebt(o)
+    const amt = num(debtAmt[o.id] || '') || debt   // пусто → весь остаток
+    if (!(amt > 0)) { showMsg('⚠ Укажите сумму'); return }
+    if (!debtAcc) { showMsg('⚠ Выберите счёт'); return }
+    setBusy(true)
+    const r = await payDebt({ uid: user.id, cardId: o.id, amount: amt, accountId: debtAcc })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setDebtAmt(m => { const n = { ...m }; delete n[o.id]; return n }); await load()
+    showMsg(`✓ Погашено ${money(r.paid || amt)} ₸${r.debtLeft ? ` · остаток долга ${money(r.debtLeft)}` : ''}`)
+  }
+
   const sold = checks.filter((o: any) => o.prodPhase === 'sold' || o.linkedDocId)
+  const debtChecks = sold.filter((o: any) => checkDebt(o) > 0.5).sort((a: any, b: any) => new Date(b.delivered || b.createdAt).getTime() - new Date(a.delivered || a.createdAt).getTime())
+  const debtTotal = debtChecks.reduce((s: number, o: any) => s + checkDebt(o), 0)
   const soldDay = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === checksDay)
   const daySum = soldDay.reduce((s: number, o: any) => s + cardTotal(o), 0)
   const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
@@ -583,6 +607,42 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               })}
             </div>
           )}
+
+          {tab === 'debts' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div><div style={{ fontSize: 15, fontWeight: 800 }}>💳 Долги</div><div style={{ fontSize: 12, color: '#a09889' }}>{debtChecks.length} чек. с долгом</div></div>
+                <div style={{ marginLeft: 'auto', textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>всего</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debtTotal)} ₸</div></div>
+              </div>
+              {/* счёт прихода для погашения */}
+              {debtChecks.length > 0 && (
+                <div style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12.5, color: '#5f5952', fontWeight: 700 }}>Счёт прихода:</span>
+                  {accounts.map((a: any) => { const on = (debtAcc || accounts[0]?.id) === a.id; return <button key={a.id} onClick={() => setDebtAcc(a.id)} style={{ border: on ? 'none' : '1.5px solid #e6e2dc', background: on ? DARK : '#fff', color: on ? '#fff' : '#4a443c', borderRadius: 9, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}>{a.name}</button> })}
+                </div>
+              )}
+              {debtChecks.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов нет 🎉</div>}
+              {debtChecks.map((o: any) => {
+                const debt = checkDebt(o)
+                const time = new Date(o.delivered || o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit' })
+                return (
+                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{o.toName || o.contactName || o.fromName || 'Розница'}</div>
+                        <div style={{ fontSize: 11.5, color: '#a09889', fontFamily: 'monospace' }}>№ {o.docNumber || o.id} · {time}{o.seller ? ` · ${o.seller}` : ''}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>долг</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debt)} ₸</div></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 7, marginTop: 9 }}>
+                      <input value={debtAmt[o.id] ?? ''} inputMode="decimal" placeholder={`${money(debt)} (всё)`} onChange={e => setDebtAmt(m => ({ ...m, [o.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ ...inp, flex: 1, textAlign: 'left', fontWeight: 700 }} />
+                      <button disabled={busy} onClick={() => doRepay(o)} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 10, padding: '10px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -670,6 +730,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         {([
           { key: 'cash' as Tab, icon: '💵', label: 'Касса' },
           { key: 'checks' as Tab, icon: '🧾', label: 'Чеки' },
+          { key: 'debts' as Tab, icon: '💳', label: 'Долги' },
         ]).map(({ key, icon, label }) => {
           const active = tab === key
           return (
@@ -801,13 +862,21 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               <div style={{ padding: 14, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <div style={{ display: 'flex', fontSize: 13, color: '#5f5952' }}><span>Оплата</span><span style={{ marginLeft: 'auto' }}>{[paidCash && `нал ${money(paidCash)}`, paidKaspi && `каспи ${money(paidKaspi)}`, paidQr && `QR ${money(paidQr)}`].filter(Boolean).join(' · ') || '—'}</span></div>
                 {Number(o.discountSum) > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Скидка</span><span style={{ marginLeft: 'auto' }}>−{money(Number(o.discountSum))} ₸{Number(o.discountPct) > 0 ? ` (${Number(o.discountPct)}%)` : ''}</span></div>}
-                {debt > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Долг</span><span style={{ marginLeft: 'auto' }}>{money(debt)} ₸</span></div>}
+                {checkDebt(o) > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Долг (остаток)</span><span style={{ marginLeft: 'auto' }}>{money(checkDebt(o))} ₸</span></div>}
                 {Number(o.changeSum) > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#5f5952' }}><span>Сдача</span><span style={{ marginLeft: 'auto' }}>{money(Number(o.changeSum))} ₸</span></div>}
                 {retSum > 0 && <div style={{ display: 'flex', fontSize: 13, color: '#c0532a', fontWeight: 700 }}><span>Возвращено</span><span style={{ marginLeft: 'auto' }}>{money(retSum)} ₸</span></div>}
                 <div style={{ display: 'flex', alignItems: 'center', paddingTop: 6, borderTop: '1px solid #f1ede8' }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ИТОГО · {poss.length} поз.</span>
                   <span style={{ marginLeft: 'auto', fontSize: 19, fontWeight: 800 }}>{money(t)} ₸</span>
                 </div>
+                {/* Погасить долг — прямо в чеке (приход на счёт) */}
+                {checkDebt(o) > 0 && (
+                  <div style={{ display: 'flex', gap: 7, marginTop: 6, alignItems: 'center' }}>
+                    <select value={debtAcc || accounts[0]?.id || ''} onChange={e => setDebtAcc(e.target.value)} style={{ ...inp, width: 130, textAlign: 'left', fontSize: 13 }}>{accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+                    <input value={debtAmt[o.id] ?? ''} inputMode="decimal" placeholder={`${money(checkDebt(o))} (всё)`} onChange={e => setDebtAmt(m => ({ ...m, [o.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ ...inp, flex: 1, textAlign: 'left', fontWeight: 700 }} />
+                    <button disabled={busy} onClick={async () => { await doRepay(o); setViewChk(null) }} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '11px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
+                  </div>
+                )}
                 <button onClick={() => { const c = viewChk; setViewChk(null); openReturn(c) }} style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>↩ Возврат по чеку</button>
               </div>
             </div>

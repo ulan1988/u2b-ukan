@@ -33,6 +33,11 @@ export async function unpostSale(cardId: string) {
   const r = await send(`/api/orders/${cardId}/pay`, 'DELETE')
   return { ok: r.ok, error: r.error as string | undefined }
 }
+// Погашение долга по чеку (касса магазина): сумма + счёт прихода.
+export async function payDebt(body: { uid?: string; cardId: string; amount: number; accountId: string }) {
+  const r = await post('/api/branch/debt', body)
+  return { ok: r.ok, error: r.error as string | undefined, paid: r.data?.paid as number | undefined, debtLeft: r.data?.debtLeft as number | undefined }
+}
 // Возврат по чеку (касса магазина): позиции с кол-вом (пусто → весь чек) + счёт возврата.
 export async function returnSale(body: { uid?: string; cardId: string; items?: { posId: string; qty: number }[]; accountId: string }) {
   const r = await post('/api/branch/return', body)

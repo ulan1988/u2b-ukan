@@ -234,6 +234,29 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   return { ok: true as const, number: ret.number, returned: R, refund, debtCleared, fullyReturned }
 }
 
+// Погашение долга по чеку (касса магазина): приход денег на счёт, гасит дебиторку заказчика.
+// Сумма клампится к текущему остатку долга (итог − уже оплачено). Пишется в payments (in),
+// привязка к документу чека — так остаток долга (net − Σ payments in) уменьшается.
+export async function payDebt(cardId: string, amount: number, accountId: string, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Чек не найден' }
+  if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
+  if (!order.contactId) return { ok: false as const, error: 'У чека нет заказчика' }
+  if (!accountId) return { ok: false as const, error: 'Выберите счёт' }
+  const positions = await repo.positionsByCard(cardId)
+  const { lineAmount } = await import('../lib/lineAmount')
+  const subtotal = positions.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
+  const net = Math.max(0, subtotal - (Number((order as any).discountSum) || 0))
+  const { sqlClient } = await import('../lib/db')
+  const paid = Number((await sqlClient`select coalesce(sum(amount),0)::float s from payments where direction='in' and document_id=${order.linkedDocId}` as unknown as Array<any>)[0]?.s) || 0
+  const debt = Math.max(0, net - paid)
+  const amt = Math.min(Math.max(0, Number(amount) || 0), debt)
+  if (!(amt > 0)) return { ok: false as const, error: debt <= 0 ? 'Долга нет' : 'Укажите сумму' }
+  await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: today(), cashAccountId: accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
+  await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(amt)} ₸ (остаток ${Math.round(debt - amt)})`, userName: actor?.name || 'Система' })
+  return { ok: true as const, paid: amt, debtLeft: Math.max(0, debt - amt) }
+}
+
 // ── Касса продавца (филиал-магазин, напр. «Магазин Кристалл») ────────────────────────────
 // Продавец с телефона набирает товар из каталога (NomPicker) и сразу пробивает чек: одна
 // кнопка = карточка-продажа в книге филиала + проведение расходной (склад филиала −) + оплаты.

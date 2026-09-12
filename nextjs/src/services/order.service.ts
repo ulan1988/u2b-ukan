@@ -159,9 +159,12 @@ async function withPositions(rows: any[]) {
   const { sqlClient } = await import('../lib/db')
   const docIds = rows.map(r => r.linkedDocId).filter(Boolean) as string[]
   const docNum: Record<string, string> = {}
+  const paidByDoc: Record<string, number> = {}   // всего оплачено по чеку (продажа + погашения долга)
   if (docIds.length) {
     const dn = await sqlClient`select id, number from documents where id = any(${docIds})` as unknown as Array<any>
     for (const d of dn) docNum[d.id] = d.number
+    const pp = await sqlClient`select document_id did, coalesce(sum(amount),0)::float s from payments where direction='in' and document_id = any(${docIds}) group by document_id` as unknown as Array<any>
+    for (const r of pp) paidByDoc[r.did] = Number(r.s) || 0
   }
   const cardIds = rows.map(r => r.id)
   const retSum: Record<string, number> = {}
@@ -184,6 +187,7 @@ async function withPositions(rows: any[]) {
     ...o,
     positions: byCard[o.id] || [],
     docNumber: o.linkedDocId ? (docNum[o.linkedDocId] || '') : '',
+    paidTotal: o.linkedDocId ? (paidByDoc[o.linkedDocId] || 0) : 0,   // всего оплачено (для остатка долга)
     returnedSum: retSum[o.id] || 0,
     returnedByPos: retByPos[o.id] || {},
     // Пункт назначения: закуп → Центр-Склад, продажа → клиент-получатель.
