@@ -237,24 +237,33 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
 // Погашение долга по чеку (касса магазина): приход денег на счёт, гасит дебиторку заказчика.
 // Сумма клампится к текущему остатку долга (итог − уже оплачено). Пишется в payments (in),
 // привязка к документу чека — так остаток долга (net − Σ payments in) уменьшается.
-export async function payDebt(cardId: string, amount: number, accountId: string, actor?: Session | null) {
+// splits — разбивка погашения по счетам (смешанная оплата): [{accountId, amount}]. Итог клампится
+// к остатку долга (лишнее по порядку не пишется). Каждый счёт — отдельный приход (payments in).
+export async function payDebt(cardId: string, splits: { accountId: string; amount: number }[], actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Чек не найден' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
   if (!order.contactId) return { ok: false as const, error: 'У чека нет заказчика' }
-  if (!accountId) return { ok: false as const, error: 'Выберите счёт' }
+  const valid = (splits || []).filter(s => s.accountId && Number(s.amount) > 0)
+  if (!valid.length) return { ok: false as const, error: 'Укажите счёт и сумму' }
   const positions = await repo.positionsByCard(cardId)
   const { lineAmount } = await import('../lib/lineAmount')
   const subtotal = positions.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
   const net = Math.max(0, subtotal - (Number((order as any).discountSum) || 0))
   const { sqlClient } = await import('../lib/db')
-  const paid = Number((await sqlClient`select coalesce(sum(amount),0)::float s from payments where direction='in' and document_id=${order.linkedDocId}` as unknown as Array<any>)[0]?.s) || 0
-  const debt = Math.max(0, net - paid)
-  const amt = Math.min(Math.max(0, Number(amount) || 0), debt)
-  if (!(amt > 0)) return { ok: false as const, error: debt <= 0 ? 'Долга нет' : 'Укажите сумму' }
-  await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: today(), cashAccountId: accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
-  await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(amt)} ₸ (остаток ${Math.round(debt - amt)})`, userName: actor?.name || 'Система' })
-  return { ok: true as const, paid: amt, debtLeft: Math.max(0, debt - amt) }
+  const paidBefore = Number((await sqlClient`select coalesce(sum(amount),0)::float s from payments where direction='in' and document_id=${order.linkedDocId}` as unknown as Array<any>)[0]?.s) || 0
+  const debt = Math.max(0, net - paidBefore)
+  if (debt <= 0) return { ok: false as const, error: 'Долга нет' }
+  let remaining = debt, paidNow = 0
+  for (const s of valid) {
+    if (remaining <= 0.0000001) break
+    const amt = Math.min(Math.max(0, Number(s.amount) || 0), remaining)
+    if (amt <= 0) continue
+    await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: today(), cashAccountId: s.accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
+    remaining -= amt; paidNow += amt
+  }
+  await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(paidNow)} ₸ (остаток ${Math.round(debt - paidNow)})`, userName: actor?.name || 'Система' })
+  return { ok: true as const, paid: paidNow, debtLeft: Math.max(0, debt - paidNow) }
 }
 
 // ── Касса продавца (филиал-магазин, напр. «Магазин Кристалл») ────────────────────────────

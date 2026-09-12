@@ -74,8 +74,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
   const [retAcc, setRetAcc] = useState('')
-  const [debtAmt, setDebtAmt] = useState<Record<string, string>>({})   // сумма погашения по чеку
-  const [debtAcc, setDebtAcc] = useState('')                            // счёт прихода для погашения
+  const [repayFor, setRepayFor] = useState<any>(null)                   // чек, по которому открыто погашение
+  const [repaySplit, setRepaySplit] = useState<Record<string, string>>({})  // сумма по каждому счёту (смешанная)
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
@@ -106,8 +106,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     fetchRefs(user.orgId).then((r: any) => {   // цены/справочники СВОЕЙ орг (не сессии зрителя-админа)
       setCags((r.contragents || []).filter((c: any) => !c.archived))
       setProducts(r.products || [])
-      const accs = (r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId)
-      setAccounts(accs); setDebtAcc(prev => prev || accs[0]?.id || '')
+      setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
     })
   }, [user.orgId])
 
@@ -365,18 +364,21 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
   }
 
-  // Погашение долга по чеку (сумма + счёт прихода).
-  async function doRepay(o: any) {
-    const debt = checkDebt(o)
-    const amt = num(debtAmt[o.id] || '') || debt   // пусто → весь остаток
-    if (!(amt > 0)) { showMsg('⚠ Укажите сумму'); return }
-    if (!debtAcc) { showMsg('⚠ Выберите счёт'); return }
+  // Открыть погашение долга (шторка со смешанной оплатой): по умолчанию весь остаток на 1-й счёт.
+  function openRepay(o: any) {
+    setRepayFor(o)
+    setRepaySplit(accounts[0] ? { [accounts[0].id]: String(Math.round(checkDebt(o))) } : {})
+  }
+  async function doRepaySubmit() {
+    if (!repayFor) return
+    const splits = accounts.map((a: any) => ({ accountId: a.id, amount: num(repaySplit[a.id] || '') })).filter(s => s.amount > 0)
+    if (!splits.length) { showMsg('⚠ Впишите сумму хотя бы на один счёт'); return }
     setBusy(true)
-    const r = await payDebt({ uid: user.id, cardId: o.id, amount: amt, accountId: debtAcc })
+    const r = await payDebt({ uid: user.id, cardId: repayFor.id, splits })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setDebtAmt(m => { const n = { ...m }; delete n[o.id]; return n }); await load()
-    showMsg(`✓ Погашено ${money(r.paid || amt)} ₸${r.debtLeft ? ` · остаток долга ${money(r.debtLeft)}` : ''}`)
+    setRepayFor(null); await load()
+    showMsg(`✓ Погашено ${money(r.paid || 0)} ₸${r.debtLeft ? ` · остаток долга ${money(r.debtLeft)}` : ''}`)
   }
 
   const sold = checks.filter((o: any) => o.prodPhase === 'sold' || o.linkedDocId)
@@ -614,30 +616,18 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <div><div style={{ fontSize: 15, fontWeight: 800 }}>💳 Долги</div><div style={{ fontSize: 12, color: '#a09889' }}>{debtChecks.length} чек. с долгом</div></div>
                 <div style={{ marginLeft: 'auto', textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>всего</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debtTotal)} ₸</div></div>
               </div>
-              {/* счёт прихода для погашения */}
-              {debtChecks.length > 0 && (
-                <div style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12.5, color: '#5f5952', fontWeight: 700 }}>Счёт прихода:</span>
-                  {accounts.map((a: any) => { const on = (debtAcc || accounts[0]?.id) === a.id; return <button key={a.id} onClick={() => setDebtAcc(a.id)} style={{ border: on ? 'none' : '1.5px solid #e6e2dc', background: on ? DARK : '#fff', color: on ? '#fff' : '#4a443c', borderRadius: 9, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}>{a.name}</button> })}
-                </div>
-              )}
               {debtChecks.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов нет 🎉</div>}
               {debtChecks.map((o: any) => {
                 const debt = checkDebt(o)
                 const time = new Date(o.delivered || o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit' })
                 return (
-                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700 }}>{o.toName || o.contactName || o.fromName || 'Розница'}</div>
-                        <div style={{ fontSize: 11.5, color: '#a09889', fontFamily: 'monospace' }}>№ {o.docNumber || o.id} · {time}{o.seller ? ` · ${o.seller}` : ''}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>долг</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debt)} ₸</div></div>
+                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{o.toName || o.contactName || o.fromName || 'Розница'}</div>
+                      <div style={{ fontSize: 11.5, color: '#a09889', fontFamily: 'monospace' }}>№ {o.docNumber || o.id} · {time}{o.seller ? ` · ${o.seller}` : ''}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 7, marginTop: 9 }}>
-                      <input value={debtAmt[o.id] ?? ''} inputMode="decimal" placeholder={`${money(debt)} (всё)`} onChange={e => setDebtAmt(m => ({ ...m, [o.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ ...inp, flex: 1, textAlign: 'left', fontWeight: 700 }} />
-                      <button disabled={busy} onClick={() => doRepay(o)} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 10, padding: '10px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
-                    </div>
+                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>долг</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debt)} ₸</div></div>
+                    <button onClick={() => openRepay(o)} style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
                   </div>
                 )
               })}
@@ -869,15 +859,49 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <span style={{ fontSize: 12, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ИТОГО · {poss.length} поз.</span>
                   <span style={{ marginLeft: 'auto', fontSize: 19, fontWeight: 800 }}>{money(t)} ₸</span>
                 </div>
-                {/* Погасить долг — прямо в чеке (приход на счёт) */}
+                {/* Погасить долг — открывает шторку со смешанной оплатой */}
                 {checkDebt(o) > 0 && (
-                  <div style={{ display: 'flex', gap: 7, marginTop: 6, alignItems: 'center' }}>
-                    <select value={debtAcc || accounts[0]?.id || ''} onChange={e => setDebtAcc(e.target.value)} style={{ ...inp, width: 130, textAlign: 'left', fontSize: 13 }}>{accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
-                    <input value={debtAmt[o.id] ?? ''} inputMode="decimal" placeholder={`${money(checkDebt(o))} (всё)`} onChange={e => setDebtAmt(m => ({ ...m, [o.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ ...inp, flex: 1, textAlign: 'left', fontWeight: 700 }} />
-                    <button disabled={busy} onClick={async () => { await doRepay(o); setViewChk(null) }} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '11px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
-                  </div>
+                  <button onClick={() => { const c = viewChk; setViewChk(null); openRepay(c) }} style={{ marginTop: 6, border: 'none', background: GREEN, color: '#fff', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>💵 Погасить долг · {money(checkDebt(o))} ₸</button>
                 )}
                 <button onClick={() => { const c = viewChk; setViewChk(null); openReturn(c) }} style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>↩ Возврат по чеку</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ПОГАШЕНИЕ ДОЛГА — шторка со смешанной оплатой (сумма по каждому счёту) */}
+      {repayFor && (() => {
+        const debt = checkDebt(repayFor)
+        const entered = accounts.reduce((s: number, a: any) => s + num(repaySplit[a.id] || ''), 0)
+        const over = entered > debt + 0.5
+        return (
+          <div onClick={() => setRepayFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>💵 Погашение долга</div>
+                  <div style={{ fontSize: 12, color: '#8a8377' }}>{repayFor.toName || repayFor.contactName || 'Розница'} · № {repayFor.docNumber || repayFor.id} · долг {money(debt)} ₸</div>
+                </div>
+                <button onClick={() => setRepayFor(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+              </div>
+              <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                <div style={{ fontSize: 12, color: '#5f5952', fontWeight: 700 }}>Сумма по счетам (можно смешанно):</div>
+                {accounts.map((a: any) => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ flex: 1, fontSize: 13.5, color: '#4a443c' }}>{a.name}</span>
+                    <input value={repaySplit[a.id] ?? ''} inputMode="decimal" placeholder="0" onChange={e => setRepaySplit(m => ({ ...m, [a.id]: e.target.value.replace(/[^0-9.,]/g, '') }))} style={{ ...inp, width: 120 }} />
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setRepaySplit(accounts[0] ? { [accounts[0].id]: String(Math.round(debt)) } : {})} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Весь долг на 1-й счёт</button>
+                  <button onClick={() => setRepaySplit({})} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c' }}>Очистить</button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', paddingTop: 6, borderTop: '1px solid #f1ede8' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#6b645b' }}>К погашению</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: over ? '#c0532a' : DARK }}>{money(Math.min(entered, debt))} ₸{over ? ` (лишнее ${money(entered - debt)} не спишется)` : ''}</span>
+                </div>
+                <button disabled={busy || entered <= 0} onClick={doRepaySubmit} style={{ border: 'none', background: (busy || entered <= 0) ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || entered <= 0) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `💵 Погасить · ${money(Math.min(entered, debt))} ₸`}</button>
               </div>
             </div>
           </div>
