@@ -28,6 +28,8 @@ const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').
 const thickOf = (name: string) => { const m = (name || '').match(/(\d+(?:[.,]\d+)?)\s*мм/i); return m ? m[1].replace('.', ',') + 'мм' : '' }
 const thickNum = (t: string) => Number((t || '').replace('мм', '').replace(',', '.')) || 0
 const THICK_SET = ['0,35мм', '0,4мм', '0,45мм']   // толщина только для Евро бруса — строго этот набор
+// Быстрый фильтр в Комплектующих — строго этот порядок (по просьбе).
+const KOMPLEKT_CHIPS = ['Изделие', 'J - профиль', 'H - профиль', 'Внут. угол (пр)', 'Нар. угол (пр)']
 // Локальный день (YYYY-MM-DD), без UTC-сдвига — как today() на сервере.
 const localDay = (d?: any) => {
   const x = d ? new Date(d) : new Date()
@@ -74,6 +76,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
   const [thick, setThick] = useState('')           // фильтр толщины (0,35мм / 0,4мм / 0,45мм)
+  const [kfilter, setKfilter] = useState('')        // быстрый фильтр в Комплектующих (Изделие/J/H/углы)
   const [color, setColor] = useState('')
   const [allColors, setAllColors] = useState(false)
   const [q, setQ] = useState('')
@@ -169,6 +172,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (activeFolder.build) {
       // Комплектующие: показываем только базы «Без цвета» — цвет и см добавляются при выборе.
       base = base.filter(p => !extractRal(p.name))
+      if (kfilter) base = base.filter(p => norm(p.name) === norm(kfilter))   // быстрый фильтр по типу
       // «Изделие» (per-cm) — сразу наверх, остальные комплектующие ниже.
       base = [...base].sort((a, b) => (isIzdelie(b.name) ? 1 : 0) - (isIzdelie(a.name) ? 1 : 0))
     } else if (color) {
@@ -177,7 +181,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const s = norm(q)
     if (s) base = base.filter(p => norm(p.name).includes(s))
     return base.slice(0, 150)
-  }, [products, activeFolder, levels, path, thick, color, q])
+  }, [products, activeFolder, levels, path, thick, kfilter, color, q])
 
   const inCheck = useMemo(() => {
     const m: Record<string, Row> = {}
@@ -395,7 +399,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             {FOLDERS.map(f => {
               const on = folder === f.key
               return (
-                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick('') }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
+                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter('') }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
               )
             })}
             <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
@@ -422,6 +426,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               {thicks.map(tk => {
                 const on = thick === tk
                 return <button key={tk} onClick={() => setThick(on ? '' : tk)} style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #cfd6df', background: on ? '#2a5aaa' : '#fff', color: on ? '#fff' : '#3a4a5f', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{tk}</button>
+              })}
+            </div>
+          )}
+
+          {/* быстрый фильтр Комплектующих — Изделие / J / H / углы (строгий порядок) */}
+          {activeFolder.build && (
+            <div style={{ display: 'flex', gap: 6, padding: '7px 10px', background: '#faf8f5', borderBottom: '1px solid #efeae3', overflowX: 'auto' }}>
+              <button onClick={() => setKfilter('')} style={{ flexShrink: 0, border: kfilter === '' ? 'none' : '1.5px solid #e2ddd5', background: kfilter === '' ? DARK : '#fff', color: kfilter === '' ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: kfilter === '' ? 800 : 600, whiteSpace: 'nowrap' }}>все</button>
+              {KOMPLEKT_CHIPS.map(nm => {
+                const on = kfilter === nm
+                return <button key={nm} onClick={() => setKfilter(on ? '' : nm)} style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #e2ddd5', background: on ? PRIMARY : '#fff', color: on ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{nm}</button>
               })}
             </div>
           )}
