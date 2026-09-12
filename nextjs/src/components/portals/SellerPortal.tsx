@@ -143,7 +143,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const extraFolders = useMemo(() => {
     const covered = new Set(['водосток', 'евро брус', 'комплектующие', 'металлочерепица'])
     const cats = new Set<string>()
-    for (const p of products) { const c = (p.cat || '').trim(); if (c && !covered.has(norm(c)) && norm(p.group) !== 'материалы' && norm(p.group) !== 'услуги') cats.add(c) }
+    for (const p of products) {
+      const g = norm(p.group)
+      // Водосток покрыт своей папкой (Дёке/Модерн бюджет — его категории); материалы/услуги в кассу не тащим.
+      if (g === 'водосток' || g === 'материалы' || g === 'услуги') continue
+      const c = (p.cat || '').trim()
+      if (c && !covered.has(norm(c))) cats.add(c)
+    }
     return Array.from(cats).sort((a, b) => a.localeCompare(b, 'ru')).map(c => ({ key: 'cat:' + norm(c), label: c, match: (p: any) => norm(p.cat) === norm(c), levels: [] as string[] }))
   }, [products])
   const folders = useMemo(() => [...FOLDERS, ...extraFolders], [extraFolders])
