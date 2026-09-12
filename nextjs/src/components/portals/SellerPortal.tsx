@@ -318,9 +318,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!rows.length) { showMsg('⚠ Чек пустой'); return }
     if (noPrice) { showMsg('⚠ Есть позиции без цены'); return }
     const body = p || { cash: cashN, kaspi: kaspiN, qr: qrN, change: num(pay.change), changeFrom: pay.changeFrom }
-    // Долг — только на выбранного покупателя (Розница в долг не оформляем: неизвестно кто должен).
-    const willDebt = net - (Number(body.cash) || 0) - (Number(body.kaspi) || 0) - (Number(body.qr) || 0)
-    if (willDebt > 0.5 && !contactId) { setShowClient(true); showMsg('⚠ Для продажи в долг выберите покупателя'); return }
+    // Покупатель обязателен для ЛЮБОГО чека (без контрагента чек не пробиваем).
+    if (!contactId) { setShowClient(true); showMsg('⚠ Выберите покупателя'); return }
     setBusy(true)
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined,
