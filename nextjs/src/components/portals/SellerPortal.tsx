@@ -138,8 +138,18 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     })
   }, [user.orgId])
 
+  // Недостающие папки из номенклатуры: все категории товаров, кроме уже покрытых 4 основными.
+  // Добавляются справа (лента табов прокручивается), чтобы касса видела всю номенклатуру.
+  const extraFolders = useMemo(() => {
+    const covered = new Set(['водосток', 'евро брус', 'комплектующие', 'металлочерепица'])
+    const cats = new Set<string>()
+    for (const p of products) { const c = (p.cat || '').trim(); if (c && !covered.has(norm(c)) && norm(p.group) !== 'материалы' && norm(p.group) !== 'услуги') cats.add(c) }
+    return Array.from(cats).sort((a, b) => a.localeCompare(b, 'ru')).map(c => ({ key: 'cat:' + norm(c), label: c, match: (p: any) => norm(p.cat) === norm(c), levels: [] as string[] }))
+  }, [products])
+  const folders = useMemo(() => [...FOLDERS, ...extraFolders], [extraFolders])
+
   // Товары открытой папки: фильтр по цвету (RAL из имени) и поиску.
-  const activeFolder = FOLDERS.find(f => f.key === folder) || FOLDERS[0]
+  const activeFolder: any = folders.find(f => f.key === folder) || folders[0]
   const levels: string[] = (activeFolder as any).levels || []
   // Подпапки по уровням: чипы над цветами. Уровень i показывается, если родитель выбран
   // и есть >1 варианта (иначе выбирать нечего — не занимаем место).
@@ -165,6 +175,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   }, [products, activeFolder, levels, path])
 
   const list = useMemo(() => {
+    // Общий поиск: если что-то введено — ищем по ВСЕЙ номенклатуре (не только в открытой папке).
+    const sQ = norm(q)
+    if (sQ) return products.filter(p => norm(p.name).includes(sQ)).slice(0, 150)
     let base = products.filter(activeFolder.match)
     // Подпапка: сузить по выбранным уровням дерева.
     for (let i = 0; i < levels.length; i++) if (path[i]) base = base.filter((p: any) => (p[levels[i]] || '').trim() === path[i])
@@ -394,15 +407,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
       {tab === 'cash' ? (
         <div style={{ paddingBottom: 74 + checkH }}>
-          {/* папки продавца — вкладками */}
-          <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', position: 'sticky', top: 56, zIndex: 50 }}>
-            {FOLDERS.map(f => {
+          {/* папки продавца — лента вкладок (все категории номенклатуры), прокручивается вправо */}
+          <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', position: 'sticky', top: 56, zIndex: 50, overflowX: 'auto' }}>
+            {folders.map(f => {
               const on = folder === f.key
               return (
-                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter('') }} style={{ flex: 1, border: 'none', background: 'none', padding: '11px 2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}` }}>{f.label}</button>
+                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
               )
             })}
-            <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
+            <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ flexShrink: 0, width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
           </div>
 
           {/* подпапки раздела — компактные чипы (уровни дерева), появляются только при наличии выбора */}
