@@ -104,7 +104,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
   useEffect(() => {
     fetchRefs(user.orgId).then((r: any) => {   // цены/справочники СВОЕЙ орг (не сессии зрителя-админа)
-      setCags((r.contragents || []).filter((c: any) => !c.archived))
+      // Покупатели кассы — ТОЛЬКО свои контрагенты (не шарятся от головного, не мосты).
+      setCags((r.contragents || []).filter((c: any) => !c.archived && c.orgId === user.orgId && !c.orgRefId))
       setProducts(r.products || [])
       setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
     })
