@@ -24,6 +24,9 @@ const ROLES = [
   { v: 'order_desk', l: 'Заказ-стол (внешний кабинет)' },
 ]
 const roleLabel = (v: string) => ROLES.find(r => r.v === v)?.l || v
+// Настройки — «головной» экран. Филиалу (не hq) нужны только эти вкладки.
+const ALL_TABS: [string, string][] = [['users', 'Пользователи'], ['clients', '👤 Кабинеты клиентов'], ['contragents', 'Контрагенты'], ['units', 'Ед. изм.'], ['stati', 'Статьи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']]
+const BRANCH_TABS = new Set(['contragents', 'units', 'stati'])
 const inp: React.CSSProperties = { padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontFamily: 'inherit', fontSize: 14, outline: 'none', width: '100%' }
 
 export default function SettingsScreen({ orgId }: { orgId: string }) {
@@ -78,12 +81,18 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
     setMsg('✅ Создан'); reset(); load()
   }
 
+  // Вид выбранной орг: у филиала (не hq) настройки урезаны до контрагентов/ед.изм./статей.
+  const selKind = orgs.find(o => o.id === orgId)?.kind
+  const isHead = !selKind || selKind === 'hq'
+  const visibleTabs = isHead ? ALL_TABS : ALL_TABS.filter(([k]) => BRANCH_TABS.has(k))
+  useEffect(() => { if (!isHead && !BRANCH_TABS.has(tab)) setTab('contragents') }, [isHead, tab])
+
   return (
     <div style={{ maxWidth: 1200 }}>
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки</div>
+      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Настройки{!isHead && <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.textMuted, marginLeft: 10 }}>— филиал: контрагенты · ед.изм. · статьи</span>}</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {([['users', 'Пользователи'], ['clients', '👤 Кабинеты клиентов'], ['contragents', 'Контрагенты'], ['units', 'Ед. изм.'], ['stati', 'Статьи'], ['autofill', 'Автоподстановка'], ['projects', 'Проекты']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
+        {visibleTabs.map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k as any)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: tab === k ? COLORS.primary : '#fff', color: tab === k ? '#fff' : COLORS.textMuted, boxShadow: tab === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
       </div>
 
