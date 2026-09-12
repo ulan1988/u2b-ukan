@@ -390,7 +390,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
 
   const inp = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const, width: '100%' }
-  const checkH = rows.length ? (payOpen ? 378 : 262) : 0
+  const checkH = rows.length ? (payOpen ? 422 : 306) : 0
 
   // Экран выбора продавца: показывается при первом заходе с этого телефона и по кнопке «сменить».
   if (sellerReady && (!seller || pickSeller)) {
@@ -649,7 +649,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               {contactId && <button onClick={() => setContactId('')} style={{ border: 'none', background: '#f7f5f2', color: '#8a8377', borderRadius: 8, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>сброс</button>}
               <button onClick={() => setRows([])} style={{ marginLeft: 'auto', border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>очистить</button>
             </div>
-            {showClient && <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false) }} placeholder="— найти покупателя —" />}
+            {/* выбор покупателя — всегда видим (не прячем за кнопкой) */}
+            <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false) }} placeholder="— найти покупателя —" />
 
             {/* строки чека */}
             <div style={{ maxHeight: payOpen ? 96 : 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
