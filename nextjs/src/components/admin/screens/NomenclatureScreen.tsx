@@ -1,7 +1,7 @@
 'use client'
 // Номенклатура — портирован из Улкана 1:1 (дерево групп/категорий/подгрупп,
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
@@ -327,8 +327,13 @@ export default function NomenclatureScreen() {
                 : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
-                      {filtered.map(item => (
-                        <tr key={item.id} style={{ borderTop: '1px solid #f1efec' }}>
+                      {[...filtered].sort((a, b) => (a.subgroup || '').localeCompare(b.subgroup || '', 'ru') || a.name.localeCompare(b.name, 'ru')).map((item, i, arr) => {
+                        const sg = item.subgroup || ''
+                        const showHead = i === 0 || (arr[i - 1].subgroup || '') !== sg   // заголовок подпапки перед её товарами
+                        return (
+                        <Fragment key={item.id}>
+                        {showHead && <tr><td colSpan={10} style={{ padding: '8px 14px', background: '#f1efec', fontWeight: 800, fontSize: 12.5, color: COLORS.primary, letterSpacing: '.02em' }}>📁 {sg || '— без подгруппы —'}</td></tr>}
+                        <tr style={{ borderTop: '1px solid #f1efec' }}>
                           {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки */}
                           <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{item.name}</td>
                           <td style={{ padding: '9px 14px', width: 80 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>
@@ -344,7 +349,8 @@ export default function NomenclatureScreen() {
                           })}
                           <td style={{ padding: '9px 14px', width: 120 }}>{editItem?.id === item.id ? <div style={{ display: 'flex', gap: 4 }}><button onClick={() => handleSave(editItem)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>✓</button><button onClick={() => setEditItem(null)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✕</button></div> : <div style={{ display: 'flex', gap: 4 }}><button onClick={() => setEditItem({ ...item })} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✏️</button><button onClick={() => handleDelete(item.id)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #faeaea', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>}</td>
                         </tr>
-                      ))}
+                        </Fragment>
+                      )})}
                     </tbody>
                   </table>
                 )}
