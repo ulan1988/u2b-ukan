@@ -86,6 +86,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [seller, setSeller] = useState<{ id: string; name: string } | null>(null)
   const [pickSeller, setPickSeller] = useState(false)
   const [sellerReady, setSellerReady] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState<any>(null)   // PWA: событие установки кабинета
+
+  // Кнопка «Установить» — ловим beforeinstallprompt (когда браузер готов предложить установку).
+  useEffect(() => {
+    const h = (e: any) => { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', h)
+    return () => window.removeEventListener('beforeinstallprompt', h)
+  }, [])
+  async function doInstall() { if (!installPrompt) return; installPrompt.prompt(); try { await installPrompt.userChoice } catch {}; setInstallPrompt(null) }
 
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3500) }
 
@@ -406,6 +415,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           <div style={{ fontSize: 10.5, color: '#b8b1a6' }}>сегодня</div>
           <div style={{ fontSize: 13.5, fontWeight: 800 }}>{money(todaySum)} ₸</div>
         </div>
+        {installPrompt && <button onClick={doInstall} title="Установить кассу как приложение" style={{ background: PRIMARY, border: 'none', color: '#fff', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, marginRight: 6, whiteSpace: 'nowrap' }}>📲 Установить</button>}
         <button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: '#3a3630', border: 'none', color: '#d8d2c8', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Выйти</button>
       </div>
 

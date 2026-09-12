@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
 import { userBySlug } from '@/services/auth.service'
@@ -6,6 +7,11 @@ import BranchPortal from '@/components/portals/BranchPortal'
 import SellerPortal from '@/components/portals/SellerPortal'
 
 export const dynamic = 'force-dynamic'
+
+// Свой манифест кабинета → отдельный устанавливаемый PWA (Касса магазина / Кабинет мастера).
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  return { title: 'U2B — кабинет', manifest: `/branch/${params.slug}/manifest`, appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Касса' } }
+}
 
 // Кабинет филиала. Вид зависит от организации: производитель (`producer_seller`) получает стол
 // мастера (заказы/производство/листы), магазин-продавец (`seller`) — кассу продавца.
