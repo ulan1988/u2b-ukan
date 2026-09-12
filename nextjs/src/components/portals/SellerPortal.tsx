@@ -61,6 +61,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([])
   const [rows, setRows] = useState<Row[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
+  const [checkExpanded, setCheckExpanded] = useState(false)   // чек-шторка: свёрнута (видно каталог) / раскрыта
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
   const [payOpen, setPayOpen] = useState(false)
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })   // скидка по чеку: ₸ или %
@@ -390,7 +391,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
 
   const inp = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const, width: '100%' }
-  const checkH = rows.length ? (payOpen ? 422 : 306) : 0
+  // Высота, которую резервируем под чек-шторку: свёрнута — узкая полоска (видно каталог).
+  const checkH = rows.length ? (checkExpanded ? (payOpen ? 422 : 306) : 66) : 0
 
   // Экран выбора продавца: показывается при первом заходе с этого телефона и по кнопке «сменить».
   if (sellerReady && (!seller || pickSeller)) {
@@ -639,10 +641,20 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       {/* ЧЕК — шторка снизу: строки, итог, оплата в один тап */}
       {tab === 'cash' && rows.length > 0 && (
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 62, background: '#fff', borderRadius: '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(38,35,31,.16)', zIndex: 90, maxWidth: 760, margin: '0 auto' }}>
-          <div style={{ padding: '8px 14px 0' }}>
-            <div style={{ width: 36, height: 4, borderRadius: 3, background: '#e0dbd3', margin: '0 auto' }} />
+          {/* ручка-тумблер: тап сворачивает/раскрывает чек */}
+          <div onClick={() => setCheckExpanded(v => !v)} style={{ padding: '8px 14px 6px', cursor: 'pointer' }}>
+            <div style={{ width: 40, height: 4, borderRadius: 3, background: '#e0dbd3', margin: '0 auto' }} />
+            {!checkExpanded && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 6 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800 }}>🧾 {rows.length} поз.</span>
+                {noPrice && <span style={{ fontSize: 11.5, color: PRIMARY, fontWeight: 700 }}>впишите цены ↑</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 19, fontWeight: 800 }}>{money(net)} ₸</span>
+                <span style={{ color: '#a09889', fontSize: 15 }}>▲</span>
+              </div>
+            )}
           </div>
-          <div style={{ padding: '8px 14px 10px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {checkExpanded && (
+          <div style={{ padding: '2px 14px 10px', display: 'flex', flexDirection: 'column', gap: 7 }}>
             {/* покупатель */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button onClick={() => setShowClient(v => !v)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c', maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {client ? client.name : 'Розница'}</button>
@@ -713,6 +725,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
