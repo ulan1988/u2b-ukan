@@ -146,6 +146,8 @@ export async function masterShift(orgId: string, date: string) {
 
 // Месячный отчёт кассы (как Excel «месяц»): по каждому дню продажи/долг/проверка/ЗП/расходы + итоги.
 export async function cashReport(orgId: string, from: string, to: string) {
+  // Вид орг — от него зависит РАСКЛАДКА месяца (Нипа-листогиб = формат Excel «месяц»).
+  const orgKind = ((await sqlClient`select kind from organizations where id=${orgId} limit 1` as unknown as Array<any>)[0]?.kind) || ''
   const sales = await sqlClient`
     select d.date::text as "day", coalesce(sum(o.paid_cash),0)::float cash, coalesce(sum(o.paid_kaspi),0)::float kaspi,
       coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total - coalesce(o.discount_sum,0)),0)::float sold, count(*)::int cnt
@@ -225,18 +227,20 @@ export async function cashReport(orgId: string, from: string, to: string) {
     // Остаток каждого счёта на конец дня = стартовый + все движения по датам ≤ этот день.
     const bal: Record<string, number> = { ...opening }
     for (const md of movDays) { if (md <= r.day) { const mm = movByDay[md]; for (const acc in mm) bal[acc] = (bal[acc] || 0) + mm[acc] } }
-    return { ...r, ret, cost, margin, split60, split40, zpPlus40: r.salary + split40, bal, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
+    const balTotal = accounts.reduce((s: number, a: any) => s + (bal[a.id] || 0), 0)
+    return { ...r, paid, ret, cost, margin, split60, split40, zpPlus40: r.salary + split40, bal, balTotal, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
   }).sort((a: any, b: any) => a.day.localeCompare(b.day))
 
   const totals = days.reduce((t: any, d: any) => ({
-    cash: t.cash + d.cash, kaspi: t.kaspi + d.kaspi, qr: t.qr + d.qr, debt: t.debt + d.debt,
+    cash: t.cash + d.cash, kaspi: t.kaspi + d.kaspi, qr: t.qr + d.qr, paid: t.paid + d.paid, debt: t.debt + d.debt,
     sold: t.sold + d.sold, ret: t.ret + d.ret, margin: t.margin + d.margin, split60: t.split60 + d.split60, split40: t.split40 + d.split40, zpPlus40: t.zpPlus40 + d.zpPlus40,
     salary: t.salary + d.salary, current: t.current + d.current, expense: t.expense + d.expense, cnt: t.cnt + d.cnt,
-  }), { cash: 0, kaspi: 0, qr: 0, debt: 0, sold: 0, ret: 0, margin: 0, split60: 0, split40: 0, zpPlus40: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
+  }), { cash: 0, kaspi: 0, qr: 0, paid: 0, debt: 0, sold: 0, ret: 0, margin: 0, split60: 0, split40: 0, zpPlus40: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
   // Итоговый остаток на конец периода по каждому счёту.
   const endBal: Record<string, number> = { ...opening }
   for (const md in movByDay) for (const acc in movByDay[md]) endBal[acc] = (endBal[acc] || 0) + movByDay[md][acc]
-  return { from, to, days, totals, accounts, opening, endBal, ok: days.every((d: any) => d.ok) }
+  const endBalTotal = accounts.reduce((s: number, a: any) => s + (endBal[a.id] || 0), 0)
+  return { from, to, kind: orgKind, days, totals, accounts, opening, endBal, endBalTotal, ok: days.every((d: any) => d.ok) }
 }
 
 export interface ExpenseInput { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }

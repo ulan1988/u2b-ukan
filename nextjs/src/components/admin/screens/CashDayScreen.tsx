@@ -104,6 +104,73 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
         const th: React.CSSProperties = { ...cell, fontWeight: 700, color: COLORS.textLight, fontSize: 11.5, borderBottom: `1.5px solid ${COLORS.border}` }
         const grp: React.CSSProperties = { ...cell, textAlign: 'center', fontWeight: 800, fontSize: 11, color: COLORS.textSubtle, letterSpacing: '.03em', borderBottom: `1px solid ${COLORS.borderLight}`, background: COLORS.bgCard }
         const dim = { color: COLORS.textLight }
+        // Нипа-листогиб (производитель) — раскладка как в Excel «месяц»:
+        // ТОВАРНАЯ ЧАСТЬ (Продажа/Возврат/Долг/Отпуск/прав-ложь) · КАССА (QR/Каспи/Нал/Банк) ·
+        // МАРЖА · ЗАРПЛАТА · Расход · ДЕНЕЖНАЯ ЧАСТЬ (остатки счетов + ИТОГ).
+        if (month.kind === 'producer_seller') {
+          const nCols = 1 + 5 + 4 + 3 + 2 + 1 + accts.length + 1
+          return <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1320 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...grp, textAlign: 'left', background: 'transparent' }}></th>
+                  <th style={grp} colSpan={5}>ТОВАРНАЯ ЧАСТЬ</th>
+                  <th style={grp} colSpan={4}>КАССА</th>
+                  <th style={grp} colSpan={3}>МАРЖА</th>
+                  <th style={grp} colSpan={2}>ЗАРПЛАТА</th>
+                  <th style={grp}></th>
+                  {accts.length > 0 && <th style={grp} colSpan={accts.length + 1}>ДЕНЕЖНАЯ ЧАСТЬ</th>}
+                </tr>
+                <tr>
+                  <th style={{ ...th, textAlign: 'left' }}>Дата</th>
+                  <th style={th}>Продажа</th><th style={th}>Возврат</th><th style={th}>Долг</th><th style={th}>Отпуск</th><th style={{ ...th, textAlign: 'center' }}>прав/ложь</th>
+                  <th style={th}>QR</th><th style={th}>Каспи</th><th style={th}>Нал</th><th style={th}>Банк</th>
+                  <th style={th}>Маржа</th><th style={th}>60%</th><th style={th}>40%</th>
+                  <th style={th}>ЗП</th><th style={th}>ЗП+40</th>
+                  <th style={th}>Расход</th>
+                  {accts.map((a: any) => <th key={a.id} style={th} title={a.name}>{a.name}</th>)}
+                  {accts.length > 0 && <th style={th}>ИТОГ</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {(month.days || []).map((d: any) => <tr key={d.day} style={{ borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                  <td style={{ ...cell, textAlign: 'left', fontWeight: 600 }}>{d.day.slice(8)}.{d.day.slice(5, 7)}</td>
+                  <td style={{ ...cell, fontWeight: 700 }}>{m(d.paid)}</td>
+                  <td style={{ ...cell, color: d.ret ? COLORS.primaryDark : COLORS.textLight }}>{d.ret ? m(d.ret) : '—'}</td>
+                  <td style={{ ...cell, color: COLORS.primaryDark }}>{d.debt ? m(d.debt) : '—'}</td>
+                  <td style={{ ...cell, fontWeight: 700 }}>{m(d.sold)}</td>
+                  <td style={{ ...cell, textAlign: 'center' }}>{d.ok ? '✅' : '❌'}</td>
+                  <td style={cell}>{d.qr ? m(d.qr) : '—'}</td><td style={cell}>{d.kaspi ? m(d.kaspi) : '—'}</td><td style={cell}>{d.cash ? m(d.cash) : '—'}</td><td style={{ ...cell, ...dim }}>—</td>
+                  <td style={{ ...cell, fontWeight: 700, color: '#2e8a5e' }}>{m(d.margin)}</td>
+                  <td style={{ ...cell, ...dim }}>{m(d.split60)}</td><td style={{ ...cell, ...dim }}>{m(d.split40)}</td>
+                  <td style={cell}>{d.salary ? m(d.salary) : '—'}</td>
+                  <td style={{ ...cell, fontWeight: 600 }}>{m(d.zpPlus40)}</td>
+                  <td style={cell}>{d.current ? m(d.current) : '—'}</td>
+                  {accts.map((a: any) => <td key={a.id} style={{ ...cell, color: (d.bal?.[a.id] || 0) < 0 ? COLORS.primaryDark : COLORS.text }}>{m(d.bal?.[a.id] || 0)}</td>)}
+                  {accts.length > 0 && <td style={{ ...cell, fontWeight: 700 }}>{m(d.balTotal || 0)}</td>}
+                </tr>)}
+                {(month.days || []).length === 0 && <tr><td colSpan={nCols} style={{ ...cell, textAlign: 'center', color: COLORS.textMuted, padding: 24 }}>Продаж за месяц нет</td></tr>}
+              </tbody>
+              <tfoot><tr style={{ borderTop: `2px solid ${COLORS.border}`, background: COLORS.bgCard }}>
+                <td style={{ ...cell, textAlign: 'left', fontWeight: 800 }}>ИТОГО ({t.cnt || 0})</td>
+                <td style={{ ...cell, fontWeight: 800 }}>{m(t.paid)}</td>
+                <td style={{ ...cell, fontWeight: 800, color: COLORS.primaryDark }}>{m(t.ret)}</td>
+                <td style={{ ...cell, fontWeight: 800, color: COLORS.primaryDark }}>{m(t.debt)}</td>
+                <td style={{ ...cell, fontWeight: 800 }}>{m(t.sold)}</td>
+                <td style={{ ...cell, textAlign: 'center' }}>{month.ok ? '✅' : '❌'}</td>
+                <td style={{ ...cell, fontWeight: 800 }}>{m(t.qr)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.kaspi)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.cash)}</td><td style={{ ...cell, ...dim }}>—</td>
+                <td style={{ ...cell, fontWeight: 800, color: '#2e8a5e' }}>{m(t.margin)}</td>
+                <td style={{ ...cell, fontWeight: 800, ...dim }}>{m(t.split60)}</td><td style={{ ...cell, fontWeight: 800, ...dim }}>{m(t.split40)}</td>
+                <td style={{ ...cell, fontWeight: 800 }}>{m(t.salary)}</td>
+                <td style={{ ...cell, fontWeight: 800 }}>{m(t.zpPlus40)}</td>
+                <td style={{ ...cell, fontWeight: 800 }}>{m(t.current)}</td>
+                {accts.map((a: any) => <td key={a.id} style={{ ...cell, fontWeight: 800, color: (endBal[a.id] || 0) < 0 ? COLORS.primaryDark : COLORS.text }}>{m(endBal[a.id] || 0)}</td>)}
+                {accts.length > 0 && <td style={{ ...cell, fontWeight: 800 }}>{m(month.endBalTotal || 0)}</td>}
+              </tr></tfoot>
+            </table>
+            {accts.length > 0 && <div style={{ padding: '8px 14px', fontSize: 12, color: COLORS.textLight, borderTop: `1px solid ${COLORS.borderLight}` }}>Старт остатков на 1-е число (из истории): {accts.map((a: any) => `${a.name} ${m((month.opening || {})[a.id] || 0)}`).join(' · ')} · Продажа = оплачено (QR+Каспи+Нал), Отпуск = продажа+долг.</div>}
+          </div>
+        }
         return <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
             <thead>
