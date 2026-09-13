@@ -202,12 +202,19 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     setSel({}); setDrawerId(null); await load(); showMsg(`✓ Создана карточка ${r.id || ''}`)
   }
   // Касса: оплатить (продать) → расходная + оплаты; отменить продажу → сторно.
+  // Оплатить: принять нал/каспи/QR, ОСТАТОК долга остаётся дебиторкой Нипы на заказчика (localDebt).
   async function doPay(id: string) {
-    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, qr: Number((pay.qr || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom }
+    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, qr: Number((pay.qr || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom, localDebt: true }
     const r = await payCard(id, body); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`💵 Продано${r.number ? ` (${r.number})` : ''}${r.debt ? ` · долг ${r.debt}` : ''}`)
   }
-  // Долг к головному: продать всю карточку в долг (без оплаты) — контрагент по умолчанию головной.
+  // Долг Нипе: вся карточка в долг, дебиторка ОСТАЁТСЯ у Нипы (учёт в её кабинете) — свои клиенты.
+  async function payDebtLocal(id: string) {
+    if (!confirm('Продать в ДОЛГ Нипе? Долг останется дебиторкой филиала (учёт в его кабинете).')) return
+    const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', localDebt: true }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`🏪 Долг Нипе${r.number ? ` (${r.number})` : ''}${r.debt ? ` · ${r.debt}` : ''}`)
+  }
+  // Долг к головному: продать всю карточку в долг (без оплаты) — долг уходит в головной (цепочка).
   async function payDebt(id: string) {
     if (!confirm('Провести продажу в ДОЛГ к головному? (без оплаты)')) return
     const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '' }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
@@ -416,12 +423,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontSize: 12, color: '#5f5952' }}>с</span>
                       {(['cash', 'kaspi'] as const).map(cf => { const on = pay.changeFrom === cf; return <button key={cf} onClick={() => setPay(p => ({ ...p, changeFrom: on ? '' : cf }))} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{cf === 'cash' ? 'нал' : 'каспи'}</button> })}
                     </div>
-                    {/* Действия — отдельной строкой во всю ширину, чтобы кнопки не обрезались краем панели */}
+                    {/* Долг: у Нипы (своя дебиторка, свои клиенты) или уходит в головной */}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => payDebt(o.id)} style={{ flex: 1, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 9, padding: '11px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🏢 Долг к головному</button>
-                      <button onClick={() => doPay(o.id)} style={{ flex: 1, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px 8px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Оплатить</button>
+                      <button onClick={() => payDebtLocal(o.id)} title="Долг остаётся дебиторкой Нипы (учёт в её кабинете)" style={{ flex: 1, border: '1.5px solid #cdbfe6', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 9, padding: '11px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🏪 Долг Нипе</button>
+                      <button onClick={() => payDebt(o.id)} title="Долг уходит в головной (цепочка)" style={{ flex: 1, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 9, padding: '11px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🏢 Долг к головному</button>
                     </div>
-                    <div style={{ fontSize: 11.5, color: '#8a6f00', marginTop: 2 }}>Сначала продайте (чек), потом отправка логисту.</div>
+                    <button onClick={() => doPay(o.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '12px 8px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>💵 Оплатить{debtN > 0 ? ` (остаток ${fmtMoney(debtN)} — долг Нипе)` : ''}</button>
+                    <div style={{ fontSize: 11.5, color: '#8a6f00', marginTop: 2 }}>Сначала продайте (чек), потом отправка логисту. Остаток по «Оплатить» — дебиторка Нипы.</div>
                   </>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Проект заказчика — для акта сверки по проектам">

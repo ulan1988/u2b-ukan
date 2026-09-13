@@ -71,7 +71,7 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
 }
 
-export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string }
+export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean }
 
 export async function payCard(cardId: string, p: PayInput, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
@@ -112,8 +112,9 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   //    приходная у головного), затем головной→Машон (расходная у головного на его имя). Должник — Машон.
   // Цепочка — только у производителя: он продаёт исключительно через головной. Магазин-продавец
   // (Кристалл) торгует своим товаром со своего склада, долг остаётся дебиторкой филиала.
+  // localDebt=true → долг ОСТАЁТСЯ у Нипы (своя дебиторка на заказчика), цепочка в головной НЕ идёт.
   const endClient = contactId !== bridge ? contactId : null
-  const chain = orgKind === 'producer_seller' && debt > 0 && debt === total && !!bridge && !!endClient
+  const chain = !p.localDebt && orgKind === 'producer_seller' && debt > 0 && debt === total && !!bridge && !!endClient
   let inv: any
   if (chain) {
     await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
