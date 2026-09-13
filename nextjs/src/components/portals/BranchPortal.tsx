@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { cardProgress } from '@/lib/adminFmt'
 import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
+import { itemName } from '@/lib/itemName'
 import { lineAmount } from '@/lib/lineAmount'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
@@ -15,7 +16,7 @@ import DocsView from '@/components/portals/DocsView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, deletePosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase } from '@/lib/api/orders'
 import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet, listProjectsByClient } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -51,6 +52,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [detailTab, setDetailTab] = useState<'positions' | 'history' | 'chat'>('positions')
   const [details, setDetails] = useState<Record<string, any>>({})
   const [editQty, setEditQty] = useState<Record<string, string>>({}); const [addCatalogFor, setAddCatalogFor] = useState<string | null>(null)
+  // Инлайн-правка позиции в шторке: цвет / см / кол-во (не блокируется этапом «Принял»).
+  const [editPos, setEditPos] = useState<string | null>(null)
+  const [ev, setEv] = useState<{ color: string; cm: string; qty: string }>({ color: '', cm: '', qty: '' })
+  const [evAll, setEvAll] = useState(false)
   const [msg, setMsg] = useState('')
   const [newTo, setNewTo] = useState(''); const [newText, setNewText] = useState(''); const [newLoading, setNewLoading] = useState(false); const [newDone, setNewDone] = useState<any>(null)
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
@@ -215,6 +220,35 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
   async function addToOrder(orderId: string, items: PickedPos[]) { setAddCatalogFor(null); if (!items.length) return; for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, widthCm: it.widthCm, supplierId: undefined }); await refreshDetail(orderId); showMsg(`✓ Добавлено: ${items.length}`) }
+  // База наименования без цвета и см (для пересборки при правке): «Изделие 7004 6 см» → «Изделие».
+  function baseKind(name: string): string {
+    let n = (name || '').trim().replace(/\s*\d+([.,]\d+)?\s*см\s*$/i, '').trim()
+    const ral = extractRal(name)
+    if (ral && ral !== 'decor') n = n.replace(new RegExp('\\s*' + ral.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![0-9])', 'i'), ' ')
+    else n = n.replace(/\s*(дерево|дуб|3d)\b/i, ' ')
+    return n.replace(/\s{2,}/g, ' ').trim() || 'Изделие'
+  }
+  function startEditPos(p: any) {
+    setEditPos(p.id); setEvAll(false)
+    setEv({ color: extractRal(p.name1c || p.oral) || '', cm: p.widthCm != null ? String(Number(p.widthCm)) : '', qty: String(Number(p.qty)) })
+  }
+  async function saveEditPos(orderId: string, p: any) {
+    const qtyN = Number((ev.qty || '').replace(',', '.')) || 0
+    if (qtyN <= 0) { showMsg('⚠ Кол-во должно быть больше 0'); return }
+    const base = baseKind(p.name1c || p.oral)
+    const isKomplekt = /издели|профиль|угол/i.test(base)
+    if (isKomplekt && !ev.color) { showMsg('⚠ Выберите цвет'); return }
+    const nm = itemName({ name: base, color: ev.color || undefined, cm: ev.cm || undefined })
+    const patch: any = { qty: qtyN, name1c: nm, oral: nm, widthCm: ev.cm ? Number(ev.cm) : (p.widthCm != null ? Number(p.widthCm) : undefined) }
+    const r = await updatePosition(orderId, p.id, patch)
+    if (!r.ok) { showMsg('⚠ Не удалось изменить'); return }
+    setEditPos(null); await refreshDetail(orderId); showMsg('✓ Позиция изменена')
+  }
+  async function removePos(orderId: string, posId: string) {
+    const r = await deletePosition(orderId, posId)
+    if (!r.ok) { showMsg('⚠ Не удалось удалить'); return }
+    setEditPos(null); await refreshDetail(orderId); showMsg('✓ Позиция удалена')
+  }
   async function sendChat(orderId: string) { const t = msg.trim(); if (!t) return; setMsg(''); await sendMessage(orderId, t); const m = await listMessages(orderId); setDetails(prev => ({ ...prev, [orderId]: { ...prev[orderId], messages: m } })) }
   async function openChat(orderId: string) { const m = await listMessages(orderId); setDetails(prev => ({ ...prev, [orderId]: { ...prev[orderId], messages: m } })) }
 
@@ -403,14 +437,37 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   : pos.map((p: any) => {
                     const isSent = Number(p.leg) !== 1
                     const on = !!sel[p.id]
+                    const editing = editPos === p.id
                     return (
-                      <div key={p.id} onClick={() => !isSent && setSel(s => ({ ...s, [p.id]: !s[p.id] }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f6f3f0', cursor: isSent ? 'default' : 'pointer' }}>
+                      <div key={p.id} style={{ borderBottom: '1px solid #f6f3f0' }}>
+                      <div onClick={() => !isSent && !editing && setSel(s => ({ ...s, [p.id]: !s[p.id] }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', cursor: isSent || editing ? 'default' : 'pointer' }}>
                         {!isSent && <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, border: on ? 'none' : '1.5px solid #d8d3cc', background: on ? PRIMARY : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>{on ? '✓' : ''}</span>}
                         <RalDot code={extractRal(p.name1c || p.oral)} size={14} />
                         <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isSent ? '#9a938a' : '#26231f' }}>{p.name1c || p.oral}</span>
                         {p.widthCm != null && <span style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, flexShrink: 0 }}>{Number(p.widthCm)} см</span>}
                         <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
-                        {isSent && <span style={{ fontSize: 12, color: '#2a5aaa', fontWeight: 700, flexShrink: 0 }}>🚚 у логиста</span>}
+                        {isSent ? <span style={{ fontSize: 12, color: '#2a5aaa', fontWeight: 700, flexShrink: 0 }}>🚚 у логиста</span>
+                          : <button onClick={e => { e.stopPropagation(); editing ? setEditPos(null) : startEditPos(p) }} title="Изменить цвет / см / кол-во" style={{ flexShrink: 0, border: 'none', background: editing ? PRIMARY : '#f1efec', color: editing ? '#fff' : '#7a3aaa', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>✎</button>}
+                      </div>
+                      {editing && !isSent && (
+                        <div onClick={e => e.stopPropagation()} style={{ padding: '4px 0 12px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ЦВЕТ</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {ralOrdered(evAll).map(c => { const sc = ev.color === c.code; return (
+                              <button key={c.code} onClick={() => setEv(v => ({ ...v, color: c.code }))} title={c.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', width: 38 }}>
+                                <span style={{ boxShadow: sc ? `0 0 0 2.5px ${PRIMARY}` : '0 0 0 1px #e0dbd4', borderRadius: '50%' }}><RalDot code={c.code} size={22} /></span>
+                                <span style={{ fontSize: 9.5, fontWeight: sc ? 800 : 500, color: sc ? PRIMARY : '#6b645b' }}>{c.code === 'decor' ? 'дерево' : c.code}</span>
+                              </button>) })}
+                            <button onClick={() => setEvAll(v => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: PRIMARY, fontWeight: 700, width: 38 }}>{evAll ? '−' : '👁 все'}</button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                            <label style={{ fontSize: 11, color: '#5f5952' }}>См (длина)<input value={ev.cm} inputMode="decimal" onChange={e => setEv(v => ({ ...v, cm: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="—" style={{ display: 'block', marginTop: 3, width: 80, padding: '8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
+                            <label style={{ fontSize: 11, color: '#5f5952' }}>Кол-во<input value={ev.qty} inputMode="decimal" onChange={e => setEv(v => ({ ...v, qty: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ display: 'block', marginTop: 3, width: 80, padding: '8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
+                            <button onClick={() => saveEditPos(o.id, p)} style={{ flex: 1, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>✓ Сохранить</button>
+                          </div>
+                          <button onClick={() => removePos(o.id, p.id)} style={{ alignSelf: 'flex-start', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Удалить позицию</button>
+                        </div>
+                      )}
                       </div>
                     )
                   })}

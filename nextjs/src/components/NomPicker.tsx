@@ -19,6 +19,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [allItems, setAllItems] = useState<NomFull[]>([])
   const [loaded, setLoaded] = useState(false)
   const [color, setColor] = useState('')
+  const [warn, setWarn] = useState('')                        // «Сначала выберите цвет» для комплектующих
   const [showAllColors, setShowAllColors] = useState(false)   // избранные / все цвета (глазок)
   const [selG, setSelG] = useState('')      // группа
   const [selC, setSelC] = useState('')      // папка (категория)
@@ -130,7 +131,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     .sort((a, b) => b.score - a.score || a.i.name.length - b.i.name.length)
     .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit }))
 
-  function pickColor(c: string) { setColor(prev => prev === c ? '' : c) }
+  function pickColor(c: string) { setColor(prev => prev === c ? '' : c); if (c && c !== NOCOLOR) setWarn('') }
   function pickGroup(g: string) { setSelG(prev => prev === g ? '' : g); setSelC(''); setSelS(''); setSel({}); setCm('') }
   function pickCat(c: string) { setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
   function pickSub(s: string) { setSelS(prev => prev === s ? '' : s) }
@@ -138,6 +139,8 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     // willSelect считаем из ТЕКУЩЕГО sel (замыкание), а НЕ внутри updater — иначе флаг
     // вычисляется при рендере (после проверки ниже) и pad не открывается.
     const willSelect = sel[levelKey] !== itemKey
+    // Комплектующие (Изделие / H·J / углы) НЕЛЬЗЯ пробить без цвета — требуем реальный RAL.
+    if (willSelect && levelKey === 'kind' && (!color || color === NOCOLOR)) { setWarn('Сначала выберите цвет'); return }
     setSel(prev => { const next = { ...prev }; if (next[levelKey] === itemKey) delete next[levelKey]; else next[levelKey] = itemKey; return next })
     if (!isMeasure) setCm('')
     // Выбрали ВИД → сразу окно ввода (без отдельной кнопки «Добавить как есть»). Обычный вид
@@ -209,7 +212,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
         </div>
         <div style={{ overflowY: 'auto', flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 15 }}>
           <div>
-            <div style={LBL}>ЦВЕТ</div>
+            <div style={LBL}>ЦВЕТ{warn && <span style={{ marginLeft: 8, color: '#c1121c', fontWeight: 700, fontSize: 12 }}>⚠ {warn}</span>}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-start' }}>
               {ralOrdered(showAllColors).map(c => {
                 const on = color === c.code
