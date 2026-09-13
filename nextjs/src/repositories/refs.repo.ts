@@ -41,17 +41,14 @@ export const listProducts = async (orgId?: string) => {
 }
 
 // Контрагенты по видящей орг: свои (viewerOrgId) + головного (шарятся вниз) + мосты (orgRefId,
-// «наш филиал как контрагент» — нужны для меж-орг потоков, видны всегда). Головной видит только
-// свои; филиал — свои и головного; контрагенты филиала головному не видны. Без viewerOrgId — все.
+// Контрагенты — СТРОГО СВОИ у каждой орг (viewerOrgId): свои клиенты/поставщики + свои
+// меж-орг мосты (у моста orgId = его орг, поэтому попадает в «свои»). НЕ шарим контрагентов
+// головного вниз и не показываем чужие мосты — у каждого кабинета свой список. Без viewerOrgId — все.
 export const listContragents = async (viewerOrgId?: string | null) => {
   if (!viewerOrgId) return db.select().from(contragents).where(eq(contragents.archived, false))
-  const [hq] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.kind, 'hq')).limit(1)
-  const ownOrHq = hq && hq.id !== viewerOrgId
-    ? or(eq(contragents.orgId, viewerOrgId), eq(contragents.orgId, hq.id))
-    : eq(contragents.orgId, viewerOrgId)
   return db.select().from(contragents).where(and(
     eq(contragents.archived, false),
-    or(ownOrHq, isNotNull(contragents.orgRefId)),   // + мосты всегда
+    eq(contragents.orgId, viewerOrgId),
   ))
 }
 
