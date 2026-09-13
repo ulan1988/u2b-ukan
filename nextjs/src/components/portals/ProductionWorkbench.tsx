@@ -9,7 +9,7 @@ import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
-import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder } from '@/lib/api/orders'
+import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder, produceStock } from '@/lib/api/orders'
 import { listProjectsByClient } from '@/lib/api/refs'
 import { itemName } from '@/lib/itemName'
 import { lineAmount, isIzdelie, priceForClient as priceByType } from '@/lib/lineAmount'
@@ -22,8 +22,8 @@ function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
 }
 
-export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg }: {
-  order: any | null; uid?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void
+export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg, stockMode = false }: {
+  order: any | null; uid?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void; stockMode?: boolean
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
   const [note, setNote] = useState(order?.comment && order.comment !== 'Прямой заказ на производство' ? order.comment : '')
@@ -103,14 +103,14 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const totalCm = rows.reduce((s, r) => s + (Number(r.cm) || 0) * (Number(r.qty) || 0), 0)
   const grand = rows.reduce((s, r) => s + rowSum(r), 0)
   const hasPos = rows.some(r => (r.name || r.productId) && Number(r.qty) > 0)
-  const needCustomer = !order?.id                 // прямой заказ обязан иметь заказчика
+  const needCustomer = !stockMode && !order?.id    // прямой заказ обязан иметь заказчика; запас — нет
   // Изделия без цены уходили в карточку по 0 ₸ — выручка и рентабельность по ним обнулялись.
   // Цена = «за см × см» либо ручная; строка без цены блокирует создание карточки.
   const filled = (r: Row) => (r.name || r.productId) && Number(r.qty) > 0
   const noPrice = rows.filter(r => filled(r) && !(rowSum(r) > 0))
   // Изделие без цвета — ошибка: у комплектующих обязателен реальный RAL (не «дерево» тоже ок).
   const noColor = rows.filter(r => filled(r) && isIzdelie(rowName(r)) && !r.color && !extractRal(rowName(r)))
-  const valid = hasPos && (!needCustomer || !!cid) && noPrice.length === 0 && noColor.length === 0
+  const valid = hasPos && (!needCustomer || !!cid) && (stockMode || noPrice.length === 0) && noColor.length === 0
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -129,11 +129,18 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   async function done() {
     if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
     if (noColor.length) { showMsg(`⚠ Выберите цвет для изделия: ${noColor.map(r => rowName(r)).join(', ')}`); return }
-    if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
-    if (noPrice.length) { showMsg(`Укажите цену: ${noPrice.map(r => r.name || 'позиция').join(', ')}`); return }
+    if (!stockMode && needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
+    if (!stockMode && noPrice.length) { showMsg(`Укажите цену: ${noPrice.map(r => r.name || 'позиция').join(', ')}`); return }
     setBusy(true)
     try {
-      if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
+      // Производство НА ЗАПАС: без покупателя/оплаты — просто выпуск на склад Нипы.
+      if (stockMode) {
+        const items = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => ({ name: rowName(r), color: r.color || undefined, cm: r.cm || undefined, qty: Number(r.qty), productId: r.productId || undefined }))
+        const res: any = await produceStock({ uid, items })
+        showMsg(res?.ok ? `📦 Выпущено на склад: ${res.produced} поз.${res.number ? ` (${res.number})` : ''}` : `⚠ ${res?.error || 'Не удалось'}`)
+        if (res?.ok === false) { setBusy(false); return }
+      }
+      else if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
@@ -157,11 +164,12 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>🔧 {order?.id || 'Прямой заказ'}</span>
-        <span style={{ fontSize: 11, background: '#f3eeff', color: '#7a3aaa', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{order ? (order.status || 'К выполнению') : 'Новый заказ'}</span>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>{stockMode ? '📦 Запасы на склад' : `🔧 ${order?.id || 'Прямой заказ'}`}</span>
+        <span style={{ fontSize: 11, background: '#f3eeff', color: '#7a3aaa', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{stockMode ? 'Без покупателя и оплаты' : order ? (order.status || 'К выполнению') : 'Новый заказ'}</span>
       </div>
+      {stockMode && <div style={{ background: '#eef7f0', color: '#2e8a5e', borderRadius: 8, padding: '8px 11px', marginBottom: 10, fontSize: 12.5, fontWeight: 600 }}>📦 Укажите, сколько комплектующих/изделий сделано на запас — выпустим прямо на склад Нипы (без чека, в Кассе дня → «производство в запас»).</div>}
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+      <div style={{ display: stockMode ? 'none' : 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЗАКАЗЧИК {needCustomer && <span style={{ color: '#c1121c' }}>*</span>}</label>
           <div style={{ borderRadius: 8, boxShadow: needCustomer && !cid ? '0 0 0 1.5px #e6a6a6' : 'none' }}>
@@ -267,8 +275,8 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         <span style={{ fontSize: 13, color: '#5f5952' }}>Всего: <b style={{ color: '#26231f' }}>{totalCm}</b> см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
         {noColor.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 700, color: '#c1121c' }}>⚠ Без цвета: {noColor.length} изд. — выберите цвет (RAL)</span>}
-        {noPrice.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: '#c0532a' }}>⚠ Без цены: {noPrice.length} поз. — впишите «тг за шт» или цену за см</span>}
-        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#7a3aaa' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : '✓ Создать карточку'}</button>
+        {!stockMode && noPrice.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: '#c0532a' }}>⚠ Без цены: {noPrice.length} поз. — впишите «тг за шт» или цену за см</span>}
+        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? (stockMode ? '#2e8a5e' : '#7a3aaa') : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : stockMode ? '📦 Внести на склад' : '✓ Создать карточку'}</button>
       </div>
     </div>
   )

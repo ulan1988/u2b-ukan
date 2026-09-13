@@ -60,7 +60,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [newTo, setNewTo] = useState(''); const [newText, setNewText] = useState(''); const [newLoading, setNewLoading] = useState(false); const [newDone, setNewDone] = useState<any>(null)
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
-  const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false)
+  const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false); const [showStock, setShowStock] = useState(false)
   const [specProjects, setSpecProjects] = useState<any[]>([]); const [showSpecBuilder, setShowSpecBuilder] = useState(false); const [specQ, setSpecQ] = useState<Record<string, string>>({})
   const [carveFor, setCarveFor] = useState<string | null>(null)   // проект в режиме «Создать карточку»
   const [sheets, setSheets] = useState<any[]>([]); const [takeColor, setTakeColor] = useState(''); const [takeQty, setTakeQty] = useState('')
@@ -79,7 +79,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])
   // Пауза live-обновления пока идёт правка: каталог, правка кол-ва, чат, заполнение прямого
   // заказа мастера (showDirect) или открыта шторка — иначе перезагрузка списка сбрасывает ввод.
-  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || drawerId !== null || showSpecBuilder || carveFor !== null
+  const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || showStock || drawerId !== null || showSpecBuilder || carveFor !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])
   useEffect(() => { setSelected(null); setDetailTab('positions') }, [tab])
 
@@ -617,9 +617,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         </div>}
         {tab === 'produce' && <div>
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Стол мастера: <b>Принял</b> → <b>В работе</b> → <b>Готов к доставке</b> → отправка логисту. Позиции — в шторке (📋), можно отправить целиком или частями.</div>
-          <button onClick={() => setShowDirect(v => !v)} style={{ marginBottom: 12, padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => { setShowDirect(v => !v); setShowStock(false) }} style={{ padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
+            <button onClick={() => { setShowStock(v => !v); setShowDirect(false) }} title="Выпустить комплектующие/изделия на склад Нипы (без покупателя и оплаты)" style={{ padding: '9px 16px', borderRadius: 8, border: showStock ? '1.5px solid #e6e2dc' : '1.5px solid #2e8a5e', background: showStock ? '#fff' : '#e8f5ee', color: showStock ? '#5f5952' : '#2e8a5e', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showStock ? '× Отмена' : '📦 Создать запасы на склад'}</button>
+          </div>
           {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} onDone={() => { setShowDirect(false); load(); loadSpec() }} showMsg={showMsg} />}
-          {inWork.length === 0 && sold.length === 0 && !showDirect && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в работе</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
+          {showStock && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} stockMode onDone={() => { setShowStock(false); load() }} showMsg={showMsg} />}
+          {inWork.length === 0 && sold.length === 0 && !showDirect && !showStock && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в работе</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
 
           {([
             { key: 'accepted', title: '📥 ПРИНЯЛ', color: '#7a3aaa', items: accepted, next: { action: 'produceStart', label: '▶ В работу' } },

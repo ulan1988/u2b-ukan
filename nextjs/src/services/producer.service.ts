@@ -166,6 +166,42 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
   return { ok: true as const, number: doc.number, produced: outputs.length, created, skipped, consumed }
 }
 
+// Производство НА ЗАПАС (без карточки, без покупателя, без оплаты): мастер указывает что и
+// сколько сделано → выпуск прямо на склад Нипы. Материал списывается раскроем. В Кассе дня
+// попадает в «производство в запас» (docs type='production' output). Себестоимость — доля листа.
+export async function produceToStock(orgId: string, items: { name?: string; color?: string; cm?: number | string; qty: number | string; productId?: string | null }[], actor?: Session | null) {
+  const wh = await refsRepo.centralWarehouse(orgId)
+  if (!wh) return { ok: false as const, error: 'Не найден склад производителя' }
+  const outputs: any[] = []
+  const made: any[] = []
+  const sheetCache = new Map<string, SheetInfo | null>()
+  let created = 0, skipped = 0
+  for (const it of items) {
+    const qty = Number(it.qty) || 0
+    if (qty <= 0 || !((it.name || '').trim() || it.productId)) continue
+    const nm = itemName({ name: it.name || 'Изделие', color: it.color, cm: it.cm })
+    const izd = isIzdelie(nm)
+    const color = ralOf(nm) || (it.color === 'decor' ? 'дерево' : (it.color || ''))
+    const width = Number(it.cm) || 0
+    // Изделие требует РАЛ и см — иначе лист не выбрать.
+    if (izd && (!color || !(width > 0))) { skipped++; continue }
+    if (!sheetCache.has(color)) sheetCache.set(color, await sheetForColor(orgId, color))
+    const sheet = sheetCache.get(color) || null
+    const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
+    let productId = it.productId || null
+    if (izd) productId = await ensureProduct('Изделие')
+    else if (!productId) { productId = await ensureProduct(nm); created++ }
+    if (!izd && productId) await setProductCost(productId, cost)
+    outputs.push({ productId, qty, price: cost || 0, widthCm: width || undefined })
+    made.push({ name1c: nm, oral: nm, widthCm: width, qty, productId })
+  }
+  if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : 'Нет позиций для выпуска', skipped }
+  let consumed: any = null
+  try { const { consumeForCut } = await import('./material.service'); consumed = await consumeForCut(orgId, made) } catch { /* нехватка листов не роняет выпуск */ }
+  const doc = await createProduction({ orgId, warehouseId: wh.id, inputs: [], outputs, comment: 'Производство на запас (склад)' } as any)
+  return { ok: true as const, number: doc.number, produced: outputs.length, created, skipped, consumed }
+}
+
 // Орг, чей склад производит: если у позиций есть поставщик-филиал (контрагент привязан к
 // пользователю role=branch), берём орг этого филиала. Иначе — орг-владелец карточки.
 async function producingOrg(positions: any[], fallbackOrgId: string): Promise<string> {
