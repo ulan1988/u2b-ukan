@@ -114,10 +114,14 @@ export async function masterShift(orgId: string, date: string) {
   const N = sellersDay.length
   const bonusEach = N > 0 ? (margin * 0.4) / N : 0     // 40% наценки поровну между продавцами
   const reportSellers = sellersDay.map((s: any) => { const oklad = wageByName[(s.name || '').trim().toLowerCase()] || 0; return { name: s.name, oklad, bonus: bonusEach, zp: oklad + bonusEach } })
-  const zpTotal = reportSellers.reduce((a: number, r: any) => a + r.zp, 0)   // ЗП = Σ(оклад + 40%/N)
+  // ЗП всего = ФАКТИЧЕСКИ выплаченная ЗП за день (fin_rows article='ЗП', salaryTotal). Раньше бралась
+  // формула продавцов (оклад+40%/N) — но у производителя (Нипа) продавцов на чеках нет и она давала 0,
+  // хотя ЗП реально выплачена через «Деньги». Показываем реальный расход; формула — как подсказка в sellers.
+  const zpFormula = reportSellers.reduce((a: number, r: any) => a + r.zp, 0)
+  const zpTotal = salaryTotal > 0 ? salaryTotal : zpFormula   // приоритет фактически выплаченной ЗП
   const shopExp = currentTotal                          // расходы магазина/административные
   const dayResult = total - zpTotal - shopExp           // итого дня = продажа − ЗП − расходы
-  const report = { sold: total, margin, marginPct: total > 0 ? margin / total : 0, cash, kaspi, qr, debt, sellers: reportSellers, zpTotal, shopExp, result: dayResult }
+  const report = { sold: total, margin, marginPct: total > 0 ? margin / total : 0, cash, kaspi, qr, debt, sellers: reportSellers, zpTotal, zpPaid: salaryTotal, zpFormula, shopExp, result: dayResult }
 
   // ── ДОЛГИ (дебиторка): непогашенные чеки орг = итог − скидка − всего оплачено > 0 (не по дню) ──
   const debts = await sqlClient`
