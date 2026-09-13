@@ -168,6 +168,14 @@ export const TRANSITIONS: Record<string, Transition> = {
     patch: () => ({ status: 'Готов к доставке', prodPhase: 'ready' }),
     history: () => 'Готов к доставке',
   },
+  // Вернуть карточку со стола мастера обратно в «Заказы на производство» (prodPhase='' → очередь),
+  // чтобы отредактировать/переоформить и заново принять. Только если ещё не продана.
+  produceReset: {
+    roles: [...ADMIN, 'branch'],
+    guard: c => (c.order.prodPhase === 'sold' || c.order.linkedDocId ? 'Карточка уже продана — сначала отмените продажу' : null),
+    patch: () => ({ status: 'В ожидании', prodPhase: '', screen: 'reception', block: '' }),
+    history: () => 'Возвращена в заказы на производство',
+  },
   finalizePurchase: {
     roles: ADMIN,
     guard: c => (c.positions.length && c.positions.every(p => p.respUserId && p.supplierId) ? null : 'У всех позиций закупа должен быть логист и поставщик'),
@@ -175,7 +183,8 @@ export const TRANSITIONS: Record<string, Transition> = {
     history: () => 'Закуп оформлен → в работу',
   },
   cancel: {
-    roles: ADMIN,
+    roles: [...ADMIN, 'branch'],
+    guard: c => (c.order.prodPhase === 'sold' || c.order.linkedDocId ? 'Карточка продана — сначала отмените продажу' : null),
     patch: c => ({ isCancelled: true, cancelReason: c.payload.reason || '', status: 'Отменён' }),
     history: c => `Отменён${c.payload.reason ? ': ' + c.payload.reason : ''}`,
   },

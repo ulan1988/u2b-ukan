@@ -174,6 +174,16 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       await load(); await refreshDetail(id); showMsg(okMsg)
     } catch { showMsg('⚠ Ошибка сети') }
   }
+  // Вернуть карточку в «Заказы на производство» (изменить/переоформить и заново принять).
+  async function returnToQueue(id: string) {
+    if (!confirm('Вернуть карточку в «Заказы на производство»? Там её можно изменить и заново принять.')) return
+    setDrawerId(null); await act(id, 'produceReset', '↩ Возвращена в заказы на производство')
+  }
+  // Отменить (удалить) карточку со стола мастера.
+  async function cancelCard(id: string) {
+    if (!confirm('Отменить (удалить) карточку? Она уйдёт из стола мастера.')) return
+    setDrawerId(null); await act(id, 'cancel', '🗑 Карточка отменена')
+  }
   // Отправить логисту: целиком (posIds не задан) или частями (выбранные позиции).
   // Пока остаются leg=1 позиции — карточка остаётся у мастера; когда всё отправлено — уходит в Исходящие.
   async function sendCard(id: string, posIds?: string[], pickup?: boolean) {
@@ -634,6 +644,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', color: '#5f5952' }}>📋 Позиции ({total})</button>
                       {g.next && <button onClick={() => act(o.id, g.next!.action, `✓ ${g.next!.label.replace(/^[▶✓]\s*/, '')}`)} style={{ marginLeft: 'auto', border: `1.5px solid ${g.color}55`, background: `${g.color}14`, color: g.color, borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{g.next.label}</button>}
                       <button onClick={() => sendCard(o.id)} style={{ marginLeft: g.next ? 0 : 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
+                      <button onClick={() => returnToQueue(o.id)} title="Вернуть в «Заказы на производство» — изменить и заново принять" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ В заказ (изменить)</button>
+                      <button onClick={() => cancelCard(o.id)} title="Отменить / удалить карточку" style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Удалить</button>
                     </div>
                   </div>
                 )
