@@ -425,7 +425,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontSize: 13, color: '#5f5952' }}>сумма <b style={{ color: '#26231f' }}>{fmtMoney(total)}</b> ₸</span>
                       {overpayN > 0
                         ? <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: '#2a5aaa' }}>сдача {fmtMoney(overpayN)}</span>
-                        : <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: debtN > 0 ? '#c0532a' : '#2e8a5e' }}>долг {fmtMoney(debtN)}</span>}
+                        : <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: debtN > 0 ? '#8a6f00' : '#2e8a5e' }}>{debtN > 0 ? `к оплате ${fmtMoney(debtN)}` : 'оплачено'}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Наличка<input value={pay.cash} inputMode="decimal" onChange={e => setPay(p => ({ ...p, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
