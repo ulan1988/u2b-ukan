@@ -67,6 +67,8 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   useEffect(() => { if (accKind?.measure) setTimeout(() => cmRef.current?.focus(), 0) }, [qKind])   // eslint-disable-line react-hooks/exhaustive-deps
   function addQuick() {
     if (!accKind) return
+    // Комплектующие (Изделие / H·J / углы) НЕЛЬЗЯ добавить без цвета — требуем реальный RAL.
+    if (!qColor) { showMsg('⚠ Сначала выберите цвет'); return }
     const prod = findProd(accKind, qColor)
     const base = prod?.name || accKind.terms?.[0] || accKind.label
     // Имя строки собираем сразу по формуле «вид + цвет + см» (видно в таблице)
@@ -106,7 +108,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   // Цена = «за см × см» либо ручная; строка без цены блокирует создание карточки.
   const filled = (r: Row) => (r.name || r.productId) && Number(r.qty) > 0
   const noPrice = rows.filter(r => filled(r) && !(rowSum(r) > 0))
-  const valid = hasPos && (!needCustomer || !!cid) && noPrice.length === 0
+  // Изделие без цвета — ошибка: у комплектующих обязателен реальный RAL (не «дерево» тоже ок).
+  const noColor = rows.filter(r => filled(r) && isIzdelie(rowName(r)) && !r.color && !extractRal(rowName(r)))
+  const valid = hasPos && (!needCustomer || !!cid) && noPrice.length === 0 && noColor.length === 0
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -124,6 +128,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
 
   async function done() {
     if (!hasPos) { showMsg('Добавьте хотя бы одну позицию'); return }
+    if (noColor.length) { showMsg(`⚠ Выберите цвет для изделия: ${noColor.map(r => rowName(r)).join(', ')}`); return }
     if (needCustomer && !cid) { showMsg('Выберите заказчика — без него карточку создать нельзя'); return }
     if (noPrice.length) { showMsg(`Укажите цену: ${noPrice.map(r => r.name || 'позиция').join(', ')}`); return }
     setBusy(true)
@@ -261,6 +266,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: '#5f5952' }}>Всего: <b style={{ color: '#26231f' }}>{totalCm}</b> см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
+        {noColor.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 700, color: '#c1121c' }}>⚠ Без цвета: {noColor.length} изд. — выберите цвет (RAL)</span>}
         {noPrice.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: '#c0532a' }}>⚠ Без цены: {noPrice.length} поз. — впишите «тг за шт» или цену за см</span>}
         <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? '#7a3aaa' : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : '✓ Создать карточку'}</button>
       </div>
