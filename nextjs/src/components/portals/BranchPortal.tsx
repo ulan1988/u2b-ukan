@@ -365,7 +365,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         const isSold = ph === 'sold' || !!o.linkedDocId
         const needBase = pos.length > 0 && pos.some((p: any) => !p.productId)
         const cashN = Number((pay.cash || '').replace(',', '.')) || 0, kaspiN = Number((pay.kaspi || '').replace(',', '.')) || 0, qrN = Number((pay.qr || '').replace(',', '.')) || 0
-        const debtN = Math.max(0, total - cashN - kaspiN - qrN)
+        const changeN = Number((pay.change || '').replace(',', '.')) || 0
+        // Оплачено минус выданная сдача = сколько реально закрыто. Переплата (без сдачи) = сдача к выдаче.
+        const debtN = Math.max(0, total - (cashN + kaspiN + qrN) + changeN)
+        const overpayN = Math.max(0, (cashN + kaspiN + qrN) - changeN - total)   // сдача к выдаче
         const fmtMoney = (n: number) => Math.round(n).toLocaleString('ru-RU')
         return (
           <div onClick={() => { setDrawerId(null); setSel({}) }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,18,16,.4)', zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
@@ -410,7 +413,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
                       <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>КАССА</span>
                       <span style={{ fontSize: 13, color: '#5f5952' }}>сумма <b style={{ color: '#26231f' }}>{fmtMoney(total)}</b> ₸</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: debtN > 0 ? '#c0532a' : '#2e8a5e' }}>долг {fmtMoney(debtN)}</span>
+                      {overpayN > 0
+                        ? <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: '#2a5aaa' }}>сдача {fmtMoney(overpayN)}</span>
+                        : <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: debtN > 0 ? '#c0532a' : '#2e8a5e' }}>долг {fmtMoney(debtN)}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Наличка<input value={pay.cash} inputMode="decimal" onChange={e => setPay(p => ({ ...p, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
@@ -422,6 +427,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <input value={pay.change} inputMode="decimal" onChange={e => setPay(p => ({ ...p, change: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: 80, padding: '6px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
                       <span style={{ fontSize: 12, color: '#5f5952' }}>с</span>
                       {(['cash', 'kaspi'] as const).map(cf => { const on = pay.changeFrom === cf; return <button key={cf} onClick={() => setPay(p => ({ ...p, changeFrom: on ? '' : cf }))} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{cf === 'cash' ? 'нал' : 'каспи'}</button> })}
+                      {(() => { const sd = Math.max(0, (cashN + kaspiN + qrN) - total); return sd > 0 && Math.abs(sd - changeN) > 0.5 ? <button onClick={() => setPay(p => ({ ...p, change: String(Math.round(sd)), changeFrom: p.changeFrom || 'cash' }))} style={{ marginLeft: 'auto', padding: '5px 10px', borderRadius: 7, border: '1.5px solid #a9c3ea', background: '#eef3fb', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: '#2a5aaa' }}>↩ выдать сдачу {fmtMoney(sd)}</button> : null })()}
                     </div>
                     {/* Долг: у Нипы (своя дебиторка, свои клиенты) или уходит в головной */}
                     <div style={{ display: 'flex', gap: 8 }}>

@@ -94,7 +94,12 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   // Скидка по чеку: итог = Σпозиций − скидка (хранится на заказе, попадает в накладную).
   const disc = Math.max(0, Math.min(Number((order as any).discountSum) || 0, subtotal))
   const total = subtotal - disc
-  const cash = Math.max(0, Number(p.cash) || 0), kaspi = Math.max(0, Number(p.kaspi) || 0), qr = Math.max(0, Number(p.qr) || 0)
+  const cashRaw = Math.max(0, Number(p.cash) || 0), kaspiRaw = Math.max(0, Number(p.kaspi) || 0), qr = Math.max(0, Number(p.qr) || 0)
+  // Сдача выдаётся с нала (по умолчанию) или каспи → в кассу реально попадает оплата МИНУС сдача.
+  // Иначе при переплате (дал 100 000 за 97 750) в счёт писалось 100 000, а не чистые 97 750.
+  const changeAmt = Math.max(0, Number(p.change) || 0)
+  const cash = (p.changeFrom === 'kaspi') ? cashRaw : Math.max(0, cashRaw - changeAmt)
+  const kaspi = (p.changeFrom === 'kaspi') ? Math.max(0, kaspiRaw - changeAmt) : kaspiRaw
   const debt = Math.max(0, total - cash - kaspi - qr)
 
   // Контрагент: заказчик карточки, иначе мост на головной офис.
