@@ -16,7 +16,7 @@ export async function masterShift(orgId: string, date: string) {
     from orders o
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
     join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id = o.id
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
   ` as unknown as Array<any>)[0] || { cash: 0, kaspi: 0, qr: 0, total: 0 }
   // Чеки дня: карточка + кто пробил (seller), покупатель, номер накладной, состав (для журнала кассы).
   const cards = await sqlClient`
@@ -26,7 +26,7 @@ export async function masterShift(orgId: string, date: string) {
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
     join (select card_id, sum(qty*price) total, count(*) cnt from order_positions group by card_id) t on t.card_id = o.id
     left join contragents c on c.id = o.contact_id
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
     order by o.updated_at desc
   ` as unknown as Array<any>
   // Состав чеков одним запросом — журнал раскрывается без похода за каждой карточкой.
@@ -100,14 +100,14 @@ export async function masterShift(orgId: string, date: string) {
     from orders o join documents d on d.id=o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
     join order_positions op on op.card_id=o.id
     left join products p on p.id=op.product_id
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
   ` as unknown as Array<any>)[0] || { cost: 0 }
   const margin = Math.max(0, total - num(costRow.cost))
   // Продавцы на смене = кто пробил чек в этот день (между ними делится 40% наценки).
   const sellersDay = await sqlClient`
     select coalesce(nullif(trim(o.seller),''),'—') name
     from orders o join documents d on d.id=o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false and coalesce(trim(o.seller),'')<>''
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false and coalesce(trim(o.seller),'')<>''
     group by 1 order by 1
   ` as unknown as Array<any>
   const wageByName: Record<string, number> = {}; for (const s of staff) wageByName[(s.name || '').trim().toLowerCase()] = num(s.dailyWage)
@@ -128,7 +128,7 @@ export async function masterShift(orgId: string, date: string) {
     join (select card_id, sum(case when lower(coalesce(name1c,oral)) like 'изделие%' and coalesce(width_cm,0)>0 then qty*width_cm*price else qty*price end) total from order_positions group by card_id) t on t.card_id=o.id
     left join (select document_id did, coalesce(sum(amount),0) paid from payments where direction='in' group by document_id) pin on pin.did=o.linked_doc_id
     left join contragents c on c.id=o.contact_id
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
       and (t.total - coalesce(o.discount_sum,0) - coalesce(pin.paid,0)) > 0.5
     order by o.updated_at desc
   ` as unknown as Array<any>
@@ -152,7 +152,7 @@ export async function cashReport(orgId: string, from: string, to: string) {
     from orders o
     join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
     join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id=o.id
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
     group by d.date
   ` as unknown as Array<any>
   const exps = await sqlClient`
@@ -178,7 +178,7 @@ export async function cashReport(orgId: string, from: string, to: string) {
     join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
     join order_positions op on op.card_id=o.id
     left join products p on p.id=op.product_id
-    where o.org_id=${orgId} and o.prod_phase='sold' and o.is_cancelled=false
+    where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
     group by d.date
   ` as unknown as Array<any>
   const costByDay: Record<string, number> = {}; for (const c of costs) costByDay[c.day] = num(c.cost)
