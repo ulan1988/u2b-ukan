@@ -15,8 +15,8 @@ export async function assignLogist(id: string, respUserId: string) {
   return { ok: r.ok }
 }
 // Мастер → логисту: отправить целиком (posIds не задан) или частями (выбранные позиции).
-export async function sendOrder(cardId: string, posIds?: string[]) {
-  const r = await post(`/api/orders/${cardId}/send`, posIds && posIds.length ? { posIds } : {})
+export async function sendOrder(cardId: string, posIds?: string[], pickup?: boolean) {
+  const r = await post(`/api/orders/${cardId}/send`, { ...(posIds && posIds.length ? { posIds } : {}), ...(pickup ? { pickup: true } : {}) })
   return { ok: r.ok, error: r.error as string | undefined, remaining: r.data?.remaining as number | undefined }
 }
 // Сплит карточки: выбранные позиции → новая карточка.

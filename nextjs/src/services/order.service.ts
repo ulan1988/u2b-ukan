@@ -352,7 +352,11 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
 // позиции (leg=1) → leg=2 (их видит логист), карточка → экран «Исходящие». Когда leg=1
 // позиций не осталось — карточка «Отправлено» (prodPhase=sent) уходит из стола мастера.
 // posIds пуст/не задан → отправить все производственные позиции (целиком).
-export async function sendPositions(cardId: string, posIds: string[] | undefined, actor?: Session | null) {
+export const PICKUP_STATUS = 'Забрано (Самовывоз)'
+// Отправка логисту (или самовывоз). pickup=true → покупатель забрал сам: позиции всё равно
+// уходят в Исходящие (к логисту в отчёт), но со статусом «Забрано (Самовывоз)» — доставки нет.
+export async function sendPositions(cardId: string, posIds: string[] | undefined, actor?: Session | null, opts?: { pickup?: boolean }) {
+  const pickup = !!opts?.pickup
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   const positions = await repo.positionsByCard(cardId)
@@ -361,16 +365,20 @@ export async function sendPositions(cardId: string, posIds: string[] | undefined
   const wantAll = !posIds || !posIds.length
   const targets = wantAll ? leg1 : leg1.filter((p: any) => posIds!.includes(p.id))
   if (!targets.length) return { ok: false as const, error: 'Не выбраны позиции' }
-  for (const p of targets) await repo.updatePosition(p.id, { leg: 2 })
+  for (const p of targets) await repo.updatePosition(p.id, pickup ? { leg: 2, status: PICKUP_STATUS } : { leg: 2 })
   const remaining = leg1.length - targets.length
   const patch: Record<string, any> = { screen: 'outgoing', block: '' }
-  if (remaining <= 0) { patch.status = 'Отправлено'; patch.prodPhase = 'sent' }
+  if (remaining <= 0) { patch.status = pickup ? PICKUP_STATUS : 'Отправлено'; patch.prodPhase = 'sent' }
   await repo.updateOrder(cardId, patch)
+  // Самовывоз — авто-строка в отчёт логиста (как доставка, но помечена самовывозом статусом).
+  if (pickup) { for (const p of targets) { try { await addDeliveryToShift(order.orgId, { ...p, status: PICKUP_STATUS }, order) } catch {} } }
   await repo.insertHistory({
-    cardId, action: 'produceSend',
-    detail: remaining <= 0
-      ? `Отправлено логисту${targets.length && !wantAll ? `: ${targets.length} поз.` : ''}`
-      : `Отправлено логисту частично: ${targets.length} поз. (осталось ${remaining})`,
+    cardId, action: pickup ? 'producePickup' : 'produceSend',
+    detail: pickup
+      ? `Забрано (самовывоз)${targets.length && !wantAll ? `: ${targets.length} поз.` : ''}`
+      : remaining <= 0
+        ? `Отправлено логисту${targets.length && !wantAll ? `: ${targets.length} поз.` : ''}`
+        : `Отправлено логисту частично: ${targets.length} поз. (осталось ${remaining})`,
     userName: actor?.name || 'Система',
   })
   return { ok: true as const, sent: targets.length, remaining }

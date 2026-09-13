@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const b = await req.json().catch(() => null)
   const posIds = Array.isArray(b?.posIds) ? b.posIds.filter((x: any) => typeof x === 'string') : undefined
-  const res: any = await sendPositions(params.id, posIds, s)
+  const res: any = await sendPositions(params.id, posIds, s, { pickup: !!b?.pickup })
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   await pushSignal()
   return NextResponse.json(res)

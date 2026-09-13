@@ -33,6 +33,7 @@ function StatusBadge({ status }: { status: string }) {
     'К выполнению': { bg: '#f3eeff', color: '#7a3aaa' }, 'Выполнено': { bg: '#e8f5ee', color: '#2e8a5e' },
     'Производство': { bg: '#f3eeff', color: '#7a3aaa' }, 'Изготовлено': { bg: '#e8f5ee', color: '#2e8a5e' },
     'Принял': { bg: '#f3eeff', color: '#7a3aaa' }, 'Готов к доставке': { bg: '#e8f5ee', color: '#2e8a5e' }, 'Отправлено': { bg: '#e8f1ff', color: '#2a5aaa' },
+    'Забрано (Самовывоз)': { bg: '#eef3fb', color: '#2a5aaa' },
   }
   const s = map[status] || { bg: '#efece8', color: '#6b655b' }
   return <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }}>{status}</span>
@@ -165,13 +166,14 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   // Отправить логисту: целиком (posIds не задан) или частями (выбранные позиции).
   // Пока остаются leg=1 позиции — карточка остаётся у мастера; когда всё отправлено — уходит в Исходящие.
-  async function sendCard(id: string, posIds?: string[]) {
+  async function sendCard(id: string, posIds?: string[], pickup?: boolean) {
     // Продать перед отправкой: карточку нельзя отправить логисту, пока не проведена продажа (чек).
     const ord = orders.find((x: any) => x.id === id)
     if (ord && !(ord.prodPhase === 'sold' || ord.linkedDocId)) { showMsg('Сначала проведите продажу: касса или «Долг к головному»'); return }
     try {
-      const r = await sendOrder(id, posIds); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-      setSel({}); if (r.remaining && r.remaining > 0) { showMsg(`✓ Отправлено · осталось ${r.remaining}`); await refreshDetail(id) } else { setDrawerId(null); showMsg('✓ Отправлено логисту') }
+      const r = await sendOrder(id, posIds, pickup); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+      const done = pickup ? '✓ Забрано (самовывоз)' : '✓ Отправлено логисту'
+      setSel({}); if (r.remaining && r.remaining > 0) { showMsg(`${pickup ? '✓ Забрано' : '✓ Отправлено'} · осталось ${r.remaining}`); await refreshDetail(id) } else { setDrawerId(null); showMsg(done) }
       await load()
     } catch { showMsg('⚠ Ошибка сети') }
   }
@@ -421,9 +423,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   )}
                   {!isSold
                     ? <button disabled title="Сначала проведите продажу" style={{ width: '100%', border: 'none', background: '#e6e2dc', color: '#8a857c', borderRadius: 9, padding: '11px', cursor: 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🔒 Сначала продажа (касса / долг)</button>
-                    : selIds.length > 0 && selIds.length < leg1.length
-                      ? <button onClick={() => sendCard(o.id, selIds)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить выбранные ({selIds.length}) →</button>
-                      : <button onClick={() => sendCard(o.id)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить всё логисту ({leg1.length}) →</button>}
+                    : (() => { const partial = selIds.length > 0 && selIds.length < leg1.length; const ids = partial ? selIds : undefined; return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <button onClick={() => sendCard(o.id, ids)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{partial ? `🚚 Отправить выбранные (${selIds.length}) →` : `🚚 Отправить всё логисту (${leg1.length}) →`}</button>
+                        <button onClick={() => sendCard(o.id, ids, true)} title="Покупатель забрал сам — уходит в отчёт логиста со статусом «Забрано (Самовывоз)»" style={{ width: '100%', border: '1.5px solid #2a5aaa55', background: '#eef3fb', color: '#2a5aaa', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🙋 Забрано (самовывоз){partial ? ` — ${selIds.length}` : ''}</button>
+                      </div>
+                    ) })()}
                 </div>
               )}
             </div>
@@ -570,7 +575,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
                       {leg1.length > 0
-                        ? <button onClick={() => sendCard(o.id)} style={{ marginLeft: 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить логисту ({leg1.length})</button>
+                        ? <>
+                            <button onClick={() => sendCard(o.id, undefined, true)} title="Покупатель забрал сам — уходит в отчёт логиста со статусом «Забрано (Самовывоз)»" style={{ marginLeft: 'auto', border: '1.5px solid #2a5aaa55', background: '#eef3fb', color: '#2a5aaa', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🙋 Забрано (самовывоз)</button>
+                            <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Логисту ({leg1.length})</button>
+                          </>
                         : <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a5aaa', fontWeight: 700 }}>🚚 у логиста</span>}
                       <button onClick={() => doUnpay(o.id)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
                     </div>
