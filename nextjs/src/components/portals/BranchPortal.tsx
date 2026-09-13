@@ -363,13 +363,16 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Каспи<span style={{ color: '#b8b1a6' }}> (GOLD)</span><input value={pay.kaspi} inputMode="decimal" onChange={e => setPay(p => ({ ...p, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
                       <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>QR<span style={{ color: '#b8b1a6' }}> (банк)</span><input value={pay.qr} inputMode="decimal" onChange={e => setPay(p => ({ ...p, qr: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: '100%', padding: '8px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 3 }} /></label>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>Сдача</span>
                       <input value={pay.change} inputMode="decimal" onChange={e => setPay(p => ({ ...p, change: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ width: 80, padding: '6px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
                       <span style={{ fontSize: 12, color: '#5f5952' }}>с</span>
                       {(['cash', 'kaspi'] as const).map(cf => { const on = pay.changeFrom === cf; return <button key={cf} onClick={() => setPay(p => ({ ...p, changeFrom: on ? '' : cf }))} style={{ padding: '5px 10px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{cf === 'cash' ? 'нал' : 'каспи'}</button> })}
-                      <button onClick={() => payDebt(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Долг к головному</button>
-                      <button onClick={() => doPay(o.id)} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>💵 Оплатить</button>
+                    </div>
+                    {/* Действия — отдельной строкой во всю ширину, чтобы кнопки не обрезались краем панели */}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => payDebt(o.id)} style={{ flex: 1, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 9, padding: '11px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🏢 Долг к головному</button>
+                      <button onClick={() => doPay(o.id)} style={{ flex: 1, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px 8px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Оплатить</button>
                     </div>
                     <div style={{ fontSize: 11.5, color: '#8a6f00', marginTop: 2 }}>Сначала продайте (чек), потом отправка логисту.</div>
                   </>
