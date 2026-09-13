@@ -71,7 +71,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
   const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
-  useEffect(() => { fetchRefs().then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [])
+  // Товары/контрагенты — по орг ФИЛИАЛА (не по сессии смотрящего), иначе цены продажи (product_prices)
+  // берутся от чужой орг (админ = головной → цены 0) и не подтягиваются в стол мастера.
+  useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [user.orgId])
 
   // uid — если кабинет открыт админом «от имени» филиала, все запросы идут от этого филиала.
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])

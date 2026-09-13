@@ -84,7 +84,10 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       const nm = (it.name1c || it.oral || '').trim()
       const cmM = nm.match(/(\d+)\s*см/)
       const clean = nm.replace(/\s*·?\s*\d+\s*см\s*$/, '').trim() || nm
-      return { productId: '', name: clean, color: extractRal(clean), cm: it.widthCm != null ? String(it.widthCm) : (cmM ? cmM[1] : ''), qty: String(it.qty || 1), price: '' }
+      // Сопоставляем выбранный товар с базой → productId + автоцена по типу клиента (розн/опт/спец).
+      const prod = products.find((p: any) => norm(p.name) === norm(nm)) || products.find((p: any) => norm(p.name) === norm(clean))
+      const pr = prod ? priceForClient(prod) : 0
+      return { productId: prod?.id || '', name: prod?.name || clean, color: extractRal(prod?.name || clean), cm: it.widthCm != null ? String(it.widthCm) : (cmM ? cmM[1] : ''), qty: String(it.qty || 1), price: pr > 0 ? String(pr) : '' }
     })
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), ...add])
     setCatalog(false)
