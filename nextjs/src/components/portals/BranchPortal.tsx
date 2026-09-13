@@ -131,6 +131,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Этап мастера живёт в prodPhase: '' → accepted (Принял) → working (В работе) → ready (Готов к доставке) → sent (Отправлено).
   const phase = (o: any) => o.prodPhase || ''
   const custName = (o: any) => cags.find((c: any) => c.id === o.contactId)?.name || ''
+  // Комментарий карточки для показа рядом с именем (кроме служебной метки прямого заказа).
+  const cmt = (o: any) => { const c = (o?.comment || '').trim(); return c && c !== 'Прямой заказ на производство' ? c : '' }
+  const NoteTag = ({ o }: { o: any }) => cmt(o) ? <span style={{ fontSize: 12, color: '#7a3aaa', background: '#f3eeff', padding: '2px 8px', borderRadius: 20, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cmt(o)}>💬 {cmt(o)}</span> : null
   // База стола мастера: плечо-1 ИЛИ прямой заказ (ЗК), не отменён, не закрыт. Частично-отправленная
   // карточка (часть позиций уже у логиста, часть в работе) остаётся тут, пока есть leg=1.
   const prodBase = (o: any) => (isProd(o) || isZK(o)) && !o.isCancelled && notClosed(o)
@@ -184,6 +187,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   // Ф-B: действия карточки — проект, сплит (выбранные → новая карточка).
   async function attachProject(id: string, specProjectId: string) { const r = await updateCard(id, { specProjectId }); if (r.ok) { await refreshDetail(id); await load(); showMsg(specProjectId ? '📁 Добавлено в проект' : 'Отвязано от проекта') } else showMsg('⚠ Не удалось') }
+  async function saveComment(id: string, comment: string) { const r = await updateCard(id, { comment }); if (r.ok) { await refreshDetail(id); await load(); showMsg('💬 Комментарий сохранён') } else showMsg('⚠ Не удалось') }
   async function attachCustomer(id: string, contactId: string) {
     const r = await updateCard(id, { contactId })
     if (!r.ok) { showMsg('⚠ Не удалось'); return }
@@ -361,6 +365,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                 <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#7a3aaa' }}>{fmtCode(o.id)}</span>
                 <StatusBadge status={o.status} />
                 <button onClick={() => { setDrawerId(null); setSel({}) }} style={{ marginLeft: 'auto', border: 'none', background: '#f1efec', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 15, color: '#5f5952' }}>✕</button>
+              </div>
+              {/* Комментарий карточки — правится прямо тут */}
+              <div style={{ padding: '8px 16px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>💬</span>
+                <input defaultValue={cmt(o)} key={o.id} onBlur={e => { const v = e.target.value.trim(); if (v !== cmt(o)) saveComment(o.id, v) }} placeholder="комментарий к карточке…" style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', color: '#7a3aaa', background: '#faf8fc' }} />
               </div>
               {/* Смена статуса всей карточки */}
               <div style={{ padding: '10px 16px', borderBottom: '1px solid #f1efec', display: 'flex', gap: 6 }}>
@@ -602,6 +611,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: g.color }}>{fmtCode(o.id)}</span>
                       <StatusBadge status={o.status} />
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
+                      <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
@@ -628,6 +638,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontSize: 12, fontWeight: 700, color: '#2e8a5e' }}>{Math.round(total).toLocaleString('ru-RU')} ₸</span>
                       {o.payment && <span style={{ fontSize: 11, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{o.payment}</span>}
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
+                      <NoteTag o={o} />
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>

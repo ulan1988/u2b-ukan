@@ -26,6 +26,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   order: any | null; uid?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
+  const [note, setNote] = useState(order?.comment && order.comment !== 'Прямой заказ на производство' ? order.comment : '')
   const [specProjectId, setSpecProjectId] = useState(order?.specProjectId || '')   // проект заказчика (spec_projects)
   const [clientProjs, setClientProjs] = useState<any[]>([])              // проекты выбранного заказчика
   const [priceCm, setPriceCm] = useState('')
@@ -128,7 +129,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
-        const res: any = await createClientOrder({ comment: 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
+        const res: any = await createClientOrder({ comment: note.trim() || 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
         if (res?.ok && res.data?.id) {
           // Если приём не прошёл — карточка осталась с пустым prod_phase. Она видна во вкладке
           // «Заказы на производство» (leg=1), мастер примет её вручную; молчать нельзя.
@@ -173,6 +174,10 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         <div style={{ width: 130 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЦЕНА ЗА СМ</label>
           <input style={inp} type="number" value={priceCm} onChange={e => setPriceCm(e.target.value)} placeholder="тг/см" />
+        </div>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КОММЕНТАРИЙ</label>
+          <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="напр. для Асета, к 15:00…" />
         </div>
       </div>
 
