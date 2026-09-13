@@ -98,8 +98,10 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   // Сдача выдаётся с нала (по умолчанию) или каспи → в кассу реально попадает оплата МИНУС сдача.
   // Иначе при переплате (дал 100 000 за 97 750) в счёт писалось 100 000, а не чистые 97 750.
   const changeAmt = Math.max(0, Number(p.change) || 0)
-  const cash = (p.changeFrom === 'kaspi') ? cashRaw : Math.max(0, cashRaw - changeAmt)
-  const kaspi = (p.changeFrom === 'kaspi') ? Math.max(0, kaspiRaw - changeAmt) : kaspiRaw
+  // Сдача уменьшает реально внесённое: сначала с выбранного счёта, если не хватает — перелив на другой.
+  let cash = cashRaw, kaspi = kaspiRaw, rem = changeAmt
+  if (p.changeFrom === 'kaspi') { const a = Math.min(kaspi, rem); kaspi -= a; rem -= a; const b = Math.min(cash, rem); cash -= b; rem -= b }
+  else { const a = Math.min(cash, rem); cash -= a; rem -= a; const b = Math.min(kaspi, rem); kaspi -= b; rem -= b }
   const debt = Math.max(0, total - cash - kaspi - qr)
 
   // Контрагент: заказчик карточки, иначе мост на головной офис.

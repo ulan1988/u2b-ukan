@@ -15,7 +15,7 @@ export async function masterShift(orgId: string, date: string) {
       coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total - coalesce(o.discount_sum,0)),0)::float total
     from orders o
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
-    join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id = o.id
+    join (select card_id, sum(case when lower(coalesce(name1c,oral)) like 'изделие%' and coalesce(width_cm,0)>0 then qty*width_cm*price else qty*price end) total from order_positions group by card_id) t on t.card_id = o.id
     where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
   ` as unknown as Array<any>)[0] || { cash: 0, kaspi: 0, qr: 0, total: 0 }
   // Чеки дня: карточка + кто пробил (seller), покупатель, номер накладной, состав (для журнала кассы).
@@ -24,7 +24,7 @@ export async function masterShift(orgId: string, date: string) {
       o.change_sum::float "changeSum", (t.total - coalesce(o.discount_sum,0))::float total, o.discount_sum::float "discountSum", t.cnt::int cnt, c.name customer, d.number "docNumber", o.updated_at ts
     from orders o
     join documents d on d.id = o.linked_doc_id and d.date=${date} and d.status<>'cancelled'
-    join (select card_id, sum(qty*price) total, count(*) cnt from order_positions group by card_id) t on t.card_id = o.id
+    join (select card_id, sum(case when lower(coalesce(name1c,oral)) like 'изделие%' and coalesce(width_cm,0)>0 then qty*width_cm*price else qty*price end) total, count(*) cnt from order_positions group by card_id) t on t.card_id = o.id
     left join contragents c on c.id = o.contact_id
     where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
     order by o.updated_at desc
@@ -153,7 +153,7 @@ export async function cashReport(orgId: string, from: string, to: string) {
       coalesce(sum(o.paid_qr),0)::float qr, coalesce(sum(t.total - coalesce(o.discount_sum,0)),0)::float sold, count(*)::int cnt
     from orders o
     join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.date between ${from} and ${to}
-    join (select card_id, sum(qty*price) total from order_positions group by card_id) t on t.card_id=o.id
+    join (select card_id, sum(case when lower(coalesce(name1c,oral)) like 'изделие%' and coalesce(width_cm,0)>0 then qty*width_cm*price else qty*price end) total from order_positions group by card_id) t on t.card_id=o.id
     where o.org_id=${orgId} and o.prod_phase in ('sold','sent') and o.is_cancelled=false
     group by d.date
   ` as unknown as Array<any>
