@@ -38,11 +38,11 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const [allColors, setAllColors] = useState(false)        // показать все цвета (глазок)
   const [qKind, setQKind] = useState('')                   // …и вид из «Комплектующие»
   const [qCm, setQCm] = useState('')                       // длина для «Изделие · см»
-  const [qQty, setQQty] = useState('1')                    // кол-во для быстрого добавления
+  const [qQty, setQQty] = useState('')                    // кол-во для быстрого добавления
   const cmRef = useRef<HTMLInputElement>(null)
   const qtyRef = useRef<HTMLInputElement>(null)
   const advRef = useRef<any>(null)   // таймер авто-перехода на след. ячейку (пауза после набора)
-  function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '1', price: '' } }
+  function blank(): Row { return { productId: '', name: '', color: '', cm: '', qty: '', price: '' } }
   const setRow = (i: number, patch: Partial<Row>) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
   // Автоцена по типу клиента (розница/опт/спец) — тянется по прайсу заказчика.
   // Для изделий это цена ЗА СМ; для профилей — за штуку.
@@ -76,7 +76,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
     const qty = Math.max(1, Number(qQty) || 1)
     const row: Row = { productId: prod?.id || '', name, color: qColor === 'decor' ? 'decor' : (qColor || extractRal(name)), cm: accKind.measure ? qCm : '', qty: String(qty), price: '' }
     setRows(rs => [...rs.filter(r => r.name || r.productId || r.cm), row])
-    setQCm(''); setQQty('1')
+    setQCm(''); setQQty('')
     if (accKind.measure) setTimeout(() => cmRef.current?.focus(), 0)
   }
 
@@ -189,7 +189,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         )}
         <div style={{ width: 130 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>ЦЕНА ЗА СМ</label>
-          <input style={inp} type="number" value={priceCm} onChange={e => setPriceCm(e.target.value)} placeholder="тг/см" />
+          <input style={inp} inputMode="decimal" value={priceCm} onChange={e => setPriceCm(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="тг/см" />
         </div>
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КОММЕНТАРИЙ</label>
@@ -250,10 +250,10 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
               <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
                 <td style={{ padding: '4px 6px', fontSize: 12, color: '#837c72' }}>{i + 1}</td>
                 <td style={{ padding: '4px 4px', minWidth: 150 }}><NomInline products={products} value={r.productId} name={r.name} onPick={(p: any) => { const pr = priceForClient(p); setRow(i, { productId: p.id, name: p.name, color: p.color || extractRal(p.name), ...(p.widthCm != null ? { cm: String(p.widthCm) } : {}), ...(pr > 0 ? { price: String(pr) } : {}) }) }} /></td>
-                <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} type="number" value={r.cm} onChange={e => { const cm = e.target.value; setRow(i, { cm, name: r.name ? itemName({ name: r.name, color: r.color, cm }) : r.name }) }} placeholder="см" /></td>
-                <td style={{ padding: '4px 4px', width: 56 }}><input data-qty style={{ ...inp, width: 50, textAlign: 'right' }} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
+                <td style={{ padding: '4px 4px', width: 64 }}><input style={{ ...inp, width: 58, textAlign: 'right' }} inputMode="decimal" value={r.cm} onChange={e => { const cm = e.target.value.replace(/[^0-9.,]/g, ''); setRow(i, { cm, name: r.name ? itemName({ name: r.name, color: r.color, cm }) : r.name }) }} placeholder="см" /></td>
+                <td style={{ padding: '4px 4px', width: 56 }}><input data-qty style={{ ...inp, width: 50, textAlign: 'right' }} inputMode="numeric" value={r.qty} onChange={e => setRow(i, { qty: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="шт" /></td>
                 <td style={{ padding: '4px 4px', width: 84, textAlign: 'right', fontSize: 13 }}>
-                  <input style={{ ...inp, width: 74, textAlign: 'right' }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(rowName(r)) ? 'за см' : 'цена'} title={isIzdelie(rowName(r)) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} />
+                  <input style={{ ...inp, width: 74, textAlign: 'right' }} inputMode="decimal" value={r.price} onChange={e => setRow(i, { price: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder={isIzdelie(rowName(r)) ? 'за см' : 'цена'} title={isIzdelie(rowName(r)) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} />
                 </td>
                 <td style={{ padding: '4px 6px', width: 90, textAlign: 'right', fontSize: 13, fontWeight: 700 }}>{rowSum(r) ? Math.round(rowSum(r)).toLocaleString('ru-RU') : '—'}</td>
                 <td style={{ padding: '4px 4px', width: 46, whiteSpace: 'nowrap' }}>
