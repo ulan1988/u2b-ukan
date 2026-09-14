@@ -77,6 +77,11 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (order.linkedDocId) return { ok: false as const, error: 'Уже продано — сначала отмените продажу' }
+  // Оплата НЕ должна выкидывать карточку производителя из «В работе»: запоминаем её произв.
+  // этап/экран/статус, чтобы вернуть после проводки (postOrderInvoice ставит bookkeeping/Проведён).
+  const prevPhase = (order as any).prodPhase || ''
+  const prevScreen = order.screen
+  const prevStatus = order.status
   const positions = await repo.positionsByCard(cardId)
   if (!positions.length) return { ok: false as const, error: 'Нет позиций' }
   const orgKind = await orgKindOf(order.orgId)
@@ -146,8 +151,14 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   const methods = [cash && 'Наличка', kaspi && 'Каспи', qr && 'QR'].filter(Boolean) as string[]
   const label = debt > 0 ? (methods.length ? 'Частично' : 'Долг') : (methods.length > 1 ? 'Смешанная' : methods[0] || 'Наличка')
   const change = Math.max(0, Number(p.change) || 0)
-  await repo.updateOrder(cardId, { paidCash: String(cash), paidKaspi: String(kaspi), paidQr: String(qr), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, prodPhase: 'sold', delivered: new Date() })
-  await repo.insertHistory({ cardId, action: 'pay', detail: `Продано (${inv.number}): нал ${cash}, каспи ${kaspi}, QR ${qr}, долг ${debt}${change > 0 ? `, сдача ${change}` : ''}`, userName: actor?.name || 'Система' })
+  const base: any = { paidCash: String(cash), paidKaspi: String(kaspi), paidQr: String(qr), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, delivered: new Date() }
+  // Производитель: оплата не влияет на произв. статус — карточка ОСТАЁТСЯ «В работе» (не уходит
+  // в ПРОДАНО/Бухгалтерию). Расход проведён (linkedDocId стоит), но этап/экран/статус возвращаем.
+  // Остальные орг — как раньше: prodPhase='sold' (карточка продана).
+  if (orgKind === 'producer_seller') { base.prodPhase = prevPhase || 'working'; base.screen = ['bookkeeping', 'archive'].includes(prevScreen) ? 'reception' : prevScreen; base.status = prevStatus }
+  else { base.prodPhase = 'sold' }
+  await repo.updateOrder(cardId, base)
+  await repo.insertHistory({ cardId, action: 'pay', detail: `Оплата (${inv.number}): нал ${cash}, каспи ${kaspi}, QR ${qr}, долг ${debt}${change > 0 ? `, сдача ${change}` : ''}`, userName: actor?.name || 'Система' })
   return { ok: true as const, total, cash, kaspi, qr, debt, number: inv.number }
 }
 

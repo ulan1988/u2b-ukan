@@ -641,13 +641,23 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                 const leg1 = (o.positions || []).filter((p: any) => Number(p.leg) === 1)
                 const total = (o.positions || []).length
                 const sum = (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
-                // Не продана → жёлтым: касса ждёт оплату (эти деньги ещё не в кассе — «нехватка»).
+                // Оплата НЕ выкидывает карточку из «В работе». Цвет по оплате:
+                //  жёлт = ещё не оплачена (касса ждёт) · зелён = оплачено · оранж = долг.
+                const paidSum = Number(o.paidCash || 0) + Number(o.paidKaspi || 0) + Number(o.paidQr || 0)
+                const isPaid = !!o.linkedDocId
+                const debtLeft = Math.max(0, Math.round(sum - paidSum))
+                const accent = !isPaid ? '#eab308' : (debtLeft > 0 ? '#e0894a' : '#2e8a5e')
+                const bg = !isPaid ? '#fffdf5' : (debtLeft > 0 ? '#fff8f2' : '#f2fbf5')
                 return (
-                  <div key={o.id} style={{ background: '#fffdf5', borderRadius: 12, boxShadow: '0 0 0 1.5px #eab308', padding: '11px 13px', marginBottom: 8 }}>
+                  <div key={o.id} style={{ background: bg, borderRadius: 12, boxShadow: `0 0 0 1.5px ${accent}`, padding: '11px 13px', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: g.color }}>{fmtCode(o.id)}</span>
                       <StatusBadge status={o.status} />
-                      <span style={{ fontSize: 11.5, background: '#fef3c7', color: '#92700a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Карточка не продана — касса ждёт оплату">💰 к оплате {Math.round(sum).toLocaleString('ru-RU')} ₸</span>
+                      {!isPaid
+                        ? <span style={{ fontSize: 11.5, background: '#fef3c7', color: '#92700a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Не оплачено — касса ждёт оплату">💰 к оплате {Math.round(sum).toLocaleString('ru-RU')} ₸</span>
+                        : debtLeft > 0
+                          ? <span style={{ fontSize: 11.5, background: '#fde3d0', color: '#c0532a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Оплачено частично — остаток в долг">🟠 долг {debtLeft.toLocaleString('ru-RU')} ₸</span>
+                          : <span style={{ fontSize: 11.5, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Оплачено полностью">✓ оплачено</span>}
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
