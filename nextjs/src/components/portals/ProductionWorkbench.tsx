@@ -50,9 +50,25 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const priceForClient = (p: any, pt: string = clientPT) => priceByType(p, pt)
 
   // Наружная моделька: сверху цвета, снизу виды из папки «Комплектующие» (Изделие/Нар.угол/H-профиль).
-  const ACC = overlayFor('комплектующие')[0]?.items || []
-  const accKind = ACC.find(k => k.key === qKind)
   const inCompl = (p: any) => `${p.group || ''} ${p.cat || ''}`.toLowerCase().includes('комплект')
+  // Базовый вид товара = имя без цвета и см («J фаска 7004 20 см» → «J фаска»).
+  const kindOf = (name: string) => {
+    let n = (name || '').trim().replace(/\s*\d+([.,]\d+)?\s*см\s*$/i, '').trim()
+    const ral = extractRal(name)
+    if (ral && ral !== 'decor') n = n.replace(new RegExp('\\s*' + ral.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![0-9])', 'i'), ' ')
+    else n = n.replace(/\s*(дерево|дуб|3d)\b/i, ' ')
+    return n.replace(/\s{2,}/g, ' ').trim()
+  }
+  // Виды комплектующих ДИНАМИЧНО: базовый набор (nomTree) + всё, что реально есть в номенклатуре
+  // (папка «Комплектующие») — новый вид (напр. «J фаска») появляется чипом сам.
+  const STATIC = overlayFor('комплектующие')[0]?.items || []
+  const staticLabels = new Set(STATIC.map((i: any) => (i.label || '').toLowerCase().replace(/ё/g, 'е')))
+  const dynKinds = Array.from(new Set(products.filter(inCompl).map((p: any) => kindOf(p.name)).filter(Boolean)))
+    .filter(nm => { const l = nm.toLowerCase().replace(/ё/g, 'е'); return !staticLabels.has(l) && !/издели/i.test(l) })
+    .sort((a, b) => a.localeCompare(b, 'ru'))
+    .map((nm): NomItem => ({ key: 'dyn_' + nm.toLowerCase().replace(/[^a-zа-я0-9]+/gi, '_'), label: nm, terms: [nm] }))
+  const ACC: NomItem[] = [...STATIC, ...dynKinds]
+  const accKind = ACC.find(k => k.key === qKind)
   const norm = (s: string) => (s || '').toLowerCase().replace(/ё/g, 'е')
   function findProd(kind: NomItem, colorCode: string) {
     const words = kind.terms ?? [kind.label]

@@ -3,7 +3,7 @@
 // уровни-слова, длина, клавиатура количества). API → /api/products (только активные базы).
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { overlayFor } from '@/lib/nomTree'
+import { overlayFor, NomItem } from '@/lib/nomTree'
 import { RAL_BY_CODE, RalDot, extractRal, ralOrdered } from '@/lib/ral'
 
 const PRIMARY = '#d4613a'
@@ -32,7 +32,29 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [pad, setPad] = useState<null | { name1c: string; oral: string; unit: string; digits: string; widthCm?: number; askCm?: boolean; baseLabel?: string; cmStr?: string; focus?: 'cm' | 'qty' }>(null)
   const padRef = useRef(pad); padRef.current = pad
 
-  const overlays = overlayFor(selC || selG)   // накладки-слова (толщина/покрытие) — по выбранной папке
+  // Накладки-слова (толщина/покрытие/виды) по выбранной папке. Для «Комплектующих» уровень «kind»
+  // ДОПОЛНЯЕМ видами, реально существующими в номенклатуре (напр. «J фаска») — чтобы новые виды
+  // появлялись чипом сами, а не только из жёсткого списка nomTree.
+  const overlays = useMemo(() => {
+    const base = overlayFor(selC || selG)
+    const compl = (i: any) => `${i.group || ''} ${i.cat || ''}`.toLowerCase().includes('комплект')
+    const kindOf = (name: string) => {
+      let n = (name || '').trim().replace(/\s*\d+([.,]\d+)?\s*см\s*$/i, '').trim()
+      const ral = extractRal(name)
+      if (ral && ral !== 'decor') n = n.replace(new RegExp('\\s*' + ral.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![0-9])', 'i'), ' ')
+      else n = n.replace(/\s*(дерево|дуб|3d)\b/i, ' ')
+      return n.replace(/\s{2,}/g, ' ').trim()
+    }
+    return base.map(lv => {
+      if (lv.key !== 'kind') return lv
+      const known = new Set(lv.items.map(x => norm(x.label)))
+      const dyn = Array.from(new Set(allItems.filter(compl).map(i => kindOf(i.name)).filter(Boolean)))
+        .filter(nm => !known.has(norm(nm)) && !/издели/i.test(norm(nm)))
+        .sort((a, b) => a.localeCompare(b, 'ru'))
+        .map((nm): NomItem => ({ key: 'dyn_' + norm(nm).replace(/[^a-zа-я0-9]+/gi, '_'), label: nm, terms: [nm] }))
+      return dyn.length ? { ...lv, items: [...lv.items, ...dyn] } : lv
+    })
+  }, [selC, selG, allItems])
 
   useEffect(() => {
     setMounted(true)
