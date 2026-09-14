@@ -134,6 +134,9 @@ export async function masterShift(orgId: string, date: string) {
     left join contragents c on c.id=o.contact_id
     where o.org_id=${orgId} and o.is_cancelled=false
       and (t.total - coalesce(o.discount_sum,0) - coalesce(pin.paid,0)) > 0.5
+      -- Только «долг Нипе» (свои клиенты). «Долг к головному» (расходная на мост-контрагент ГО)
+      -- сюда НЕ попадает — он гасится взаиморасчётом с головным в конце месяца, а не по чекам.
+      and not exists (select 1 from contragents bc join organizations bo on bo.id=bc.org_ref_id and bo.kind='hq' where bc.id = d.contragent_id)
     order by o.updated_at desc
   ` as unknown as Array<any>
   const debtTotal = debts.reduce((a: number, x: any) => a + num(x.debt), 0)
