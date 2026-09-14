@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { cardProgress } from '@/lib/adminFmt'
 import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
-import { lineAmount } from '@/lib/lineAmount'
+import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import NomPicker, { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
@@ -54,7 +54,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [editQty, setEditQty] = useState<Record<string, string>>({}); const [addCatalogFor, setAddCatalogFor] = useState<string | null>(null)
   // Инлайн-правка позиции в шторке: цвет / см / кол-во (не блокируется этапом «Принял»).
   const [editPos, setEditPos] = useState<string | null>(null)
-  const [ev, setEv] = useState<{ color: string; cm: string; qty: string }>({ color: '', cm: '', qty: '' })
+  const [ev, setEv] = useState<{ color: string; cm: string; qty: string; price: string }>({ color: '', cm: '', qty: '', price: '' })
   const [evAll, setEvAll] = useState(false)
   const [msg, setMsg] = useState('')
   const [newTo, setNewTo] = useState(''); const [newText, setNewText] = useState(''); const [newLoading, setNewLoading] = useState(false); const [newDone, setNewDone] = useState<any>(null)
@@ -253,7 +253,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
   function startEditPos(p: any) {
     setEditPos(p.id); setEvAll(false)
-    setEv({ color: extractRal(p.name1c || p.oral) || '', cm: p.widthCm != null ? String(Number(p.widthCm)) : '', qty: String(Number(p.qty)) })
+    setEv({ color: extractRal(p.name1c || p.oral) || '', cm: p.widthCm != null ? String(Number(p.widthCm)) : '', qty: String(Number(p.qty)), price: Number(p.price) ? String(Number(p.price)) : '' })
   }
   async function saveEditPos(orderId: string, p: any) {
     const qtyN = Number((ev.qty || '').replace(',', '.')) || 0
@@ -263,6 +263,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     if (isKomplekt && !ev.color) { showMsg('⚠ Выберите цвет'); return }
     const nm = itemName({ name: base, color: ev.color || undefined, cm: ev.cm || undefined })
     const patch: any = { qty: qtyN, name1c: nm, oral: nm, widthCm: ev.cm ? Number(ev.cm) : (p.widthCm != null ? Number(p.widthCm) : undefined) }
+    if (ev.price !== '') patch.price = Number((ev.price || '').replace(',', '.')) || 0
     const r = await updatePosition(orderId, p.id, patch)
     if (!r.ok) { showMsg('⚠ Не удалось изменить'); return }
     setEditPos(null); await refreshDetail(orderId); showMsg('✓ Позиция изменена')
@@ -482,7 +483,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                         {p.widthCm != null && <span style={{ fontSize: 11, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, flexShrink: 0 }}>{Number(p.widthCm)} см</span>}
                         <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, flexShrink: 0 }}>{Number(p.qty)} {p.unit}</span>
                         {isSent ? <span style={{ fontSize: 12, color: '#2a5aaa', fontWeight: 700, flexShrink: 0 }}>🚚 у логиста</span>
-                          : <button onClick={e => { e.stopPropagation(); editing ? setEditPos(null) : startEditPos(p) }} title="Изменить цвет / см / кол-во" style={{ flexShrink: 0, border: 'none', background: editing ? PRIMARY : '#f1efec', color: editing ? '#fff' : '#7a3aaa', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>✎</button>}
+                          : <button onClick={e => { e.stopPropagation(); editing ? setEditPos(null) : startEditPos(p) }} title="Изменить цвет / см / кол-во / цену" style={{ flexShrink: 0, border: 'none', background: editing ? PRIMARY : '#f1efec', color: editing ? '#fff' : '#7a3aaa', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>✎</button>}
                       </div>
                       {editing && !isSent && (
                         <div onClick={e => e.stopPropagation()} style={{ padding: '4px 0 12px', display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -495,11 +496,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                               </button>) })}
                             <button onClick={() => setEvAll(v => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: PRIMARY, fontWeight: 700, width: 38 }}>{evAll ? '−' : '👁 все'}</button>
                           </div>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                            <label style={{ fontSize: 11, color: '#5f5952' }}>См (длина)<input value={ev.cm} inputMode="decimal" onChange={e => setEv(v => ({ ...v, cm: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="—" style={{ display: 'block', marginTop: 3, width: 80, padding: '8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
-                            <label style={{ fontSize: 11, color: '#5f5952' }}>Кол-во<input value={ev.qty} inputMode="decimal" onChange={e => setEv(v => ({ ...v, qty: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ display: 'block', marginTop: 3, width: 80, padding: '8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
-                            <button onClick={() => saveEditPos(o.id, p)} style={{ flex: 1, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>✓ Сохранить</button>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: 11, color: '#5f5952' }}>См (длина)<input value={ev.cm} inputMode="decimal" onChange={e => setEv(v => ({ ...v, cm: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="—" style={{ display: 'block', marginTop: 3, width: 70, padding: '8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
+                            <label style={{ fontSize: 11, color: '#5f5952' }}>Кол-во<input value={ev.qty} inputMode="decimal" onChange={e => setEv(v => ({ ...v, qty: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ display: 'block', marginTop: 3, width: 64, padding: '8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
+                            <label style={{ fontSize: 11, color: '#5f5952' }}>{isIzdelie(p.name1c || p.oral) ? 'Цена/см' : 'Цена'}<input value={ev.price} inputMode="decimal" onChange={e => setEv(v => ({ ...v, price: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" title={isIzdelie(p.name1c || p.oral) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} style={{ display: 'block', marginTop: 3, width: 74, padding: '8px', borderRadius: 8, border: `1.5px solid ${!ev.price ? '#e6a6a6' : '#e6e2dc'}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} /></label>
                           </div>
+                          <button onClick={() => saveEditPos(o.id, p)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>✓ Сохранить</button>
                           <button onClick={() => removePos(o.id, p.id)} style={{ alignSelf: 'flex-start', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Удалить позицию</button>
                         </div>
                       )}
