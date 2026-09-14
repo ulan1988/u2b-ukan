@@ -45,11 +45,14 @@ export async function masterShift(orgId: string, date: string) {
   const diff = Math.round((paid + debt) - total)
   const check = { paid, debt, sold: total, diff, ok: Math.abs(diff) < 1 }
 
-  // Производство в запас за день.
+  // Производство В ЗАПАС за день — ТОЛЬКО «Создать запасы на склад» (produceToStock, comment
+  // «Производство на запас…»). Выпуск изделий ПРИ ПРОДАЖЕ (produceToBase, comment «…заявка ЗК-…»)
+  // сюда НЕ входит — те изделия сразу проданы, а не легли в запас.
   const stkRow = (await sqlClient`
     select coalesce(sum(dl.amount),0)::float amount, coalesce(sum(dl.qty),0)::float qty
     from documents d join document_lines dl on dl.document_id = d.id
-    where d.org_id=${orgId} and d.type='production' and d.status<>'cancelled' and d.date=${date} and dl.role='output'
+    where d.org_id=${orgId} and d.type='production' and d.status<>'cancelled' and d.date=${date}
+      and dl.role='output' and d.comment ilike '%на запас%'
   ` as unknown as Array<any>)[0] || { amount: 0, qty: 0 }
 
   // «Деньги» за день (расходы + переводы).
