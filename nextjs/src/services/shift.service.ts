@@ -56,12 +56,12 @@ export async function masterShift(orgId: string, date: string) {
   ` as unknown as Array<any>)[0] || { amount: 0, qty: 0 }
   // Список «что сделано на запас» за день (товар · см · кол-во) — для просмотра, без сумм.
   const stockItems = await sqlClient`
-    select coalesce(p.name,'Изделие') name, dl.width_cm::float "widthCm", coalesce(sum(dl.qty),0)::float qty
+    select coalesce(nullif(dl.comment,''), p.name, 'Изделие') name, dl.width_cm::float "widthCm", coalesce(sum(dl.qty),0)::float qty
     from documents d join document_lines dl on dl.document_id = d.id
     left join products p on p.id = dl.product_id
     where d.org_id=${orgId} and d.type='production' and d.status<>'cancelled' and d.date=${date}
       and dl.role='output' and d.comment ilike '%на запас%'
-    group by p.name, dl.width_cm order by qty desc
+    group by coalesce(nullif(dl.comment,''), p.name, 'Изделие'), dl.width_cm order by qty desc
   ` as unknown as Array<any>
 
   // «Деньги» за день (расходы + переводы).

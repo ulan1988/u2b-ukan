@@ -409,7 +409,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     {(data.stock?.items || []).map((it: any, i: number) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: i ? `1px solid ${COLORS.borderLight}` : 'none' }}>
                         <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
-                        {it.widthCm > 0 && <span style={{ fontSize: 11.5, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 8px', borderRadius: 20, flexShrink: 0 }}>{it.widthCm} см</span>}
+                        {it.widthCm > 0 && !/см/i.test(it.name || '') && <span style={{ fontSize: 11.5, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 8px', borderRadius: 20, flexShrink: 0 }}>{it.widthCm} см</span>}
                         <b style={{ fontSize: 14, width: 70, textAlign: 'right', flexShrink: 0 }}>{m(it.qty)} шт</b>
                       </div>
                     ))}

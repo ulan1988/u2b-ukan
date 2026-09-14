@@ -286,6 +286,7 @@ export async function createProduction(input: CreateProductionInput) {
       widthCm: l.widthCm != null ? String(l.widthCm) : null,
       areaM2: area != null ? String(area) : null,
       rate: l.rate != null ? String(l.rate) : null,
+      comment: l.comment != null ? String(l.comment) : null,   // полное имя изделия (с цветом) для списков
     })
     moves.push({ id: randomUUID(), orgId: input.orgId, warehouseId: input.warehouseId, productId: l.productId, qty: String(l.qty), documentId: docId, date })
   }

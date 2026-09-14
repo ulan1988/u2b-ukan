@@ -192,7 +192,7 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     if (izd) productId = await ensureProduct('Изделие')
     else if (!productId) { productId = await ensureProduct(nm); created++ }
     if (!izd && productId) await setProductCost(productId, cost)
-    outputs.push({ productId, qty, price: cost || 0, widthCm: width || undefined })
+    outputs.push({ productId, qty, price: cost || 0, widthCm: width || undefined, comment: nm })
     made.push({ name1c: nm, oral: nm, widthCm: width, qty, productId })
   }
   if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : 'Нет позиций для выпуска', skipped }
