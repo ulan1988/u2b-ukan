@@ -2,8 +2,9 @@
 // Касса дня (десктоп-финанс): дневная сверка филиала — доходы по способам (нал/каспи/QR/долг),
 // проверка «оплаты+долг=продано», счета за день, остаток KASPI GOLD + перевод в банк,
 // расходы (ЗП/текущие через «Деньги»), производство в запас, закрытие смены. Орг — из селектора.
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
+import { useLiveData } from '@/lib/live'
 import { cashDay, cashExpense, cashIncassate, cashRemit, cashWages, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -26,13 +27,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
 
   const load = useCallback(async () => { setLoading(true); const d = await cashDay(orgId, date); setData(d); setWageAcc(prev => prev || (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''); setLoading(false) }, [orgId, date])
-  useEffect(() => { if (view === 'day') load() }, [load, view])
   const loadMonth = useCallback(async () => {
     setLoading(true)
     const [y, mo] = ym.split('-').map(Number); const last = new Date(y, mo, 0).getDate()
     setMonth(await cashMonth(orgId, `${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`)); setLoading(false)
   }, [orgId, ym])
-  useEffect(() => { if (view === 'month') loadMonth() }, [loadMonth, view])
+  // Живое обновление: перезагрузка активного вида при realtime-сигнале (продажа/оплата в кабинете).
+  useLiveData(() => { view === 'month' ? loadMonth() : load() }, [view, load, loadMonth])
 
   async function addCurrent() {
     const amount = Number((cur.amount || '').replace(',', '.')) || 0
