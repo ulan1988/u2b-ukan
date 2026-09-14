@@ -405,6 +405,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   return <button key={k} onClick={() => cur !== i && act(o.id, action, `✓ ${label}`)} style={{ flex: 1, padding: '8px 4px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#5f5952' }}>{label}</button>
                 })}
               </div>
+              {/* Единый скролл: касса + заказчик + позиции (иначе редактор позиции не влезает) */}
+              <div style={{ overflowY: 'auto', flex: 1 }}>
               {/* Ф-C: касса (нал/каспи/долг/сдача) + проект */}
               <div style={{ padding: '10px 16px', borderBottom: '1px solid #f1efec', display: 'flex', flexDirection: 'column', gap: 9 }}>
                 {isSold ? (
@@ -457,7 +459,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   </select>
                 </div>
               </div>
-              <div style={{ overflowY: 'auto', flex: 1, padding: '10px 16px' }}>
+              <div style={{ padding: '10px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em', flexShrink: 0 }}>ЗАКАЗЧИК</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -509,6 +511,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     )
                   })}
                 {leg1.length === 0 && sent.length > 0 && <div style={{ marginTop: 10, fontSize: 13, color: '#2e8a5e', fontWeight: 600 }}>✓ Все позиции отправлены логисту</div>}
+              </div>
               </div>
               {leg1.length > 0 && (
                 <div style={{ padding: '12px 16px', borderTop: '1px solid #f1efec', display: 'flex', flexDirection: 'column', gap: 8 }}>
