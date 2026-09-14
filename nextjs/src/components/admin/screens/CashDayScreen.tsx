@@ -399,11 +399,21 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               </> })()}
             </div>
             <div style={card}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', marginBottom: 10 }}>📦 ПРОИЗВОДСТВО В ЗАПАС</div>
-              <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
-                <div>Изделий: <b>{m(data.stock?.qty)}</b></div>
-                <div>На сумму: <b>{m(data.stock?.amount)} ₸</b></div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em' }}>📦 СДЕЛАНО НА ЗАПАС СЕГОДНЯ</span>
+                <span style={{ fontSize: 12.5, color: COLORS.textLight, marginLeft: 'auto' }}>всего <b style={{ color: COLORS.text }}>{m(data.stock?.qty)}</b> шт</span>
               </div>
+              {(data.stock?.items || []).length === 0
+                ? <div style={{ fontSize: 13, color: COLORS.textMuted }}>Сегодня на запас ничего не сделано</div>
+                : <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {(data.stock?.items || []).map((it: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: i ? `1px solid ${COLORS.borderLight}` : 'none' }}>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
+                        {it.widthCm > 0 && <span style={{ fontSize: 11.5, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 8px', borderRadius: 20, flexShrink: 0 }}>{it.widthCm} см</span>}
+                        <b style={{ fontSize: 14, width: 70, textAlign: 'right', flexShrink: 0 }}>{m(it.qty)} шт</b>
+                      </div>
+                    ))}
+                  </div>}
             </div>
           </div>
 
