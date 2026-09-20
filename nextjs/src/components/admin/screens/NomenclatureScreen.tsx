@@ -8,6 +8,14 @@ import { useAdmin } from '@/components/admin/AdminChrome'
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
 
+// Цвета колонок цен: у каждого вида цены свой фон, чтобы столбцы делились чётко (Приход/Розн/Опт/Спец).
+const PCOL: Record<string, { c: string; hbg: string; bg: string }> = {
+  priceIn: { c: '#6b645b', hbg: '#efece7', bg: '#faf8f5' },       // приход — нейтральный
+  priceRetail: { c: '#2e8a5e', hbg: '#e4f2ea', bg: '#f2fbf6' },   // розница — зелёный
+  priceOpt: { c: '#2a5aaa', hbg: '#e5eefa', bg: '#f2f7fd' },      // опт — синий
+  priceSpec: { c: '#7a3aaa', hbg: '#f0e8f9', bg: '#f8f3fd' },     // спец — фиолетовый
+}
+
 const INP: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: 7, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
 
@@ -318,7 +326,12 @@ export default function NomenclatureScreen() {
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ background: '#f8f6f3' }}>
-                {['НАИМЕНОВАНИЕ', 'ЕД.', 'ГРУППА', 'КАТЕГОРИЯ', 'ПОДГРУППА', 'ПРИХОД', 'РОЗН.', 'ОПТ', 'СПЕЦ', ''].map(h => <th key={h} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}
+                {([
+                  { h: 'НАИМЕНОВАНИЕ' }, { h: 'ЕД.' }, { h: 'ГРУППА' }, { h: 'КАТЕГОРИЯ' }, { h: 'ПОДГРУППА' },
+                  { h: 'ПРИХОД', p: 'priceIn' }, { h: 'РОЗН.', p: 'priceRetail' }, { h: 'ОПТ', p: 'priceOpt' }, { h: 'СПЕЦ', p: 'priceSpec' }, { h: '' },
+                ] as Array<{ h: string; p?: PField }>).map(({ h, p }) => { const pc = p ? PCOL[p] : null; return (
+                  <th key={h || 'act'} style={{ padding: '10px 12px', fontSize: 12, fontWeight: 700, color: pc ? pc.c : '#5f5952', textAlign: pc ? 'right' : 'left', whiteSpace: 'nowrap', background: pc ? pc.hbg : undefined, borderLeft: pc ? '2px solid #d8d2c8' : '1px solid #efece7' }}>{h}</th>
+                ) })}
               </tr></thead>
             </table>
             <div style={{ overflowY: 'auto', flex: 1 }}>
@@ -334,17 +347,18 @@ export default function NomenclatureScreen() {
                         <Fragment key={item.id}>
                         {showHead && <tr><td colSpan={10} style={{ padding: '8px 14px', background: '#f1efec', fontWeight: 800, fontSize: 12.5, color: COLORS.primary, letterSpacing: '.02em' }}>📁 {sg || '— без подгруппы —'}</td></tr>}
                         <tr style={{ borderTop: '1px solid #f1efec' }}>
-                          {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки */}
+                          {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки. Лёгкие линии-разделители колонок */}
                           <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{item.name}</td>
-                          <td style={{ padding: '9px 14px', width: 80 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>
-                          <td style={{ padding: '9px 14px', width: 130 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span></td>
-                          <td style={{ padding: '9px 14px', width: 160 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span></td>
-                          <td style={{ padding: '9px 14px', width: 140 }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span></td>
-                          {/* Цены: правятся построчно (карандаш ✏ этой строки) или в общем режиме «Редактировать цены» */}
+                          <td style={{ padding: '9px 14px', width: 80, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>
+                          <td style={{ padding: '9px 14px', width: 130, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span></td>
+                          <td style={{ padding: '9px 14px', width: 160, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span></td>
+                          <td style={{ padding: '9px 14px', width: 140, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span></td>
+                          {/* Цены: у каждого вида свой фон-цвет + жирная линия слева, чтобы столбцы делились чётко */}
                           {(['priceIn', 'priceRetail', 'priceOpt', 'priceSpec'] as const).map(f => {
                             const editable = priceEdit || editItem?.id === item.id
+                            const pc = PCOL[f]
                             return (
-                              <td key={f} style={{ padding: '9px 8px', width: 84 }}>{editable ? <input value={priceVal(item, f)} inputMode="decimal" autoFocus={editItem?.id === item.id && f === 'priceIn'} onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', border: `1.5px solid ${(pricesDraft[item.id]?.[f] !== undefined || editItem?.id === item.id) ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, color: (item[f] ?? 0) > 0 ? '#26231f' : '#837c72' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
+                              <td key={f} style={{ padding: '9px 8px', width: 84, background: pc.bg, borderLeft: '2px solid #d8d2c8' }}>{editable ? <input value={priceVal(item, f)} inputMode="decimal" autoFocus={editItem?.id === item.id && f === 'priceIn'} onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', background: '#fff', border: `1.5px solid ${(pricesDraft[item.id]?.[f] !== undefined || editItem?.id === item.id) ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, fontWeight: 600, color: (item[f] ?? 0) > 0 ? pc.c : '#b3aca2' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
                             )
                           })}
                           <td style={{ padding: '9px 14px', width: 120 }}>{editItem?.id === item.id ? <div style={{ display: 'flex', gap: 4 }}><button onClick={() => handleSave(editItem)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>✓</button><button onClick={() => setEditItem(null)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✕</button></div> : <div style={{ display: 'flex', gap: 4 }}><button onClick={() => setEditItem({ ...item })} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✏️</button><button onClick={() => handleDelete(item.id)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #faeaea', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>}</td>
