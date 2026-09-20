@@ -294,18 +294,36 @@ export async function incassate(orgId: string, cash: number, kaspi: number, date
   if (r?.id) { const fin = await import('../repositories/fin.repo'); await fin.setPosted([r.id]) }
   return { ok: true as const, cash: c, kaspi: k }
 }
-// Сдать головному «филиал → головной»: платёж поставщику (мост) с Банковского счёта → закрывает долг.
-export async function remitToHQ(orgId: string, amount: number, date: string, actor?: Session | null) {
-  const amt = Math.abs(num(amount))
-  if (!(amt > 0)) return { ok: false as const, error: 'Укажите сумму' }
-  const bridge = (await sqlClient`select c.id::text id from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
+// Инкассация «Нипа → головной» СО СПЛИТОМ по счетам (как просил владелец):
+//  • нал (Осн.касса Нипы) → Основная касса ГОЛОВНОГО
+//  • каспи GOLD (KASPI GOLD Нипы) → Банковский счёт ГОЛОВНОГО
+// У Нипы деньги уходят (payments out на мост → гасят долг перед головным), у головного приходят
+// (payments in от обратного моста на его счета). Так деньги делятся между счетами Нипа↔головной.
+export async function remitToHQ(orgId: string, cash: number, kaspi: number, date: string, actor?: Session | null) {
+  const c = Math.max(0, num(cash)), k = Math.max(0, num(kaspi))
+  if (c + k <= 0) return { ok: false as const, error: 'Укажите сумму (нал и/или каспи)' }
+  const bridge = (await sqlClient`select c.id::text id, o.id::text hq from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
   if (!bridge) return { ok: false as const, error: 'Не найден контрагент-головной' }
-  const fd = await financeDay(orgId, date)
-  const bank = findAcc(fd.accounts || [], 'Банковский счет')
+  const hqId = bridge.hq as string
+  const back = (await sqlClient`select id::text id from contragents where org_id=${hqId} and org_ref_id=${orgId} and archived=false limit 1` as unknown as Array<any>)[0]
+  const npAcc = await sqlClient`select id::text id, name from cash_accounts where org_id=${orgId} and archived=false` as unknown as Array<any>
+  const hqAcc = await sqlClient`select id::text id, name from cash_accounts where org_id=${hqId} and archived=false` as unknown as Array<any>
+  const npCash = findAcc(npAcc, 'Основная касса'), npGold = findAcc(npAcc, 'KASPI GOLD')
+  const hqCash = findAcc(hqAcc, 'Основная касса'), hqBank = findAcc(hqAcc, 'Банковский счет')
   const { randomUUID } = await import('crypto')
   const payRepo = await import('../repositories/payment.repo')
-  await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: bridge.id, direction: 'out', amount: String(amt), date, cashAccountId: bank?.id || null, comment: `Инкассация головному${actor?.name ? ' · ' + actor.name : ''}` } as any)
-  return { ok: true as const, amount: amt }
+  const mk = (oid: string, cid: string, dir: string, amt: number, accId: string | null, comment: string) =>
+    payRepo.insertPayment({ id: randomUUID(), orgId: oid, contragentId: cid, direction: dir, amount: String(amt), date, cashAccountId: accId || null, comment } as any)
+  const who = actor?.name ? ' · ' + actor.name : ''
+  // Нипа: уходит нал (с Осн.кассы) и каспи (с KASPI GOLD) → мост (гасит долг перед головным).
+  if (c > 0) await mk(orgId, bridge.id, 'out', c, npCash?.id || null, `Инкассация головному · нал${who}`)
+  if (k > 0) await mk(orgId, bridge.id, 'out', k, npGold?.id || null, `Инкассация головному · каспи${who}`)
+  // Головной: приходит нал → Осн.касса ГО, каспи → Банковский счёт ГО (от обратного моста).
+  if (back) {
+    if (c > 0) await mk(hqId, back.id, 'in', c, hqCash?.id || null, `Инкассация от «${orgId}» · нал`)
+    if (k > 0) await mk(hqId, back.id, 'in', k, hqBank?.id || null, `Инкассация от «${orgId}» · каспи`)
+  }
+  return { ok: true as const, cash: c, kaspi: k }
 }
 
 export async function closeMasterShift(orgId: string, date: string, actor?: Session | null) {
