@@ -5,12 +5,14 @@
 import { useState, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
+import { useAdmin } from '@/components/admin/AdminChrome'
 import { cashDay, cashExpense, cashRemit, cashWages, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
 
 export default function CashDayScreen({ orgId }: { orgId: string }) {
+  const orgName = (useAdmin() as any)?.orgName || ''   // чьи счета — подпись в дропдаунах (не путать с головным)
   const [view, setView] = useState<'day' | 'month'>('day')
   const [date, setDate] = useState(todayStr())
   const [data, setData] = useState<any>(null)
@@ -347,12 +349,15 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={card}>
               <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em', marginBottom: 10 }}>💰 СЧЕТА ЗА ДЕНЬ (продажи − расходы)</div>
-              {accts.map((a: any) => (
-                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${COLORS.borderLight}`, fontSize: 14 }}>
-                  <span>{a.name}<span style={{ color: COLORS.textLight, fontSize: 12 }}>{a.fromSales ? ` · продажи ${m(a.fromSales)}` : ''}{a.fromFin ? ` · движ ${m(a.fromFin)}` : ''}</span></span>
-                  <b style={{ color: a.net < 0 ? COLORS.primaryDark : COLORS.text }}>{m(a.net)} ₸</b>
-                </div>
-              ))}
+              {/* Каждый счёт — отдельный блок (карточка), чтобы не сливались в один */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {accts.map((a: any) => (
+                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 10, background: COLORS.bgCard, boxShadow: `0 0 0 1.5px ${COLORS.border}`, fontSize: 14 }}>
+                    <span><b>{a.name}</b><span style={{ color: COLORS.textLight, fontSize: 12 }}>{a.fromSales ? ` · продажи ${m(a.fromSales)}` : ''}{a.fromFin ? ` · движ ${m(a.fromFin)}` : ''}</span></span>
+                    <b style={{ fontSize: 15, color: a.net < 0 ? COLORS.primaryDark : COLORS.text }}>{m(a.net)} ₸</b>
+                  </div>
+                ))}
+              </div>
             </div>
             {/* Инкассация: деньги проходят 3 уровня — у мастера → у филиала → у головного (закрывает долг) */}
             <div style={{ ...card, background: '#fff8ef', boxShadow: '0 0 0 1.5px #f0d9b0' }}>
@@ -426,9 +431,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     const allOn = payable.every((u: any) => wsel[u.id])
                     return <button onClick={() => setWsel(allOn ? {} : Object.fromEntries(payable.map((u: any) => [u.id, true])))} style={{ border: 'none', background: COLORS.bg, color: COLORS.textMuted, borderRadius: 6, padding: '3px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{allOn ? 'Снять всех' : 'Все'}</button>
                   })()}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: COLORS.textMuted }}>со счёта</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: COLORS.textMuted }}>со счёта{orgName ? ` (${orgName})` : ' филиала'}</span>
                   <select value={wageAcc} onChange={e => setWageAcc(e.target.value)} style={{ padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
-                    {accts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    {accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}
                   </select>
                 </div>
                 {(data.staff || []).length === 0 ? <div style={{ fontSize: 13, color: COLORS.textMuted, padding: '6px 0' }}>Нет сотрудников — добавьте в разделе «👥 Сотрудники»</div>
@@ -456,7 +461,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input value={cur.who} onChange={e => setCur(x => ({ ...x, who: e.target.value }))} placeholder="комментарий (необязательно)" style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
                   <select value={cur.accountId} onChange={e => setCur(x => ({ ...x, accountId: e.target.value }))} style={{ width: 150, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff' }}>
-                    <option value="">— счёт —</option>{accts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    <option value="">— счёт —</option>{accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}
                   </select>
                   <input value={cur.amount} inputMode="decimal" onChange={e => setCur(x => ({ ...x, amount: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="сумма" style={{ width: 110, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
                   <button onClick={addCurrent} style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>＋</button>
