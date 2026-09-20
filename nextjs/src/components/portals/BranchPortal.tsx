@@ -269,6 +269,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     setEditPos(null); await refreshDetail(orderId); showMsg('✓ Позиция изменена')
   }
   async function removePos(orderId: string, posId: string) {
+    if (!confirm('Удалить позицию из карточки?')) return
     const r = await deletePosition(orderId, posId)
     if (!r.ok) { showMsg('⚠ Не удалось удалить'); return }
     setEditPos(null); await refreshDetail(orderId); showMsg('✓ Позиция удалена')

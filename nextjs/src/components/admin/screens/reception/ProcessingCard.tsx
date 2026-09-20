@@ -58,7 +58,7 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
     cancelEdit(pos.id); onReload()
   }
   async function clone(pos: any) { await addPosition(order.id, { name1c: pos.name1c, oral: pos.oral, qty: Number(pos.qty), unit: pos.unit, price: Number(pos.price), respUserId: pos.respUserId || undefined, supplierId: pos.supplierId || undefined }); onReload(); toast('Позиция клонирована') }
-  async function del(pos: any) { await deletePosition(order.id, pos.id); onReload() }
+  async function del(pos: any) { if (!confirm(`Удалить позицию «${pos.name1c || pos.oral || ''}»?`)) return; await deletePosition(order.id, pos.id); onReload() }
   async function pullPrices() {
     const ids = ps.map((p: any) => p.productId).filter(Boolean)
     if (!ids.length) { toast('Нет товаров 1С для цен'); return }

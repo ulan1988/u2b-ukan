@@ -123,7 +123,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     if (editRow) await apiUpdRow(editRow.id, addData); else await apiAddRow(addData, editingDate || undefined)
     setAddData({ name: '', qtyIn: '', fromWho: '', commentIn: '', toWho: '', qtyOut: '', commentOut: '', invoiceNum: '' }); setEditRow(null); setShowAddRow(false); await loadDraft(editingDate)
   }
-  async function deleteRow(id: string) { await apiDelRow(id); await loadDraft(editingDate) }
+  async function deleteRow(id: string) { if (!confirm('Удалить строку смены?')) return; await apiDelRow(id); await loadDraft(editingDate) }
   function openEdit(row: any) { setAddData({ name: row.name, qtyIn: String(row.qtyIn || ''), fromWho: row.fromWho, commentIn: row.commentIn, toWho: row.toWho, qtyOut: String(row.qtyOut || ''), commentOut: row.commentOut, invoiceNum: row.invoiceNum || '' }); setEditRow(row); setShowAddRow(true) }
   async function submitReport() {
     if (shiftRows.filter(r => r.name).length === 0) { showMsg('Добавьте хотя бы одну строку'); return }
