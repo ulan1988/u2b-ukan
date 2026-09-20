@@ -123,8 +123,11 @@ export default function NomenclatureScreen() {
   // Карандаш ✏ = построчная правка ЦЕН (имя/дерево не трогаем — это общий шаблон).
   async function handleSave(item: NomItem) {
     const d = pricesDraft[item.id]
-    if (d) await editProduct(item.id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec), orgId })
-    setEditItem(null); setPricesDraft(prev => { const n = { ...prev }; delete n[item.id]; return n }); load(); showMsg('✓ Цены сохранены')
+    const patch: any = { orgId }
+    if ((item.name || '').trim()) patch.name = item.name.trim()   // имя — общий шаблон (для всех орг)
+    if (d) { patch.priceIn = num(d.priceIn); patch.priceRetail = num(d.priceRetail); patch.priceOpt = num(d.priceOpt); patch.priceSpec = num(d.priceSpec) }
+    await editProduct(item.id, patch)
+    setEditItem(null); setPricesDraft(prev => { const n = { ...prev }; delete n[item.id]; return n }); load(); showMsg('✓ Сохранено')
   }
   async function handleCreate() {
     if (!newItem.name) { showMsg('Введите название'); return }
@@ -134,8 +137,8 @@ export default function NomenclatureScreen() {
     setNewItem({ name: '', unit: 'шт', group: selGroup || '', cat: selCat || '', subgroup: selSubgroup || '' })
     load(); showMsg('✓ Добавлено')
   }
-  async function handleDelete(id: string) {
-    if (!confirm('Удалить (в архив)?')) return
+  async function handleDelete(id: string, name?: string) {
+    if (!confirm(`Удалить «${name || 'позицию'}» в архив?`)) return
     await archiveProduct(id); load(); showMsg('✓ В архив')
   }
   function openAdd() {
@@ -348,7 +351,7 @@ export default function NomenclatureScreen() {
                         {showHead && <tr><td colSpan={10} style={{ padding: '8px 14px', background: '#f1efec', fontWeight: 800, fontSize: 12.5, color: COLORS.primary, letterSpacing: '.02em' }}>📁 {sg || '— без подгруппы —'}</td></tr>}
                         <tr style={{ borderTop: '1px solid #f1efec' }}>
                           {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки. Лёгкие линии-разделители колонок */}
-                          <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{item.name}</td>
+                          <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{editItem?.id === item.id ? <input value={editItem.name} onChange={e => setEditItem(p => p ? { ...p, name: e.target.value } : p)} placeholder="Имя товара" style={{ ...INP, fontSize: 14, padding: '6px 9px', fontWeight: 600 }} /> : item.name}</td>
                           <td style={{ padding: '9px 14px', width: 80, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>
                           <td style={{ padding: '9px 14px', width: 130, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span></td>
                           <td style={{ padding: '9px 14px', width: 160, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span></td>
@@ -361,7 +364,7 @@ export default function NomenclatureScreen() {
                               <td key={f} style={{ padding: '9px 8px', width: 84, background: pc.bg, borderLeft: '2px solid #d8d2c8' }}>{editable ? <input value={priceVal(item, f)} inputMode="decimal" autoFocus={editItem?.id === item.id && f === 'priceIn'} onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', background: '#fff', border: `1.5px solid ${(pricesDraft[item.id]?.[f] !== undefined || editItem?.id === item.id) ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, fontWeight: 600, color: (item[f] ?? 0) > 0 ? pc.c : '#b3aca2' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
                             )
                           })}
-                          <td style={{ padding: '9px 14px', width: 120 }}>{editItem?.id === item.id ? <div style={{ display: 'flex', gap: 4 }}><button onClick={() => handleSave(editItem)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>✓</button><button onClick={() => setEditItem(null)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✕</button></div> : <div style={{ display: 'flex', gap: 4 }}><button onClick={() => setEditItem({ ...item })} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✏️</button><button onClick={() => handleDelete(item.id)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #faeaea', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>}</td>
+                          <td style={{ padding: '9px 14px', width: 120 }}>{editItem?.id === item.id ? <div style={{ display: 'flex', gap: 4 }}><button onClick={() => handleSave(editItem)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>✓</button><button onClick={() => setEditItem(null)} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✕</button></div> : <div style={{ display: 'flex', gap: 4 }}><button onClick={() => setEditItem({ ...item })} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 13 }}>✏️</button><button onClick={() => handleDelete(item.id, item.name)} title="Удалить в архив" style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #faeaea', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>}</td>
                         </tr>
                         </Fragment>
                       )})}
