@@ -74,7 +74,7 @@ function LoginForm() {
           {([['🏢', 'Головной', 'ulan'], ['🏭', 'Нипа', 'Nipa'], ['🏪', 'Кристалл', 'Kristal']] as const).map(([ic, org, em]) => {
             const on = email.trim().toLowerCase() === em.toLowerCase()
             return (
-              <button key={em} type="button" onClick={() => { setEmail(em); setError('') }} style={{ flex: 1, padding: '12px 5px', borderRadius: 10, border: `1.5px solid ${on ? '#d4613a' : '#e6e2dc'}`, background: on ? '#fff3ee' : '#faf8f5', color: on ? '#c0532a' : '#4a4640', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center', lineHeight: 1.15 }}>
+              <button key={em} type="button" onClick={() => { setEmail(em); setPassword(''); setError('') }} style={{ flex: 1, padding: '12px 5px', borderRadius: 10, border: `1.5px solid ${on ? '#d4613a' : '#e6e2dc'}`, background: on ? '#fff3ee' : '#faf8f5', color: on ? '#c0532a' : '#4a4640', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center', lineHeight: 1.15 }}>
                 <span style={{ fontSize: 20, lineHeight: 1 }}>{ic}</span>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>{org}</span>
               </button>
@@ -87,8 +87,8 @@ function LoginForm() {
           Запомнить меня на этом устройстве
         </label>
         <form onSubmit={handleEmail} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div><label style={lbl}>ЛОГИН</label><input style={inp} type="text" value={email} onChange={e => setEmail(e.target.value)} placeholder="Ваш логин" required /></div>
-          <div><label style={lbl}>ПАРОЛЬ</label><input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
+          <div><label style={lbl}>ЛОГИН</label><input style={inp} type="text" name="u2b-login" autoComplete="off" value={email} onChange={e => setEmail(e.target.value)} placeholder="Ваш логин" required /></div>
+          <div><label style={lbl}>ПАРОЛЬ</label><input style={inp} type="password" name="u2b-pass" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
           <button type="submit" disabled={loading} style={{ marginTop: 8, padding: '12px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
             {loading ? 'Вход...' : 'ВОЙТИ →'}
           </button>
