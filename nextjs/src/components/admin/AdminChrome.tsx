@@ -69,12 +69,17 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   useEffect(() => {
     fetchRefs().then((r: any) => {
       const os = r.organizations || []; setOrgs(os)
-      const saved = getOrgId(); if (saved && os.some((o: any) => o.id === saved)) setOrg(saved)
+      // Орг из URL (?org=) — приоритет, чтобы у каждой орг был свой адрес; иначе localStorage.
+      const urlOrg = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('org') : null
+      const pick = [urlOrg, getOrgId()].find((x: any) => x && os.some((o: any) => o.id === x))
+      if (pick) { setOrg(pick as string); persistOrg(pick as string); if (!urlOrg) router.replace(`${pathname}?org=${pick}`) }
     })
     fetchUsers().then((us: any[]) => setBranchUsers((us || []).filter(u => u.role === 'branch' && u.slug))).catch(() => {})
   }, [])
   const branchSlug = branchUsers.find(u => u.orgId === orgId && u.active !== false)?.slug
-  function switchOrg(id: string) { persistOrg(id); setOrg(id) }
+  // Смена орг → пишем её в URL (?org=), чтобы адрес отражал орг и был у каждой свой.
+  function switchOrg(id: string) { persistOrg(id); setOrg(id); router.replace(`${pathname}?org=${id}`) }
+  const orgQ = (k: string) => `/admin/${k}?org=${orgId}`   // навигация сохраняет орг в адресе
   const orgColor = orgs.find(o => o.id === orgId)?.color || '#6b7280'   // цвет текущей орг — сквозной индикатор
   async function changeOrgColor(id: string, color: string) {
     setOrgs(prev => prev.map(o => o.id === id ? { ...o, color } : o))
@@ -126,7 +131,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
       {sideOpen && <div className="mobile-overlay" onClick={() => setSideOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 99, display: 'none' }} />}
 
       <Sidebar nav={nav} screen={screen} counts={counts} user={user}
-        onNav={k => { router.push(`/admin/${k}`); setSideOpen(false) }} onRefresh={load}
+        onNav={k => { router.push(orgQ(k)); setSideOpen(false) }} onRefresh={load}
         onLogout={async () => { await logout(); location.href = '/login' }}
         open={sideOpen} onClose={() => setSideOpen(false)} />
 
