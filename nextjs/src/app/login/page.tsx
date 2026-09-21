@@ -56,7 +56,18 @@ function LoginForm() {
           </div>
         </div>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Вход в систему</div>
-        <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 20 }}>Введите логин и пароль</div>
+        <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 14 }}>Выберите кабинет и введите пароль</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+          {([['🏢', 'Головной', 'ulan'], ['🏪', 'Кристалл', 'Kristal'], ['🏭', 'Нипа', 'Nipa']] as const).map(([ic, name, em]) => {
+            const on = email.trim().toLowerCase() === em.toLowerCase()
+            return (
+              <button key={em} type="button" onClick={() => { setEmail(em); setError('') }} style={{ flex: 1, padding: '10px 4px', borderRadius: 10, border: `1.5px solid ${on ? '#d4613a' : '#e6e2dc'}`, background: on ? '#fff3ee' : '#faf8f5', color: on ? '#c0532a' : '#4a4640', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{ic}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{name}</span>
+              </button>
+            )
+          })}
+        </div>
         {error && <div style={{ background: '#faeaea', color: '#b03020', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 14 }}>{error}</div>}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer', fontSize: 14, color: '#4a4640', userSelect: 'none' }}>
           <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#d4613a', cursor: 'pointer' }} />
