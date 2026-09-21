@@ -69,16 +69,28 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   useEffect(() => {
     fetchRefs().then((r: any) => {
       const os = r.organizations || []; setOrgs(os)
-      // Орг из URL (?org=) — приоритет, чтобы у каждой орг был свой адрес; иначе localStorage.
+      const myKind = os.find((o: any) => o.id === user.orgId)?.kind
+      const locked = user.role !== 'super_admin' && myKind && myKind !== 'hq'   // филиал-админ замкнут на свою орг
       const urlOrg = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('org') : null
-      const pick = [urlOrg, getOrgId()].find((x: any) => x && os.some((o: any) => o.id === x))
-      if (pick) { setOrg(pick as string); persistOrg(pick as string); if (!urlOrg) router.replace(`${pathname}?org=${pick}`) }
+      if (locked) {
+        // Филиал видит ТОЛЬКО свою орг — игнорируем чужой ?org и переключатель.
+        if (orgId !== user.orgId) setOrg(user.orgId)
+        persistOrg(user.orgId)
+        if (urlOrg !== user.orgId) router.replace(`${pathname}?org=${user.orgId}`)
+      } else {
+        // Головной: орг из URL (?org=) — приоритет (свой адрес у каждой орг), иначе localStorage.
+        const pick = [urlOrg, getOrgId()].find((x: any) => x && os.some((o: any) => o.id === x))
+        if (pick) { setOrg(pick as string); persistOrg(pick as string); if (!urlOrg) router.replace(`${pathname}?org=${pick}`) }
+      }
     })
-    fetchUsers().then((us: any[]) => setBranchUsers((us || []).filter(u => u.role === 'branch' && u.slug))).catch(() => {})
+    // Кабинеты филиалов (для кнопки «Кабинет мастера») — пользователи со слагом (branch/admin филиала).
+    fetchUsers().then((us: any[]) => setBranchUsers((us || []).filter(u => u.slug && ['branch', 'admin', 'super_admin'].includes(u.role)))).catch(() => {})
   }, [])
+  const myKind = orgs.find(o => o.id === user.orgId)?.kind
+  const canSwitchOrg = user.role === 'super_admin' || !myKind || myKind === 'hq'   // переключать орг может только головной
   const branchSlug = branchUsers.find(u => u.orgId === orgId && u.active !== false)?.slug
-  // Смена орг → пишем её в URL (?org=), чтобы адрес отражал орг и был у каждой свой.
-  function switchOrg(id: string) { persistOrg(id); setOrg(id); router.replace(`${pathname}?org=${id}`) }
+  // Смена орг → пишем её в URL (?org=); только для головного (филиал замкнут на свою орг).
+  function switchOrg(id: string) { if (!canSwitchOrg) return; persistOrg(id); setOrg(id); router.replace(`${pathname}?org=${id}`) }
   const orgQ = (k: string) => `/admin/${k}?org=${orgId}`   // навигация сохраняет орг в адресе
   const orgColor = orgs.find(o => o.id === orgId)?.color || '#6b7280'   // цвет текущей орг — сквозной индикатор
   async function changeOrgColor(id: string, color: string) {
@@ -140,7 +152,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Сквозная цветная полоса сверху = насыщенный цвет орг */}
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} />}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} />}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}

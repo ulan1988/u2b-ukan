@@ -42,7 +42,7 @@ function LoginForm() {
     else if (user.role === 'warehouse_manager') router.push(`/warehouse/${user.slug}`)
     else if (user.role === 'branch') router.push(`/branch/${user.slug}`)
     else if (user.role === 'client' || user.role === 'supplier_client') router.push(`/client/${user.slug}`)
-    else router.push('/admin')
+    else router.push(user.orgId ? `/admin/incoming?org=${user.orgId}` : '/admin')   // админ головного/филиала → своя орг в адресе
   }
 
   const inp: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', color: '#26231f', boxSizing: 'border-box' }

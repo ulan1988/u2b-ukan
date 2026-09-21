@@ -34,10 +34,10 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug }: {
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug, canSwitchOrg = true }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
   orgs?: { id: string; name: string; kind?: string; color?: string }[]; orgId?: string; onOrg?: (id: string) => void
-  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean; branchSlug?: string
+  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean; branchSlug?: string; canSwitchOrg?: boolean
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -69,7 +69,7 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
           <a href={`/branch/${branchSlug}`} target="_blank" rel="noopener" title={isSellerOrg ? 'Открыть кассу этого магазина' : 'Открыть кабинет мастера этого филиала (заказы, приём, касса)'}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: COLORS.primary, color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>{isSellerOrg ? '🏪 Касса магазина' : '🏭 Кабинет мастера'}</a>
         )}
-        {orgs.length > 1 && onOrg && (
+        {orgs.length > 0 && (canSwitchOrg && orgs.length > 1 && onOrg ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 2px 8px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}` }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
             <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
@@ -77,7 +77,13 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
               {orgs.map(o => <option key={o.id} value={o.id} style={{ color: '#26231f' }}>🏢 {o.name}</option>)}
             </select>
           </div>
-        )}
+        ) : (
+          /* Филиал замкнут на свою орг — статичный бейдж без переключателя */
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}`, color: orgColor, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
+            🏢 {orgs.find(o => o.id === orgId)?.name || ''}
+          </div>
+        ))}
         {!hideOrderInfo && <input style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
         <Bell />
       </div>
