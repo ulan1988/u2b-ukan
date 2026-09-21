@@ -65,7 +65,18 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   const hq = await hqOrgId(); if (!hq || !clientId) return null
   const refsRepo = await import('../repositories/refs.repo')
   const wh = await refsRepo.centralWarehouse(hq); if (!wh) return null
-  const lines = positions.filter((p: any) => p.productId).map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: Number(p.price), unit: p.unit || 'шт', name: p.name1c || p.oral, widthCm: p.widthCm }))
+  // Цена продажи у ГОЛОВНОГО — по типу цены ЗАКАЗЧИКА (розн/опт/спец) из product_prices[hq].
+  // Нет цены у головного → берём цену Нипы (пользователь поправит вручную у себя).
+  const { sqlClient } = await import('../lib/db')
+  const [cl] = (await sqlClient`select coalesce(price_type,'retail') pt from contragents where id=${clientId} limit 1` as unknown as Array<any>)
+  const pt = (cl?.pt as string) || 'retail'
+  const prodIds = Array.from(new Set(positions.filter((p: any) => p.productId).map((p: any) => p.productId))) as string[]
+  const pp = prodIds.length ? await sqlClient`select product_id::text pid, price_retail::float r, price_opt::float o, price_spec::float s from product_prices where org_id=${hq} and product_id = any(${prodIds})` as unknown as Array<any> : []
+  const pmap = new Map(pp.map((x: any) => [x.pid, pt === 'opt' ? x.o : pt === 'spec' ? x.s : x.r]))
+  const lines = positions.filter((p: any) => p.productId).map((p: any) => {
+    const hqPrice = Number(pmap.get(p.productId)) || 0
+    return { productId: p.productId as string, qty: Number(p.qty), price: hqPrice > 0 ? hqPrice : (Number(p.price) || 0), unit: p.unit || 'шт', name: p.name1c || p.oral, widthCm: p.widthCm }
+  })
   if (!lines.length) return null
   const docSvc = await import('./document.service')
   return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
