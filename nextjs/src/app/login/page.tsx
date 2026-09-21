@@ -71,13 +71,12 @@ function LoginForm() {
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-          {([['🏢', 'Главный вход', 'Головной', 'ulan'], ['🏭', 'Кабинет мастера', 'Нипа', 'Nipa'], ['🏪', 'Кабинет продавца', 'Кристалл', 'Kristal']] as const).map(([ic, role, org, em]) => {
+          {([['🏢', 'Головной', 'ulan'], ['🏭', 'Нипа', 'Nipa'], ['🏪', 'Кристалл', 'Kristal']] as const).map(([ic, org, em]) => {
             const on = email.trim().toLowerCase() === em.toLowerCase()
             return (
-              <button key={em} type="button" onClick={() => { setEmail(em); setError('') }} style={{ flex: 1, padding: '10px 5px', borderRadius: 10, border: `1.5px solid ${on ? '#d4613a' : '#e6e2dc'}`, background: on ? '#fff3ee' : '#faf8f5', color: on ? '#c0532a' : '#4a4640', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, textAlign: 'center', lineHeight: 1.15 }}>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{ic}</span>
-                <span style={{ fontSize: 12, fontWeight: 700 }}>{role}</span>
-                <span style={{ fontSize: 10.5, color: on ? '#c0532a' : '#8a857c', fontWeight: 600 }}>{org}</span>
+              <button key={em} type="button" onClick={() => { setEmail(em); setError('') }} style={{ flex: 1, padding: '12px 5px', borderRadius: 10, border: `1.5px solid ${on ? '#d4613a' : '#e6e2dc'}`, background: on ? '#fff3ee' : '#faf8f5', color: on ? '#c0532a' : '#4a4640', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center', lineHeight: 1.15 }}>
+                <span style={{ fontSize: 20, lineHeight: 1 }}>{ic}</span>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{org}</span>
               </button>
             )
           })}
