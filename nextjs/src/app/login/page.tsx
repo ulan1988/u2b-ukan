@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { login as apiLogin } from '@/lib/api/auth'
+import { login as apiLogin, me as apiMe, logout as apiLogout } from '@/lib/api/auth'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -13,9 +13,13 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const from = searchParams.get('from') || ''
 
+  const [current, setCurrent] = useState<any>(null)   // уже активная сессия (чтобы не «входить опять»)
   useEffect(() => {
     try { const em = localStorage.getItem('ukan_last_login'); if (em) setEmail(em) } catch {}
+    apiMe().then((u: any) => setCurrent(u && u.id ? u : null)).catch(() => {})
   }, [])
+  const homeOf = (u: any) => u?.role === 'branch' && u?.slug ? `/branch/${u.slug}` : u?.role === 'logist' && u?.slug ? `/rsp/${u.slug}` : ['admin', 'super_admin', 'bookkeeper'].includes(u?.role) ? '/admin' : u?.slug ? `/client/${u.slug}` : '/admin'
+  async function switchAccount() { try { await apiLogout() } catch {} setCurrent(null); setEmail(''); setPassword('') }
 
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault()
@@ -57,6 +61,15 @@ function LoginForm() {
         </div>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Вход в систему</div>
         <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 14 }}>Выберите кабинет и введите пароль</div>
+        {current && (
+          <div style={{ background: '#eef7f1', border: '1.5px solid #cfe7d8', borderRadius: 10, padding: '11px 13px', marginBottom: 16 }}>
+            <div style={{ fontSize: 13.5, color: '#2e6b4a' }}>Вы уже вошли как <b>{current.name}</b></div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+              <button type="button" onClick={() => router.push(homeOf(current))} style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Открыть кабинет →</button>
+              <button type="button" onClick={switchAccount} style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1.5px solid #cbbfae', background: '#fff', color: '#8a6f00', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Выйти и сменить</button>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
           {([['🏢', 'Главный вход', 'Головной', 'ulan'], ['🏭', 'Кабинет мастера', 'Нипа', 'Nipa'], ['🏪', 'Кабинет продавца', 'Кристалл', 'Kristal']] as const).map(([ic, role, org, em]) => {
             const on = email.trim().toLowerCase() === em.toLowerCase()
