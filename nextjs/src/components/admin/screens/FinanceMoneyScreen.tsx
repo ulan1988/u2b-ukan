@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc } from '@/lib/api/finmoney'
+import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts } from '@/lib/api/finmoney'
+import { useLiveData } from '@/lib/live'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
@@ -45,7 +46,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [toast, setToast] = useState('')
   const [modalRow, setModalRow] = useState<any | null>(null)
   const [favOpen, setFavOpen] = useState(false)
-  const [view, setView] = useState<'sheet' | 'dds' | 'journal'>('sheet')
+  const [view, setView] = useState<'sheet' | 'dds' | 'journal' | 'accounts'>('sheet')
   const [showComment, setShowComment] = useState(false)   // колонка «Комментарий» со шторкой
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
@@ -138,14 +139,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '1px 6px', fontSize: 13 }
   const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace', fontSize: 15.5, fontWeight: 700 }
 
-  const tabBtn = (v: 'sheet' | 'dds' | 'journal', label: string) => (
+  const tabBtn = (v: 'sheet' | 'dds' | 'journal' | 'accounts', label: string) => (
     <button onClick={() => setView(v)} style={{ padding: '6px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === v ? COLORS.primary : '#fff', color: view === v ? '#fff' : COLORS.textMuted, boxShadow: view === v ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
   )
   const dayIn = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t > 0 ? t : 0) }, 0)
   const dayOut = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t < 0 ? -t : 0) }, 0)
   const headerBar = (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}{tabBtn('journal', '📋 Документы')}
+      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}{tabBtn('journal', '📋 Документы')}{tabBtn('accounts', '🏦 Счета')}
       {view === 'sheet' && <>
         <div style={{ flex: 1 }} />
         <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} title="Выбрать день" style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }} />
@@ -158,6 +159,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
 
   if (view === 'dds') return <div style={{ marginTop: -12 }}>{headerBar}<DdsReport /></div>
   if (view === 'journal') return <div style={{ marginTop: -12 }}>{headerBar}<JournalMode cags={cags} favs={data?.favorites || []} /></div>
+  if (view === 'accounts') return <div style={{ marginTop: -12 }}>{headerBar}<AccountsView /></div>
 
   return (
     <div style={{ marginTop: -12 }}>
@@ -637,6 +639,80 @@ function DdsReport() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Вкладка «Счета»: балансы головного + филиалов + общий итог (живое обновление) ───
+// Деньги в кассах филиала не инкассированы головному → помечаются «в ожидании» (оранжевым).
+function AccountsView() {
+  const [data, setData] = useState<any>(null)
+  const load = useCallback(async () => { setData(await finAccounts()) }, [])
+  useLiveData(load, [])   // постоянная связь: обновляется при любой продаже/оплате/переводе
+
+  if (!data) return <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
+  const blocks: any[] = data.blocks || []
+  const icon = (k: string) => k === 'hq' ? '🏢' : k === 'producer_seller' ? '🏭' : '🏪'
+  const kindName = (k: string) => k === 'bank' ? 'Банк' : 'Касса'
+
+  return (
+    <div>
+      {/* Сводка сверху: общий итог = свои (инкассированные) + в ожидании */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ flex: '1 1 200px', background: '#fff', border: '2px solid #211f1c', borderRadius: 12, padding: '14px 18px' }}>
+          <div style={{ fontSize: 12.5, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Общий итог по всем счетам</div>
+          <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Consolas, monospace', marginTop: 4 }}>{fmt(data.grandTotal)} ₸</div>
+        </div>
+        <div style={{ flex: '1 1 180px', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 12, padding: '14px 18px' }}>
+          <div style={{ fontSize: 12.5, color: '#15803d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Свои счета (головной)</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Consolas, monospace', marginTop: 4, color: '#15803d' }}>{fmt(data.ownTotal)} ₸</div>
+        </div>
+        <div style={{ flex: '1 1 180px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: '14px 18px' }}>
+          <div style={{ fontSize: 12.5, color: '#b45309', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>⏳ В ожидании инкассации</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Consolas, monospace', marginTop: 4, color: '#b45309' }}>{fmt(data.pendingTotal)} ₸</div>
+        </div>
+      </div>
+
+      {/* Блоки счетов по орг: головной обычным, филиалы — «в ожидании» (оранжевым) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        {blocks.map((b: any) => {
+          const p = b.pending
+          const accent = p ? '#f59e0b' : '#2e8a5e'
+          const cardBg = p ? '#fffdf8' : '#fff'
+          return (
+            <div key={b.orgId} style={{ background: cardBg, borderRadius: 12, border: `1.5px solid ${p ? '#fed7aa' : '#e6e2dc'}`, boxShadow: `inset 4px 0 0 ${accent}`, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid #f1efec' }}>
+                <span style={{ fontSize: 18 }}>{icon(b.kind)}</span>
+                <span style={{ fontWeight: 800, fontSize: 15 }}>{b.orgName}</span>
+                {p && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#b45309', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 20, padding: '2px 10px', whiteSpace: 'nowrap' }}>⏳ в ожидании</span>}
+              </div>
+              <div style={{ padding: '4px 16px 8px' }}>
+                {b.items.map((a: any) => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px dashed #eee' }}>
+                    <span style={{ fontSize: 13.5, color: '#4a4640' }}><span style={{ color: '#9ca3af', fontSize: 11.5, marginRight: 6 }}>{kindName(a.kind)}</span>{a.name}</span>
+                    <span style={{ fontFamily: 'Consolas, monospace', fontSize: 15, fontWeight: 700, color: p ? '#b45309' : '#211f1c' }}>{fmt(a.balance)}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 9, marginTop: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#6b7280' }}>Итого по счетам</span>
+                  <span style={{ fontFamily: 'Consolas, monospace', fontSize: 18, fontWeight: 800, color: accent }}>{fmt(b.total)} ₸</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {/* 4-й блок: Общий (сумма всех счетов всех орг) */}
+        <div style={{ background: '#211f1c', borderRadius: 12, color: '#fff', padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 18 }}>Σ</span><span style={{ fontWeight: 800, fontSize: 15 }}>Общий (все счета)</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', color: '#cbd5e1' }}><span>Головной (свои)</span><span style={{ fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{fmt(data.ownTotal)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', color: '#fdba74' }}><span>⏳ В ожидании</span><span style={{ fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{fmt(data.pendingTotal)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 10, marginTop: 6, borderTop: '1px solid #3f3d39' }}><span style={{ fontWeight: 700 }}>ИТОГО</span><span style={{ fontFamily: 'Consolas, monospace', fontSize: 22, fontWeight: 800 }}>{fmt(data.grandTotal)} ₸</span></div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: '#9ca3af' }}>Баланс счёта = все поступления − платежи (продажи, «Деньги», инкассации). Обновляется автоматически при любой операции.</div>
     </div>
   )
 }

@@ -262,6 +262,33 @@ export async function cashReport(orgId: string, from: string, to: string) {
   return { from, to, kind: orgKind, days, totals, accounts, opening, endBal, endBalTotal, ok: days.every((d: any) => d.ok) }
 }
 
+// ─── Свод счетов (для головного): балансы головного + филиалов + общий итог ─────────
+// Головной видит счета ВСЕХ орг; деньги в кассах филиала не инкассированы ему → «в ожидании».
+// Баланс счёта = Σ payments (in−out) + Σ fin_row_amounts (posted) за всё время = текущий остаток.
+export async function accountsOverview(viewerOrgId: string) {
+  const { orgById } = await import('../repositories/refs.repo')
+  const viewer = await orgById(viewerOrgId)
+  const isHq = (viewer as any)?.kind === 'hq'
+  const orgs = isHq
+    ? await sqlClient`select id::text id, name, kind from organizations order by case kind when 'hq' then 0 when 'producer_seller' then 1 else 2 end, name`
+    : await sqlClient`select id::text id, name, kind from organizations where id=${viewerOrgId}`
+  const accs = await sqlClient`select id::text id, org_id::text oid, name, kind from cash_accounts where archived=false order by sort_order, name`
+  const pay = await sqlClient`select cash_account_id::text acc, coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where cash_account_id is not null group by cash_account_id`
+  const finm = await sqlClient`select a.account_id::text acc, coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.status='posted' group by a.account_id`
+  const bal = new Map<string, number>()
+  for (const r of [...(pay as any[]), ...(finm as any[])]) bal.set(r.acc, (bal.get(r.acc) || 0) + num(r.v))
+  const blocks = (orgs as any[]).map(o => {
+    const items = (accs as any[]).filter(a => a.oid === o.id).map(a => ({ id: a.id, name: a.name, kind: a.kind, balance: num(bal.get(a.id)) }))
+    const total = items.reduce((s, x) => s + x.balance, 0)
+    const pending = o.kind !== 'hq'   // деньги филиала = в ожидании инкассации головному
+    return { orgId: o.id, orgName: o.name, kind: o.kind, pending, items, total }
+  })
+  const grandTotal = blocks.reduce((s, b) => s + b.total, 0)
+  const ownTotal = blocks.filter(b => !b.pending).reduce((s, b) => s + b.total, 0)
+  const pendingTotal = blocks.filter(b => b.pending).reduce((s, b) => s + b.total, 0)
+  return { blocks, grandTotal, ownTotal, pendingTotal, isHq }
+}
+
 export interface ExpenseInput { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }
 
 export async function addShiftExpense(orgId: string, input: ExpenseInput, _actor?: Session | null) {

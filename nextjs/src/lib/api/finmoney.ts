@@ -15,6 +15,7 @@ export const finEditDoc = (id: string, row: any) => post('/api/finance/money', {
 export const finDeleteDoc = (id: string) => post('/api/finance/money', { action: 'deleteDoc', id })
 export const finFavList = () => post('/api/finance/money', { action: 'favList' })
 export const finDds = (from: string, to: string) => getObj<any>(`/api/finance/dds?from=${from}&to=${to}`, null as any)
+export const finAccounts = () => getObj<any>(`/api/finance/accounts`, null as any)
 export const finExpList = () => post('/api/finance/money', { action: 'expList' })
 export const finExpSave = (items: any[]) => post('/api/finance/money', { action: 'expSave', items })
 
