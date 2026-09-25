@@ -43,13 +43,11 @@ export default function HistoryScreen({ orgId, onOpen }: { orgId: string; onOpen
         <button onClick={load} style={{ ...INP, cursor: 'pointer' }}>⟳</button>
       </div>
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ background: '#f8f6f3' }}>{['ВРЕМЯ', 'ПОЛЬЗОВАТЕЛЬ', 'ДЕЙСТВИЕ', 'КАРТОЧКА', 'ДЕТАЛИ'].map(h => <th key={h} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
-        </table>
+        {/* ОДНА таблица: sticky-шапка и тело делят одни колонки → всё ровно */}
         <div style={{ overflowY: 'auto', flex: 1 }}>
-          {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>Загрузка...</div>
-            : rows.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>Нет записей по выбранным фильтрам</div>
-            : <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{rows.map(r => (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{['ВРЕМЯ', 'ПОЛЬЗОВАТЕЛЬ', 'ДЕЙСТВИЕ', 'КАРТОЧКА', 'ДЕТАЛИ'].map(h => <th key={h} style={{ position: 'sticky', top: 0, zIndex: 1, background: '#f8f6f3', padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap', boxShadow: 'inset 0 -1px 0 #e6e2dc' }}>{h}</th>)}</tr></thead>
+            {loading || rows.length === 0 ? null : <tbody>{rows.map(r => (
               <tr key={r.id} style={{ borderTop: '1px solid #f1efec' }}>
                 <td style={{ padding: '9px 14px', fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{fmtDateTime(r.createdAt)}</td>
                 <td style={{ padding: '9px 14px', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.userName || '—'}</td>
@@ -57,7 +55,10 @@ export default function HistoryScreen({ orgId, onOpen }: { orgId: string; onOpen
                 <td style={{ padding: '9px 14px', fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: COLORS.primary, cursor: onOpen ? 'pointer' : 'default' }} onClick={() => onOpen?.({ id: r.cardId })}>{r.cardId}</td>
                 <td style={{ padding: '9px 14px', fontSize: 13, color: '#5f5952' }}>{r.detail || ''}</td>
               </tr>
-            ))}</tbody></table>}
+            ))}</tbody>}
+          </table>
+          {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>Загрузка...</div>
+            : rows.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>Нет записей по выбранным фильтрам</div> : null}
         </div>
       </div>
     </div>
