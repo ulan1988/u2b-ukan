@@ -327,21 +327,23 @@ export default function NomenclatureScreen() {
           </div>
 
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr style={{ background: '#f8f6f3' }}>
-                {([
-                  { h: 'НАИМЕНОВАНИЕ' }, { h: 'ЕД.' }, { h: 'ГРУППА' }, { h: 'КАТЕГОРИЯ' }, { h: 'ПОДГРУППА' },
-                  { h: 'ПРИХОД', p: 'priceIn' }, { h: 'РОЗН.', p: 'priceRetail' }, { h: 'ОПТ', p: 'priceOpt' }, { h: 'СПЕЦ', p: 'priceSpec' }, { h: '' },
-                ] as Array<{ h: string; p?: PField }>).map(({ h, p }) => { const pc = p ? PCOL[p] : null; return (
-                  <th key={h || 'act'} style={{ padding: '10px 12px', fontSize: 12, fontWeight: 700, color: pc ? pc.c : '#5f5952', textAlign: pc ? 'right' : 'left', whiteSpace: 'nowrap', background: pc ? pc.hbg : undefined, borderLeft: pc ? '2px solid #d8d2c8' : '1px solid #efece7' }}>{h}</th>
-                ) })}
-              </tr></thead>
-            </table>
+            {/* ОДНА таблица: шапка (sticky) и тело делят одни колонки → разделители совпадают.
+                Линии шапки — inset box-shadow (border у sticky-ячеек при collapse пропадает). */}
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>Загрузка...</div>
-                : filtered.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>{search ? 'Ничего не найдено' : 'Нет позиций в этой группе'}<div style={{ marginTop: 12 }}><button onClick={openAdd} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>+ Добавить позицию</button></div></div>
-                : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  {([
+                    { h: 'НАИМЕНОВАНИЕ' }, { h: 'ЕД.' }, { h: 'ГРУППА' }, { h: 'КАТЕГОРИЯ' }, { h: 'ПОДГРУППА' },
+                    { h: 'ПРИХОД', p: 'priceIn' }, { h: 'РОЗН.', p: 'priceRetail' }, { h: 'ОПТ', p: 'priceOpt' }, { h: 'СПЕЦ', p: 'priceSpec' }, { h: '' },
+                  ] as Array<{ h: string; p?: PField }>).map(({ h, p }) => {
+                    const pc = p ? PCOL[p] : null
+                    const noLeft = h === 'НАИМЕНОВАНИЕ' || h === ''   // как в теле: имя и действия без левой линии
+                    const left = pc ? 'inset 2px 0 0 #d8d2c8' : (noLeft ? '' : 'inset 1px 0 0 #efece7')
+                    return (
+                      <th key={h || 'act'} style={{ position: 'sticky', top: 0, zIndex: 1, padding: '10px 12px', fontSize: 12, fontWeight: 700, color: pc ? pc.c : '#5f5952', textAlign: pc ? 'right' : 'left', whiteSpace: 'nowrap', background: pc ? pc.hbg : '#f8f6f3', boxShadow: ['inset 0 -1px 0 #e6e2dc', left].filter(Boolean).join(', ') }}>{h}</th>
+                    ) })}
+                </tr></thead>
+                {loading || filtered.length === 0 ? null : (
                     <tbody>
                       {[...filtered].sort((a, b) => (a.subgroup || '').localeCompare(b.subgroup || '', 'ru') || a.name.localeCompare(b.name, 'ru')).map((item, i, arr) => {
                         const sg = item.subgroup || ''
@@ -369,8 +371,11 @@ export default function NomenclatureScreen() {
                         </Fragment>
                       )})}
                     </tbody>
-                  </table>
                 )}
+              </table>
+              {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>Загрузка...</div>
+                : filtered.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#5f5952' }}>{search ? 'Ничего не найдено' : 'Нет позиций в этой группе'}<div style={{ marginTop: 12 }}><button onClick={openAdd} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>+ Добавить позицию</button></div></div>
+                : null}
             </div>
           </div>
         </div>
