@@ -1,7 +1,7 @@
 'use client'
 // Номенклатура — портирован из Улкана 1:1 (дерево групп/категорий/подгрупп,
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
@@ -90,13 +90,16 @@ export default function NomenclatureScreen() {
     setBulk({ priceIn: '', priceRetail: '', priceOpt: '', priceSpec: '' }); load(); showMsg(`✓ Цена применена к ${r.data?.count ?? ids.length} товарам`)
   }
 
+  // «Загрузка…» — только при первом открытии. На фоновых перезагрузках (после сохранения цены)
+  // НЕ прячем таблицу — иначе тело перемонтируется и список прыгает в начало (теряется прокрутка).
+  const didInit = useRef(false)
   const load = useCallback(async () => {
-    setLoading(true)
+    if (!didInit.current) setLoading(true)
     try {
       const data = await listProducts(orgId, true)
       setItems((data as any[]).map(p => ({ ...p, priceIn: Number(p.priceIn), priceRetail: Number(p.priceRetail), priceOpt: Number(p.priceOpt), priceSpec: Number(p.priceSpec) })))
     } catch { showMsg('Ошибка загрузки') }
-    finally { setLoading(false) }
+    finally { didInit.current = true; setLoading(false) }
   }, [orgId])
   useEffect(() => { load() }, [load])
 
