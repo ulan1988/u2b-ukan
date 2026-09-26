@@ -5,6 +5,11 @@ import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'rea
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
+import { extractRal } from '@/lib/ral'
+
+// Безцветный товар (оцинковка «(ЦВ)», аксессуар) — в имени нет RAL-кода. Хранится ОДИН раз
+// на уровне категории (подгруппа пустая) и показывается в каждой цветной подгруппе этой категории.
+const isColorless = (name: string) => extractRal(name) === ''
 
 interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
 
@@ -113,7 +118,7 @@ export default function NomenclatureScreen() {
 
   const filtered = visible.filter(item => {
     if (search) return item.name.toLowerCase().includes(search.toLowerCase())
-    if (selSubgroup) return inCat(item, selGroup!, selCat!) && norm(item.subgroup) === norm(selSubgroup)
+    if (selSubgroup) return inCat(item, selGroup!, selCat!) && (norm(item.subgroup) === norm(selSubgroup) || isColorless(item.name))
     if (selCat) return inCat(item, selGroup!, selCat!)
     if (selGroup) return inGroup(item, selGroup)
     return true

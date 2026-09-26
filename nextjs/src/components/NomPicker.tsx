@@ -84,7 +84,8 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const decorRe = /(^|[^0-9a-zа-яё])(дуб|дерево|3d)/i
   const colorPass = (name: string): boolean => {
     if (!color) return true
-    if (color === NOCOLOR) return extractRal(name) === ''
+    if (extractRal(name) === '') return true      // безцветный аксессуар (ЦВ) — виден при ЛЮБОМ выбранном цвете
+    if (color === NOCOLOR) return false           // выбран «без цвета» → цветные не показываем
     if (color === 'decor') return decorRe.test(name)
     return new RegExp('(^|[^0-9])' + color + '(?![0-9])').test(name)
   }
@@ -137,7 +138,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const groups = Object.keys(tree).filter(g => countGroup(g) > 0)
 
   let base = allItems
-  if (selS) base = base.filter(i => inCat(i, selG, selC) && norm(i.subgroup) === norm(selS))
+  if (selS) base = base.filter(i => inCat(i, selG, selC) && (norm(i.subgroup) === norm(selS) || extractRal(i.name) === ''))   // + безцветные аксессуары категории
   else if (selC) base = base.filter(i => inCat(i, selG, selC))
   else if (selG) base = base.filter(i => inGroup(i, selG))
 
