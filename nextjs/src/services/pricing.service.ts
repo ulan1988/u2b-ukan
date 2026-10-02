@@ -18,6 +18,46 @@ async function upsertOrgPrice(orgId: string, productId: string, field: string, p
   else await db.insert(productPrices).values({ orgId, productId, priceRetail: '0', priceOpt: '0', priceSpec: '0', [field]: val } as any)
 }
 
+// Копирование цен между цветами: подгруппа-источник → подгруппы-получатели той же категории.
+// Товары матчатся по ФОРМЕ (имя без RAL-кода цвета), копируются выбранные колонки
+// (Приход в products общий; Розн/Опт/Спец в product_prices выбранной орг).
+export async function copyColorPrices(
+  orgId: string, sourceSub: string, targetSubs: string[],
+  cols: { priceIn?: boolean; retail?: boolean; opt?: boolean; spec?: boolean },
+) {
+  if (!sourceSub || !targetSubs?.length) return { ok: false as const, error: 'Выберите источник и получателей' }
+  if (!cols.priceIn && !cols.retail && !cols.opt && !cols.spec) return { ok: false as const, error: 'Выберите колонки цен' }
+  const { sqlClient } = await import('../lib/db')
+  const { extractRal } = await import('../lib/ral')
+  // Ключ формы = имя без токена RAL-кода (чтобы «… 7024 …» совпадало с «… 8017 …»).
+  const key = (n: string) => { const r = extractRal(n); return (r ? n.split(/\s+/).filter(t => t !== r).join(' ') : n).replace(/\s+/g, ' ').trim().toLowerCase() }
+  const srcRows = await sqlClient`select p.id::text, p.name, p.price_in::float pin,
+      coalesce(pp.price_retail,0)::float r, coalesce(pp.price_opt,0)::float o, coalesce(pp.price_spec,0)::float s
+    from products p left join product_prices pp on pp.product_id=p.id and pp.org_id=${orgId}
+    where p.subgroup=${sourceSub} and coalesce(p.archived,false)=false` as unknown as any[]
+  const map = new Map<string, any>(); for (const x of srcRows) map.set(key(x.name), x)
+  let updated = 0; const missed: string[] = []
+  for (const sub of targetSubs) {
+    if (sub === sourceSub) continue
+    const tg = await sqlClient`select p.id::text, p.name,
+        coalesce(pp.price_retail,0)::float r, coalesce(pp.price_opt,0)::float o, coalesce(pp.price_spec,0)::float s
+      from products p left join product_prices pp on pp.product_id=p.id and pp.org_id=${orgId}
+      where p.subgroup=${sub} and coalesce(p.archived,false)=false` as unknown as any[]
+    for (const t of tg) {
+      const s = map.get(key(t.name)); if (!s) { missed.push(`${sub}: ${t.name}`); continue }
+      if (cols.priceIn) await sqlClient`update products set price_in=${s.pin} where id=${t.id}`
+      if (cols.retail || cols.opt || cols.spec) {
+        const nr = cols.retail ? s.r : t.r, no = cols.opt ? s.o : t.o, ns = cols.spec ? s.s : t.s
+        await sqlClient`insert into product_prices (org_id, product_id, price_retail, price_opt, price_spec)
+          values (${orgId}, ${t.id}, ${nr}, ${no}, ${ns})
+          on conflict (org_id, product_id) do update set price_retail=excluded.price_retail, price_opt=excluded.price_opt, price_spec=excluded.price_spec`
+      }
+      updated++
+    }
+  }
+  return { ok: true as const, updated, missed, missedCount: missed.length }
+}
+
 export async function setItemPrice(name: string, price: number, priceType?: string, orgId?: string) {
   const nm = (name || '').trim()
   if (!nm || !(Number(price) >= 0)) return { ok: false as const, error: 'Имя и цена обязательны' }

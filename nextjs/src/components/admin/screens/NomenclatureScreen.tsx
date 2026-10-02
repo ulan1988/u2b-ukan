@@ -3,7 +3,7 @@
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices, copyColorPrices } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import { extractRal } from '@/lib/ral'
 
@@ -50,6 +50,12 @@ export default function NomenclatureScreen() {
   const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string; priceSpec: string }>>({})
   const [bulk, setBulk] = useState({ priceIn: '', priceRetail: '', priceOpt: '', priceSpec: '' })   // цена «на всех показанных»
   const [bulkBusy, setBulkBusy] = useState(false)
+  // Копирование цен на другой цвет (подгруппу той же категории)
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyTargets, setCopyTargets] = useState<string[]>([])
+  const [copyCols, setCopyCols] = useState({ priceIn: false, retail: true, opt: true, spec: true })
+  const [copyBusy, setCopyBusy] = useState(false)
+  const [copyRes, setCopyRes] = useState<{ updated: number; missedCount: number } | null>(null)
 
   function showMsg(msg: string) { setToast(msg); setTimeout(() => setToast(''), 2500) }
 
@@ -123,6 +129,27 @@ export default function NomenclatureScreen() {
     if (selGroup) return inGroup(item, selGroup)
     return true
   })
+
+  // Соседние цвета (подгруппы) той же категории — получатели копирования цен.
+  const siblingSubs = useMemo(() => {
+    if (!selSubgroup || !selGroup || !selCat) return [] as string[]
+    const set = new Set<string>()
+    for (const i of visible) if (inCat(i, selGroup, selCat) && i.subgroup && norm(i.subgroup) !== norm(selSubgroup)) set.add(i.subgroup)
+    for (const f of folders) if (f.sub && norm(f.grp) === norm(selGroup) && norm(f.cat) === norm(selCat) && norm(f.sub) !== norm(selSubgroup)) set.add(f.sub)
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [visible, folders, selGroup, selCat, selSubgroup])
+
+  async function doCopy() {
+    if (!selSubgroup || !copyTargets.length) { showMsg('Выберите цвета-получатели'); return }
+    if (!copyCols.priceIn && !copyCols.retail && !copyCols.opt && !copyCols.spec) { showMsg('Выберите колонки цен'); return }
+    setCopyBusy(true); setCopyRes(null)
+    try {
+      const r: any = await copyColorPrices({ orgId, sourceSub: selSubgroup, targetSubs: copyTargets, cols: copyCols })
+      if (!r || r.error) { showMsg('⚠ ' + (r?.error || 'Не удалось')); return }
+      setCopyRes({ updated: r.updated, missedCount: r.missedCount })
+      await load(); showMsg(`✓ Обновлено ${r.updated}${r.missedCount ? `, без пары ${r.missedCount}` : ''}`)
+    } finally { setCopyBusy(false) }
+  }
 
   const countGroup = (g: string) => visible.filter(i => inGroup(i, g)).length
   const countCat = (g: string, c: string) => visible.filter(i => inCat(i, g, c)).length
@@ -319,7 +346,10 @@ export default function NomenclatureScreen() {
             {selCat && <><span>›</span><span style={{ cursor: 'pointer', color: COLORS.primary }} onClick={() => setSelSubgroup(null)}>{selCat}</span></>}
             {selSubgroup && <><span>›</span><span style={{ color: '#26231f', fontWeight: 600 }}>{selSubgroup}</span></>}
             {search && <span style={{ color: '#26231f', fontWeight: 600 }}>Поиск: «{search}»</span>}
-            <span style={{ marginLeft: 'auto', color: '#5f5952' }}>{filtered.length} позиций</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+              {selSubgroup && siblingSubs.length > 0 && <button onClick={() => { setCopyTargets([...siblingSubs]); setCopyRes(null); setCopyOpen(true) }} title="Скопировать цены этого цвета на другие цвета категории" style={{ padding: '6px 12px', borderRadius: 7, border: '1.5px solid #cdbfe6', background: '#f7f3fc', color: '#7a3aaa', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>📋 Копировать цены на другой цвет</button>}
+              <span style={{ color: '#5f5952' }}>{filtered.length} позиций</span>
+            </span>
           </div>
 
           {/* ЦЕНА НА ВСЕХ ПОКАЗАННЫХ: вписать цену → применить ко всем товарам текущего фильтра (для выбранной орг) */}
@@ -403,6 +433,38 @@ export default function NomenclatureScreen() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
               <button onClick={() => setShowAdd(false)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
               <button onClick={handleCreate} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>Добавить →</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {copyOpen && (
+        <div onClick={() => { setCopyOpen(false); setCopyRes(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 460, maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>📋 Копировать цены на другой цвет</div>
+            <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 16 }}>Источник: <b style={{ color: '#26231f' }}>{selSubgroup}</b>. Товары сопоставляются по форме (имя без кода цвета); цены пишутся для «{orgName}».</div>
+            <div style={LBL}>КОЛОНКИ ЦЕН</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+              {([['priceIn', 'Приход'], ['retail', 'Розн.'], ['opt', 'Опт'], ['spec', 'Спец']] as const).map(([k, lbl]) => {
+                const on = (copyCols as any)[k]
+                return <button key={k} onClick={() => setCopyCols(c => ({ ...c, [k]: !(c as any)[k] }))} style={{ padding: '7px 14px', borderRadius: 8, border: `1.5px solid ${on ? COLORS.primary : '#e6e2dc'}`, background: on ? '#fff3ee' : '#fff', color: on ? COLORS.primary : '#5f5952', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{on ? '✓ ' : ''}{lbl}</button>
+              })}
+            </div>
+            <div style={LBL}>ЦВЕТА-ПОЛУЧАТЕЛИ</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="checkbox" checked={copyTargets.length === siblingSubs.length && siblingSubs.length > 0} onChange={e => setCopyTargets(e.target.checked ? [...siblingSubs] : [])} style={{ width: 16, height: 16, accentColor: COLORS.primary }} /> Все ({siblingSubs.length})
+              </label>
+              {siblingSubs.map(s => (
+                <label key={s} style={{ fontSize: 13.5, cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', paddingLeft: 6 }}>
+                  <input type="checkbox" checked={copyTargets.includes(s)} onChange={e => setCopyTargets(p => e.target.checked ? [...p, s] : p.filter(x => x !== s))} style={{ width: 16, height: 16, accentColor: COLORS.primary }} /> {s}
+                </label>
+              ))}
+            </div>
+            {copyRes && <div style={{ fontSize: 13, color: '#2e8a5e', marginBottom: 12, fontWeight: 600 }}>✓ Обновлено {copyRes.updated}{copyRes.missedCount ? ` · без пары ${copyRes.missedCount}` : ''}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setCopyOpen(false); setCopyRes(null) }} style={{ padding: '9px 16px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
+              <button onClick={doCopy} disabled={copyBusy || !copyTargets.length} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: (copyBusy || !copyTargets.length) ? '#a9c9b5' : '#2e8a5e', color: '#fff', cursor: (copyBusy || !copyTargets.length) ? 'default' : 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{copyBusy ? '…' : '✓ Копировать'}</button>
             </div>
           </div>
         </div>

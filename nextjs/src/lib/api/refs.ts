@@ -94,5 +94,7 @@ export const archiveEmployee = (id: string) => send(`/api/employees?id=${id}`, '
 
 // Быстрый ввод цены «на ходу»: сохранить цену/см изделия (по имени) в прайс.
 export const saveItemPrice = (name: string, price: number, priceType?: string) => post('/api/pricing', { name, price, priceType })
+// Копировать цены с цвета-источника на другие цвета (подгруппы) той же категории.
+export const copyColorPrices = (b: { orgId?: string; sourceSub: string; targetSubs: string[]; cols: { priceIn?: boolean; retail?: boolean; opt?: boolean; spec?: boolean } }) => post('/api/pricing/copy-color', b)
 export const autoPrices = (productIds: string[], contragentId?: string, names?: string[]) =>
   getObj(`/api/pricing?productIds=${productIds.join(',')}${names && names.length ? `&names=${encodeURIComponent(names.join('|'))}` : ''}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})
