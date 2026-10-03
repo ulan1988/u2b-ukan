@@ -84,7 +84,7 @@ function DocList({ list, loading, emptyIcon, emptyText, onAccept }: { list: any[
 const fmtDate = (d?: string | null) => !d ? '—' : new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
 const fmtDateTime = (d?: string) => { if (!d) return '—'; const dt = new Date(d), diff = Math.floor((Date.now() - dt.getTime()) / 60000); if (diff < 1) return 'только что'; if (diff < 60) return `${diff} мин`; if (diff < 1440) return `${Math.floor(diff / 60)} ч`; return fmtDate(d) }
 
-export default function ClientApp({ user, viewAs }: { user: { id: string; name: string; orgId: string; slug?: string; contragentId?: string | null }; viewAs?: boolean }) {
+export default function ClientApp({ user, viewAs, embedded }: { user: { id: string; name: string; orgId: string; slug?: string; contragentId?: string | null }; viewAs?: boolean; embedded?: boolean }) {
   const [orders, setOrders] = useState<any[]>([])
   const [docs, setDocs] = useState<{ purchases: any[]; sales: any[]; returns: any[] }>({ purchases: [], sales: [], returns: [] })
   const [notifications, setNotifications] = useState<any[]>([])
@@ -167,11 +167,12 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
   const inp: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit' }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1efec', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
+    <div style={{ minHeight: embedded ? undefined : '100vh', background: embedded ? 'transparent' : '#f1efec', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
       {addCatalogFor && <NomPicker onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
 
-      <div style={{ background: '#fff', borderBottom: '1px solid #e6e2dc', padding: '0 20px' }}>
+      {/* Встроенный режим (вкладка кассы продавца) — своя шапка/выход не нужны */}
+      {!embedded && <div style={{ background: '#fff', borderBottom: '1px solid #e6e2dc', padding: '0 20px' }}>
         <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', alignItems: 'center', height: 56 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -180,7 +181,7 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
           </div>
           <button onClick={async () => { await logout(); location.href = '/login' }} style={{ marginLeft: 'auto', padding: '6px 14px', border: '1.5px solid #e6e2dc', borderRadius: 7, background: '#fff', cursor: 'pointer', fontSize: 14, color: '#5f5952', fontFamily: 'inherit' }}>Выйти</button>
         </div>
-      </div>
+      </div>}
 
       {/* Круглые кнопки навигации — как в кабинете логиста */}
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -367,9 +368,9 @@ export default function ClientApp({ user, viewAs }: { user: { id: string; name: 
           </div>
         )}
       </div>
-      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
-      <AppBadge count={unread} baseTitle="Мои заявки · U2B" />
-      <PushSetup />
+      {!embedded && <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />}
+      {!embedded && <AppBadge count={unread} baseTitle="Мои заявки · U2B" />}
+      {!embedded && <PushSetup />}
     </div>
   )
 }

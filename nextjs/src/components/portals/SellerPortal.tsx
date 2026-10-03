@@ -13,13 +13,14 @@ import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
 import { branchOrders, sellCheck, returnSale, payDebt } from '@/lib/api/orders'
+import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
 
 const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e'
-type Tab = 'cash' | 'checks' | 'debts'
+type Tab = 'cash' | 'checks' | 'debts' | 'order'
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
@@ -449,7 +450,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
       {toast && <div style={{ position: 'fixed', top: 66, left: '50%', transform: 'translateX(-50%)', background: DARK, color: '#fff', padding: '10px 16px', borderRadius: 10, fontSize: 13.5, zIndex: 300, maxWidth: '92vw' }}>{toast}</div>}
 
-      {tab === 'cash' ? (
+      {tab === 'order' ? (
+        <div style={{ paddingBottom: 74 }}>
+          {/* Заказ товара у головного — тот же «Кабинет заказчика» (ClientApp), встроен вкладкой */}
+          <ClientApp user={{ id: user.id, name: orgName || user.name, orgId: user.orgId, slug: user.slug }} embedded />
+        </div>
+      ) : tab === 'cash' ? (
         <div style={{ paddingBottom: 74 + checkH }}>
           {/* папки продавца — лента вкладок (все категории номенклатуры), прокручивается вправо */}
           <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', position: 'sticky', top: 56, zIndex: 50, overflowX: 'auto' }}>
@@ -735,6 +741,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           { key: 'cash' as Tab, icon: '💵', label: 'Касса' },
           { key: 'checks' as Tab, icon: '🧾', label: 'Чеки' },
           { key: 'debts' as Tab, icon: '💳', label: 'Долги' },
+          { key: 'order' as Tab, icon: '📦', label: 'Заказ' },
         ]).map(({ key, icon, label }) => {
           const active = tab === key
           return (
