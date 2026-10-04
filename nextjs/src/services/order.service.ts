@@ -80,13 +80,11 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     if (cu) fromId = cu.id
   }
   const screen = i.screen || 'incoming'
-  // Заявка формы кабинета (source='cabinet') к головному НЕ должна висеть во «Входящих» и мешать
-  // новым заявкам — сразу в «К учёту» (toacc), откуда голова проводит в накладную с «не проверено».
-  const cabinetToAcc = i.source === 'cabinet' && !i.isDraft && screen === 'incoming'
+  // Заявки кабинета/филиала падают во «Входящие» (Новые) головного — голова видит их сразу.
   const order = {
     id, orgId: i.orgId, kind: i.kind,
-    screen, block: i.block || '', toacc: cabinetToAcc,
-    status: i.isDraft ? 'Черновик' : (cabinetToAcc ? 'К учёту' : (screen === 'reception' ? 'В обработке' : 'В ожидании')),
+    screen, block: i.block || '', toacc: false,
+    status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
     source: i.source, isDraft: i.isDraft ?? false,
     fromName: i.fromName, fromId, contactId: i.contactId ?? null,
     specProjectId: i.specProjectId ?? null, transit: (i as any).transit ?? false, transitAgent: (i as any).transitAgent ?? '',
