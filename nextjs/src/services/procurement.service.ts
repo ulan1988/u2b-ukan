@@ -31,6 +31,15 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
   const prodIds = Array.from(new Set(Object.values(supByProduct).map(s => s.productId).filter(Boolean))) as string[]
   const prods = await repo.productsByIds(prodIds)
   const prodById: Record<string, any> = {}; for (const p of prods) prodById[p.id] = p
+  // Цены ПРОДАЖИ — по орг (product_prices[orgId]). Шаблон products по продаже обнулён (розн/опт/спец=0),
+  // поэтому без наложения орг-цен продажа уходила на 0 → не было ни суммы, ни долга.
+  if (prodIds.length) {
+    const { db } = await import('../lib/db')
+    const { productPrices } = await import('../db/schema')
+    const { and, eq, inArray } = await import('drizzle-orm')
+    const opp = await db.select().from(productPrices).where(and(eq(productPrices.orgId, orgId), inArray(productPrices.productId, prodIds)))
+    for (const x of opp) { const p = prodById[x.productId]; if (p) { p.priceRetail = x.priceRetail; p.priceOpt = x.priceOpt; p.priceSpec = x.priceSpec } }
+  }
 
   const saleIds = Array.from(new Set(links.map(l => l.saleCardId)))
   let opened = 0
