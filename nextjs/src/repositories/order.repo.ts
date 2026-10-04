@@ -94,13 +94,15 @@ export const listByOrg = (orgId: string) =>
 // Заявки кабинета клиента: и те, что он подал сам (fromId), и те, где он ЗАКАЗЧИК (contactId) —
 // напр. продажа/сквозная, оформленная админом на этого контрагента. Иначе кабинет пустой,
 // хотя по клиенту сегодня были операции.
-export const ordersForClient = (orgId: string, userId: string, contragentId?: string | null) =>
-  db.select().from(orders).where(and(
-    eq(orders.orgId, orgId),
+// «Мои заявки» кабинета: заказы, где ТЫ создатель (fromId) ИЛИ ты заказчик (contactId) —
+// БЕЗ привязки к орг-книге: заявка филиала уходит в книгу головного, а кабинет филиала всё
+// равно должен её видеть (матч по fromId/contactId точечный, касса-чеки с fromId=null не всплывут).
+export const ordersForClient = (_orgId: string, userId: string, contragentId?: string | null) =>
+  db.select().from(orders).where(
     contragentId
       ? or(eq(orders.fromId, userId), eq(orders.contactId, contragentId))
       : eq(orders.fromId, userId),
-  )).orderBy(desc(orders.createdAt))
+  ).orderBy(desc(orders.createdAt))
 
 export const positionsByCards = (cardIds: string[]) =>
   cardIds.length
