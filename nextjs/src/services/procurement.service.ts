@@ -3,7 +3,6 @@ import * as repo from '../repositories/procurement.repo'
 import * as orderRepo from '../repositories/order.repo'
 import { countPositions } from '../repositories/order.repo'
 import * as settingsRepo from '../repositories/settings.repo'
-import { docNumber } from '../lib/num'
 import { isIzdelie as isIzd } from '../lib/lineAmount'
 import { matchCategoryKey } from '../lib/nomCatalog'
 import { listRules } from '../repositories/categoryRule.repo'
@@ -134,8 +133,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   // черновик-накопитель
   let [draft] = await repo.openDraft(orgId)
   if (!draft) {
-    const count = await repo.countPurchases(orgId)
-    const id = docNumber('purchase', count)
+    const id = await orderRepo.nextFreeOrderId(orgId, 'purchase')   // глобально уникальный id (меж орг)
     const [created] = await repo.insertDraft({
       id, orgId, kind: 'purchase', screen: 'incoming', block: '', status: 'В ожидании',
       source: 'admin_manual', isDraft: true, fromName: actor?.name || 'Автозакуп', trackingLink: encodeURIComponent(id),

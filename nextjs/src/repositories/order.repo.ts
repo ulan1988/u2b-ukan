@@ -49,6 +49,20 @@ export async function countByKind(orgId: string, kind: string) {
   return r[0]?.c ?? 0
 }
 
+// Свободный id документа (ЗП/ПР): нумерация по орг, НО id — глобальный PK, поэтому проверяем
+// занятость и бампим при коллизии (две орг в один день давали одинаковый номер → duplicate key).
+export async function nextFreeOrderId(orgId: string, kind: string): Promise<string> {
+  const { docNumber } = await import('../lib/num')
+  let count = await countByKind(orgId, kind)
+  for (let i = 0; i < 20000; i++) {
+    const id = docNumber(kind, count)
+    const [ex] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, id)).limit(1)
+    if (!ex) return id
+    count++
+  }
+  throw new Error('Не удалось сгенерировать номер документа')
+}
+
 // Продолжающийся номер заказа мастера: max NN из ВСЕХ ЗК-NN-… + 1. Глобально (не по орг):
 // id заказа — глобальный первичный ключ, поэтому номер должен быть уникален меж орг.
 export async function nextProdSeq() {

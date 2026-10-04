@@ -70,7 +70,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // Заказ мастера производства → продолжающийся код ЗК-NN-DDMMYY; иначе ЗП-/ПР-0001-DDMMYY.
   const id = i.prodOrder
     ? prodOrderNumber(await repo.nextProdSeq())
-    : docNumber(i.kind, await repo.countByKind(i.orgId, i.kind))
+    : await repo.nextFreeOrderId(i.orgId, i.kind)   // глобально уникальный (меж орг не коллизит)
 
   // «От имени заказчика»: продажа на контрагента, у которого есть кабинет → привязываем fromId
   // к его кабинет-юзеру, чтобы карточка появилась в его «Кабинете заказчика» как будто он сам создал.
