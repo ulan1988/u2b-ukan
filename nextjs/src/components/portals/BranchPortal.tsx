@@ -58,6 +58,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [evAll, setEvAll] = useState(false)
   const [msg, setMsg] = useState('')
   const [newTo, setNewTo] = useState(''); const [newText, setNewText] = useState(''); const [newLoading, setNewLoading] = useState(false); const [newDone, setNewDone] = useState<any>(null)
+  const [behalf, setBehalf] = useState(''); const [hqId, setHqId] = useState('')   // «от имени заказчика» = контрагент головного
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false); const [showStock, setShowStock] = useState(false)
@@ -73,7 +74,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
   // Товары/контрагенты — по орг ФИЛИАЛА (не по сессии смотрящего), иначе цены продажи (product_prices)
   // берутся от чужой орг (админ = головной → цены 0) и не подтягиваются в стол мастера.
-  useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []) }) }, [user.orgId])
+  useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []); const hq = (r.organizations || []).find((o: any) => o.kind === 'hq'); if (hq) setHqId(hq.id) }) }, [user.orgId])
+  // «От имени заказчика» = ТОЛЬКО контрагенты головного (заказ уходит головному, в его книгу/кабинет).
+  const hqCags = cags.filter((c: any) => !c.orgRefId && c.kind !== 'supplier' && (!hqId || c.orgId === hqId))
 
   // uid — если кабинет открыт админом «от имени» филиала, все запросы идут от этого филиала.
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])
@@ -283,8 +286,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     setNewLoading(true)
     try {
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
-      const r = await createClientOrder({ comment: newText, positions }, user.id)
-      if (r.ok) { setNewDone({ id: r.data.id }); setNewTo(''); setNewText(''); setCatalogPos([]); load() }
+      const r = await createClientOrder({ comment: newText, positions, contactId: behalf || undefined }, user.id)
+      if (r.ok) { setNewDone({ id: r.data.id }); setNewTo(''); setNewText(''); setCatalogPos([]); setBehalf(''); load() }
       else showMsg('⚠ ' + (r.error || 'Не удалось отправить заявку'))
     } catch { showMsg('⚠ Ошибка сети — попробуйте ещё раз') }
     finally { setNewLoading(false) }
@@ -722,6 +725,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
               <div style={{ background: '#fff', borderRadius: 14, padding: 24, boxShadow: '0 0 0 1px #e6e2dc' }}>
                 <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 16 }}>Новая заявка</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: '#c0532a', marginBottom: 6, display: 'block' }}>ОТ ИМЕНИ ЗАКАЗЧИКА <span style={{ fontWeight: 400, color: '#837c72' }}>(необязательно)</span></label>
+                    <ContragentPicker contragents={hqCags} value={behalf} onPick={(c: any) => setBehalf(c?.id || '')} placeholder="— заявка от себя —" />
+                    <div style={{ fontSize: 11.5, color: '#837c72', marginTop: 4 }}>Заказчик головного — карточка появится в его кабинете, как будто создал он.</div>
+                  </div>
                   <div>
                     <label style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', marginBottom: 8, display: 'block' }}>ТОВАРЫ ИЗ КАТАЛОГА{catalogPos.length ? ` · ${catalogPos.length}` : ''}</label>
                     {catalogPos.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>{catalogPos.map((p, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8f6f3', borderRadius: 8, padding: '8px 10px' }}><RalDot code={extractRal(p.name1c || p.oral)} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span><span style={{ fontSize: 13, color: '#5f5952', flexShrink: 0, fontWeight: 600 }}>{p.qty} {p.unit}</span><button type="button" onClick={() => setCatalogPos(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button></div>)}</div>}

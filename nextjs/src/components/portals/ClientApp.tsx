@@ -104,7 +104,15 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
   const [chat, setChat] = useState<Record<string, any[]>>({}); const [msg, setMsg] = useState('')
   const [behalf, setBehalf] = useState('')   // «от имени заказчика» (contactId) — в кассе филиала
   const [cags, setCags] = useState<any[]>([])
-  useEffect(() => { if (embedded) fetchRefs(user.orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived))).catch(() => {}) }, [embedded, user.orgId])
+  // «От имени заказчика» филиала = ТОЛЬКО контрагенты ГОЛОВНОГО (заказ двигается под него, в его книгу,
+  // его кабинет). Свои контрагенты филиала и орг-мосты не берём.
+  useEffect(() => {
+    if (!embedded) return
+    fetchRefs(user.orgId).then((r: any) => {
+      const hq = (r.organizations || []).find((o: any) => o.kind === 'hq')
+      setCags((r.contragents || []).filter((c: any) => !c.archived && !c.orgRefId && c.kind !== 'supplier' && (!hq || c.orgId === hq.id)))
+    }).catch(() => {})
+  }, [embedded, user.orgId])
 
   const didInit = useRef(false)
   const load = useCallback(async () => {
