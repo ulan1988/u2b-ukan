@@ -453,7 +453,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       {tab === 'order' ? (
         <div style={{ paddingBottom: 74 }}>
           {/* Заказ товара у головного — тот же «Кабинет заказчика» (ClientApp), встроен вкладкой */}
-          <ClientApp user={{ id: user.id, name: orgName || user.name, orgId: user.orgId, slug: user.slug }} embedded />
+          <ClientApp user={{ id: user.id, name: orgName || user.name, orgId: user.orgId, slug: user.slug }} embedded viewAs />
         </div>
       ) : tab === 'cash' ? (
         <div style={{ paddingBottom: 74 + checkH }}>
