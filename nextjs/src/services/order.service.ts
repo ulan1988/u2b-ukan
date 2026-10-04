@@ -72,6 +72,13 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     ? prodOrderNumber(await repo.nextProdSeq())
     : docNumber(i.kind, await repo.countByKind(i.orgId, i.kind))
 
+  // «От имени заказчика»: продажа на контрагента, у которого есть кабинет → привязываем fromId
+  // к его кабинет-юзеру, чтобы карточка появилась в его «Кабинете заказчика» как будто он сам создал.
+  let fromId = i.fromId ?? null
+  if (!fromId && i.kind === 'sale' && i.contactId) {
+    const cu = await repo.cabinetUserForContragent(i.contactId)
+    if (cu) fromId = cu.id
+  }
   const screen = i.screen || 'incoming'
   // Заявка формы кабинета (source='cabinet') к головному НЕ должна висеть во «Входящих» и мешать
   // новым заявкам — сразу в «К учёту» (toacc), откуда голова проводит в накладную с «не проверено».
@@ -81,7 +88,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     screen, block: i.block || '', toacc: cabinetToAcc,
     status: i.isDraft ? 'Черновик' : (cabinetToAcc ? 'К учёту' : (screen === 'reception' ? 'В обработке' : 'В ожидании')),
     source: i.source, isDraft: i.isDraft ?? false,
-    fromName: i.fromName, fromId: i.fromId ?? null, contactId: i.contactId ?? null,
+    fromName: i.fromName, fromId, contactId: i.contactId ?? null,
     specProjectId: i.specProjectId ?? null, transit: (i as any).transit ?? false, transitAgent: (i as any).transitAgent ?? '',
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,

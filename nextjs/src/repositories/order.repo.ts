@@ -1,7 +1,15 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
-import { orders, orderPositions, orderHistory, products, contragents } from '../db/schema'
+import { orders, orderPositions, orderHistory, products, contragents, users } from '../db/schema'
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
+
+// Кабинет-юзер заказчика по его контрагенту (чтобы заказ «от имени» появился в его кабинете).
+export const cabinetUserForContragent = async (contragentId: string) => {
+  const [u] = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.contragentId, contragentId), inArray(users.role, ['client', 'supplier_client', 'branch'])))
+    .limit(1)
+  return u || null
+}
 
 // id карточек-ПРОДАЖ, где есть позиция с поставщиком-филиалом (совпадение имени контрагента).
 // Только kind='sale' — головные ЗП-закупы в кабинет НЕ тянем (у них нет заказчика и они

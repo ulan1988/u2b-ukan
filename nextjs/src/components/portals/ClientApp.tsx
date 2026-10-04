@@ -13,8 +13,9 @@ import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
 import FinanceView from '@/components/portals/FinanceView'
+import ContragentPicker from '@/components/ContragentPicker'
 import { clientOrders, createClientOrder, updatePosition, addPosition, listMessages, sendMessage, clientDocs, acceptClientDoc, updateCard } from '@/lib/api/orders'
-import { listProjectsByClient, reconcile } from '@/lib/api/refs'
+import { listProjectsByClient, reconcile, fetchRefs } from '@/lib/api/refs'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -101,6 +102,9 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
   const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
   const [editQty, setEditQty] = useState<Record<string, string>>({}); const [addCatalogFor, setAddCatalogFor] = useState<string | null>(null); const [savingPos, setSavingPos] = useState(false)
   const [chat, setChat] = useState<Record<string, any[]>>({}); const [msg, setMsg] = useState('')
+  const [behalf, setBehalf] = useState('')   // «от имени заказчика» (contactId) — в кассе филиала
+  const [cags, setCags] = useState<any[]>([])
+  useEffect(() => { if (embedded) fetchRefs(user.orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived))).catch(() => {}) }, [embedded, user.orgId])
 
   const didInit = useRef(false)
   const load = useCallback(async () => {
@@ -155,8 +159,8 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
       // uid при просмотре-как (админ смотрит кабинет клиента) — иначе заявка создаётся от админа,
       // заказчик (contactId=контрагент кабинета) теряется и заказ не виден клиенту.
-      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions }, viewAs ? user.id : undefined)
-      if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); setNewProject(''); load() }
+      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions, contactId: behalf || undefined }, viewAs ? user.id : undefined)
+      if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); setNewProject(''); setBehalf(''); load() }
       else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))
     } catch (err: any) { setToast('⚠ Ошибка: ' + (err?.message || 'сеть недоступна')) }
     finally { setNewLoading(false) }
@@ -299,6 +303,13 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
                 <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Новая заявка</div>
                 <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 22 }}>Выберите товары из каталога или опишите словами — заявка уйдёт менеджеру</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {embedded && (
+                    <div>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: '#c0532a', marginBottom: 6, display: 'block', letterSpacing: '.03em' }}>ОТ ИМЕНИ ЗАКАЗЧИКА <span style={{ fontWeight: 400, color: '#837c72' }}>(необязательно)</span></label>
+                      <ContragentPicker contragents={cags} value={behalf} onPick={(c: any) => setBehalf(c?.id || '')} placeholder="— заявка от магазина —" />
+                      <div style={{ fontSize: 11.5, color: '#837c72', marginTop: 4 }}>Выберите — карточка появится в кабинете этого заказчика, как будто создал он.</div>
+                    </div>
+                  )}
                   <div>
                     <label style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', marginBottom: 8, display: 'block', letterSpacing: '.03em' }}>ТОВАРЫ ИЗ КАТАЛОГА{catalogPos.length ? ` · ${catalogPos.length}` : ''}</label>
                     {catalogPos.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>{catalogPos.map((p, i) => {
