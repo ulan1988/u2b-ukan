@@ -171,9 +171,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             <thead>
               <tr>
                 <th style={{ ...grp, textAlign: 'left', background: 'transparent' }}></th>
-                <th style={grp} colSpan={3}>ТОВАРНАЯ ЧАСТЬ</th>
-                <th style={grp} colSpan={3}>ПРИХОД</th>
-                <th style={grp}></th>
+                <th style={grp} colSpan={5}>ТОВАРНАЯ ЧАСТЬ</th>
+                <th style={grp} colSpan={3}>КАССА</th>
                 <th style={grp} colSpan={3}>МАРЖА</th>
                 <th style={grp} colSpan={2}>ЗАРПЛАТА</th>
                 <th style={grp}></th>
@@ -181,9 +180,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               </tr>
               <tr>
                 <th style={{ ...th, textAlign: 'left' }}>Дата</th>
-                <th style={th}>Продано</th><th style={th}>Возврат</th><th style={th}>Долг</th>
+                <th style={th}>Себест.</th><th style={th}>Возврат</th><th style={th}>Долг</th><th style={th}>Отпуск</th><th style={{ ...th, textAlign: 'center' }}>✓</th>
                 <th style={th}>Наличка</th><th style={th}>Каспи</th><th style={th}>QR</th>
-                <th style={{ ...th, textAlign: 'center' }}>✓</th>
                 <th style={th}>Маржа</th><th style={th}>60%</th><th style={th}>40%</th>
                 <th style={th}>ЗП</th><th style={th}>ЗП+40</th>
                 <th style={th}>Расход</th>
@@ -193,11 +191,12 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             <tbody>
               {(month.days || []).map((d: any) => <tr key={d.day} style={{ borderBottom: `1px solid ${COLORS.borderLight}` }}>
                 <td style={{ ...cell, textAlign: 'left', fontWeight: 600 }}>{d.day.slice(8)}.{d.day.slice(5, 7)}</td>
-                <td style={{ ...cell, fontWeight: 700 }}>{m(d.sold)}</td>
+                <td style={{ ...cell, fontWeight: 700 }}>{m(d.cost)}</td>
                 <td style={{ ...cell, color: d.ret ? COLORS.primaryDark : COLORS.textLight }}>{d.ret ? m(d.ret) : '—'}</td>
                 <td style={{ ...cell, color: COLORS.primaryDark }}>{m(d.debt)}</td>
-                <td style={cell}>{m(d.cash)}</td><td style={cell}>{m(d.kaspi)}</td><td style={cell}>{m(d.qr)}</td>
+                <td style={{ ...cell, fontWeight: 700 }}>{m(d.otpusk)}</td>
                 <td style={{ ...cell, textAlign: 'center' }}>{d.ok ? '✅' : '❌'}</td>
+                <td style={cell}>{m(d.cash)}</td><td style={cell}>{m(d.kaspi)}</td><td style={cell}>{m(d.qr)}</td>
                 <td style={{ ...cell, fontWeight: 700, color: '#2e8a5e' }}>{m(d.margin)}</td>
                 <td style={{ ...cell, ...dim }}>{m(d.split60)}</td><td style={{ ...cell, ...dim }}>{m(d.split40)}</td>
                 <td style={cell}>{d.salary ? m(d.salary) : '—'}</td>
@@ -205,15 +204,16 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <td style={cell}>{d.current ? m(d.current) : '—'}</td>
                 {accts.map((a: any) => <td key={a.id} style={{ ...cell, color: (d.bal?.[a.id] || 0) < 0 ? COLORS.primaryDark : COLORS.text }}>{m(d.bal?.[a.id] || 0)}</td>)}
               </tr>)}
-              {(month.days || []).length === 0 && <tr><td colSpan={14 + accts.length} style={{ ...cell, textAlign: 'center', color: COLORS.textMuted, padding: 24 }}>Продаж за месяц нет</td></tr>}
+              {(month.days || []).length === 0 && <tr><td colSpan={15 + accts.length} style={{ ...cell, textAlign: 'center', color: COLORS.textMuted, padding: 24 }}>Продаж за месяц нет</td></tr>}
             </tbody>
             <tfoot><tr style={{ borderTop: `2px solid ${COLORS.border}`, background: COLORS.bgCard }}>
               <td style={{ ...cell, textAlign: 'left', fontWeight: 800 }}>ИТОГО ({t.cnt || 0})</td>
-              <td style={{ ...cell, fontWeight: 800 }}>{m(t.sold)}</td>
+              <td style={{ ...cell, fontWeight: 800 }}>{m(t.cost)}</td>
               <td style={{ ...cell, fontWeight: 800, color: COLORS.primaryDark }}>{m(t.ret)}</td>
               <td style={{ ...cell, fontWeight: 800, color: COLORS.primaryDark }}>{m(t.debt)}</td>
-              <td style={{ ...cell, fontWeight: 800 }}>{m(t.cash)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.kaspi)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.qr)}</td>
+              <td style={{ ...cell, fontWeight: 800 }}>{m(t.otpusk)}</td>
               <td style={{ ...cell, textAlign: 'center' }}>{month.ok ? '✅' : '❌'}</td>
+              <td style={{ ...cell, fontWeight: 800 }}>{m(t.cash)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.kaspi)}</td><td style={{ ...cell, fontWeight: 800 }}>{m(t.qr)}</td>
               <td style={{ ...cell, fontWeight: 800, color: '#2e8a5e' }}>{m(t.margin)}</td>
               <td style={{ ...cell, fontWeight: 800, ...dim }}>{m(t.split60)}</td><td style={{ ...cell, fontWeight: 800, ...dim }}>{m(t.split40)}</td>
               <td style={{ ...cell, fontWeight: 800 }}>{m(t.salary)}</td>
