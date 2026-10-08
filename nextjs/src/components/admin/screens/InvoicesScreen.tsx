@@ -55,7 +55,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         : (
           <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{['Номер', 'Дата', kind === 'in' ? 'Поставщик' : 'Покупатель', 'Сумма', 'Статус'].map((h, i) => <th key={h} style={{ textAlign: i >= 3 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{(kind === 'in' ? ['Номер', 'Дата', 'Поставщик', 'Сумма', 'Статус'] : ['Номер', 'Дата', 'Покупатель', 'Себест.', 'Сумма', 'Статус']).map((h, i) => <th key={h} style={{ textAlign: i >= 3 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {docs.map(d => {
                   const notReviewed = d.status !== 'cancelled' && !d.reviewed
@@ -64,6 +64,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
                     <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted }}>{fmtDate(d.date)}</td>
                     <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
+                    {kind === 'out' && <td style={{ padding: '8px 16px', textAlign: 'right', color: COLORS.textMuted }} title="Себестоимость = Σ(кол-во × приходная цена)">{fmtMoney(Number(d.cost || 0))} ₸</td>}
                     <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(Number(d.total))} ₸</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {d.status === 'cancelled' ? <span style={{ color: '#b03020' }}>отменён</span>

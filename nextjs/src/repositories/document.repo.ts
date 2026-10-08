@@ -80,6 +80,8 @@ export function listInvoices(orgId: string, type: string | string[]) {
       contragentAccepted: documents.contragentAccepted, contragentId: documents.contragentId, contragent: contragents.name,
       // Названия товаров документа — для поиска по номенклатуре.
       items: sql<string>`(select string_agg(p.name, ' | ') from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
+      // Себестоимость документа = Σ(кол-во × приходная цена товара).
+      cost: sql<number>`(select coalesce(sum(dl.qty * p.price_in),0)::float from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
     })
     .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
     .where(and(eq(documents.orgId, orgId), inArray(documents.type, types)))
@@ -115,7 +117,7 @@ export const getDoc = (id: string) => db.select().from(documents).where(eq(docum
 export const linesWithProduct = (docId: string) =>
   db.select({
     id: documentLines.id, productId: documentLines.productId, name: products.name,
-    qty: documentLines.qty, unit: documentLines.unit, price: documentLines.price,
+    qty: documentLines.qty, unit: documentLines.unit, price: documentLines.price, priceIn: products.priceIn,
     amount: documentLines.amount, comment: documentLines.comment, sourcePosId: documentLines.sourcePosId,
     role: documentLines.role, lengthCm: documentLines.lengthCm, widthCm: documentLines.widthCm, rate: documentLines.rate,
     block: documentLines.block, sortOrder: documentLines.sortOrder,

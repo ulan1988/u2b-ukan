@@ -67,6 +67,9 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const updLine = (lid: string, patch: any) => setLines(ls => ls.map(x => x.id === lid ? { ...x, ...patch } : x))
 
   const subtotal = lines.reduce((s, l) => s + amtOf(l), 0)
+  // Себестоимость строки = кол-во × приходная цена (products.price_in), итог по накладной.
+  const costOf = (l: any) => (Number(l.qty) || 0) * (Number(l.priceIn) || 0)
+  const totalCost = lines.reduce((s, l) => s + costOf(l), 0)
   const discountSum = discMode === 'pct' ? Math.round(subtotal * (Number(f.discountPct) || 0)) / 100 : (Number(f.discountSum) || 0)
   const total = Math.max(0, subtotal - discountSum)
   const remain = total - (Number(f.paidSum) || 0)
@@ -156,9 +159,9 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                         </div>
                       )}
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', '№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент'].map((h, i) => <th key={i} style={{ textAlign: i >= 3 && i <= 7 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                        <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', '№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', ...(isSale ? ['Себест.'] : []), 'Коммент'].map((h, i) => <th key={i} style={{ textAlign: i >= 3 && i <= (isSale ? 8 : 7) ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                         <tbody>
-                          {gl.length === 0 && <tr><td colSpan={9} style={{ padding: '14px 8px', textAlign: 'center', color: '#b8b1a6', fontSize: 12 }}>— перетащи строку сюда —</td></tr>}
+                          {gl.length === 0 && <tr><td colSpan={isSale ? 10 : 9} style={{ padding: '14px 8px', textAlign: 'center', color: '#b8b1a6', fontSize: 12 }}>— перетащи строку сюда —</td></tr>}
                           {gl.map(l => { const izd = isIzdelie(l.name); return (
                             <tr key={l.id} draggable onDragStart={() => setDragId(l.id)} onDragEnd={() => setDragId(null)} onDragOver={e => e.preventDefault()} onDrop={e => { e.stopPropagation(); if (dragId && dragId !== l.id) moveLine(dragId, l.block || '', l.id) }}
                               style={{ borderTop: '1px solid #efece8', opacity: dragId === l.id ? 0.4 : 1, background: dragId === l.id ? '#f5eefc' : undefined }}>
@@ -172,6 +175,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                                 ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
                                 : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price || ''} onChange={e => updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
+                              {isSale && <td style={{ padding: '6px 8px', textAlign: 'right', color: COLORS.textMuted, whiteSpace: 'nowrap' }} title="кол-во × приходная цена (себестоимость)">{fmtMoney(costOf(l))}</td>}
                               <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
                             </tr>
                           ) })}
@@ -190,6 +194,15 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                   <div><label style={lbl}>ОСТАТОК</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700, color: remain > 0.001 ? '#b03020' : '#2e8a5e' }} value={fmtMoney(remain) + ' ₸'} disabled /></div>
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>Свяжется с финмодулем ({isSale ? 'долг заказчика' : 'долг перед поставщиком'}) на следующем этапе.</div>
+              </div>
+            )}
+
+            {/* Продажа / себестоимость / маржа (только расходная) */}
+            {isSale && (
+              <div style={{ padding: '10px 20px', borderTop: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', background: '#faf8f6', fontSize: 13 }}>
+                <span style={{ color: COLORS.textMuted }}>Сумма продажи: <b style={{ color: COLORS.text }}>{fmtMoney(subtotal)} ₸</b></span>
+                <span style={{ color: COLORS.textMuted }}>Себестоимость: <b style={{ color: COLORS.text }}>{fmtMoney(totalCost)} ₸</b></span>
+                <span style={{ marginLeft: 'auto', color: '#2e8a5e', fontWeight: 700 }}>Маржа: {fmtMoney(subtotal - totalCost)} ₸{subtotal > 0 ? ` · ${Math.round((subtotal - totalCost) / subtotal * 100)}%` : ''}</span>
               </div>
             )}
 
