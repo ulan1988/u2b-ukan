@@ -192,7 +192,7 @@ export async function cashReport(orgId: string, from: string, to: string) {
     where org_id=${orgId} and type='return_in' and status<>'cancelled' and date between ${from} and ${to}
     group by date
   ` as unknown as Array<any>
-  // Себестоимость по дням (для маржи = отпуск − себестоимость, price_in товара).
+  // Себестоимость по дням = Σ(кол-во × приходная цена price_in). Маржа = КАССА − себестоимость.
   const costs = await sqlClient`
     select d.date::text as "day", coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), p.price_in::float, 0)),0)::float cost
     from orders o
@@ -238,23 +238,24 @@ export async function cashReport(orgId: string, from: string, to: string) {
   const movDays = Object.keys(movByDay).sort()
 
   const days = Object.values(byDay).map((r: any) => {
-    const paid = r.cash + r.kaspi + r.qr
+    const paid = r.cash + r.kaspi + r.qr                 // КАССА = Нал(осн.касса) + Каспи(GOLD) + QR(банк.счёт)
     const debt = Math.max(0, r.sold - paid)
     const cost = costByDay[r.day] || 0, ret = retByDay[r.day] || 0
-    const margin = r.sold - cost                         // маржа = отпуск − себестоимость
-    const split60 = margin * 0.6, split40 = margin * 0.4
+    const otpusk = cost + debt - ret                     // отпуск = себестоимость + долг − возврат
+    const margin = paid - cost                           // маржа (100%) = КАССА − себестоимость (по образцу отчёта)
+    const split60 = margin * 0.6, split40 = margin * 0.4 // 60% = прибыль головного, 40% → в ЗП+40
     // Остаток каждого счёта на конец дня = стартовый + все движения по датам ≤ этот день.
     const bal: Record<string, number> = { ...opening }
     for (const md of movDays) { if (md <= r.day) { const mm = movByDay[md]; for (const acc in mm) bal[acc] = (bal[acc] || 0) + mm[acc] } }
     const balTotal = accounts.reduce((s: number, a: any) => s + (bal[a.id] || 0), 0)
-    return { ...r, paid, ret, cost, margin, split60, split40, zpPlus40: r.salary + split40, bal, balTotal, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
+    return { ...r, paid, ret, cost, otpusk, margin, split60, split40, zpPlus40: r.salary + split40, bal, balTotal, debt, expense: r.salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
   }).sort((a: any, b: any) => a.day.localeCompare(b.day))
 
   const totals = days.reduce((t: any, d: any) => ({
     cash: t.cash + d.cash, kaspi: t.kaspi + d.kaspi, qr: t.qr + d.qr, paid: t.paid + d.paid, debt: t.debt + d.debt,
-    sold: t.sold + d.sold, ret: t.ret + d.ret, margin: t.margin + d.margin, split60: t.split60 + d.split60, split40: t.split40 + d.split40, zpPlus40: t.zpPlus40 + d.zpPlus40,
+    sold: t.sold + d.sold, ret: t.ret + d.ret, cost: t.cost + d.cost, otpusk: t.otpusk + d.otpusk, margin: t.margin + d.margin, split60: t.split60 + d.split60, split40: t.split40 + d.split40, zpPlus40: t.zpPlus40 + d.zpPlus40,
     salary: t.salary + d.salary, current: t.current + d.current, expense: t.expense + d.expense, cnt: t.cnt + d.cnt,
-  }), { cash: 0, kaspi: 0, qr: 0, paid: 0, debt: 0, sold: 0, ret: 0, margin: 0, split60: 0, split40: 0, zpPlus40: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
+  }), { cash: 0, kaspi: 0, qr: 0, paid: 0, debt: 0, sold: 0, ret: 0, cost: 0, otpusk: 0, margin: 0, split60: 0, split40: 0, zpPlus40: 0, salary: 0, current: 0, expense: 0, cnt: 0 })
   // Итоговый остаток на конец периода по каждому счёту.
   const endBal: Record<string, number> = { ...opening }
   for (const md in movByDay) for (const acc in movByDay[md]) endBal[acc] = (endBal[acc] || 0) + movByDay[md][acc]
