@@ -35,6 +35,7 @@ export default function NomenclatureScreen() {
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState('')
   const [showArchived, setShowArchived] = useState(false)   // архивные скрыты по умолчанию
+  const [selThick, setSelThick] = useState('')              // фильтр по толщине (0,35/0,4/0,45 — из имени)
   const [editItem, setEditItem] = useState<NomItem | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ name: '', unit: 'шт', group: '', cat: '', subgroup: '' })
@@ -122,13 +123,20 @@ export default function NomenclatureScreen() {
   // Архивные скрыты, пока не включён показ (тумблер).
   const visible = showArchived ? items : items.filter((i: any) => !i.archived)
 
-  const filtered = visible.filter(item => {
+  // Толщина из имени («0,45мм», «0,4мм»…) — для фильтра-чипов (как цвет в пикере).
+  const extractThick = (n: string) => { const m = (n || '').match(/(\d[.,]\d+)\s*мм/i); return m ? m[1].replace('.', ',') : '' }
+  const baseItems = visible.filter(item => {
     if (search) return item.name.toLowerCase().includes(search.toLowerCase())
     if (selSubgroup) return inCat(item, selGroup!, selCat!) && (norm(item.subgroup) === norm(selSubgroup) || isColorless(item.name))
     if (selCat) return inCat(item, selGroup!, selCat!)
     if (selGroup) return inGroup(item, selGroup)
     return true
   })
+  // Толщины, реально присутствующие в текущем списке (чипы). Сортировка по значению.
+  const thicks = Array.from(new Set(baseItems.map(i => extractThick(i.name)).filter(Boolean)))
+    .sort((a, b) => parseFloat(a.replace(',', '.')) - parseFloat(b.replace(',', '.')))
+  const effThick = thicks.includes(selThick) ? selThick : ''   // авто-сброс при смене категории
+  const filtered = effThick ? baseItems.filter(i => extractThick(i.name) === effThick) : baseItems
 
   // Соседние цвета (подгруппы) той же категории — получатели копирования цен.
   const siblingSubs = useMemo(() => {
@@ -351,6 +359,16 @@ export default function NomenclatureScreen() {
               <span style={{ color: '#5f5952' }}>{filtered.length} позиций</span>
             </span>
           </div>
+
+          {/* Фильтр по толщине (0,35 / 0,4 / 0,45…) — толщины из имён текущей категории */}
+          {thicks.length > 1 && (
+            <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#5f5952' }}>📏 Толщина:</span>
+              {['', ...thicks].map(t => { const on = effThick === t; return (
+                <button key={t || 'all'} onClick={() => setSelThick(t)} style={{ padding: '5px 13px', borderRadius: 20, border: `1.5px solid ${on ? COLORS.primary : '#e6e2dc'}`, background: on ? '#fff3ee' : '#fff', color: on ? COLORS.primary : '#5f5952', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{t ? `${t} мм` : 'все'}</button>
+              ) })}
+            </div>
+          )}
 
           {/* ЦЕНА НА ВСЕХ ПОКАЗАННЫХ: вписать цену → применить ко всем товарам текущего фильтра (для выбранной орг) */}
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
