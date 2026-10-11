@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
 import InvoiceForm from '@/components/admin/InvoiceForm'
+import DocCreateForm from '@/components/admin/DocCreateForm'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { postInvoice } from '@/lib/adminApi'
@@ -14,6 +15,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   const [docs, setDocs] = useState<any[]>([])
   const [msg, setMsg] = useState('')
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   const wantKind = kind === 'in' ? 'purchase' : 'sale'
   const title = kind === 'in' ? 'Приходные накладные' : 'Расходные накладные'
@@ -37,9 +39,14 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
 
   return (
     <div>
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 6 }}>{title}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ fontWeight: 700, fontSize: 20 }}>{title}</div>
+        <button onClick={() => setCreating(true)} style={{ padding: '8px 16px', border: 'none', borderRadius: 9, background: COLORS.primary, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          + Создать {kind === 'in' ? 'приход' : 'расход'}
+        </button>
+      </div>
       <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>
-        Из экрана «К учёту»: {kind === 'in' ? 'закуп (ЗП) и возвраты → приход на склад' : 'продажи → списание со склада'}.
+        Из экрана «К учёту»: {kind === 'in' ? 'закуп (ЗП) и возвраты → приход на склад' : 'продажи → списание со склада'}. Либо «+ Создать» — накладная напрямую.
       </div>
       {msg && <div style={{ fontSize: 13, marginBottom: 12 }}>{msg}</div>}
 
@@ -79,6 +86,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         )}
 
       {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={loadDocs} />}
+      {creating && <DocCreateForm kind={kind} orgId={orgId} onClose={() => setCreating(false)} onSaved={() => { loadDocs(); setMsg('✅ Накладная создана') }} />}
     </div>
   )
 }
