@@ -1,16 +1,20 @@
 // База клиентского слоя данных. Все обёртки доменов строятся на этих функциях —
 // компоненты не вызывают fetch напрямую.
 
+// Админ-данные должны быть всегда свежими — отключаем кэш браузера на всех GET
+// (иначе список после создания/правки показывает устаревший ответ до перезагрузки).
+const NO_CACHE: RequestInit = { cache: 'no-store' }
+
 export async function getArray<T = any>(url: string): Promise<T[]> {
-  try { const r = await fetch(url); const j = await r.json(); return Array.isArray(j) ? j : [] } catch { return [] }
+  try { const r = await fetch(url, NO_CACHE); const j = await r.json(); return Array.isArray(j) ? j : [] } catch { return [] }
 }
 
 export async function getObj<T = any>(url: string, fallback: T = {} as T): Promise<T> {
-  try { const r = await fetch(url); if (!r.ok) return fallback; return await r.json() } catch { return fallback }
+  try { const r = await fetch(url, NO_CACHE); if (!r.ok) return fallback; return await r.json() } catch { return fallback }
 }
 
 export async function getOne<T = any>(url: string): Promise<T | null> {
-  try { const r = await fetch(url); if (!r.ok) return null; return await r.json() } catch { return null }
+  try { const r = await fetch(url, NO_CACHE); if (!r.ok) return null; return await r.json() } catch { return null }
 }
 
 export interface Result { ok: boolean; data: any; error?: string; status?: number }
