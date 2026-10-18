@@ -66,8 +66,9 @@ export default function SettingsScreen({ orgId }: { orgId: string }) {
     if (!c) { setMsg('Выберите контрагента'); return }
     if (!cab.login.trim() || cab.password.length < 4) { setMsg('Логин и пароль (мин. 4)'); return }
     const r: any = await createUser({ orgId, name: c.name, email: cab.login.trim(), password: cab.password, role: cab.role, contragentId: cab.cagId })
-    if (r.ok !== false && (r.id || r.name)) { setCab(null); setMsg(`✅ Кабинет для «${c.name}» создан`); load() }
-    else setMsg('⚠ ' + (r.error || 'Ошибка'))
+    // post() возвращает Result {ok,data,error} — созданный юзер в r.data (не r.id/r.name).
+    if (r.ok) { setCab(null); setMsg(`✅ Кабинет для «${c.name}» создан`); load() }
+    else setMsg('⚠ ' + (r.error || r.data?.error || 'Ошибка'))
   }
   async function removeCabinet(u: any) {
     if (!confirm(`Удалить кабинет «${u.name}»? Аккаунт будет стёрт, заказы сохранятся (связь через контрагента).`)) return

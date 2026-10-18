@@ -87,7 +87,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     setShowCatalog(false)
   }
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
-  async function newSpec() { const name = window.prompt('Название спецпроекта'); if (!name) return; const r: any = await createSpecProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.id) { loadSettings(); if (r.id) setSpecId(r.id); toast('Спецпроект создан') } }
+  async function newSpec() { const name = window.prompt('Название спецпроекта'); if (!name) return; const r: any = await createSpecProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.data?.id) { loadSettings(); if (r.data?.id) setSpecId(r.data.id); toast('Спецпроект создан') } }
 
   async function submit(asDraft: boolean) {
     setBusy(true)

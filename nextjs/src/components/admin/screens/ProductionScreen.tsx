@@ -120,7 +120,7 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
     setBusy(true)
     const r: any = await createProduction({ orgId, warehouseId, inputs, outputs })
     setBusy(false)
-    if (r.id || r.ok) { onMsg(`✓ Производство ${r.number || ''} проведено`); setOpen(false); setIns([{ productId: '', qty: '', price: '' }]); setOuts([{ productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '' }]); load() }
+    if (r.ok || r.data?.id) { onMsg(`✓ Производство ${r.data?.number || ''} проведено`); setOpen(false); setIns([{ productId: '', qty: '', price: '' }]); setOuts([{ productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '' }]); load() }
     else onMsg('⚠ ' + (r.error || 'Ошибка'))
   }
 
