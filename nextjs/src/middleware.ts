@@ -8,16 +8,21 @@ const PUBLIC = ['/login', '/register', '/api/auth', '/api/health', '/track', '/a
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  if (PUBLIC.some(p => pathname.startsWith(p))) return NextResponse.next()
+  const isApi = pathname.startsWith('/api')
+  // Любой ответ API — без кэша браузера/прокси. Иначе список (кабинеты, карточки,
+  // накладные) может застыть на старом ответе, хотя в базе данные уже изменились.
+  const noStore = (res: NextResponse) => { if (isApi) res.headers.set('Cache-Control', 'no-store, max-age=0, must-revalidate'); return res }
+
+  if (PUBLIC.some(p => pathname.startsWith(p))) return noStore(NextResponse.next())
 
   const token = req.cookies.get(COOKIE)?.value
   const session = token ? await verifyToken(token) : null
   if (!session) {
-    if (pathname.startsWith('/api')) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+    if (isApi) return noStore(NextResponse.json({ error: 'Не авторизован' }, { status: 401 }))
     const url = req.nextUrl.clone(); url.pathname = '/login'
     return NextResponse.redirect(url)
   }
-  return NextResponse.next()
+  return noStore(NextResponse.next())
 }
 
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|order.webmanifest|sw.js|icons/).*)'] }
