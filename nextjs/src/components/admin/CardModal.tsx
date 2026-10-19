@@ -2,24 +2,56 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { getCard } from '@/lib/adminApi'
+import { updatePosition, deletePosition } from '@/lib/api/orders'
 import CardChat from '@/components/CardChat'
 import { isPurchase, statusStyle, fmtMoney, cardSum, fmtDate, fmtTime } from '@/lib/adminFmt'
 
-export default function CardModal({ id, myId = '', onClose, onAction }: {
-  id: string; myId?: string; onClose: () => void; onAction: (id: string, a: string) => void
+export default function CardModal({ id, myId = '', onClose, onAction, onReload }: {
+  id: string; myId?: string; onClose: () => void; onAction: (id: string, a: string) => void; onReload?: () => void
 }) {
   const [card, setCard] = useState<any>(null)
   const [tab, setTab] = useState<'positions' | 'history' | 'chat'>('positions')
   const [msgCount, setMsgCount] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [edits, setEdits] = useState<Record<string, { qty?: string; price?: string }>>({})
+  const [delSet, setDelSet] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [editMsg, setEditMsg] = useState('')
 
-  useEffect(() => { getCard(id).then(setCard) }, [id])
+  const reload = () => getCard(id).then(setCard)
+  useEffect(() => { reload() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const o = card?.order
   const positions = card?.positions || []
   const history = card?.history || []
   const trackHref = o ? `/track?id=${encodeURIComponent(o.id)}` : '#'
   function copyLink() { navigator.clipboard.writeText(typeof window !== 'undefined' ? `${window.location.origin}${trackHref}` : trackHref); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+
+  // Правка возможна, пока карточка не проведена/не доставлена (входящие/приёмка).
+  const canEdit = !!o && !o.isCancelled && ['incoming', 'reception'].includes(o.screen)
+  function startEdit() { setEditing(true); setEdits({}); setDelSet(new Set()); setEditMsg('') }
+  function cancelEdit() { setEditing(false); setEdits({}); setDelSet(new Set()); setEditMsg('') }
+  const setEdit = (pid: string, f: 'qty' | 'price', v: string) => setEdits(e => ({ ...e, [pid]: { ...e[pid], [f]: v.replace(/[^0-9.,]/g, '') } }))
+  const toggleDel = (pid: string) => setDelSet(s => { const n = new Set(s); n.has(pid) ? n.delete(pid) : n.add(pid); return n })
+  async function saveEdits() {
+    setSaving(true); setEditMsg('')
+    try {
+      let fail = ''
+      for (const p of positions) {
+        if (delSet.has(p.id)) { const r = await deletePosition(id, p.id); if (!r.ok) fail = 'Нельзя удалить (карточка проведена?)'; continue }
+        const e = edits[p.id]; if (!e) continue
+        const patch: any = {}
+        if (e.qty !== undefined && e.qty !== '' && Number(e.qty.replace(',', '.')) !== Number(p.qty)) patch.qty = Number(e.qty.replace(',', '.'))
+        if (e.price !== undefined && e.price !== '' && Number(e.price.replace(',', '.')) !== Number(p.price)) patch.price = Number(e.price.replace(',', '.'))
+        if (Object.keys(patch).length) { const r = await updatePosition(id, p.id, patch); if (!r.ok) fail = 'Нельзя изменить (карточка проведена?)' }
+      }
+      await reload(); onReload?.()
+      if (fail) { setEditMsg('⚠ ' + fail) }
+      else { setEditing(false); setEdits({}); setDelSet(new Set()); setEditMsg('✓ Сохранено'); setTimeout(() => setEditMsg(''), 1500) }
+    } catch (err: any) { setEditMsg('⚠ ' + (err?.message || 'Не удалось сохранить')) }
+    setSaving(false)
+  }
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
@@ -61,16 +93,22 @@ export default function CardModal({ id, myId = '', onClose, onAction }: {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['Наименование', ...(positions.some((p: any) => p.widthCm != null) ? ['СМ'] : []), 'Кол-во', 'Цена', 'Сумма', 'Статус'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 8px' }}>{h}</th>)}</tr></thead>
                     <tbody>
-                      {positions.map((p: any) => (
-                        <tr key={p.id} style={{ borderTop: '1px solid #efece8' }}>
+                      {positions.map((p: any) => {
+                        const e = edits[p.id] || {}
+                        const q = e.qty !== undefined ? e.qty : String(Number(p.qty))
+                        const pr = e.price !== undefined ? e.price : String(Number(p.price))
+                        const qn = Number((q || '0').replace(',', '.')) || 0, prn = Number((pr || '0').replace(',', '.')) || 0
+                        const del = delSet.has(p.id)
+                        return (
+                        <tr key={p.id} style={{ borderTop: '1px solid #efece8', opacity: del ? 0.45 : 1, textDecoration: del ? 'line-through' : 'none' }}>
                           <td style={{ padding: '7px 8px' }}>{p.name1c || p.oral || '—'}</td>
                           {positions.some((x: any) => x.widthCm != null) && <td style={{ padding: '7px 8px', whiteSpace: 'nowrap' }}>{p.widthCm != null ? `${Number(p.widthCm)} см` : '—'}</td>}
-                          <td style={{ padding: '7px 8px' }}>{Number(p.qty)} {p.unit}</td>
-                          <td style={{ padding: '7px 8px' }}>{fmtMoney(Number(p.price))}</td>
-                          <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmtMoney(Number(p.qty) * Number(p.price))}</td>
-                          <td style={{ padding: '7px 8px' }}><span style={statusStyle(p.status)}>{p.status}</span></td>
+                          <td style={{ padding: '7px 8px' }}>{editing && !del ? <input value={q} inputMode="decimal" onChange={ev => setEdit(p.id, 'qty', ev.target.value)} style={editInp} /> : <>{Number(p.qty)} {p.unit}</>}</td>
+                          <td style={{ padding: '7px 8px' }}>{editing && !del ? <input value={pr} inputMode="decimal" onChange={ev => setEdit(p.id, 'price', ev.target.value)} style={editInp} /> : fmtMoney(Number(p.price))}</td>
+                          <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmtMoney(editing ? qn * prn : Number(p.qty) * Number(p.price))}</td>
+                          <td style={{ padding: '7px 8px' }}>{editing ? <button onClick={() => toggleDel(p.id)} title={del ? 'Вернуть' : 'Удалить позицию'} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 15, color: del ? '#2e8a5e' : '#b03020' }}>{del ? '↩' : '🗑'}</button> : <span style={statusStyle(p.status)}>{p.status}</span>}</td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 )
@@ -100,7 +138,14 @@ export default function CardModal({ id, myId = '', onClose, onAction }: {
             </div>
 
             {/* Действия */}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 8, alignItems: 'center' }}>
+              {editMsg && <span style={{ fontSize: 13, color: editMsg.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{editMsg}</span>}
+              {canEdit && !editing && <button onClick={startEdit} style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: '#7a3aaa', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13 }}>✏️ Изменить заказ</button>}
+              {editing && <>
+                <button onClick={cancelEdit} style={{ padding: '8px 16px', borderRadius: 7, border: '1.5px solid #d8d3cc', background: '#fff', color: COLORS.text, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 13 }}>Отмена</button>
+                <button onClick={saveEdits} disabled={saving} style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение…' : '💾 Сохранить'}</button>
+              </>}
+              <span style={{ marginLeft: 'auto' }} />
               {!o.isCancelled
                 ? <button onClick={() => { onAction(o.id, 'cancel'); onClose() }} style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: 'transparent', color: '#b03020', boxShadow: '0 0 0 1.5px #e6dcd6', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 13 }}>Отменить заявку</button>
                 : <button onClick={() => { onAction(o.id, 'restore'); onClose() }} style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: '#fff', color: COLORS.text, boxShadow: '0 0 0 1.5px #d8d3cc', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 13 }}>Восстановить</button>}
@@ -111,3 +156,5 @@ export default function CardModal({ id, myId = '', onClose, onAction }: {
     </div>
   )
 }
+
+const editInp: React.CSSProperties = { width: 72, padding: '4px 6px', border: '1.5px solid #cdb6e2', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }

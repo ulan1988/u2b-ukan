@@ -159,7 +159,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         </div>
       </div>
 
-      {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} />}
+      {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} onReload={load} />}
       <ChatWidget myId={user.id} orgId={orgId} />
       <AppBadge count={newCount} baseTitle="U2B ERP" />
       <PushSetup />
