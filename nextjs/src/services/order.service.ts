@@ -291,7 +291,19 @@ export async function setPositions(cardId: string, posId: string | undefined, st
     // Стадии «К учёту» в нормальном потоке нет.
     let posted = !!(order && order.linkedDocId)
     if (order && !order.linkedDocId) {
-      try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor); posted = !!(r && r.ok) } catch {}
+      if ((order as any).pendingDebtHead) {
+        // «Долг к головному» был только помечен — теперь, на доставке, проводим ЦЕПОЧКУ
+        // (расходная производителя → зеркало головного → продажа головного клиенту + долг)
+        // с ФИНАЛЬНЫМИ кол-вами (правки логиста уже в позициях).
+        try {
+          await repo.updateOrder(cardId, { delivered: new Date(), pendingDebtHead: false } as any)
+          const { payCard } = await import('./cashier.service')
+          const r = await payCard(cardId, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', finalize: true } as any, actor)
+          posted = !!(r && r.ok)
+        } catch {}
+      } else {
+        try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor); posted = !!(r && r.ok) } catch {}
+      }
     }
     // Провести не удалось (нет 1С-товара/поставщика) → карточка видна в «К учёту» как мост-просмотр.
     if (!posted) await repo.updateOrder(cardId, { screen: 'accounting', status: 'К учёту', toacc: true, delivered: new Date() })

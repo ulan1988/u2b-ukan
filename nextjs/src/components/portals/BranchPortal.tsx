@@ -193,7 +193,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   async function sendCard(id: string, posIds?: string[], pickup?: boolean) {
     // Продать перед отправкой: карточку нельзя отправить логисту, пока не проведена продажа (чек).
     const ord = orders.find((x: any) => x.id === id)
-    if (ord && !(ord.prodPhase === 'sold' || ord.linkedDocId)) { showMsg('Сначала проведите продажу: касса или «Долг к головному»'); return }
+    if (ord && !(ord.prodPhase === 'sold' || ord.linkedDocId || ord.pendingDebtHead)) { showMsg('Сначала проведите продажу: касса или «Долг к головному»'); return }
     try {
       const r = await sendOrder(id, posIds, pickup); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
       const done = pickup ? '✓ Забрано (самовывоз)' : '✓ Отправлено логисту'
@@ -228,11 +228,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', localDebt: true }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`🏪 Долг Нипе${r.number ? ` (${r.number})` : ''}${r.debt ? ` · ${r.debt}` : ''}`)
   }
-  // Долг к головному: продать всю карточку в долг (без оплаты) — долг уходит в головной (цепочка).
+  // Долг к головному: ПОМЕТИТЬ карточку (долг, цепочка в головной) — расходная проведётся
+  // автоматически на ДОСТАВКЕ логистом (с финальными кол-вами). Сейчас накладная НЕ создаётся.
   async function payDebt(id: string) {
-    if (!confirm('Провести продажу в ДОЛГ к головному? (без оплаты)')) return
-    const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '' }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`🏢 Долг к головному${r.number ? ` (${r.number})` : ''}${r.debt ? ` · ${r.debt}` : ''}`)
+    if (!confirm('Отметить «Долг к головному»? Расходная проведётся на доставке логистом.')) return
+    const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', markOnly: true }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg('🏢 Долг к головному помечен — отправьте логисту, накладная проведётся на доставке')
   }
   async function doUnpay(id: string) {
     if (!confirm('Отменить продажу? Документы будут сторнированы, карточка вернётся в работу.')) return

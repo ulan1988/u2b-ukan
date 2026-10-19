@@ -82,12 +82,19 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
 }
 
-export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean }
+export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean; finalize?: boolean }
 
 export async function payCard(cardId: string, p: PayInput, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (order.linkedDocId) return { ok: false as const, error: 'Уже продано — сначала отмените продажу' }
+  // «Долг к головному» (markOnly): только ПОМЕТИТЬ карточку — расходная (цепочка) проведётся
+  // автоматически на ДОСТАВКЕ логистом, с финальными кол-вами (недовоз/брак попадут в документ).
+  if (p.markOnly) {
+    await repo.updateOrder(cardId, { pendingDebtHead: true, payment: 'Долг' } as any)
+    await repo.insertHistory({ cardId, action: 'debtHead', detail: 'Долг к головному — расходная проведётся на доставке логистом', userName: actor?.name || 'Система' })
+    return { ok: true as const, pending: true }
+  }
   // Оплата НЕ должна выкидывать карточку производителя из «В работе»: запоминаем её произв.
   // этап/экран/статус, чтобы вернуть после проводки (postOrderInvoice ставит bookkeeping/Проведён).
   const prevPhase = (order as any).prodPhase || ''
@@ -166,7 +173,8 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   // Производитель: оплата не влияет на произв. статус — карточка ОСТАЁТСЯ «В работе» (не уходит
   // в ПРОДАНО/Бухгалтерию). Расход проведён (linkedDocId стоит), но этап/экран/статус возвращаем.
   // Остальные орг — как раньше: prodPhase='sold' (карточка продана).
-  if (orgKind === 'producer_seller') { base.prodPhase = prevPhase || 'working'; base.screen = ['bookkeeping', 'archive'].includes(prevScreen) ? 'reception' : prevScreen; base.status = prevStatus }
+  // finalize (проводка на ДОСТАВКЕ) — НЕ откатываем в вид мастера: карточка завершается в Бухгалтерии.
+  if (orgKind === 'producer_seller' && !p.finalize) { base.prodPhase = prevPhase || 'working'; base.screen = ['bookkeeping', 'archive'].includes(prevScreen) ? 'reception' : prevScreen; base.status = prevStatus }
   else { base.prodPhase = 'sold' }
   await repo.updateOrder(cardId, base)
   await repo.insertHistory({ cardId, action: 'pay', detail: `Оплата (${inv.number}): нал ${cash}, каспи ${kaspi}, QR ${qr}, долг ${debt}${change > 0 ? `, сдача ${change}` : ''}`, userName: actor?.name || 'Система' })

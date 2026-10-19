@@ -25,9 +25,9 @@ export async function splitCard(cardId: string, posIds: string[]) {
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
 // Касса мастера: оплатить (продать) — нал/каспи/сдача, долг авто.
-export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean }) {
+export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean }) {
   const r = await post(`/api/orders/${cardId}/pay`, body)
-  return { ok: r.ok, error: r.error as string | undefined, debt: r.data?.debt as number | undefined, number: r.data?.number as string | undefined }
+  return { ok: r.ok, error: r.error as string | undefined, debt: r.data?.debt as number | undefined, number: r.data?.number as string | undefined, pending: r.data?.pending as boolean | undefined }
 }
 export async function unpostSale(cardId: string) {
   const r = await send(`/api/orders/${cardId}/pay`, 'DELETE')

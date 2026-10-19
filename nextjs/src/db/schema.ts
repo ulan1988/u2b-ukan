@@ -309,6 +309,8 @@ export const orders = pgTable('orders', {
   phone: text('phone'),
   deadline: timestamp('deadline'),
   delivered: timestamp('delivered'),
+  // «Долг к головному» помечен, но расходная (цепочка) ещё НЕ проведена — проведётся на доставке логистом.
+  pendingDebtHead: boolean('pending_debt_head').notNull().default(false),
   isDraft: boolean('is_draft').notNull().default(false),
   isChanged: boolean('is_changed').notNull().default(false),
   changeText: text('change_text').notNull().default(''),
