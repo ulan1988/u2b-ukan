@@ -115,6 +115,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
               <div><label style={lbl}>НОМЕР (авто, можно менять)</label><input style={inp} value={f.number} onChange={e => setF({ ...f, number: e.target.value })} /></div>
               <div><label style={lbl}>{isSale ? 'ДАТА (день отгрузки)' : 'ДАТА (день приёмки)'}</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
               <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.contragent?.name || '—'} disabled /></div>
+              {!isSale && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
               <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
               {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}
               {!isSale && <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>}

@@ -1,6 +1,6 @@
 // Запросы по документам (только Drizzle). Логика проводки — в service.
 import { db, sqlClient } from '../lib/db'
-import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses } from '../db/schema'
+import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses, orders } from '../db/schema'
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
 
 type NewDoc = typeof documents.$inferInsert
@@ -82,6 +82,8 @@ export function listInvoices(orgId: string, type: string | string[]) {
       items: sql<string>`(select string_agg(p.name, ' | ') from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
       // Себестоимость документа = Σ(кол-во × приходная цена товара).
       cost: sql<number>`(select coalesce(sum(dl.qty * p.price_in),0)::float from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
+      // Заказчик (конечный клиент) из карточки-основания — на приходной головного «для кого / на кого долг».
+      customer: sql<string>`(select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})`,
     })
     .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
     .where(and(eq(documents.orgId, orgId), inArray(documents.type, types)))

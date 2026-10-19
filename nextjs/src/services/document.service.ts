@@ -58,7 +58,15 @@ export async function getDocument(id: string) {
   const lines = await docRepo.linesWithProduct(id)
   const [contragent] = doc.contragentId ? await docRepo.contragentById(doc.contragentId) : [null]
   const [warehouse] = doc.warehouseId ? await docRepo.warehouseById(doc.warehouseId) : [null]
-  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null }
+  // Заказчик (конечный клиент): из карточки-основания (sourceOrderId → order.contactId).
+  // Нужен на приходной-зеркале головного (Нипа-поставщик → для какого заказчика, на кого долг).
+  let customer: string | null = null
+  if (doc.sourceOrderId) {
+    const orderRepo = await import('../repositories/order.repo')
+    const [ord] = await orderRepo.getOrder(doc.sourceOrderId)
+    if (ord?.contactId) { const [c] = await docRepo.contragentById(ord.contactId); customer = c?.name || null }
+  }
+  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer }
 }
 
 // Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
