@@ -71,6 +71,7 @@ export default function NomInline({ products, value, name, onPick }: {
     return [comp.name, colorLabel, cCm ? `${cCm}см` : ''].filter(Boolean).join(' ')
   }
   function commitComp() {
+    if (!cColor) return   // запрет: комплектующее/изделие нельзя добавить без цвета
     onPick({ id: comp.id, productId: comp.id, name: compName(), widthCm: cCm ? Number(cCm) : undefined, color: cColor === 'decor' ? 'дерево' : cColor, specTypeId: comp.specTypeId, base: comp.name })
     close()
   }
@@ -111,7 +112,7 @@ export default function NomInline({ products, value, name, onPick }: {
                   <input style={{ ...inp, width: 90, textAlign: 'right' }} inputMode="decimal" value={cCm} onChange={e => setCCm(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="см" />
                   <span style={{ fontSize: 13, color: '#5f5952' }}>см</span>
                 </div>
-                <button type="button" onClick={commitComp} style={{ width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>＋ Добавить: «{compName()}»</button>
+                <button type="button" onClick={commitComp} disabled={!cColor} style={{ width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: cColor ? COLORS.primary : '#d8d3cc', color: '#fff', cursor: cColor ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>{cColor ? `＋ Добавить: «${compName()}»` : 'Сначала выберите цвет'}</button>
               </div>
             ) : (
               <>

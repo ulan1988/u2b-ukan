@@ -170,6 +170,18 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   function pickGroup(g: string) { setIzMode(false); setSelG(prev => prev === g ? '' : g); setSelC(''); setSelS(''); setSel({}); setCm('') }
   function pickCat(c: string) { setIzMode(false); setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
   function pickSub(s: string) { setSelS(prev => prev === s ? '' : s) }
+  // Запрет бесцветных изделий/комплектующих: в контексте комплектующих/изделия добавлять можно
+  // ТОЛЬКО с цветом (иначе в номенклатуру/операции попадёт бесцветное). Цвет обязателен.
+  const isKomplektCtx = izMode || norm(selC).includes('комплект') || norm(selG).includes('комплект')
+  function needColor(): boolean {
+    if (isKomplektCtx && (!color || color === NOCOLOR)) { setWarn('Сначала выберите цвет — без цвета нельзя'); return false }
+    return true
+  }
+  // Достроить цвет к имени бесцветного комплектующего/изделия (цвет живёт в строке).
+  function withColor(name: string): string {
+    if (!isKomplektCtx || !colorLabel) return name
+    return extractRal(name) === '' ? `${name} ${colorLabel}`.trim() : name
+  }
   function pickItem(levelKey: string, itemKey: string, isMeasure: boolean) {
     // willSelect считаем из ТЕКУЩЕГО sel (замыкание), а НЕ внутри updater — иначе флаг
     // вычисляется при рендере (после проверки ниже) и pad не открывается.
@@ -316,9 +328,9 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
             <div>
               <div style={LBL}>НАЙДЕНО В БАЗЕ</div>
               {loading ? <div style={{ fontSize: 14, color: '#5f5952', padding: '8px 0' }}>Поиск…</div>
-                : shown.length > 0 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{shown.map(h => <button key={h.id} onClick={() => setPad({ name1c: h.name, oral: h.name, unit: h.unit, digits: '', widthCm: needsCm && cm ? Number(cm) : undefined })} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit' }}><RalDot code={extractRal(h.name)} size={14} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span><span style={{ fontSize: 12, color: '#5f5952', background: '#f1efec', padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{h.unit}</span><span style={{ color: PRIMARY, fontWeight: 800, flexShrink: 0 }}>+</span></button>)}</div>
+                : shown.length > 0 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{shown.map(h => <button key={h.id} onClick={() => { if (!needColor()) return; const nm = withColor(h.name); setPad({ name1c: nm, oral: nm, unit: h.unit, digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit' }}><RalDot code={extractRal(h.name)} size={14} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span><span style={{ fontSize: 12, color: '#5f5952', background: '#f1efec', padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{h.unit}</span><span style={{ color: PRIMARY, fontWeight: 800, flexShrink: 0 }}>+</span></button>)}</div>
                   : <div style={{ fontSize: 14, color: '#5f5952', padding: '8px 0' }}>Не найдено в папке — можно добавить как есть ↓</div>}
-              {asIsName() && <button onClick={() => { const n = asIsName(); if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ marginTop: 8, width: '100%', border: '1.5px dashed #d8d3cc', background: 'none', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 14, color: '#4a4640', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить как есть: «{asIsName()}»</button>}
+              {asIsName() && <button onClick={() => { if (!needColor()) return; const n = asIsName(); if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ marginTop: 8, width: '100%', border: '1.5px dashed #d8d3cc', background: 'none', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 14, color: '#4a4640', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить как есть: «{asIsName()}»</button>}
             </div>
           )}
           {rows.length > 0 && (
