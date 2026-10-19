@@ -3,7 +3,7 @@
 import ContragentPicker from '@/components/ContragentPicker'
 import { fmtMoney } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
-import { updatePosition } from '@/lib/adminApi'
+import { updatePosition, deletePosition } from '@/lib/adminApi'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { Btn, inpSm } from './ui'
 
@@ -14,6 +14,8 @@ export default function PurchaseDraft({ draft, logists, contragents, defaultCagI
   const amt = (p: any) => lineAmount({ name: p.name1c || p.oral, qty: Number(p.qty) || 0, price: Number(p.price) || 0, widthCm: p.widthCm })
   const total = ps.reduce((s: number, p: any) => s + amt(p), 0)
   async function upd(posId: string, patch: any) { await updatePosition(draft.id, posId, patch); onReload() }
+  async function delPos(posId: string) { await deletePosition(draft.id, posId); onReload() }
+  function delDraft() { if (confirm('Удалить весь черновик закупа?')) onAction(draft.id, 'cancel') }
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e3d4f0', borderLeft: '4px solid #7a3aaa', overflow: 'hidden', marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: '#faf7fd', flexWrap: 'wrap' }}>
@@ -23,11 +25,12 @@ export default function PurchaseDraft({ draft, logists, contragents, defaultCagI
           <select style={{ ...inpSm, width: 150 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { respUserId: e.target.value })) }}><option value="">Закупщик → всем</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
           <div style={{ width: 170 }}><ContragentPicker contragents={contragents} value="" defaultId={defaultCagId} onPick={c => c?.id && ps.forEach((p: any) => upd(p.id, { supplierId: c.id }))} placeholder="Поставщик → всем" /></div>
           <Btn variant="primary" disabled={!ready} onClick={() => onAction(draft.id, 'finalizePurchase')}>✓ Оформить закуп →</Btn>
+          <button onClick={delDraft} title="Удалить весь черновик закупа" style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', width: 34, height: 34, borderRadius: 8, cursor: 'pointer', fontSize: 16, fontWeight: 800, fontFamily: 'inherit', flexShrink: 0 }}>✕</button>
         </div>
       </div>
       <div style={{ padding: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-          <thead><tr style={{ background: '#f1efec' }}>{['🔀 НАИМЕНОВАНИЕ', 'СМ (ширина)', 'КОЛ-ВО (шт)', 'ЦЕНА (ПРИХОД)', 'СУММА', 'ЗАКУПЩИК', 'ПОСТАВЩИК'].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ background: '#f1efec' }}>{['🔀 НАИМЕНОВАНИЕ', 'СМ (ширина)', 'КОЛ-ВО (шт)', 'ЦЕНА (ПРИХОД)', 'СУММА', 'ЗАКУПЩИК', 'ПОСТАВЩИК', ''].map((h, i) => <th key={h || i} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
             {ps.map((pos: any) => (
               <tr key={pos.id} style={{ borderBottom: '1px solid #f1efec', background: pos.transit ? '#faf7ff' : undefined }}>
@@ -40,6 +43,7 @@ export default function PurchaseDraft({ draft, logists, contragents, defaultCagI
                 <td style={{ padding: '6px 8px', width: 100, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', color: '#7a3aaa' }}>{Number(pos.price) > 0 ? fmtMoney(amt(pos)) : '—'}</td>
                 <td style={{ padding: '6px 8px', width: 150 }}><select style={inpSm} value={pos.respUserId || ''} onChange={e => upd(pos.id, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
                 <td style={{ padding: '6px 8px', width: 160 }}><ContragentPicker contragents={contragents} value={pos.supplierId || ''} defaultId={defaultCagId} onPick={c => upd(pos.id, { supplierId: c.id })} placeholder="— поставщик —" /></td>
+                <td style={{ padding: '6px 8px', width: 36, textAlign: 'center' }}><button onClick={() => delPos(pos.id)} title="Убрать позицию из закупа" style={{ border: 'none', background: 'none', color: '#c0532a', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>✕</button></td>
               </tr>
             ))}
           </tbody>
