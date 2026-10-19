@@ -1,9 +1,17 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db } from '../lib/db'
-import { orders, orderPositions, orderHistory, products, contragents, users } from '../db/schema'
+import { orders, orderPositions, orderHistory, products, contragents, users, organizations } from '../db/schema'
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
 
 // Кабинет-юзер заказчика по его контрагенту (чтобы заказ «от имени» появился в его кабинете).
+// Контрагент + его орг-владелец (name, orgId, вид орг) — для правила «заявка от имени заказчика».
+export const contragentOwner = async (contragentId: string) => {
+  const [r] = await db.select({ name: contragents.name, orgId: contragents.orgId, ownerKind: organizations.kind })
+    .from(contragents).leftJoin(organizations, eq(contragents.orgId, organizations.id))
+    .where(eq(contragents.id, contragentId)).limit(1)
+  return r || null
+}
+
 export const cabinetUserForContragent = async (contragentId: string) => {
   const [u] = await db.select({ id: users.id }).from(users)
     .where(and(eq(users.contragentId, contragentId), inArray(users.role, ['client', 'supplier_client', 'branch'])))

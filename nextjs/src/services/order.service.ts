@@ -68,10 +68,23 @@ async function editBlocked(cardId: string, actor?: Session | null): Promise<stri
 }
 
 export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: Session | null) {
+  // ── ГЛАВНОЕ ПРАВИЛО: заявка «от имени заказчика» (продажа на контрагента ГОЛОВНОГО) всегда
+  // живёт в книге головного → автозакуп подхватывает её автоматически. Создать может и головной
+  // (Адал Строй 2), и филиал (Нипа листогиб). Оформляется как заявка самого заказчика
+  // (fromName = имя контрагента), даже если у заказчика НЕТ кабинета.
+  let orgId = i.orgId
+  let fromName = i.fromName
+  // Только «Новая заявка от имени заказчика»: продажа, не производство, есть контрагент,
+  // НЕ касса магазина (прямая продажа остаётся в филиале) и НЕ карв спецпроекта.
+  if (i.kind === 'sale' && !i.prodOrder && i.contactId && i.source !== 'cashier' && !i.specProjectId) {
+    const owner = await repo.contragentOwner(i.contactId)
+    if (owner?.ownerKind === 'hq' && owner.orgId) { orgId = owner.orgId; if (owner.name) fromName = owner.name }
+  }
+
   // Заказ мастера производства → продолжающийся код ЗК-NN-DDMMYY; иначе ЗП-/ПР-0001-DDMMYY.
   const id = i.prodOrder
     ? prodOrderNumber(await repo.nextProdSeq())
-    : await repo.nextFreeOrderId(i.orgId, i.kind)   // глобально уникальный (меж орг не коллизит)
+    : await repo.nextFreeOrderId(orgId, i.kind)   // глобально уникальный (меж орг не коллизит)
 
   // «От имени заказчика»: продажа на контрагента, у которого есть кабинет → привязываем fromId
   // к его кабинет-юзеру, чтобы карточка появилась в его «Кабинете заказчика» как будто он сам создал.
@@ -83,11 +96,11 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const screen = i.screen || 'incoming'
   // Заявки кабинета/филиала падают во «Входящие» (Новые) головного — голова видит их сразу.
   const order = {
-    id, orgId: i.orgId, kind: i.kind,
+    id, orgId, kind: i.kind,
     screen, block: i.block || '', toacc: false,
     status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
     source: i.source, isDraft: i.isDraft ?? false,
-    fromName: i.fromName, fromId, contactId: i.contactId ?? null,
+    fromName, fromId, contactId: i.contactId ?? null,
     specProjectId: i.specProjectId ?? null, transit: (i as any).transit ?? false, transitAgent: (i as any).transitAgent ?? '',
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
@@ -101,7 +114,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const defaultLeg = i.prodOrder ? 1 : 2
   // Логист по умолчанию орг (напр. Бауыржан) — автоматически ответственный по всем позициям,
   // если явно не задан. Так любой заказ сразу попадает в кабинет этого логиста.
-  const defLogist = await settingsRepo.orgDefaultLogist(i.orgId)
+  const defLogist = await settingsRepo.orgDefaultLogist(orgId)
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
@@ -121,7 +134,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   await repo.insertOrderPosting(order, positions, history)
   // Новая заявка из кабинета/сайта → уведомить админов.
   if (i.source === 'cabinet' || i.source === 'external') {
-    try { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(i.orgId, `🆕 Новая заявка ${id} от ${i.fromName || 'клиента'}`, id) } catch {}
+    try { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(orgId, `🆕 Новая заявка ${id} от ${fromName || 'клиента'}`, id) } catch {}
   }
   return { id }
 }
