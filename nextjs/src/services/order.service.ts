@@ -128,7 +128,13 @@ export const listHistory = (orgId: string, f: { user?: string; from?: string; to
 
 // Портал логиста: его карточки, в каждой — только его позиции.
 export async function listForLogist(orgId: string, userId: string) {
-  const rows = await repo.positionsForLogist(orgId, userId)
+  // Центральный логист (орг hq) обслуживает все книги — видит outgoing головного И филиалов.
+  // Логист филиала (если появится) — только свою орг.
+  const org = await refsRepo.orgById(orgId)
+  const orgIds = org?.kind === 'hq'
+    ? (await refsRepo.listOrganizations()).map((o: any) => o.id)
+    : [orgId]
+  const rows = await repo.positionsForLogist(orgIds, userId)
   const byCard = new Map<string, any>()
   for (const r of rows) {
     if (!byCard.has(r.o.id)) byCard.set(r.o.id, { ...r.o, positions: [] })

@@ -135,11 +135,13 @@ export const historyByOrg = (orgId: string, f: { user?: string; from?: string; t
 // (incoming — доставленные карточки уходят туда с toacc, но должны оставаться в
 // его вкладке «Доставлено», как в Улкане) + неназначенные в Исходящих (пул «на
 // разбор» — пересланные филиалом без логиста).
-export const positionsForLogist = (orgId: string, userId: string) =>
+// orgIds — какие книги видит логист: свою орг, а центральный (hq) логист — все орг
+// (одна логистика обслуживает головной + филиалы; иначе outgoing филиала не виден).
+export const positionsForLogist = (orgIds: string[], userId: string) =>
   db.select({ o: orders, p: orderPositions })
     .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
     .where(and(
-      eq(orders.orgId, orgId), eq(orders.isCancelled, false),
+      inArray(orders.orgId, orgIds), eq(orders.isCancelled, false),
       or(
         // Свои позиции: активные экраны + проведённые/архив — чтобы «Выполнено · доставлено мной»
         // показывало доставленное и после проводки накладной (иначе история пропадала).
