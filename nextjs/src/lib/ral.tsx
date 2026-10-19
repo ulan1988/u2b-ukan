@@ -41,12 +41,15 @@ export function extractRal(name: string): string {
   if (mm && RAL_BY_CODE[mm[1] + 'М']) return mm[1] + 'М'
   const bare = s.match(/(\d{4})/)
   if (bare && RAL_BY_CODE[bare[1]]) return bare[1]
+  // «дерево» / «дуб» / «3D» — декоративный цвет (деревянный свотч), без RAL-кода.
+  if (/\b(дерев\w*|дуб\w*|3d)\b/i.test(s)) return 'decor'
   return ''
 }
 
-// RalDot — круглый чип цвета.
+// RalDot — чип цвета. Прямоугольный свотч (шире круга, заметнее) с чёткой рамкой.
 export function RalDot({ code, size = 16, title }: { code?: string; size?: number; title?: string }) {
   const c = code ? RAL_BY_CODE[code] : null
   if (!c) return null
-  return <span title={title || c.name} style={{ width: size, height: size, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: c.bg || c.hex, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.15)' }} />
+  const w = Math.round(size * 1.7)
+  return <span title={title || c.name} style={{ width: w, height: size, borderRadius: Math.max(3, Math.round(size * 0.28)), display: 'inline-block', flexShrink: 0, background: c.bg || c.hex, boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,.28)' }} />
 }
