@@ -20,7 +20,7 @@ import { useLiveData } from '@/lib/live'
 
 const PRIMARY = '#d4613a', DARK = '#211f1c', DARK2 = '#322f2b'
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
-type Tab = 'req' | 'in' | 'buy' | 'out' | 'changes' | 'new' | 'shift'
+type Tab = 'in' | 'buy' | 'out' | 'changes' | 'new' | 'shift'
 
 function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 2300); return () => clearTimeout(t) }, [onClose])
@@ -259,27 +259,25 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       </div>
 
       <div style={{ maxWidth: 432, margin: '0 auto', padding: '16px 66px 40px 14px' }}>
-        {tab === 'req' && (
+        {tab === 'in' && (
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>📥 Заявки · ждут закупа</div>
-            <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 12 }}>Заявки приняты, ждут закуп (приход на склад). После закупа перейдут в «Продажа».</div>
-            {posWaiting.length === 0 ? empty('✅', 'Нет заявок, ждущих закупа')
-              : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>💰 Продажа · по заказчикам</div>
+            {waitingCount > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 6 }}>⏳ Ждут закупа ({waitingCount}) — станут активными, когда закуп проведён (приход на склад):</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, opacity: .7 }}>
                   {groupByCard(posWaiting).map(g => (
-                    <div key={`w-${g.order.id}`} style={{ background: '#fff', border: '1.5px solid #f0d9cc', borderRadius: 10, padding: '10px 12px', minWidth: 220 }}>
+                    <div key={`w-${g.order.id}`} style={{ background: '#f1efec', border: '1.5px dashed #cfc7bb', borderRadius: 10, padding: '8px 12px', minWidth: 220, filter: 'grayscale(1)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#6b655b' }}>
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", color: PRIMARY }}>{g.order.id}</span>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{g.order.id}</span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#8a6f00', background: '#fdf3d8', padding: '1px 7px', borderRadius: 20 }}>ждёт закупа</span>
                       </div>
                       <div style={{ fontSize: 12, color: '#6b655b', marginTop: 3 }}>{(g.order.fromName || '—')} · {g.poss.length} поз.</div>
                     </div>
                   ))}
-                </div>}
-          </div>
-        )}
-        {tab === 'in' && (
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>💰 Продажа · по заказчикам</div>
+                </div>
+              </div>
+            )}
             <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
             {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>
               : posIn.length === 0 ? empty('✅', 'Нет позиций к доставке')
@@ -391,7 +389,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       )}
 
       <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[{ key: 'req' as Tab, icon: '📥', label: 'Заявки', badge: waitingCount, blink: false }, { key: 'buy' as Tab, icon: '🤖', label: 'Авто-закуп', badge: posBuy.length, blink: false }, { key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Выполнено', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Изменения', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
+        {[{ key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'buy' as Tab, icon: '🛒', label: 'Закупки', badge: posBuy.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Выполнено', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Изменения', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
           const active = tab === key
           return (
             <button key={key} onClick={() => setTab(key)} title={label} aria-label={label} className={blink ? 'uk-blink' : undefined} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}>
