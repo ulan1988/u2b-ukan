@@ -114,7 +114,8 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const defaultLeg = i.prodOrder ? 1 : 2
   // Логист по умолчанию орг (напр. Бауыржан) — автоматически ответственный по всем позициям,
   // если явно не задан. Так любой заказ сразу попадает в кабинет этого логиста.
-  const defLogist = await settingsRepo.orgDefaultLogist(orgId)
+  // Касса (прямая продажа) логиста не касается — дефолт-логиста не назначаем.
+  const defLogist = i.source === 'cashier' ? null : await settingsRepo.orgDefaultLogist(orgId)
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),

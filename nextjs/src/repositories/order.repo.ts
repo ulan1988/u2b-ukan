@@ -150,6 +150,7 @@ export const positionsForLogist = (orgIds: string[], userId: string) =>
     .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
     .where(and(
       inArray(orders.orgId, orgIds), eq(orders.isCancelled, false),
+      ne(orders.source, 'cashier'),   // прямые продажи кассы (магазин/мастер) логиста не касаются
       or(
         // Свои позиции: активные экраны + проведённые/архив — чтобы «Выполнено · доставлено мной»
         // показывало доставленное и после проводки накладной (иначе история пропадала).
