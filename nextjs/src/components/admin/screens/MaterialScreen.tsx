@@ -13,7 +13,7 @@ const TH: React.CSSProperties = { padding: '7px 8px', fontSize: 11, fontWeight: 
 const num = (v: any) => Number(v) || 0
 const TABS = [{ key: 'types', label: '📐 Типы изделий' }, { key: 'sheets', label: '📄 Листы' }, { key: 'stock', label: '🧱 Склад материала' }, { key: 'report', label: '📊 Расчёт (месяц)' }, { key: 'bind', label: '🔗 Привязка' }] as const
 // покрытие: по умолчанию глянец; матовые изделие НЕ берёт
-const THICKS = ['0,35', '0,4', '0,45']
+const THICKS = ['0,35', '0,4']
 type TabKey = typeof TABS[number]['key']
 
 export default function MaterialScreen({ orgId }: { orgId: string }) {

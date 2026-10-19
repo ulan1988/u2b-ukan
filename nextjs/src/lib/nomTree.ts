@@ -2,7 +2,7 @@
 export interface NomItem { key: string; label: string; terms?: string[]; measure?: boolean; exclude?: string[] }
 export interface NomLevel { key: string; label: string; items: NomItem[] }
 
-const thicknessEuro: NomLevel = { key: 'thick', label: 'Толщина', items: [{ key: 't035', label: '0,35' }, { key: 't04', label: '0,4' }, { key: 't045', label: '0,45' }] }
+const thicknessEuro: NomLevel = { key: 'thick', label: 'Толщина', items: [{ key: 't035', label: '0,35' }, { key: 't04', label: '0,4' }] }
 const accessoryKinds: NomLevel = {
   key: 'kind', label: 'Вид', items: [
     { key: 'izdelie', label: 'Изделие', terms: ['Изделие'], measure: true },  // всегда в наборе, всегда с полем см
@@ -11,7 +11,7 @@ const accessoryKinds: NomLevel = {
     { key: 'inner_r', label: 'Внут. угол (пр)', terms: ['Внут. угол (пр)'] }, { key: 'inner_l', label: 'Внут. угол (сл)', terms: ['Внут. угол (сл)'] },
   ],
 }
-const thicknessFlat: NomLevel = { key: 'thick', label: 'Толщина', items: [{ key: 't02', label: '0,2' }, { key: 't025', label: '0,25' }, { key: 't04', label: '0,4' }, { key: 't045', label: '0,45' }] }
+const thicknessFlat: NomLevel = { key: 'thick', label: 'Толщина', items: [{ key: 't035', label: '0,35' }, { key: 't04', label: '0,4' }] }
 const coating: NomLevel = { key: 'coat', label: 'Покрытие', items: [{ key: 'mat', label: 'Мат', terms: ['мат'] }, { key: 'glyan', label: 'Глян', terms: ['глян'] }] }
 
 const OVERLAYS: Record<string, NomLevel[]> = {
