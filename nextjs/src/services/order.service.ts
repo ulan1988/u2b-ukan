@@ -4,6 +4,7 @@ import * as repo from '../repositories/order.repo'
 import * as userRepo from '../repositories/user.repo'
 import * as refsRepo from '../repositories/refs.repo'
 import * as reportRepo from '../repositories/report.repo'
+import * as settingsRepo from '../repositories/settings.repo'
 import type { createOrderSchema } from '../dto/order.dto'
 import type { Session } from '../lib/auth'
 import { legForSupplier, legForSuppliers } from '../lib/legDetect'
@@ -98,13 +99,16 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // мастера (isProd) и «Отправить логисту» (sendPositions ищет именно leg=1) не работает.
   const legMap = await legForSuppliers(i.positions.map(p => p.supplierId))
   const defaultLeg = i.prodOrder ? 1 : 2
+  // Логист по умолчанию орг (напр. Бауыржан) — автоматически ответственный по всем позициям,
+  // если явно не задан. Так любой заказ сразу попадает в кабинет этого логиста.
+  const defLogist = await settingsRepo.orgDefaultLogist(i.orgId)
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     costPrice: String((p as any).costPrice ?? 0),
     transit: !!(p as any).transit,                          // сквозная строка (мимо склада)
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
-    respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
+    respUserId: p.respUserId ?? defLogist ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)
     leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : defaultLeg,
     deadline: p.deadline ? new Date(p.deadline) : null,
@@ -474,11 +478,18 @@ export async function addPosition(cardId: string, i: any, actor?: Session | null
     const siblings = await repo.positionsByCard(cardId)
     if (siblings.some((p: any) => Number(p.leg) === 1)) leg = 1
   }
+  // Ответственный логист: явный → у соседей → логист по умолчанию орг карточки.
+  let resp = i.respUserId ?? null
+  if (!resp) {
+    const sib = await repo.positionsByCard(cardId)
+    resp = (sib.find((p: any) => p.respUserId)?.respUserId) ?? null
+    if (!resp) { const [ord] = await repo.getOrder(cardId); if (ord) resp = await settingsRepo.orgDefaultLogist(ord.orgId) }
+  }
   const [p] = await repo.insertPosition({
     id: `${cardId}-P${n + 1}`, cardId, productId: i.productId ?? null,
     name1c: i.name1c || '', oral: i.oral || i.name1c || '', qty: String(i.qty || 0), unit: i.unit || 'шт',
     price: String(i.price || 0), widthCm: i.widthCm != null ? String(i.widthCm) : null,
-    supplierId: i.supplierId ?? null, respUserId: i.respUserId ?? null,
+    supplierId: i.supplierId ?? null, respUserId: resp,
     leg, status: 'В работе',
   })
   await repo.insertHistory({ cardId, action: 'addPos', detail: `Добавлена позиция: ${i.name1c || ''}`, userName: actor?.name || 'Система' })
