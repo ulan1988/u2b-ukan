@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { getCard } from '@/lib/adminApi'
 import CardChat from '@/components/CardChat'
-import { isPurchase, statusStyle, fmtMoney, cardSum } from '@/lib/adminFmt'
+import { isPurchase, statusStyle, fmtMoney, cardSum, fmtDate, fmtTime } from '@/lib/adminFmt'
 
 export default function CardModal({ id, myId = '', onClose, onAction }: {
   id: string; myId?: string; onClose: () => void; onAction: (id: string, a: string) => void
@@ -31,12 +31,13 @@ export default function CardModal({ id, myId = '', onClose, onAction }: {
               <span style={{ fontWeight: 800, fontSize: 17 }}>{o.id}</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: isPurchase(o) ? '#f3eeff' : '#e8f5ee', color: isPurchase(o) ? '#7a3aaa' : '#2e8a5e' }}>{isPurchase(o) ? '🛒 ЗАКУП' : 'ПРОДАЖА'}</span>
               <span style={statusStyle(o.status)}>{o.status}</span>
-              <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
+              <button onClick={onClose} title="Свернуть карточку" aria-label="Свернуть" style={{ marginLeft: 'auto', background: '#f1efec', border: 'none', width: 48, height: 48, borderRadius: '50%', fontSize: 26, lineHeight: 1, cursor: 'pointer', color: COLORS.text, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             </div>
 
             {/* Мета */}
             <div style={{ padding: '12px 20px', display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13, color: COLORS.textMuted, borderBottom: '1px solid #f6f3f0' }}>
               <div><b style={{ color: COLORS.text }}>{o.fromName || '—'}</b> · {isPurchase(o) ? 'закуп' : 'клиент'}</div>
+              {o.createdAt && <div>🕒 {fmtDate(o.createdAt)} · <b style={{ color: COLORS.text }}>{fmtTime(o.createdAt)}</b></div>}
               {o.phone && <div>📞 {o.phone}</div>}
               {o.comment && <div>💬 {o.comment}</div>}
               <div style={{ marginLeft: 'auto', fontWeight: 700, color: COLORS.text }}>{fmtMoney(cardSum(o))} ₸</div>

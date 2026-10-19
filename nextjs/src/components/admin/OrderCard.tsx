@@ -1,6 +1,6 @@
 'use client'
 import { COLORS } from '@/lib/colors'
-import { isPurchase, cardSum, cardProgress, barColor, statusStyle, sourceStyle, sourceLabel, isOverdue, fmtMoney, fmtDate } from '@/lib/adminFmt'
+import { isPurchase, cardSum, cardProgress, barColor, statusStyle, sourceStyle, sourceLabel, isOverdue, fmtMoney, fmtDate, fmtTime } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 
 export interface CardAction { action: string; label: string; variant?: 'primary' | 'default' | 'danger' }
@@ -36,7 +36,7 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
         {order.isChanged && <span style={{ fontSize: 12, background: '#fff0ea', color: '#c0532a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>⚡</span>}
         {isOverdue(order) && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
         {order.postponed && <span style={{ fontSize: 12, background: '#eef2ff', color: '#4a5aaa', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ОТЛОЖЕН</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952' }}>{fmtDate(order.createdAt)}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>{fmtDate(order.createdAt)} · <b style={{ color: COLORS.text }}>{fmtTime(order.createdAt)}</b></span>
       </div>
 
       {/* Маршрут from → to + % */}

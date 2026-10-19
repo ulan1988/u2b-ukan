@@ -24,6 +24,8 @@ export const cardProgress = (o: any) => {
 export const barColor = (pct: number) => (pct >= 100 ? COLORS.progress.high : pct >= 50 ? COLORS.progress.mid : COLORS.progress.low)
 export const fmtMoney = (n: number) => Number(n || 0).toLocaleString('ru-RU')
 export const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '')
+// Время создания ЧЧ:ММ (напр. «14:28») — показываем в карточках рядом с датой.
+export const fmtTime = (d: any) => (d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '')
 
 const STATUS_MAP: Record<string, { bg: string; color: string }> = {
   'В ожидании': COLORS.status.waiting, 'Принят': COLORS.status.accepted, 'В обработке': COLORS.status.accepted,

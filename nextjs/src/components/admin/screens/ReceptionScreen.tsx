@@ -11,7 +11,7 @@ import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { COLORS } from '@/lib/colors'
-import { fmtDate, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
+import { fmtDate, fmtTime, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
 import { autoPrices, settings as fetchSettings, createSpecProject } from '@/lib/api/refs'
 import { Btn, INP, inpSm, LBL, PAY, purple } from './reception/ui'
@@ -286,7 +286,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 13, color: COLORS.primary }}>{o.id}</span>
                       {o.source && <span style={sourceStyle(o.source)}>{sourceLabel(o.source)}</span>}
-                      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952' }}>{fmtDate(o.createdAt)}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>{fmtDate(o.createdAt)} · <b style={{ color: COLORS.text }}>{fmtTime(o.createdAt)}</b></span>
                     </div>
                     <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{o.fromName} → {o.toName || '—'}</div>
                     {o.comment && <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}>{o.comment}</div>}
