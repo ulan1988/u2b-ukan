@@ -26,6 +26,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   const [selS, setSelS] = useState('')      // подпапка (подгруппа)
   const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string }[]>([])
   const [sel, setSel] = useState<Record<string, string>>({})
+  const [izMode, setIzMode] = useState(false)   // быстрый режим «Изделие» (чип рядом с категориями): только цвет+см
   const [cm, setCm] = useState('')
   const [text, setText] = useState('')
   const [rows, setRows] = useState<PickedPos[]>([])
@@ -155,8 +156,19 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit }))
 
   function pickColor(c: string) { setColor(prev => prev === c ? '' : c); if (c && c !== NOCOLOR) setWarn('') }
-  function pickGroup(g: string) { setSelG(prev => prev === g ? '' : g); setSelC(''); setSelS(''); setSel({}); setCm('') }
-  function pickCat(c: string) { setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
+  // Папка комплектующих (где живёт ВИД «Изделие») — для быстрого чипа «Изделие» в ряду категорий.
+  const komplekt = useMemo(() => {
+    for (const g of Object.keys(tree)) for (const c of Object.keys(tree[g])) if (norm(c).includes('комплект')) return { g, c }
+    return null
+  }, [tree])
+  const izdelieOn = izMode
+  function pickIzdelie() {
+    if (!komplekt) return
+    if (izMode) { setIzMode(false); setSelC(''); setSel({}); setCm(''); return }   // повторный тап — снять
+    setIzMode(true); setSelG(komplekt.g); setSelC(komplekt.c); setSelS(''); setSel({}); setCm('')
+  }
+  function pickGroup(g: string) { setIzMode(false); setSelG(prev => prev === g ? '' : g); setSelC(''); setSelS(''); setSel({}); setCm('') }
+  function pickCat(c: string) { setIzMode(false); setSelC(prev => prev === c ? '' : c); setSelS(''); setSel({}); setCm('') }
   function pickSub(s: string) { setSelS(prev => prev === s ? '' : s) }
   function pickItem(levelKey: string, itemKey: string, isMeasure: boolean) {
     // willSelect считаем из ТЕКУЩЕГО sel (замыкание), а НЕ внутри updater — иначе флаг
@@ -263,26 +275,31 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
           </div>
           <div>
             <div style={LBL}>КАТЕГОРИЯ</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{groups.map(g => <button key={g} onClick={() => pickGroup(g)} style={pill(selG === g)}>{g}{loaded && <span style={cnt(selG === g)}>{countGroup(g)}</span>}</button>)}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{groups.map(g => <button key={g} onClick={() => pickGroup(g)} style={pill(selG === g)}>{g}{loaded && <span style={cnt(selG === g)}>{countGroup(g)}</span>}</button>)}
+              {komplekt && <button key="__izdelie" onClick={pickIzdelie} style={pill(izdelieOn)}>📐 Изделие</button>}</div>
           </div>
-          {selG && Object.keys(tree[selG] || {}).length > 0 && (
+          {!izdelieOn && selG && Object.keys(tree[selG] || {}).length > 0 && (
             <div>
               <div style={LBL}>ПАПКА</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{Object.keys(tree[selG]).map(c => <button key={c} onClick={() => pickCat(c)} style={pill(selC === c)}>{c}{loaded && <span style={cnt(selC === c)}>{countCat(selG, c)}</span>}</button>)}</div>
             </div>
           )}
-          {selG && selC && (tree[selG]?.[selC] || []).length > 0 && (
+          {!izdelieOn && selG && selC && (tree[selG]?.[selC] || []).length > 0 && (
             <div>
               <div style={LBL}>ПОДПАПКА</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{(tree[selG][selC]).map(s => <button key={s} onClick={() => pickSub(s)} style={pill(selS === s)}>{s}{loaded && <span style={cnt(selS === s)}>{countSub(selG, selC, s)}</span>}</button>)}</div>
             </div>
           )}
-          {overlays.map(lv => (
+          {overlays.map(lv => {
+            // В быстром режиме «Изделие» — показываем только вид «Изделие» (чисто: цвет + вид → см+кол-во).
+            const items = izMode && lv.key === 'kind' ? lv.items.filter(it => it.key === 'izdelie') : lv.items
+            if (!items.length) return null
+            return (
             <div key={lv.key}>
               <div style={LBL}>{lv.label.toUpperCase()}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{lv.items.map(it => <button key={it.key} onClick={() => pickItem(lv.key, it.key, !!it.measure)} style={pill(sel[lv.key] === it.key)}>{it.label}</button>)}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{items.map(it => <button key={it.key} onClick={() => pickItem(lv.key, it.key, !!it.measure)} style={pill(sel[lv.key] === it.key)}>{it.label}</button>)}</div>
             </div>
-          ))}
+          )})}
           {needsCm && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff8f5', border: '1.5px solid #f0d9cc', borderRadius: 10, padding: '8px 12px' }}>
               <span style={{ fontSize: 14, color: '#5f5952', fontWeight: 700 }}>📏 Длина изделия:</span>
