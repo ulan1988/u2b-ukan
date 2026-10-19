@@ -76,7 +76,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // берутся от чужой орг (админ = головной → цены 0) и не подтягиваются в стол мастера.
   useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []); const hq = (r.organizations || []).find((o: any) => o.kind === 'hq'); if (hq) setHqId(hq.id) }) }, [user.orgId])
   // «От имени заказчика» = ТОЛЬКО контрагенты головного (заказ уходит головному, в его книгу/кабинет).
-  const hqCags = cags.filter((c: any) => !c.orgRefId && c.kind !== 'supplier' && (!hqId || c.orgId === hqId))
+  // Заказчик «от имени»: клиенты головного + мост на другой филиал (Магазин Кристалл); мост на себя исключён.
+  const hqCags = cags.filter((c: any) => c.kind !== 'supplier' && (!hqId || c.orgId === hqId) && c.orgRefId !== user.orgId)
 
   // uid — если кабинет открыт админом «от имени» филиала, все запросы идут от этого филиала.
   const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])

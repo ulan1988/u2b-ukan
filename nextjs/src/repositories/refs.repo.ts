@@ -1,7 +1,7 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
 import { organizations, contragents, warehouses, products, cashAccounts, specTypes, productPrices } from '../db/schema'
-import { and, eq, or, isNull, isNotNull, getTableColumns } from 'drizzle-orm'
+import { and, eq, ne, or, isNull, isNotNull, getTableColumns } from 'drizzle-orm'
 
 export const listOrganizations = () =>
   db.select().from(organizations).where(eq(organizations.archived, false))
@@ -56,7 +56,9 @@ export const listContragents = async (viewerOrgId?: string | null) => {
         eq(contragents.archived, false),
         or(
           eq(contragents.orgId, viewerOrgId),                                   // свои личные
-          and(eq(contragents.orgId, hq.id), isNull(contragents.orgRefId)),      // клиенты головного (без мостов)
+          // Клиенты головного + мосты головного на ДРУГИЕ филиалы (напр. «Магазин Кристалл»),
+          // чтобы филиал мог оформить заказ на другой филиал-заказчик. Мост на себя исключён.
+          and(eq(contragents.orgId, hq.id), or(isNull(contragents.orgRefId), ne(contragents.orgRefId, viewerOrgId))),
         ),
       ))
     }
