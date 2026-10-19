@@ -9,8 +9,8 @@ import { RAL_BY_CODE, RalDot, extractRal, ralOrdered } from '@/lib/ral'
 const PRIMARY = '#d4613a'
 const GLOW = '0 0 0 4px rgba(212,97,58,.25)'
 export interface PickedPos { name1c: string; oral: string; qty: number; unit: string; widthCm?: number }
-interface NomHit { id: string; name: string; unit: string }
-interface NomFull { id: string; name: string; unit: string; group: string; cat: string; subgroup: string }
+interface NomHit { id: string; name: string; unit: string; alias?: string }
+interface NomFull { id: string; name: string; alias?: string; unit: string; group: string; cat: string; subgroup: string }
 const NOCOLOR = '__none__'
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
 
@@ -60,7 +60,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   useEffect(() => {
     setMounted(true)
     fetch('/api/products').then(r => r.ok ? r.json() : []).then((d: any[]) => {
-      setAllItems(Array.isArray(d) ? d.map(x => ({ id: x.id, name: x.name || '', unit: x.unit || 'шт', group: x.group || '', cat: x.cat || '', subgroup: x.subgroup || '' })) : [])
+      setAllItems(Array.isArray(d) ? d.map(x => ({ id: x.id, name: x.name || '', alias: x.alias || '', unit: x.unit || 'шт', group: x.group || '', cat: x.cat || '', subgroup: x.subgroup || '' })) : [])
       setLoaded(true)
     }).catch(() => setLoaded(true))
     fetch('/api/folders').then(r => r.ok ? r.json() : []).then((f: any[]) => setFolders(Array.isArray(f) ? f : [])).catch(() => {})
@@ -150,10 +150,10 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     .filter(i => !excludes.some(w => i.name.toLowerCase().includes(w.toLowerCase())))
     .filter(i => colorPass(i.name))
     .filter(i => !thickRe || thickRe.test(i.name))
-    .filter(i => mustWords.every(w => i.name.toLowerCase().includes(w)))
-    .map(i => ({ i, score: mustWords.filter(w => i.name.toLowerCase().includes(w)).length }))
+    .filter(i => mustWords.every(w => `${i.name} ${i.alias || ''}`.toLowerCase().includes(w)))   // поиск по имени И алиасу
+    .map(i => ({ i, score: mustWords.filter(w => `${i.name} ${i.alias || ''}`.toLowerCase().includes(w)).length }))
     .sort((a, b) => b.score - a.score || a.i.name.length - b.i.name.length)
-    .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit }))
+    .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit, alias: x.i.alias }))
 
   function pickColor(c: string) { setColor(prev => prev === c ? '' : c); if (c && c !== NOCOLOR) setWarn('') }
   // Папка комплектующих (где живёт ВИД «Изделие») — для быстрого чипа «Изделие» в ряду категорий.
@@ -328,7 +328,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
             <div>
               <div style={LBL}>НАЙДЕНО В БАЗЕ</div>
               {loading ? <div style={{ fontSize: 14, color: '#5f5952', padding: '8px 0' }}>Поиск…</div>
-                : shown.length > 0 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{shown.map(h => <button key={h.id} onClick={() => { if (!needColor()) return; const nm = withColor(h.name); setPad({ name1c: nm, oral: nm, unit: h.unit, digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit' }}><RalDot code={extractRal(h.name)} size={14} /><span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span><span style={{ fontSize: 12, color: '#5f5952', background: '#f1efec', padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{h.unit}</span><span style={{ color: PRIMARY, fontWeight: 800, flexShrink: 0 }}>+</span></button>)}</div>
+                : shown.length > 0 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{shown.map(h => <button key={h.id} onClick={() => { if (!needColor()) return; const nm = withColor(h.name); setPad({ name1c: nm, oral: nm, unit: h.unit, digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit' }}><RalDot code={extractRal(h.name)} size={14} /><span style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>{h.alias ? <><span style={{ fontSize: 14, fontWeight: 700, color: '#7a3aaa', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷️ {h.alias}</span><span style={{ fontSize: 11.5, color: '#8a837a', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span></> : <span style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{h.name}</span>}</span><span style={{ fontSize: 12, color: '#5f5952', background: '#f1efec', padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{h.unit}</span><span style={{ color: PRIMARY, fontWeight: 800, flexShrink: 0 }}>+</span></button>)}</div>
                   : <div style={{ fontSize: 14, color: '#5f5952', padding: '8px 0' }}>Не найдено в папке — можно добавить как есть ↓</div>}
               {asIsName() && <button onClick={() => { if (!needColor()) return; const n = asIsName(); if (n) setPad({ name1c: '', oral: n, unit: 'шт', digits: '', widthCm: needsCm && cm ? Number(cm) : undefined }) }} style={{ marginTop: 8, width: '100%', border: '1.5px dashed #d8d3cc', background: 'none', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 14, color: '#4a4640', fontFamily: 'inherit', fontWeight: 600 }}>＋ Добавить как есть: «{asIsName()}»</button>}
             </div>

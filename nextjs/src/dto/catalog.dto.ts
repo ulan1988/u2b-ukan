@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const createProductSchema = z.object({
   name: z.string().min(1),
+  alias: z.string().optional().default(''),
   unit: z.string().default('шт'),
   category: z.enum(['material', 'goods', 'service']).default('goods'),
   group: z.string().optional().default(''),
@@ -26,6 +27,7 @@ export const createContragentSchema = z.object({
 // Правка/архив: все поля необязательны, плюс тумблер archived.
 export const updateProductSchema = z.object({
   name: z.string().min(1).optional(),
+  alias: z.string().optional(),
   unit: z.string().optional(),
   category: z.enum(['material', 'goods', 'service']).optional(),
   group: z.string().optional(),

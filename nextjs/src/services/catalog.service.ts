@@ -18,7 +18,7 @@ async function upsertOrgPrices(orgId: string, productId: string, fields: Record<
 export async function addProduct(i: z.infer<typeof createProductSchema>, orgId?: string) {
   // Шаблон: имя/дерево + закуп (общий). Цены продажи не пишем в шаблон.
   const [p] = await repo.createProduct({
-    name: i.name, unit: i.unit, category: i.category, group: i.group || '', cat: i.cat || '', subgroup: i.subgroup || '',
+    name: i.name, alias: i.alias || '', unit: i.unit, category: i.category, group: i.group || '', cat: i.cat || '', subgroup: i.subgroup || '',
     priceIn: String(i.priceIn), priceRetail: '0', priceOpt: '0', priceSpec: '0',
   })
   // Цены продажи (если заданы) — на орг создателя.
@@ -78,6 +78,7 @@ export async function editProduct(id: string, i: z.infer<typeof updateProductSch
   // Шаблон (общий): имя/ед./дерево/тип/архив + закуп-себестоимость (priceIn).
   const patch: Record<string, unknown> = {}
   if (i.name !== undefined) patch.name = i.name
+  if (i.alias !== undefined) patch.alias = i.alias
   if (i.unit !== undefined) patch.unit = i.unit
   if (i.category !== undefined) patch.category = i.category
   if (i.group !== undefined) patch.group = i.group

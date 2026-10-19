@@ -55,6 +55,7 @@ export const contragents = pgTable('contragents', {
 export const products = pgTable('products', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
+  alias: text('alias').notNull().default(''),             // короткое имя-псевдоним для каталога магазина (напр. «Кронштейн короткий»)
   unit: text('unit').notNull().default('шт'),
   category: text('category').notNull().default('goods'),  // material | goods | service (тип)
   group: text('group').default(''),                       // дерево каталога: корень

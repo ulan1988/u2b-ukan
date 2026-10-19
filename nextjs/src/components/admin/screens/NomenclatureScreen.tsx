@@ -43,6 +43,9 @@ export default function NomenclatureScreen() {
   const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string; hidden?: boolean }[]>([])
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   const [moveSrc, setMoveSrc] = useState<{ grp: string; cat: string; sub: string; label: string } | null>(null)
+  const [infoItem, setInfoItem] = useState<any>(null)   // модалка «инфо товара» (alias для каталога магазина)
+  const [infoAlias, setInfoAlias] = useState('')
+  const [infoBusy, setInfoBusy] = useState(false)
   const [toast, setToast] = useState('')
   useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
   const reloadFolders = useCallback(async () => { const f = await listFolders(); setFolders((f as any) || []) }, [])
@@ -183,6 +186,16 @@ export default function NomenclatureScreen() {
   async function handleDelete(id: string, name?: string) {
     if (!confirm(`Удалить «${name || 'позицию'}» в архив?`)) return
     await archiveProduct(id); load(); showMsg('✓ В архив')
+  }
+  // Модалка «инфо товара» — алиас для каталога магазина (напр. «Кронштейн короткий»).
+  function openInfo(item: any) { setInfoItem(item); setInfoAlias(item.alias || '') }
+  async function saveInfo() {
+    if (!infoItem) return
+    setInfoBusy(true)
+    const r: any = await editProduct(infoItem.id, { alias: infoAlias.trim() })
+    setInfoBusy(false)
+    if (r?.ok === false) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setInfoItem(null); load(); showMsg('✓ Сохранено')
   }
   function openAdd() {
     setNewItem({ name: '', unit: 'шт', group: selGroup || '', cat: selCat || '', subgroup: selSubgroup || '' })
@@ -409,7 +422,12 @@ export default function NomenclatureScreen() {
                         {showHead && <tr><td colSpan={10} style={{ padding: '8px 14px', background: '#f1efec', fontWeight: 800, fontSize: 12.5, color: COLORS.primary, letterSpacing: '.02em' }}>📁 {sg || '— без подгруппы —'}</td></tr>}
                         <tr style={{ borderTop: '1px solid #f1efec' }}>
                           {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки. Лёгкие линии-разделители колонок */}
-                          <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{editItem?.id === item.id ? <input value={editItem.name} onChange={e => setEditItem(p => p ? { ...p, name: e.target.value } : p)} placeholder="Имя товара" style={{ ...INP, fontSize: 14, padding: '6px 9px', fontWeight: 600 }} /> : item.name}</td>
+                          <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{editItem?.id === item.id ? <input value={editItem.name} onChange={e => setEditItem(p => p ? { ...p, name: e.target.value } : p)} placeholder="Имя товара" style={{ ...INP, fontSize: 14, padding: '6px 9px', fontWeight: 600 }} /> : (
+                            <span onClick={() => openInfo(item)} title="Открыть карточку товара (алиас для каталога)" style={{ cursor: 'pointer' }}>
+                              {item.name}
+                              {(item as any).alias ? <span style={{ display: 'block', fontSize: 12, color: '#7a3aaa', fontWeight: 700, marginTop: 2 }}>🏷️ {(item as any).alias}</span> : null}
+                            </span>
+                          )}</td>
                           <td style={{ padding: '9px 14px', width: 80, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>
                           <td style={{ padding: '9px 14px', width: 130, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.group || '—'}</span></td>
                           <td style={{ padding: '9px 14px', width: 160, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.cat || '—'}</span></td>
@@ -515,6 +533,24 @@ export default function NomenclatureScreen() {
           </div>
         )
       })()}
+
+      {infoItem && (
+        <div onClick={() => setInfoItem(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.3 }}>{infoItem.name}</div>
+              <button onClick={() => setInfoItem(null)} style={{ border: 'none', background: '#f1efec', width: 36, height: 36, borderRadius: '50%', fontSize: 18, cursor: 'pointer', color: '#5f5952', flexShrink: 0 }}>✕</button>
+            </div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#6b645b', letterSpacing: '.03em', marginBottom: 6 }}>🏷️ АЛИАС (для каталога магазина)</label>
+            <input value={infoAlias} onChange={e => setInfoAlias(e.target.value)} autoFocus placeholder="напр. Кронштейн короткий" style={{ width: '100%', padding: '11px 12px', border: '1.5px solid #cdb6e2', borderRadius: 10, fontSize: 15, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+            <div style={{ fontSize: 12, color: '#8a837a', marginTop: 7 }}>Короткое удобное имя — покажется в каталоге магазина вместо длинного названия. Поиск работает и по алиасу, и по полному имени.</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+              <button onClick={() => setInfoItem(null)} style={{ padding: '10px 18px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
+              <button onClick={saveInfo} disabled={infoBusy} style={{ padding: '10px 20px', borderRadius: 9, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: infoBusy ? 0.6 : 1 }}>{infoBusy ? 'Сохранение…' : '💾 Сохранить'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
