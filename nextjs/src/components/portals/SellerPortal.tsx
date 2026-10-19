@@ -307,13 +307,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   function patchRow(key: string, patch: Partial<Row>) { setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r)) }
 
   // Быстрая оплата в один тап: вся сумма выбранным способом (или в долг).
-  async function quickPay(how: 'cash' | 'kaspi' | 'debt') {
+  async function quickPay(how: 'cash' | 'kaspi' | 'qr' | 'debt') {
     if (!rows.length) return
     if (noPrice) { showMsg('⚠ Есть позиции без цены — впишите цену в чеке'); return }
     await doSell({
       cash: how === 'cash' ? net : 0,
       kaspi: how === 'kaspi' ? net : 0,
-      qr: 0, change: 0, changeFrom: '',
+      qr: how === 'qr' ? net : 0, change: 0, changeFrom: '',
     })
   }
 
@@ -726,6 +726,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               <div style={{ display: 'flex', gap: 7 }}>
                 <button disabled={busy} onClick={() => quickPay('cash')} style={{ flex: 1, border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>💵 Нал</button>
                 <button disabled={busy} onClick={() => quickPay('kaspi')} style={{ flex: 1, border: '1.5px solid #e6e2dc', background: '#fff', color: DARK, borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>Каспи</button>
+                <button disabled={busy} onClick={() => quickPay('qr')} style={{ flex: 1, border: '1.5px solid #e6e2dc', background: '#fff', color: DARK, borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>QR</button>
                 <button disabled={busy} onClick={() => quickPay('debt')} style={{ flex: 1, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>В долг</button>
                 <button onClick={() => setPayOpen(true)} title="QR, сдача, смешанная оплата" style={{ width: 46, border: '1.5px solid #e6e2dc', background: '#fff', color: '#6b645b', borderRadius: 11, cursor: 'pointer', fontSize: 17, fontFamily: 'inherit' }}>⋯</button>
               </div>
