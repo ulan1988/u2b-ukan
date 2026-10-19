@@ -36,6 +36,22 @@ export async function insertDocumentPosting(doc: NewDoc, lines: NewLine[], moves
   await db.batch(q as [any, ...any[]])
 }
 
+// Себестоимость продажи (как в рентабельности): связанные приходные + непокрытое × price_in.
+export async function docCost(docId: string): Promise<number> {
+  const r = await sqlClient`
+    select coalesce(sum(coalesce(lk.lcost,0) + greatest(sl.sqty - coalesce(lk.lqty,0),0) * p.price_in),0)::float as cost
+    from (select product_id, sum(qty) sqty from document_lines where document_id=${docId} and role='main' group by product_id) sl
+    join products p on p.id = sl.product_id
+    left join (
+      select dl.product_id, sum(dl.qty) lqty, sum(dl.qty * (pl.amount/nullif(pl.qty,0))) lcost
+      from doc_links dl
+      join (select document_id, product_id, sum(qty) qty, sum(amount) amount from document_lines where role='main' group by document_id, product_id) pl
+        on pl.document_id=dl.purchase_doc_id and pl.product_id=dl.product_id
+      where dl.sale_doc_id=${docId} group by dl.product_id
+    ) lk on lk.product_id = sl.product_id` as unknown as Array<{ cost: number }>
+  return Number(r[0]?.cost || 0)
+}
+
 // Партии закупа по товару (FIFO: старые первыми) с остатком к списанию и ценой закупа.
 export async function purchaseLots(orgId: string, productId: string) {
   return sqlClient`
@@ -80,8 +96,21 @@ export function listInvoices(orgId: string, type: string | string[]) {
       contragentAccepted: documents.contragentAccepted, contragentId: documents.contragentId, contragent: contragents.name,
       // Названия товаров документа — для поиска по номенклатуре.
       items: sql<string>`(select string_agg(p.name, ' | ') from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
-      // Себестоимость документа = Σ(кол-во × приходная цена товара).
-      cost: sql<number>`(select coalesce(sum(dl.qty * p.price_in),0)::float from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
+      // Себестоимость ПРОДАЖИ = стоимость из СВЯЗАННЫХ приходных (doc_links, реально оплачено)
+      // + непокрытое кол-во × приходная цена (price_in). Как в отчёте рентабельности.
+      cost: sql<number>`(
+        select coalesce(sum(coalesce(lk.lcost,0) + greatest(sl.sqty - coalesce(lk.lqty,0),0) * p.price_in),0)::float
+        from (select product_id, sum(qty) sqty from document_lines where document_id = ${documents.id} and role='main' group by product_id) sl
+        join products p on p.id = sl.product_id
+        left join (
+          select dl.product_id, sum(dl.qty) lqty, sum(dl.qty * (pl.amount / nullif(pl.qty,0))) lcost
+          from doc_links dl
+          join (select document_id, product_id, sum(qty) qty, sum(amount) amount from document_lines where role='main' group by document_id, product_id) pl
+            on pl.document_id = dl.purchase_doc_id and pl.product_id = dl.product_id
+          where dl.sale_doc_id = ${documents.id}
+          group by dl.product_id
+        ) lk on lk.product_id = sl.product_id
+      )`,
       // Заказчик (конечный клиент) из карточки-основания — на приходной головного «для кого / на кого долг».
       customer: sql<string>`(select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})`,
     })

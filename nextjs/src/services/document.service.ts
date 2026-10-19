@@ -66,7 +66,9 @@ export async function getDocument(id: string) {
     const [ord] = await orderRepo.getOrder(doc.sourceOrderId)
     if (ord?.contactId) { const [c] = await docRepo.contragentById(ord.contactId); customer = c?.name || null }
   }
-  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer }
+  // Себестоимость продажи (связанные приходные + непокрытое×price_in) — верная, как в рентабельности.
+  const cost = doc.type === 'sale' ? await docRepo.docCost(id) : 0
+  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, cost }
 }
 
 // Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
