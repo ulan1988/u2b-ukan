@@ -167,6 +167,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   })
   const { legForSuppliers } = await import('../lib/legDetect')
   const legMap = await legForSuppliers(ruleSuppliers)
+  const defLogist = await settingsRepo.orgDefaultLogist(orgId)   // закупщик по умолчанию (Бауыржан)
   const posValues = items.map((it, idx) => {
     const prod = byName.get(it.name.trim().toLowerCase())
     let supplierId: string | null = null, respUserId: string | null = null
@@ -186,7 +187,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,
       qty: String(it.total), unit: it.unit || 'шт', price: String(isIzdelie ? 0 : (prod?.priceIn ?? 0)),
       widthCm: wcm != null ? String(wcm) : null,
-      supplierId, respUserId, leg: supplierId ? (legMap[supplierId] ?? 2) : 2, status: 'В работе',
+      supplierId, respUserId: respUserId || defLogist || null, leg: supplierId ? (legMap[supplierId] ?? 2) : 2, status: 'В работе',
     }
   })
   await repo.insertPositions(posValues)

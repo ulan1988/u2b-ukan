@@ -501,6 +501,9 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
 // Удалить позицию карточки (стол приёмки).
 export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
+  // Правило: в карточке всегда ≥1 позиция. Последнюю удалять нельзя (пустая карточка = баг).
+  const n = await repo.countPositions(cardId)
+  if (n <= 1) return { ok: false as const, error: 'Нельзя удалить последнюю позицию — в карточке должна остаться хотя бы одна (отмените всю карточку)' }
   await repo.deletePosition(posId)
   await repo.insertHistory({ cardId, action: 'deletePos', detail: 'Позиция удалена', userName: actor?.name || 'Система' })
   return { ok: true }
