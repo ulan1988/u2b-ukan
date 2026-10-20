@@ -142,9 +142,10 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   function StatusBtns({ cardId, posId, posStatus, compact }: { cardId: string; posId: string; posStatus: string; compact?: boolean }) {
     const btns = [{ label: 'ПРИНЯЛ', status: 'В работе' }, { label: 'В РАБОТЕ', status: 'В пути' }, { label: 'ДОСТАВЛЕНО', status: 'Доставлено' }]
     const activeIdx = posStatus === 'В работе' ? 0 : posStatus === 'В пути' ? 1 : posStatus === 'Доставлено' ? 2 : -1
+    // Кнопки под большой палец (планшет): крупные, почти квадратные; «ДОСТАВЛЕНО» — шире всех.
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: compact ? 4 : 6, marginTop: compact ? 8 : 12 }}>
-        {btns.map((b, i) => <button key={b.label} onClick={() => handleStatus(cardId, posId, b.status)} disabled={updating === posId || posStatus === 'Доставлено'} style={{ padding: compact ? '6px 2px' : '10px 4px', borderRadius: compact ? 6 : 8, border: 'none', fontWeight: 700, fontSize: compact ? 10.5 : 12, cursor: 'pointer', fontFamily: 'inherit', background: i <= activeIdx ? PRIMARY : '#f1efec', color: i <= activeIdx ? '#fff' : '#5f5952', opacity: updating === posId ? .6 : 1 }}>{b.label}</button>)}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.35fr', gap: 7, marginTop: compact ? 10 : 14 }}>
+        {btns.map((b, i) => <button key={b.label} onClick={() => handleStatus(cardId, posId, b.status)} disabled={updating === posId || posStatus === 'Доставлено'} style={{ minHeight: i === 2 ? 60 : 52, padding: '8px 4px', borderRadius: 12, border: 'none', fontWeight: 800, fontSize: i === 2 ? 14 : 12.5, lineHeight: 1.15, cursor: 'pointer', fontFamily: 'inherit', background: i <= activeIdx ? PRIMARY : '#f1efec', color: i <= activeIdx ? '#fff' : '#5f5952', opacity: updating === posId ? .6 : 1, boxShadow: i === 2 && i > activeIdx ? 'inset 0 0 0 2px #e6ddd4' : 'none' }}>{b.label}</button>)}
       </div>
     )
   }
@@ -162,7 +163,11 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8, flexShrink: 0 }}>{pos.widthCm != null && <span style={{ fontSize: compact ? 11 : 12, color: '#7a3aaa', fontWeight: 700, background: '#f3eeff', padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>📏 {Number(pos.widthCm)} см</span>}
             {editable && qtyEditPos === pos.id
               ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><input autoFocus value={qtyVal} inputMode="decimal" onChange={e => setQtyVal(e.target.value.replace(/[^0-9.,]/g, ''))} onKeyDown={e => e.key === 'Enter' && savePosQty(order.id, pos.id)} style={{ width: 54, padding: '4px 6px', borderRadius: 6, border: `1.5px solid ${PRIMARY}`, fontSize: 14, textAlign: 'right', fontFamily: 'inherit' }} /><button onClick={() => savePosQty(order.id, pos.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>✓</button></span>
-              : <span onClick={() => { if (editable) { setQtyEditPos(pos.id); setQtyVal(String(Number(pos.qty))) } }} title={editable ? 'Изменить кол-во' : ''} style={{ fontWeight: 700, fontSize: compact ? 15 : 18, color: PRIMARY, cursor: editable ? 'pointer' : 'default' }}>{Number(pos.qty)} {pos.unit}{editable && <span style={{ fontSize: 12, marginLeft: 2 }}>✎</span>}</span>}</span>
+              : <span onClick={() => { if (editable) { setQtyEditPos(pos.id); setQtyVal(String(Number(pos.qty))) } }} title={editable ? 'Изменить кол-во' : ''} style={{ fontWeight: 700, fontSize: compact ? 15 : 18, color: PRIMARY, cursor: editable ? 'pointer' : 'default' }}>{Number(pos.qty)} {pos.unit}{editable && <span style={{ fontSize: 12, marginLeft: 2 }}>✎</span>}</span>}
+            {/* Корзина — ВВЕРХУ карточки, подальше от кнопок статуса (чтобы не удалить вместо «Доставлено») */}
+            {editable && (confDelPos === pos.id
+              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 12, color: '#b03020', fontWeight: 700 }}>Убрать?</span><button onClick={() => removePos(order.id, pos.id)} style={{ border: 'none', background: '#c1121c', color: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Да</button><button onClick={() => setConfDelPos(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Нет</button></span>
+              : <button onClick={() => setConfDelPos(pos.id)} title="Убрать позицию" style={{ width: 34, height: 34, border: '1.5px solid #f0e6e0', background: '#fff', color: '#b8b1a6', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit', borderRadius: 9, lineHeight: 1, flexShrink: 0 }}>🗑</button>)}</span>
         </div>
         <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>{order.fromName || '—'}</div>
         {editable && (supEditPos === pos.id ? (
@@ -181,9 +186,6 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isPurchase(order) ? '#f3eeff' : '#e8f5ee', color: isPurchase(order) ? '#7a3aaa' : '#2e8a5e' }}>{isPurchase(order) ? '🛒 ЗАКУП' : 'ПРОДАЖА'}</span>
           {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
           <span style={{ fontSize: 12, background: pos.status === 'Доставлено' ? '#e8f5ee' : '#fff0ea', color: pos.status === 'Доставлено' ? '#2e8a5e' : '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{pos.status}</span>
-          {editable && (confDelPos === pos.id
-            ? <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 12, color: '#b03020', fontWeight: 700 }}>Убрать?</span><button onClick={() => removePos(order.id, pos.id)} style={{ border: 'none', background: '#c1121c', color: '#fff', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>Да</button><button onClick={() => setConfDelPos(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Нет</button></span>
-            : <button onClick={() => setConfDelPos(pos.id)} title="Убрать позицию" style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#b8b1a6', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', padding: '2px 4px', lineHeight: 1 }}>🗑</button>)}
         </div>
         {order.screen === 'reception' && !isPurchase(order)
           ? <button onClick={() => handleAccept(order.id)} disabled={updating === order.id} style={{ marginTop: compact ? 8 : 12, width: '100%', padding: compact ? '9px' : '12px', borderRadius: compact ? 8 : 10, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: compact ? 12.5 : 14, cursor: 'pointer', fontFamily: 'inherit', opacity: updating === order.id ? 0.6 : 1 }}>✅ Принять продажу → в работу</button>
@@ -258,7 +260,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         </div>
       </div>
 
-      <div style={{ maxWidth: 432, margin: '0 auto', padding: '16px 66px 40px 14px' }}>
+      {/* На планшете колонка шире (одна колонка во всю ширину), на телефоне — как было */}
+      <div style={{ maxWidth: 'min(640px, 100%)', margin: '0 auto', padding: '16px 66px 40px 14px' }}>
         {tab === 'req' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>📥 ЗАКАЗЫ · ждут закупа</div>
@@ -287,15 +290,17 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
                 const groups: Record<string, typeof posIn> = {}
                 for (const it of posIn) { const k = ((it.order.fromName || '—').trim()) || '—'; (groups[k] = groups[k] || []).push(it) }
                 const cols = Object.entries(groups).sort((a, b) => b[1].length - a[1].length)
+                // Одна колонка: заказчики идут секциями сверху вниз — листать пальцем вверх/вниз,
+                // без горизонтального скролла (колонки на телефоне/планшете резались).
                 return (
-                  <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, marginTop: 10, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 10 }}>
                     {cols.map(([client, items]) => (
-                      <div key={client} style={{ flexShrink: 0, width: 312, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 230px)' }}>
-                        <div style={{ padding: '9px 12px', background: DARK, borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontWeight: 700, letterSpacing: '.05em' }}>ЗАКАЗЧИК</div><div style={{ fontWeight: 700, fontSize: 14, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client}</div></div>
-                          <span style={{ background: PRIMARY, color: '#fff', fontSize: 12, padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{items.length}</span>
+                      <div key={client}>
+                        <div style={{ position: 'sticky', top: 0, zIndex: 5, padding: '9px 12px', background: DARK, borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontWeight: 700, letterSpacing: '.05em' }}>ЗАКАЗЧИК</div><div style={{ fontWeight: 700, fontSize: 15, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client}</div></div>
+                          <span style={{ background: PRIMARY, color: '#fff', fontSize: 12.5, padding: '2px 9px', borderRadius: 20, fontWeight: 700 }}>{items.length}</span>
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto', background: '#f4f2ef', borderRadius: '0 0 12px 12px', padding: '10px 8px 4px' }}>{groupByCard(items).map(g => <CardBox key={g.order.id} order={g.order} poss={g.poss} />)}</div>
+                        <div style={{ background: '#f4f2ef', borderRadius: '0 0 12px 12px', padding: '10px 8px 4px' }}>{groupByCard(items).map(g => <CardBox key={g.order.id} order={g.order} poss={g.poss} />)}</div>
                       </div>
                     ))}
                   </div>
