@@ -321,6 +321,40 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   return { ok: true, allDelivered }
 }
 
+// Открыть доставленную карточку для правки (логист нашёл ошибку в кол-ве/товаре ПОСЛЕ доставки):
+// сторнируем всю цепочку (расходная + зеркало головного + продажа заказчику), возвращаем карточку
+// к логисту в редактируемое состояние и помечаем «есть изменение» (жёлтая, видна логисту и админу).
+export async function reopenForEdit(cardId: string, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
+  if (!order.linkedDocId) return { ok: false as const, error: 'Карточка не проведена — правьте обычным способом' }
+  const kind = ((await sqlClientOrgKind(order.orgId)) || '')
+  const wasChain = kind === 'producer_seller' && (order.payment === 'Долг' || order.payment === 'Частично')
+  const { unpostSale } = await import('./cashier.service')
+  const r = await unpostSale(cardId, actor)
+  if (!r.ok) return r
+  await repo.updatePositionsByCard(cardId, { status: 'В работе' })
+  await repo.updateOrder(cardId, { screen: 'outgoing', status: 'В работе', isChanged: true, changeText: 'Правка после доставки — подтвердите', delivered: null, ...(wasChain ? { pendingDebtHead: true } : {}) } as any)
+  await repo.insertHistory({ cardId, action: 'reopenEdit', detail: 'Открыто для правки после доставки — цепочка сторнирована', userName: actor?.name || 'Система' })
+  return { ok: true as const }
+}
+
+// Подтвердить правку: пометить всё доставленным → цепочка переподнимается с новыми значениями,
+// жёлтая метка «есть изменение» снимается.
+export async function confirmChange(cardId: string, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Заявка не найдена' }
+  await setPositions(cardId, undefined, 'Доставлено', actor)
+  await repo.updateOrder(cardId, { isChanged: false, changeText: '' } as any)
+  await repo.insertHistory({ cardId, action: 'confirmChange', detail: 'Изменение подтверждено — цепочка переподнята', userName: actor?.name || 'Система' })
+  return { ok: true as const }
+}
+
+async function sqlClientOrgKind(orgId: string): Promise<string> {
+  const o = await refsRepo.orgById(orgId)
+  return (o as any)?.kind || ''
+}
+
 // Публичный трекинг: статус заявки по номеру (этап, позиции, детали, история).
 const STAGE_BY_SCREEN: Record<string, number> = { incoming: 1, reception: 2, outgoing: 3, accounting: 4, bookkeeping: 5, archive: 5 }
 export async function track(id: string) {

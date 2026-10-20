@@ -25,7 +25,7 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
   })
 
   return (
-    <div className="anim-fade" style={{ background: order.cold ? 'rgba(250,248,246,.6)' : (purchase ? '#faf7fd' : '#fff'), borderRadius: 12, padding: '14px 16px', marginBottom: 10, borderLeft: `4px solid ${purchase ? '#7a3aaa' : '#2e8a5e'}`, boxShadow: `0 0 0 1.5px ${purchase ? '#e3d4f0' : '#e6e2dc'}`, opacity: order.isCancelled ? 0.55 : (order.cold ? 0.6 : 1) }}>
+    <div className="anim-fade" style={{ background: order.isChanged ? '#fffceb' : (order.cold ? 'rgba(250,248,246,.6)' : (purchase ? '#faf7fd' : '#fff')), borderRadius: 12, padding: '14px 16px', marginBottom: 10, borderLeft: `4px solid ${order.isChanged ? '#e4b73a' : (purchase ? '#7a3aaa' : '#2e8a5e')}`, boxShadow: `0 0 0 1.5px ${order.isChanged ? '#e4b73a' : (purchase ? '#e3d4f0' : '#e6e2dc')}`, opacity: order.isCancelled ? 0.55 : (order.cold ? 0.6 : 1) }}>
       {/* Шапка: id + бейджи + дата */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
         <span onClick={() => onOpen?.(order)} style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 13, color: COLORS.primary, cursor: onOpen ? 'pointer' : 'default' }}>{order.id}</span>
@@ -33,7 +33,7 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
         <KindBadge o={order} />
         <span style={statusStyle(order.status)}>{order.status}</span>
         {order.source && <span style={sourceStyle(order.source)}>{sourceLabel(order.source)}</span>}
-        {order.isChanged && <span style={{ fontSize: 12, background: '#fff0ea', color: '#c0532a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>⚡</span>}
+        {order.isChanged && <span style={{ fontSize: 11, background: '#fdf3d8', color: '#8a6f00', padding: '2px 8px', borderRadius: 20, fontWeight: 800 }}>⚠ ИЗМЕНЕНИЕ · проверьте</span>}
         {isOverdue(order) && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
         {order.postponed && <span style={{ fontSize: 12, background: '#eef2ff', color: '#4a5aaa', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ОТЛОЖЕН</span>}
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>{fmtDate(order.createdAt)} · <b style={{ color: COLORS.text }}>{fmtTime(order.createdAt)}</b></span>

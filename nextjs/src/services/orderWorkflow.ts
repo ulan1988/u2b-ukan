@@ -203,6 +203,9 @@ export async function dispatchAction(id: string, action: string, actor: Session 
     const r = await postOrderInvoice(id, actor)
     return r.ok ? { ok: true as const } : { ok: false as const, error: r.error }
   }
+  // Правка после доставки: открыть карточку (сторно цепочки) / подтвердить правку (переподнять цепочку).
+  if (action === 'reopenEdit') { const { reopenForEdit } = await import('./order.service'); return await reopenForEdit(id, actor) }
+  if (action === 'confirmChange') { const { confirmChange } = await import('./order.service'); return await confirmChange(id, actor) }
   const def = TRANSITIONS[action]
   if (!def) return { ok: false as const, error: 'Неизвестное действие' }
 

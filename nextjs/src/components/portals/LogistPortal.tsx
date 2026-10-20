@@ -97,6 +97,9 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
   // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
   async function handleAccept(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'logistAccept'); if (r.ok) { showMsg('✓ Продажа принята → в работу'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось принять')); setUpdating(null) }
+  // Правка после доставки: открыть карточку (сторно цепочки) → поправить → подтвердить (переподнять).
+  async function reopenEdit(cardId: string) { if (!confirm('Открыть доставленную карточку для правки? Накладная (и цепочка) будет сторнирована, карточка вернётся в «Продажа» для правки.')) return; setUpdating(cardId); const r = await orderAction(cardId, 'reopenEdit'); if (r.ok) { showMsg('✏️ Открыто для правки — поправьте и подтвердите'); setTab('in'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось')); setUpdating(null) }
+  async function confirmChange(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'confirmChange'); if (r.ok) { showMsg('✓ Изменение подтверждено — цепочка переподнята'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось')); setUpdating(null) }
   async function handleNew() {
     if (!newTo || !newName || !newQty) { showMsg('Заполните все поля'); return }
     setNewLoading(true)
@@ -228,8 +231,11 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     const open = openCardId === order.id
     const done = poss.filter((p: any) => p.status === 'Доставлено').length
     const inway = poss.filter((p: any) => p.status === 'В пути').length
+    const changed = !!order.isChanged
+    const allDone = done === poss.length && poss.length > 0
     return (
-      <div style={{ marginBottom: 8, background: '#fff', borderRadius: 10, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
+      <div style={{ marginBottom: 8, background: changed ? '#fffceb' : '#fff', borderRadius: 10, boxShadow: changed ? '0 0 0 2px #e4b73a' : '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
+        {changed && <div style={{ background: '#fdf3d8', color: '#8a6f00', fontSize: 12, fontWeight: 700, padding: '6px 11px' }}>⚠ Есть изменение — проверьте и подтвердите</div>}
         <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', cursor: 'pointer' }}>
           <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
           {order.fromName && <span style={{ fontSize: 12, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{order.fromName}</span>}
@@ -239,6 +245,9 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
+        {!buy && !viewAs && (changed
+          ? <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => confirmChange(order.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', opacity: updating === order.id ? .6 : 1 }}>✓ Подтвердить изменение</button></div>
+          : allDone && <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => reopenEdit(order.id)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>✏️ Изменить карточку (после доставки)</button></div>)}
       </div>
     )
   }
