@@ -33,5 +33,5 @@ export const returnSchema = z.object({
   uid: z.string().uuid().optional(),
   cardId: z.string().min(1),
   items: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive() })).optional(), // пусто → весь чек
-  accountId: z.string().uuid(),                   // счёт возврата (cash_accounts.id)
+  accountId: z.string().uuid().optional(),        // счёт возврата (cash_accounts.id); пусто → «в долг» (без денег)
 })

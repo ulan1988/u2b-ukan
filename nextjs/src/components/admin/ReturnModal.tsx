@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
 import { getDocument, createReturn } from '@/lib/api/docs'
+import { fetchRefs } from '@/lib/api/refs'
+import { returnSale } from '@/lib/api/orders'
 
 const inp: React.CSSProperties = { padding: '7px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
@@ -15,8 +17,10 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState('')
+  const [accounts, setAccounts] = useState<any[]>([])
+  const [refundAcc, setRefundAcc] = useState('')   // '' = в долг (без денег), иначе id счёта возврата
 
-  useEffect(() => { getDocument(docId).then((d: any) => { setData(d); setRet({}) }) }, [docId])
+  useEffect(() => { getDocument(docId).then((d: any) => { setData(d); setRet({}); if (d?.doc?.orgId) fetchRefs(d.doc.orgId).then((r: any) => setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === d.doc.orgId))) }) }, [docId])
 
   const doc = data?.doc
   const lines = (data?.lines || []) as any[]
@@ -32,6 +36,17 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
   async function submit() {
     if (!anyRet) { setFlash('⚠ Укажите кол-во возврата хотя бы по одной позиции'); return }
     setBusy(true)
+    // Возврат ОТ КЛИЕНТА по карточке-чеку → через returnSale: гасит долг + остаток со счёта
+    // (или «в долг», если счёт не выбран). Деньги и долг учитываются корректно.
+    if (kind === 'in' && doc.sourceOrderId) {
+      const items = rows.filter(x => x.on && x.retN > 0 && x.sourcePosId).map(x => ({ posId: x.sourcePosId, qty: x.retN }))
+      if (items.length) {
+        const rr: any = await returnSale({ cardId: doc.sourceOrderId, items, accountId: refundAcc || undefined })
+        setBusy(false)
+        if (rr?.ok) { onDone?.(); onClose() } else setFlash('⚠ ' + (rr?.error || 'Ошибка возврата'))
+        return
+      }
+    }
     const r: any = await createReturn(kind, {
       orgId: doc.orgId, contragentId: doc.contragentId, warehouseId: doc.warehouseId,
       // Ссылка на источник: карточка-основание накладной (или сама накладная) →
@@ -80,6 +95,18 @@ export default function ReturnModal({ docId, onClose, onDone }: { docId: string;
                 </tbody>
               </table>
               <div style={{ marginTop: 10 }}><label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952' }}>ПРИЧИНА (необязательно)</label><input style={{ ...inp, marginTop: 4 }} value={reason} onChange={e => setReason(e.target.value)} placeholder="брак, пересорт, отказ…" /></div>
+              {kind === 'in' && doc.sourceOrderId && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#5f5952' }}>ВОЗВРАТ ДЕНЕГ</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                    <button onClick={() => setRefundAcc('')} style={{ padding: '8px 14px', borderRadius: 9, border: refundAcc === '' ? 'none' : '1.5px solid #e6c9b8', background: refundAcc === '' ? '#b4574c' : '#fff8f5', color: refundAcc === '' ? '#fff' : '#c0532a', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>📉 В долг (списать с долга)</button>
+                    {accounts.map(a => { const on = refundAcc === a.id; return (
+                      <button key={a.id} onClick={() => setRefundAcc(a.id)} style={{ padding: '8px 14px', borderRadius: 9, border: on ? 'none' : '1.5px solid #e6e2dc', background: on ? '#2e8a5e' : '#fff', color: on ? '#fff' : COLORS.text, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>💵 {a.name}</button>
+                    )})}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#8a837a', marginTop: 6 }}>{refundAcc ? 'Сначала гасится долг клиента, остаток возвращается с выбранного счёта.' : 'Деньги не возвращаем — уменьшаем долг клиента (остаток остаётся кредитом).'}</div>
+                </div>
+              )}
             </div>
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 14 }}>К возврату: <b style={{ color: '#b4574c' }}>{fmtMoney(totalRet)} ₸</b></span>

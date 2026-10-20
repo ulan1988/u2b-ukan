@@ -203,11 +203,11 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
 // (return_in: товар +склад филиала, −долг заказчика), затем деньги — сначала ГАСИМ ДОЛГ по чеку,
 // оставшееся ВОЗВРАЩАЕМ со СЧЁТА ВОЗВРАТА (payment out). Исходная продажа остаётся (учёт цел),
 // возврат — отдельный документ. Повторный возврат тех же позиций не пробьётся (source_pos_id).
-export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number }[]; accountId: string }, actor?: Session | null) {
+export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number }[]; accountId?: string }, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
-  if (!opts.accountId) return { ok: false as const, error: 'Выберите счёт возврата' }
+  // accountId пусто → возврат «в долг» (товар на склад, долг заказчика −; деньги не возвращаем).
   if (!order.contactId) return { ok: false as const, error: 'У чека нет заказчика' }
   const positions = await repo.positionsByCard(cardId)
   if (!positions.length) return { ok: false as const, error: 'Нет позиций' }
@@ -261,15 +261,17 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   const lines = sel.map(x => ({ productId: x.pos.productId, name: x.pos.name1c || x.pos.oral, qty: x.qty, unit: x.pos.unit || 'шт', price: Number(x.pos.price) || 0, widthCm: x.pos.widthCm != null ? Number(x.pos.widthCm) : undefined, sourcePosId: x.pos.id }))
   const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Возврат по чеку ${cardId}`, projectId: (order as any).specProjectId || null } as any, 'return_in')
 
-  // Деньги: остаток после гашения долга — со счёта возврата (payment out).
-  if (refund > 0) {
-    await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refund), date: today(), cashAccountId: opts.accountId, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
+  // Деньги: остаток после гашения долга — со счёта возврата (payment out). Без счёта («в долг») —
+  // деньги не возвращаем, остаток остаётся кредитом контрагента (отрицательной дебиторкой).
+  const refundOut = opts.accountId ? refund : 0
+  if (refundOut > 0) {
+    await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refundOut), date: today(), cashAccountId: opts.accountId as string, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
   }
   const debtCleared = Math.min(R, currentDebt)
   // Чек полностью возвращён, когда по каждой позиции возвращённое + текущее ≥ проданного.
   const fullyReturned = positions.every((p: any) => (retQ[p.id] || 0) + (sel.find(x => x.pos.id === p.id)?.qty || 0) >= Number(p.qty) - 0.0000001)
-  await repo.insertHistory({ cardId, action: 'return', detail: `Возврат ${ret.number}: ${sel.length} поз. на ${R} ₸ (долг −${debtCleared}, со счёта −${refund})`, userName: actor?.name || 'Система' })
-  return { ok: true as const, number: ret.number, returned: R, refund, debtCleared, fullyReturned }
+  await repo.insertHistory({ cardId, action: 'return', detail: `Возврат ${ret.number}: ${sel.length} поз. на ${R} ₸ (долг −${debtCleared}, со счёта −${refundOut})`, userName: actor?.name || 'Система' })
+  return { ok: true as const, number: ret.number, returned: R, refund: refundOut, debtCleared, fullyReturned }
 }
 
 // Погашение долга по чеку (касса магазина): приход денег на счёт, гасит дебиторку заказчика.
