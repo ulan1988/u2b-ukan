@@ -247,7 +247,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
         {!buy && !viewAs && (changed
           ? <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => confirmChange(order.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', opacity: updating === order.id ? .6 : 1 }}>✓ Подтвердить изменение</button></div>
-          : allDone && <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => reopenEdit(order.id)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>✏️ Изменить карточку (после доставки)</button></div>)}
+          : (order.linkedDocId && allDone) && <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => reopenEdit(order.id)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>✏️ Изменить карточку (после доставки)</button></div>)}
       </div>
     )
   }
@@ -329,7 +329,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>✅ Выполнено · доставлено мной</div>
             <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
-            {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : posOut.length === 0 ? empty('📭', 'Пока нет доставленных позиций') : posOut.map(({ pos, order }) => <PosCard key={`out-${pos.id}`} pos={pos} order={order} />)}
+            {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : posOut.length === 0 ? empty('📭', 'Пока нет доставленных позиций') : groupByCard(posOut).map(g => <CardBox key={`out-${g.order.id}`} order={g.order} poss={g.poss} />)}
           </div>
         )}
         {tab === 'changes' && (
