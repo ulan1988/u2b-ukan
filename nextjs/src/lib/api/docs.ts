@@ -1,8 +1,10 @@
 // Домен: ERP-документы (приход/расход/возвраты/оплаты/производство).
-import { getArray, getObj, post, patch } from './http'
+import { getArray, getObj, post, patch, send } from './http'
 
 export const listPurchases = (orgId: string) => getArray(`/api/documents?orgId=${orgId}`)
 export const createPurchase = (b: any) => post('/api/documents', b)
+// Удалить ошибочную позицию из проведённой накладной (склад/итог пересчитываются).
+export const deleteInvoiceLine = (docId: string, lineId: string) => send(`/api/documents/${docId}/line?lineId=${encodeURIComponent(lineId)}`, 'DELETE')
 export const getDocument = (id: string) => getObj(`/api/documents/${id}`, null as any)
 export const docChain = (id: string) => getObj(`/api/documents/${id}/chain`, null as any)
 export const updateDocument = (id: string, b: any) => patch(`/api/documents/${id}`, b)

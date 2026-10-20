@@ -188,6 +188,32 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
 
 export const listSales = (orgId: string) => docRepo.listInvoices(orgId, 'sale')
 
+// Удалить ОШИБОЧНУЮ позицию из проведённой накладной: убрать строку + вернуть движение склада
+// (пересчитать остаток по товару) + удалить позицию карточки (для сверки отчётов) + пересчитать итог.
+export async function deleteDocumentLine(docId: string, lineId: string, _actor?: any) {
+  const { sqlClient } = await import('../lib/db')
+  const [doc] = await sqlClient`select id, type, status, coalesce(discount_sum,0)::float ds from documents where id=${docId}` as unknown as Array<any>
+  if (!doc) return { ok: false as const, error: 'Документ не найден' }
+  if (doc.status === 'cancelled') return { ok: false as const, error: 'Документ отменён' }
+  const lines = await sqlClient`select id, product_id, qty::float, amount::float, source_pos_id from document_lines where document_id=${docId}` as unknown as Array<any>
+  if (lines.length <= 1) return { ok: false as const, error: 'Нельзя удалить последнюю позицию — отмените накладную («Вернуть»)' }
+  const line = lines.find((l: any) => l.id === lineId)
+  if (!line) return { ok: false as const, error: 'Позиция не найдена' }
+  await sqlClient`delete from document_lines where id=${lineId}`
+  // Движение склада по этому товару: пересчитать на остаток (если товар ещё в других строках) или удалить.
+  const sign = (doc.type === 'sale' || doc.type === 'return_out') ? -1 : 1
+  const remainQty = lines.filter((l: any) => l.id !== lineId && l.product_id === line.product_id).reduce((s: number, l: any) => s + Number(l.qty), 0)
+  if (remainQty > 0) await sqlClient`update stock_movements set qty=${String(sign * remainQty)} where document_id=${docId} and product_id=${line.product_id}`
+  else await sqlClient`delete from stock_movements where document_id=${docId} and product_id=${line.product_id}`
+  // Позиция карточки-основания (чтобы отчёты по order_positions не задваивали удалённое).
+  if (line.source_pos_id) await sqlClient`delete from order_positions where id=${line.source_pos_id}`
+  // Пересчитать итог документа (− скидка).
+  const newSubtotal = lines.filter((l: any) => l.id !== lineId).reduce((s: number, l: any) => s + Number(l.amount), 0)
+  const newTotal = Math.max(0, newSubtotal - (Number(doc.ds) || 0))
+  await sqlClient`update documents set total=${String(newTotal)}, reviewed=false, updated_at=now() where id=${docId}`
+  return { ok: true as const, total: newTotal }
+}
+
 // Возврат: return_in = от покупателя (+склад, −долг заказчика);
 // return_out = поставщику (−склад, −наш долг). Проводка = документ + строки + движение.
 export async function createReturn(input: CreateSaleInput & { sourceOrderId?: string; sourceDocId?: string }, kind: 'return_in' | 'return_out') {

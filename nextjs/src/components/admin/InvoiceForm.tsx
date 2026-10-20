@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
-import { getDocument, updateDocument } from '@/lib/api/docs'
+import { getDocument, updateDocument, deleteInvoiceLine } from '@/lib/api/docs'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
 
@@ -33,7 +33,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const [flash, setFlash] = useState('')
   const [returning, setReturning] = useState(false)
 
-  useEffect(() => { getDocument(id).then((d: any) => {
+  function reload() { return getDocument(id).then((d: any) => {
     if (!d) return
     setData(d)
     setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
@@ -42,7 +42,15 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setBlocks(Array.from(new Set(mapped.map((l: any) => l.block).filter(Boolean))) as string[])
     const izd = mapped.find((l: any) => isIzdelie(l.name) && Number(l.price) > 0)   // цена за см (общая) — из первой изделия
     setPriceCm(izd ? String(Number(izd.price)) : '')
-  }) }, [id])
+  }) }
+  useEffect(() => { reload() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Удалить ошибочную позицию из проведённой накладной (склад/итог пересчитаются).
+  async function delLine(l: any) {
+    if (!confirm(`Убрать позицию «${cleanNm(l.name)}» из накладной? Товар вернётся на склад, итог пересчитается.`)) return
+    const r: any = await deleteInvoiceLine(id, l.id)
+    if (r?.ok === false) { setFlash('⚠ ' + (r.error || 'Не удалось')); return }
+    await reload(); onSaved?.(); setFlash('✓ Позиция убрана'); setTimeout(() => setFlash(''), 1500)
+  }
   // Применить одну цену за см ко всем изделиям (у изделия price = цена за 1 см).
   const applyPriceCm = (v: string) => { setPriceCm(v); setLines(ls => ls.map(l => isIzdelie(l.name) ? { ...l, price: v } : l)) }
 
@@ -159,9 +167,9 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                         </div>
                       )}
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', '№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент'].map((h, i) => <th key={i} style={{ textAlign: i >= 3 && i <= 7 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                        <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', '№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент', ''].map((h, i) => <th key={i} style={{ textAlign: i >= 3 && i <= 7 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                         <tbody>
-                          {gl.length === 0 && <tr><td colSpan={9} style={{ padding: '14px 8px', textAlign: 'center', color: '#b8b1a6', fontSize: 12 }}>— перетащи строку сюда —</td></tr>}
+                          {gl.length === 0 && <tr><td colSpan={10} style={{ padding: '14px 8px', textAlign: 'center', color: '#b8b1a6', fontSize: 12 }}>— перетащи строку сюда —</td></tr>}
                           {gl.map(l => { const izd = isIzdelie(l.name); return (
                             <tr key={l.id} draggable onDragStart={() => setDragId(l.id)} onDragEnd={() => setDragId(null)} onDragOver={e => e.preventDefault()} onDrop={e => { e.stopPropagation(); if (dragId && dragId !== l.id) moveLine(dragId, l.block || '', l.id) }}
                               style={{ borderTop: '1px solid #efece8', opacity: dragId === l.id ? 0.4 : 1, background: dragId === l.id ? '#f5eefc' : undefined }}>
@@ -176,6 +184,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                                 : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price || ''} onChange={e => updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
                               <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
+                              <td style={{ padding: '6px 4px', width: 34, textAlign: 'center' }}><button type="button" onClick={() => delLine(l)} title="Убрать ошибочную позицию (товар вернётся на склад)" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b03020', fontSize: 15, lineHeight: 1 }}>🗑</button></td>
                             </tr>
                           ) })}
                         </tbody>
@@ -183,7 +192,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                     </div>
                   )
                 })}
-                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>Кол-во и склад менять нельзя (это движение склада). Блоки — раскладка по накладным поставщика; перетаскивай строки за ⠿.</div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>Кол-во и склад менять нельзя (движение склада). Ошибочную позицию можно убрать 🗑 (товар вернётся на склад, итог пересчитается). Блоки — перетаскивай строки за ⠿.</div>
               </div>
             ) : (
               <div style={{ padding: 20, background: '#faf8f6' }}>
