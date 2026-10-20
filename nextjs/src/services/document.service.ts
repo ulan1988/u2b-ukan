@@ -61,10 +61,13 @@ export async function getDocument(id: string) {
   // Заказчик (конечный клиент): из карточки-основания (sourceOrderId → order.contactId).
   // Нужен на приходной-зеркале головного (Нипа-поставщик → для какого заказчика, на кого долг).
   let customer: string | null = null
-  if (doc.sourceOrderId) {
+  if (doc.type === 'sale' && doc.sourceOrderId) {
     const orderRepo = await import('../repositories/order.repo')
     const [ord] = await orderRepo.getOrder(doc.sourceOrderId)
     if (ord?.contactId) { const [c] = await docRepo.contragentById(ord.contactId); customer = c?.name || null }
+  } else if (doc.type === 'purchase') {
+    // Приходная: заказчик(и) = клиенты продаж, под которые закуплено (doc_links).
+    customer = (await docRepo.linkedSaleCustomers(id)) || null
   }
   // Себестоимость продажи (связанные приходные + непокрытое×price_in) — верная, как в рентабельности.
   const cost = doc.type === 'sale' ? await docRepo.docCost(id) : 0

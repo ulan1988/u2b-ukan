@@ -36,6 +36,16 @@ export async function insertDocumentPosting(doc: NewDoc, lines: NewLine[], moves
   await db.batch(q as [any, ...any[]])
 }
 
+// Заказчик(и) приходной = клиенты продаж, под которые закуплено (doc_links → продажи → контрагент).
+export async function linkedSaleCustomers(docId: string): Promise<string> {
+  const r = await sqlClient`
+    select string_agg(distinct c.name, ', ') as names
+    from doc_links dl join documents sd on sd.id = dl.sale_doc_id
+    join contragents c on c.id = sd.contragent_id
+    where dl.purchase_doc_id = ${docId}` as unknown as Array<{ names: string | null }>
+  return r[0]?.names || ''
+}
+
 // Себестоимость продажи (как в рентабельности): связанные приходные + непокрытое × price_in.
 export async function docCost(docId: string): Promise<number> {
   const r = await sqlClient`
@@ -111,8 +121,12 @@ export function listInvoices(orgId: string, type: string | string[]) {
           group by dl.product_id
         ) lk on lk.product_id = sl.product_id
       )`,
-      // Заказчик (конечный клиент) из карточки-основания — на приходной головного «для кого / на кого долг».
-      customer: sql<string>`(select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})`,
+      // Заказчик: для ПРОДАЖИ — конечный клиент из карточки-основания; для ПРИХОДА (автозакуп/зеркало)
+      // — клиент(ы) продаж, под которые закуплено (через doc_links). «Для кого / на кого долг».
+      customer: sql<string>`(case when ${documents.type} = 'sale'
+        then (select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})
+        else (select string_agg(distinct c3.name, ', ') from doc_links dl join documents sd on sd.id = dl.sale_doc_id join contragents c3 on c3.id = sd.contragent_id where dl.purchase_doc_id = ${documents.id})
+      end)`,
     })
     .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
     .where(and(eq(documents.orgId, orgId), inArray(documents.type, types), ne(documents.status, 'cancelled')))
