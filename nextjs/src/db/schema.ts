@@ -48,6 +48,7 @@ export const contragents = pgTable('contragents', {
   openingBalance: numeric('opening_balance', { precision: 14, scale: 2 }).notNull().default('0'), // нач. остаток из акта сверки: + нам должны, − мы должны
   comment: text('comment'),
   favorite: boolean('favorite').notNull().default(false),           // ⭐ избранный — вверху пикеров
+  transit: boolean('transit').notNull().default(false),             // 🔀 постоянный СКВОЗНОЙ поставщик — при выборе позиция авто-сквозная
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('contragents_org_idx').on(t.orgId) }))

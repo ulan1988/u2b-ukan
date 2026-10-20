@@ -112,6 +112,9 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // мастера (isProd) и «Отправить логисту» (sendPositions ищет именно leg=1) не работает.
   const legMap = await legForSuppliers(i.positions.map(p => p.supplierId))
   const defaultLeg = i.prodOrder ? 1 : 2
+  // Сквозные поставщики (Базар Нипа): позиции с таким поставщиком авто-становятся сквозными.
+  const transitSupIds = new Set<string>()
+  for (const sid of Array.from(new Set(i.positions.map(p => p.supplierId).filter(Boolean)))) { if (await repo.supplierIsTransit(sid as string)) transitSupIds.add(sid as string) }
   // Логист по умолчанию орг (напр. Бауыржан) — автоматически ответственный по всем позициям,
   // если явно не задан. Так любой заказ сразу попадает в кабинет этого логиста.
   // Касса (прямая продажа) логиста не касается — дефолт-логиста не назначаем.
@@ -120,7 +123,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     costPrice: String((p as any).costPrice ?? 0),
-    transit: !!(p as any).transit,                          // сквозная строка (мимо склада)
+    transit: !!(p as any).transit || (p.supplierId ? transitSupIds.has(p.supplierId) : false),   // сквозная строка (или сквозной поставщик)
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? defLogist ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)
@@ -403,7 +406,7 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.costPrice !== undefined) set.costPrice = String(Number(patch.costPrice) || 0)
   if (patch.transit !== undefined) set.transit = !!patch.transit
   if (patch.widthCm !== undefined) set.widthCm = patch.widthCm != null && patch.widthCm !== '' ? String(patch.widthCm) : null
-  if (patch.supplierId !== undefined) { set.supplierId = patch.supplierId || null; set.leg = await legForSupplier(patch.supplierId || null) }
+  if (patch.supplierId !== undefined) { set.supplierId = patch.supplierId || null; set.leg = await legForSupplier(patch.supplierId || null); if (patch.supplierId && await repo.supplierIsTransit(patch.supplierId)) set.transit = true }   // сквозной поставщик (Базар Нипа) → авто-сквозная
   if (patch.respUserId !== undefined) set.respUserId = patch.respUserId || null
   if (patch.status !== undefined) set.status = patch.status
   if (patch.payment !== undefined) set.payment = patch.payment

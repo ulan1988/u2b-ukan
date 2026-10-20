@@ -4,6 +4,13 @@ import { orders, orderPositions, orderHistory, products, contragents, users, org
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
 
 // Кабинет-юзер заказчика по его контрагенту (чтобы заказ «от имени» появился в его кабинете).
+// Сквозной поставщик? (contragents.transit) — при выборе поставщиком позиция авто-сквозная.
+export const supplierIsTransit = async (id?: string | null) => {
+  if (!id) return false
+  const [r] = await db.select({ t: contragents.transit }).from(contragents).where(eq(contragents.id, id)).limit(1)
+  return !!(r as any)?.t
+}
+
 // Контрагент + его орг-владелец (name, orgId, вид орг) — для правила «заявка от имени заказчика».
 export const contragentOwner = async (contragentId: string) => {
   const [r] = await db.select({ name: contragents.name, orgId: contragents.orgId, ownerKind: organizations.kind })
