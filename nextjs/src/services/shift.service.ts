@@ -224,6 +224,8 @@ export async function cashReport(orgId: string, from: string, to: string) {
   for (const s of sales) { const r = ensure(s.day); r.sold = num(s.sold); r.cnt = num(s.cnt) }
   for (const i of incomeRows) { const r = ensure(i.day); r.cash = num(i.cash); r.kaspi = num(i.kaspi); r.qr = num(i.qr) }
   for (const e of exps) { const r = ensure(e.day); r.salary = num(e.salary); r.current = num(e.current) }
+  // Строку дня создаём и для дней, где был ТОЛЬКО возврат (иначе возврат не показывается).
+  for (const r of rets) ensure(r.day)
 
   // ── Остатки по счетам нарастающим ─────────────────────────────────────────────
   // Движения счёта = продажи/возвраты (payments) + «Деньги» (fin_row_amounts, вкл. переводы).
