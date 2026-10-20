@@ -245,7 +245,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
-        {!buy && !viewAs && (changed
+        {!buy && (changed
           ? <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => confirmChange(order.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', opacity: updating === order.id ? .6 : 1 }}>✓ Подтвердить изменение</button></div>
           : (order.linkedDocId && allDone) && <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => reopenEdit(order.id)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>✏️ Изменить карточку (после доставки)</button></div>)}
       </div>
