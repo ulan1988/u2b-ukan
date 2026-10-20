@@ -176,6 +176,19 @@ export async function cashReport(orgId: string, from: string, to: string) {
     where o.org_id=${orgId} and o.is_cancelled=false
     group by d.date
   ` as unknown as Array<any>
+  // ПРИХОД по ДАТЕ ОПЛАТЫ (payments, direction=in по продажам) — включает ПОГАШЕНИЯ ДОЛГА прошлых
+  // дней. Долг дня = продано − приход → при оплате старого долга уходит в минус (нетто по месяцу).
+  const incomeRows = await sqlClient`
+    select p.date::text as "day",
+      coalesce(sum(case when ca.name ilike '%kaspi%' or ca.name ilike '%каспи%' then p.amount else 0 end),0)::float kaspi,
+      coalesce(sum(case when ca.kind='bank' or ca.name ilike '%банк%' then p.amount else 0 end),0)::float qr,
+      coalesce(sum(case when not (ca.name ilike '%kaspi%' or ca.name ilike '%каспи%' or ca.kind='bank' or ca.name ilike '%банк%') then p.amount else 0 end),0)::float cash
+    from payments p
+    join documents d on d.id=p.document_id and d.type='sale' and d.status<>'cancelled'
+    join cash_accounts ca on ca.id=p.cash_account_id
+    where p.org_id=${orgId} and p.direction='in' and p.date between ${from} and ${to}
+    group by p.date
+  ` as unknown as Array<any>
   const exps = await sqlClient`
     with rr as (
       select r.date, r.article, (select coalesce(sum(a.amount),0) from fin_row_amounts a where a.row_id=r.id) tot
@@ -207,7 +220,9 @@ export async function cashReport(orgId: string, from: string, to: string) {
 
   const byDay: Record<string, any> = {}
   const ensure = (day: string) => (byDay[day] = byDay[day] || { day, cash: 0, kaspi: 0, qr: 0, sold: 0, cnt: 0, salary: 0, current: 0 })
-  for (const s of sales) { const r = ensure(s.day); r.cash = num(s.cash); r.kaspi = num(s.kaspi); r.qr = num(s.qr); r.sold = num(s.sold); r.cnt = num(s.cnt) }
+  // sold/cnt — по дате продажи (документ). cash/kaspi/qr — по дате ОПЛАТЫ (incomeRows, вкл. погашения).
+  for (const s of sales) { const r = ensure(s.day); r.sold = num(s.sold); r.cnt = num(s.cnt) }
+  for (const i of incomeRows) { const r = ensure(i.day); r.cash = num(i.cash); r.kaspi = num(i.kaspi); r.qr = num(i.qr) }
   for (const e of exps) { const r = ensure(e.day); r.salary = num(e.salary); r.current = num(e.current) }
 
   // ── Остатки по счетам нарастающим ─────────────────────────────────────────────
@@ -238,8 +253,8 @@ export async function cashReport(orgId: string, from: string, to: string) {
   const movDays = Object.keys(movByDay).sort()
 
   const days = Object.values(byDay).map((r: any) => {
-    const paid = r.cash + r.kaspi + r.qr                 // КАССА = Нал(осн.касса) + Каспи(GOLD) + QR(банк.счёт)
-    const debt = Math.max(0, r.sold - paid)
+    const paid = r.cash + r.kaspi + r.qr                 // КАССА = Нал(осн.касса) + Каспи(GOLD) + QR(банк.счёт), вкл. погашения долга
+    const debt = r.sold - paid                           // Долг (может быть МИНУС — погашен долг прошлых дней «вчерашней торговли»)
     const cost = costByDay[r.day] || 0, ret = retByDay[r.day] || 0
     const otpusk = cost + debt - ret                     // отпуск = себестоимость + долг − возврат
     const margin = paid - cost                           // маржа (100%) = КАССА − себестоимость (по образцу отчёта)
