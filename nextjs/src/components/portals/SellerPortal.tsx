@@ -12,7 +12,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, returnSale, payDebt } from '@/lib/api/orders'
+import { branchOrders, sellCheck, returnSale, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -23,6 +23,7 @@ const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e'
 type Tab = 'cash' | 'checks' | 'debts' | 'order'
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
+const qfmt = (n: number) => Number((n || 0).toFixed(3)).toLocaleString('ru-RU')   // кол-во (до 3 знаков, лист по частям)
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
 // Толщина из имени товара: «…0,45мм» → «0,45мм» (для фильтра толщины в каталоге).
@@ -78,6 +79,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [retAcc, setRetAcc] = useState('')
   const [repayFor, setRepayFor] = useState<any>(null)                   // чек, по которому открыто погашение
   const [repaySplit, setRepaySplit] = useState<Record<string, string>>({})  // сумма по каждому счёту (смешанная)
+  // «Долги»: под-вкладки «Долг клиентов» (чеки) / «Долг товаров» (взяли у соседа — вернём товаром).
+  const [debtTab, setDebtTab] = useState<'clients' | 'goods'>('clients')
+  const [gDebt, setGDebt] = useState<{ entries: any[]; balances: any[] }>({ entries: [], balances: [] })
+  const [gForm, setGForm] = useState<null | { contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли в долг»
+  const [gRet, setGRet] = useState<null | { contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string }>(null)  // шторка «вернул товаром»
+  const [gExpand, setGExpand] = useState<string>('')   // раскрытый сосед (журнал по нему)
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
@@ -131,6 +138,41 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   useEffect(() => { load() }, [load])
   useLiveData(() => { if (!showCatalog && !busy) load() }, [])
+
+  // «Долг товаров» — грузим при открытии вкладки «Долги».
+  const loadGDebt = useCallback(async () => { setGDebt(await fetchGoodsDebts(user.id)) }, [user.id])
+  useEffect(() => { if (tab === 'debts') loadGDebt() }, [tab, loadGDebt])
+
+  async function submitGForm() {
+    if (!gForm) return
+    if (!gForm.contragentId) { showMsg('⚠ Выберите соседа'); return }
+    if (!gForm.productName.trim()) { showMsg('⚠ Укажите товар'); return }
+    const qty = num(gForm.qty)
+    if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
+    setBusy(true)
+    const r = await addGoodsDebt({ uid: user.id, contragentId: gForm.contragentId, productName: gForm.productName.trim(), unit: gForm.unit || 'шт', direction: 'take', qty, note: gForm.note })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setGForm(null); await loadGDebt(); showMsg('✓ Записано: взяли в долг')
+  }
+  async function submitGRet() {
+    if (!gRet) return
+    const qty = num(gRet.qty)
+    if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
+    setBusy(true)
+    const r = await addGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, productName: gRet.productName, unit: gRet.unit || 'шт', direction: 'return', qty })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setGRet(null); await loadGDebt(); showMsg('✓ Возврат товаром записан')
+  }
+  async function removeGEntry(id: string) {
+    setBusy(true)
+    const r = await deleteGoodsDebt(id, user.id)
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    await loadGDebt(); showMsg('Запись удалена')
+  }
+  const gTotalLeft = gDebt.balances.reduce((s, g: any) => s + (g.totalLeft || 0), 0)
 
   const byName = useMemo(() => {
     const m: Record<string, any> = {}
@@ -620,25 +662,84 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
           {tab === 'debts' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div><div style={{ fontSize: 15, fontWeight: 800 }}>💳 Долги</div><div style={{ fontSize: 12, color: '#a09889' }}>{debtChecks.length} чек. с долгом</div></div>
-                <div style={{ marginLeft: 'auto', textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>всего</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debtTotal)} ₸</div></div>
+              {/* под-вкладки: Долг клиентов (чеки) / Долг товаров (взяли у соседа) */}
+              <div style={{ display: 'flex', gap: 6, background: '#fff', borderRadius: 12, padding: 5, boxShadow: '0 0 0 1px #e6e2dc' }}>
+                {([['clients', '💳 Долг клиентов'], ['goods', '📦 Долг товаров']] as const).map(([k, lbl]) => (
+                  <button key={k} onClick={() => setDebtTab(k)} style={{ flex: 1, border: 'none', borderRadius: 9, padding: '9px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, background: debtTab === k ? PRIMARY : 'transparent', color: debtTab === k ? '#fff' : '#8a8377' }}>{lbl}</button>
+                ))}
               </div>
-              {debtChecks.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов нет 🎉</div>}
-              {debtChecks.map((o: any) => {
-                const debt = checkDebt(o)
-                const time = new Date(o.delivered || o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit' })
-                return (
-                  <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{o.toName || o.contactName || o.fromName || 'Розница'}</div>
-                      <div style={{ fontSize: 11.5, color: '#a09889', fontFamily: 'monospace' }}>№ {o.docNumber || o.id} · {time}{o.seller ? ` · ${o.seller}` : ''}</div>
+
+              {debtTab === 'clients' && (<>
+                <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div><div style={{ fontSize: 15, fontWeight: 800 }}>💳 Долг клиентов</div><div style={{ fontSize: 12, color: '#a09889' }}>{debtChecks.length} чек. с долгом</div></div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>всего</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debtTotal)} ₸</div></div>
+                </div>
+                {debtChecks.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов нет 🎉</div>}
+                {debtChecks.map((o: any) => {
+                  const debt = checkDebt(o)
+                  const time = new Date(o.delivered || o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit' })
+                  return (
+                    <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{o.toName || o.contactName || o.fromName || 'Розница'}</div>
+                        <div style={{ fontSize: 11.5, color: '#a09889', fontFamily: 'monospace' }}>№ {o.docNumber || o.id} · {time}{o.seller ? ` · ${o.seller}` : ''}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>долг</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debt)} ₸</div></div>
+                      <button onClick={() => openRepay(o)} style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
                     </div>
-                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>долг</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{money(debt)} ₸</div></div>
-                    <button onClick={() => openRepay(o)} style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Погасить</button>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </>)}
+
+              {debtTab === 'goods' && (<>
+                <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div><div style={{ fontSize: 15, fontWeight: 800 }}>📦 Долг товаров</div><div style={{ fontSize: 12, color: '#a09889' }}>взяли у соседа — вернём товаром</div></div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>должны всего</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{qfmt(gTotalLeft)}</div></div>
+                </div>
+                <button onClick={() => setGForm({ contragentId: '', productName: '', unit: 'шт', qty: '', note: '' })} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '13px 8px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>➕ Взяли товар в долг</button>
+                {gDebt.balances.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов по товарам нет 🎉</div>}
+                {gDebt.balances.map((g: any) => {
+                  const open = gExpand === g.contragentId
+                  const log = (gDebt.entries || []).filter((e: any) => e.contragentId === g.contragentId)
+                  return (
+                    <div key={g.contragentId} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
+                      <div onClick={() => setGExpand(open ? '' : g.contragentId)} style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14.5, fontWeight: 800 }}>{g.contragentName || 'Сосед'}</div>
+                          <div style={{ fontSize: 11.5, color: '#a09889' }}>{g.items.filter((i: any) => i.left > 0.0005).length} позиц. в долгу</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>должны</div><div style={{ fontSize: 15, fontWeight: 800, color: g.totalLeft > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(g.totalLeft)}</div></div>
+                        <span style={{ color: '#b7b0a6', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
+                      </div>
+                      <div style={{ borderTop: '1px solid #f1efec' }}>
+                        {g.items.map((it: any, i: number) => (
+                          <div key={i} style={{ padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8, borderTop: i ? '1px solid #f6f3f0' : 'none' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.productName}</div>
+                              <div style={{ fontSize: 11, color: '#a09889' }}>взяли {qfmt(it.took)} · вернули {qfmt(it.returned)} {it.unit}</div>
+                            </div>
+                            <div style={{ textAlign: 'right', minWidth: 54 }}><div style={{ fontSize: 10, color: '#a09889' }}>остаток</div><div style={{ fontSize: 14, fontWeight: 800, color: it.left > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(it.left)}</div></div>
+                            {it.left > 0.0005 && <button onClick={() => setGRet({ contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.left, qty: String(Number(it.left.toFixed(3))) })} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
+                          </div>
+                        ))}
+                        {open && (
+                          <div style={{ borderTop: '1px solid #f1efec', padding: '8px 12px', background: '#faf8f6' }}>
+                            <div style={{ fontSize: 11, color: '#a09889', fontWeight: 700, marginBottom: 4 }}>ЖУРНАЛ</div>
+                            {log.map((e: any) => (
+                              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
+                                <span style={{ width: 70, color: '#a09889', fontFamily: 'monospace', fontSize: 11 }}>{new Date(e.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                <span style={{ fontWeight: 700, color: e.direction === 'return' ? GREEN : '#c0532a' }}>{e.direction === 'return' ? '↩ вернул' : '➕ взял'}</span>
+                                <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.productName} · {qfmt(Number(e.qty))} {e.unit}</span>
+                                <button onClick={() => removeGEntry(e.id)} title="Удалить запись" style={{ border: 'none', background: 'none', color: '#c88', cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </>)}
             </div>
           )}
         </div>
@@ -929,6 +1030,60 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           </div>
         )
       })()}
+
+      {/* ВЗЯЛИ ТОВАР В ДОЛГ — шторка: сосед (свой контрагент) + товар + кол-во */}
+      {gForm && (
+        <div onClick={() => setGForm(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>➕ Взяли товар в долг</div><div style={{ fontSize: 12, color: '#8a8377' }}>у соседа — вернём товаром</div></div>
+              <button onClick={() => setGForm(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+            </div>
+            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СОСЕД</div>
+                <ContragentPicker contragents={cags} value={gForm.contragentId} onPick={(c: any) => setGForm(f => f ? { ...f, contragentId: c?.id || '' } : f)} placeholder="— выберите соседа —" />
+              </div>
+              <div>
+                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>ТОВАР</div>
+                <input list="gdebt-products" value={gForm.productName} onChange={e => setGForm(f => f ? { ...f, productName: e.target.value } : f)} placeholder="название товара" style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
+                <datalist id="gdebt-products">{products.slice(0, 400).map((p: any) => <option key={p.id} value={p.name} />)}</datalist>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>КОЛ-ВО</div>
+                  <input value={gForm.qty} inputMode="decimal" placeholder="0" onChange={e => setGForm(f => f ? { ...f, qty: e.target.value.replace(/[^0-9.,]/g, '') } : f)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800 }} />
+                </div>
+                <div style={{ width: 90 }}>
+                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>ЕД.</div>
+                  <input value={gForm.unit} onChange={e => setGForm(f => f ? { ...f, unit: e.target.value } : f)} placeholder="шт" style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <button disabled={busy} onClick={submitGForm} style={{ border: 'none', background: busy ? '#cbb5a8' : PRIMARY, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : '➕ Записать долг'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ВЕРНУЛ ТОВАРОМ — шторка: кол-во возврата по позиции долга */}
+      {gRet && (
+        <div onClick={() => setGRet(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 800 }}>↩ Вернул товаром</div><div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {gRet.productName} · остаток {qfmt(gRet.left)} {gRet.unit}</div></div>
+              <button onClick={() => setGRet(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+            </div>
+            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>КОЛ-ВО К ВОЗВРАТУ</div>
+                <input value={gRet.qty} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, qty: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
+                <div style={{ fontSize: 11.5, color: '#a09889', marginTop: 4 }}>можно вернуть больше остатка (переплата) — остаток не уйдёт в минус</div>
+              </div>
+              <button disabled={busy} onClick={submitGRet} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : '↩ Записать возврат'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCatalog && <NomPicker onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
       <PushSetup />

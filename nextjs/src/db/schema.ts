@@ -564,3 +564,22 @@ export const projectAlloc = pgTable('project_alloc', {
   comment: text('comment').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byClient: index('project_alloc_client_idx').on(t.orgId, t.clientId) }))
+
+// «Долг товаров» (касса магазина) — ОТДЕЛЬНЫЙ журнал, НЕ трогает склад/бухгалтерию.
+// Взяли у соседа товар в долг (direction='take') → вернули товаром (direction='return').
+// Остаток долга по товару = Σ(take.qty) − Σ(return.qty), считается на количество (не деньги).
+// Контрагент — только свой (орг кассы); «кроме Адал Строй 2» — головной тут не участвует.
+export const goodsDebts = pgTable('goods_debts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  contragentId: uuid('contragent_id').notNull().references(() => contragents.id),
+  contragentName: text('contragent_name').notNull().default(''),   // снимок имени соседа на момент записи
+  productId: uuid('product_id').references(() => products.id),      // привязка к каталогу (необязательна)
+  productName: text('product_name').notNull(),                     // имя товара (снимок/свободный ввод)
+  unit: text('unit').notNull().default('шт'),
+  direction: text('direction').notNull(),                          // take (взяли в долг) | return (вернули товаром)
+  qty: numeric('qty', { precision: 14, scale: 3 }).notNull().default('0'),
+  note: text('note').notNull().default(''),
+  createdBy: text('created_by').notNull().default(''),             // кто записал
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('goods_debts_org_idx').on(t.orgId, t.contragentId) }))

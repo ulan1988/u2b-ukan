@@ -28,6 +28,18 @@ export const sellSchema = z.object({
   positions: z.array(sellPositionSchema).min(1),
 })
 
+// «Долг товаров» (касса магазина): взяли у соседа товар в долг / вернули товаром. Отдельный журнал.
+export const goodsDebtSchema = z.object({
+  uid: z.string().uuid().optional(),
+  contragentId: z.string().uuid(),                // сосед — только контрагент этого магазина
+  productId: z.string().uuid().optional(),        // привязка к каталогу (необязательна)
+  productName: z.string().min(1),                 // имя товара (из каталога или свободно)
+  unit: z.string().optional().default('шт'),
+  direction: z.enum(['take', 'return']),          // take = взяли в долг, return = вернули товаром
+  qty: z.coerce.number().positive(),
+  note: z.string().optional().default(''),
+})
+
 // Возврат по чеку: позиции с кол-вом (пусто → весь чек, остаток по каждой) + счёт возврата.
 export const returnSchema = z.object({
   uid: z.string().uuid().optional(),

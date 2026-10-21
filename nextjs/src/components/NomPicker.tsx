@@ -208,8 +208,11 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   function padDigit(d: string) {
     const dec = d === '.' || d === ','
     setPad(p => { if (!p) return p; const f = activeF(p)
-      if (f === 'cm') { if (dec) return p; const v = ((p.cmStr === '0' ? '' : p.cmStr || '') + d).slice(0, 4); return { ...p, cmStr: v } }
-      // Кол-во: поддержка дробного (лист режем на части) — одна точка, «.5» → «0.5».
+      // Дробное поддерживается в ОБОИХ полях (длина см и кол-во) — лист режем на части.
+      if (f === 'cm') {
+        if (dec) { if ((p.cmStr || '').includes('.')) return p; return { ...p, cmStr: ((p.cmStr || '') === '' ? '0.' : p.cmStr + '.') } }
+        const v = ((p.cmStr === '0' ? '' : p.cmStr || '') + d).slice(0, 6); return { ...p, cmStr: v }
+      }
       if (dec) { if ((p.digits || '').includes('.')) return p; return { ...p, digits: ((p.digits || '') === '' ? '0.' : p.digits + '.') } }
       const v = ((p.digits === '0' ? '' : p.digits) + d).slice(0, 8); return { ...p, digits: v } })
   }

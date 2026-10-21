@@ -1,5 +1,5 @@
 // Домен: заявки/карточки (админка, доска, порталы).
-import { getArray, getOne, post, patch as patch2, send } from './http'
+import { getArray, getObj, getOne, post, patch as patch2, send } from './http'
 
 export const listOrders = (orgId: string) => getArray(`/api/orders?orgId=${orgId}`)
 export const listByScreen = (orgId: string, screen: string) => getArray(`/api/orders?orgId=${orgId}&screen=${screen}`)
@@ -87,6 +87,16 @@ export async function updateCard(cardId: string, patch: any) {
 export const logistOrders = (uid?: string) => getArray(`/api/logist/orders${uid ? `?uid=${uid}` : ''}`)
 export const clientOrders = (uid?: string) => getArray(`/api/client/orders${uid ? `?uid=${uid}` : ''}`)
 export const branchOrders = (uid?: string) => getArray(`/api/branch/orders${uid ? `?uid=${uid}` : ''}`)
+// «Долг товаров» (касса магазина): журнал взяли/вернули + свёрнутые остатки.
+export const goodsDebts = (uid?: string) => getObj<{ entries: any[]; balances: any[] }>(`/api/branch/goods-debt${uid ? `?uid=${uid}` : ''}`, { entries: [], balances: [] })
+export async function addGoodsDebt(body: { uid?: string; contragentId: string; productId?: string; productName: string; unit?: string; direction: 'take' | 'return'; qty: number; note?: string }) {
+  const r = await post('/api/branch/goods-debt', body)
+  return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
+}
+export async function deleteGoodsDebt(id: string, uid?: string) {
+  const r = await send(`/api/branch/goods-debt?id=${id}${uid ? `&uid=${uid}` : ''}`, 'DELETE')
+  return { ok: r.ok, error: r.error as string | undefined }
+}
 // Смена мастера: сводка дня + добавление расхода (ЗП/текущий) + закрытие.
 export const shiftSummary = (date: string, uid?: string) => getOne<any>(`/api/branch/shift?date=${date}${uid ? `&uid=${uid}` : ''}`)
 export const addShiftExpense = (body: { kind: 'salary' | 'current'; who?: string; article?: string; accountId: string; amount: number; date: string }) => post('/api/branch/shift', body)
