@@ -640,6 +640,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           )}
         </div>}
         {tab === 'produce' && <div>
+          <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
           <div style={{ background: '#e8f5ee', color: '#2e8a5e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>🔧 Стол мастера: <b>Принял</b> → <b>В работе</b> → <b>Готов к доставке</b> → отправка логисту. Позиции — в шторке (📋), можно отправить целиком или частями.</div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button onClick={() => { setShowDirect(v => !v); setShowStock(false) }} style={{ padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
