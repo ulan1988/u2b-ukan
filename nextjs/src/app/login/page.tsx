@@ -13,10 +13,26 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const from = searchParams.get('from') || ''
 
+  // Кабинеты (быстрый выбор логина). slug — чтобы вход со страницы филиала (/branch/<slug>)
+  // показывал ТОЛЬКО этот кабинет; hq — админский (личный), на кассе магазина не показываем.
+  const CABS = [
+    { ic: '🏢', org: 'Головной', em: 'ulan', slug: '', hq: true },
+    { ic: '🏭', org: 'Нипа', em: 'Nipa', slug: 'filial-proizvoditel-x70z' },
+    { ic: '🏪', org: 'Кристалл', em: 'Kristal', slug: 'filial-prodavets-32wl' },
+  ]
+  const cashierMode = from.startsWith('/branch')              // вход со страницы филиала/кассы
+  const fromSlug = from.startsWith('/branch/') ? from.slice('/branch/'.length).split(/[/?#]/)[0] : ''
+  const pinned = fromSlug ? CABS.find(c => c.slug === fromSlug) : undefined
+  // Касса конкретного магазина → только его кабинет; иначе из филиала → без админского; админ → все.
+  const cabs = pinned ? [pinned] : (cashierMode ? CABS.filter(c => !c.hq) : CABS)
+
   const [current, setCurrent] = useState<any>(null)   // уже активная сессия (чтобы не «входить опять»)
   useEffect(() => {
-    try { const em = localStorage.getItem('ukan_last_login'); if (em) setEmail(em) } catch {}
+    // Касса конкретного магазина → подставляем его логин; иначе — последний использованный.
+    if (pinned) setEmail(pinned.em)
+    else { try { const em = localStorage.getItem('ukan_last_login'); if (em) setEmail(em) } catch {} }
     apiMe().then((u: any) => setCurrent(u && u.id ? u : null)).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const homeOf = (u: any) => u?.role === 'branch' && u?.slug ? `/branch/${u.slug}` : u?.role === 'logist' && u?.slug ? `/rsp/${u.slug}` : ['admin', 'super_admin', 'bookkeeper'].includes(u?.role) ? '/admin' : u?.slug ? `/client/${u.slug}` : '/admin'
   async function switchAccount() { try { await apiLogout() } catch {} setCurrent(null); setEmail(''); setPassword('') }
@@ -59,19 +75,19 @@ function LoginForm() {
             <div style={{ fontSize: 12, color: '#5f5952', fontWeight: 700, marginTop: 4, letterSpacing: '.04em' }}>автоматизация бизнеса</div>
           </div>
         </div>
-        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Вход в систему</div>
-        <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 14 }}>Выберите кабинет и введите пароль</div>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 4 }}>{pinned ? `Касса · ${pinned.org}` : cashierMode ? 'Вход филиала' : 'Вход в систему'}</div>
+        <div style={{ color: '#5f5952', fontSize: 14, marginBottom: 14 }}>{pinned ? 'Введите пароль магазина' : 'Выберите кабинет и введите пароль'}</div>
         {current && (
           <div style={{ background: '#eef7f1', border: '1.5px solid #cfe7d8', borderRadius: 10, padding: '11px 13px', marginBottom: 16 }}>
             <div style={{ fontSize: 13.5, color: '#2e6b4a' }}>Вы уже вошли как <b>{current.name}</b></div>
             <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
-              <button type="button" onClick={() => router.push(homeOf(current))} style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Открыть кабинет →</button>
+              <button type="button" onClick={() => router.push(cashierMode && from ? from : homeOf(current))} style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Открыть кабинет →</button>
               <button type="button" onClick={switchAccount} style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1.5px solid #cbbfae', background: '#fff', color: '#8a6f00', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Выйти и сменить</button>
             </div>
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-          {([['🏢', 'Головной', 'ulan'], ['🏭', 'Нипа', 'Nipa'], ['🏪', 'Кристалл', 'Kristal']] as const).map(([ic, org, em]) => {
+          {cabs.map(({ ic, org, em }) => {
             const on = email.trim().toLowerCase() === em.toLowerCase()
             return (
               <button key={em} type="button" onClick={() => { setEmail(em); setPassword(''); setError('') }} style={{ flex: 1, padding: '12px 5px', borderRadius: 10, border: `1.5px solid ${on ? '#d4613a' : '#e6e2dc'}`, background: on ? '#fff3ee' : '#faf8f5', color: on ? '#c0532a' : '#4a4640', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center', lineHeight: 1.15 }}>
@@ -93,9 +109,11 @@ function LoginForm() {
             {loading ? 'Вход...' : 'ВОЙТИ →'}
           </button>
         </form>
-        <div style={{ textAlign: 'center', marginTop: 20 }}>
-          <a href="/register" style={{ color: '#5f5952', fontSize: 14 }}>Новый клиент? Зарегистрироваться →</a>
-        </div>
+        {!cashierMode && (
+          <div style={{ textAlign: 'center', marginTop: 20 }}>
+            <a href="/register" style={{ color: '#5f5952', fontSize: 14 }}>Новый клиент? Зарегистрироваться →</a>
+          </div>
+        )}
       </div>
     </div>
   )

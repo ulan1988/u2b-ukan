@@ -24,7 +24,9 @@ async function portalFor(user: { id: string; name: string; orgId: string; slug?:
 
 export default async function BranchPage({ params }: { params: { slug: string } }) {
   const session = await getSession()
-  if (!session) redirect('/login?from=/branch')
+  // Не авторизован → отдельный вход магазина/филиала: слаг долетает до логина,
+  // чтобы показать ТОЛЬКО кабинет этого филиала (продавец не видит админский) и вернуть в кассу.
+  if (!session) redirect(`/login?from=/branch/${params.slug}`)
   const isAdmin = ['admin', 'super_admin', 'bookkeeper'].includes(session.role)
   if (session.role === 'branch') return await portalFor(session as any)
   if (isAdmin) {
