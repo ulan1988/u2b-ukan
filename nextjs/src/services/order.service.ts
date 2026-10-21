@@ -335,7 +335,8 @@ export async function reopenForEdit(cardId: string, actor?: Session | null) {
   const wasChain = kind === 'producer_seller' && (order.payment === 'Долг' || order.payment === 'Частично')
   const { unpostSale } = await import('./cashier.service')
   const r = await unpostSale(cardId, actor)
-  if (!r.ok) return r
+  // нормализуем к литеральному {ok:false, error} — иначе чужой тип ломает сужение union у dispatchAction
+  if (!r.ok) return { ok: false as const, error: (r as any).error || 'Не удалось сторнировать' }
   await repo.updatePositionsByCard(cardId, { status: 'В работе' })
   await repo.updateOrder(cardId, { screen: 'outgoing', status: 'В работе', isChanged: true, changeText: 'Правка после доставки — подтвердите', delivered: null, ...(wasChain ? { pendingDebtHead: true } : {}) } as any)
   await repo.insertHistory({ cardId, action: 'reopenEdit', detail: 'Открыто для правки после доставки — цепочка сторнирована', userName: actor?.name || 'Система' })

@@ -85,6 +85,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [gForm, setGForm] = useState<null | { contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли в долг»
   const [gRet, setGRet] = useState<null | { contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string }>(null)  // шторка «вернул товаром»
   const [gExpand, setGExpand] = useState<string>('')   // раскрытый сосед (журнал по нему)
+  const [showGCatalog, setShowGCatalog] = useState(false)   // каталог для выбора товара в «долг товаров»
   // каталог на экране
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])   // выбранные подпапки по уровням раздела
@@ -142,6 +143,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // «Долг товаров» — грузим при открытии вкладки «Долги».
   const loadGDebt = useCallback(async () => { setGDebt(await fetchGoodsDebts(user.id)) }, [user.id])
   useEffect(() => { if (tab === 'debts') loadGDebt() }, [tab, loadGDebt])
+
+  // Товар для «долга товаров» — из НАШЕГО каталога (NomPicker). Подставляем имя/ед./кол-во.
+  function onPickGForm(picked: PickedPos[]) {
+    setShowGCatalog(false)
+    const p = picked[0]; if (!p) return
+    setGForm(f => f ? { ...f, productName: p.oral || p.name1c, unit: p.unit || 'шт', qty: p.qty ? String(p.qty) : f.qty } : f)
+  }
 
   async function submitGForm() {
     if (!gForm) return
@@ -1046,8 +1054,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
               <div>
                 <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>ТОВАР</div>
-                <input list="gdebt-products" value={gForm.productName} onChange={e => setGForm(f => f ? { ...f, productName: e.target.value } : f)} placeholder="название товара" style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
-                <datalist id="gdebt-products">{products.slice(0, 400).map((p: any) => <option key={p.id} value={p.name} />)}</datalist>
+                <button type="button" onClick={() => setShowGCatalog(true)} style={{ ...inp, width: '100%', boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer', background: '#fff', color: gForm.productName ? DARK : '#9a938a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gForm.productName || '📖 Выбрать из каталога'}</span>
+                  <span style={{ color: '#b7b0a6', fontSize: 15 }}>📖</span>
+                </button>
+                {gForm.productName && <div style={{ fontSize: 11, color: '#a09889', marginTop: 3 }}>можно изменить — тап по полю</div>}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
@@ -1086,6 +1097,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       )}
 
       {showCatalog && <NomPicker onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
+      {showGCatalog && <NomPicker onPick={onPickGForm} onClose={() => setShowGCatalog(false)} />}
       <PushSetup />
     </div>
   )
