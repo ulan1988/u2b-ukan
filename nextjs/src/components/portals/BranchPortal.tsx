@@ -317,7 +317,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: PRIMARY }}>{o.id}</span><StatusBadge status={o.status} /></div>
             <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{fmtDate(o.createdAt)}</span>
           </div>
-          <div style={{ fontSize: 14, marginBottom: 8 }}><strong>{o.fromName || 'не распределено'}</strong>{o.deadline && <span style={{ color: '#5f5952', fontSize: 13, marginLeft: 8 }}>до {fmtDate(o.deadline)}</span>}</div>
+          <div style={{ fontSize: 14, marginBottom: 8 }}><strong>{o.fromName || 'не распределено'}</strong>{custName(o) && <span style={{ color: '#4a4640', fontSize: 13, marginLeft: 8, fontWeight: 600 }}>· 👤 {custName(o)}</span>}{o.deadline && <span style={{ color: '#5f5952', fontSize: 13, marginLeft: 8 }}>до {fmtDate(o.deadline)}</span>}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ flex: 1, height: 5, background: '#f1efec', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), borderRadius: 3, transition: 'width .3s' }} /></div><span style={{ fontSize: 13, fontWeight: 700, color: barColor(pct), minWidth: 36, textAlign: 'right' }}>{pct}%</span></div>
         </div>
         {isOpen && (
@@ -657,6 +657,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           ] as const).map(g => g.items.length === 0 ? null : (
             <div key={g.key} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: g.color, letterSpacing: '.04em', marginBottom: 8 }}>{g.title} · {g.items.length}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 10, alignItems: 'start' }}>
               {g.items.map(o => {
                 const leg1 = (o.positions || []).filter((p: any) => Number(p.leg) === 1)
                 const total = (o.positions || []).length
@@ -697,6 +698,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   </div>
                 )
               })}
+              </div>
             </div>
           ))}
 
@@ -707,6 +709,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           ] as const).map(sec => sec.items.length === 0 ? null : (
             <div key={sec.key} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: sec.color, letterSpacing: '.04em', marginBottom: 8 }}>{sec.title} · {sec.items.length}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 10, alignItems: 'start' }}>
               {sec.items.map(o => {
                 const total = cardSum(o)
                 const debtLeft = cardDebt(o)
@@ -728,10 +731,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   </div>
                 )
               })}
+              </div>
             </div>
           ))}
         </div>}
-        {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
+        {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 10, alignItems: 'start' }}>{outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}</div>}
         {tab === 'new' && (
           <div>
             {newDone ? (
