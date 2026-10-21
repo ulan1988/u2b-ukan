@@ -35,7 +35,9 @@ export const goodsDebtSchema = z.object({
   productId: z.string().uuid().optional(),        // привязка к каталогу (необязательна)
   productName: z.string().min(1),                 // имя товара (из каталога или свободно)
   unit: z.string().optional().default('шт'),
-  direction: z.enum(['take', 'return']),          // take = взяли в долг, return = вернули товаром
+  // мы ДОЛЖНЫ: take = взяли в долг, return = вернули товаром;
+  // нам ДОЛЖНЫ: give = отдали в долг, giveback = сосед вернул нам
+  direction: z.enum(['take', 'return', 'give', 'giveback']),
   qty: z.coerce.number().positive(),
   note: z.string().optional().default(''),
 })

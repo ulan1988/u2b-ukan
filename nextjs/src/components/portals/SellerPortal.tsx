@@ -19,7 +19,7 @@ import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
 
-const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e'
+const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e', BLUE = '#3a6ea5'
 type Tab = 'cash' | 'checks' | 'debts' | 'order'
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
@@ -82,8 +82,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // «Долги»: под-вкладки «Долг клиентов» (чеки) / «Долг товаров» (взяли у соседа — вернём товаром).
   const [debtTab, setDebtTab] = useState<'clients' | 'goods'>('clients')
   const [gDebt, setGDebt] = useState<{ entries: any[]; balances: any[] }>({ entries: [], balances: [] })
-  const [gForm, setGForm] = useState<null | { contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли в долг»
-  const [gRet, setGRet] = useState<null | { contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string }>(null)  // шторка «вернул товаром»
+  const [gForm, setGForm] = useState<null | { mode: 'take' | 'give'; contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли/отдали в долг»
+  const [gRet, setGRet] = useState<null | { dir: 'return' | 'giveback'; contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string }>(null)  // шторка «вернул/принял товаром»
   const [gExpand, setGExpand] = useState<string>('')   // раскрытый сосед (журнал по нему)
   const [showGCatalog, setShowGCatalog] = useState(false)   // каталог для выбора товара в «долг товаров»
   // каталог на экране
@@ -158,20 +158,20 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const qty = num(gForm.qty)
     if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
     setBusy(true)
-    const r = await addGoodsDebt({ uid: user.id, contragentId: gForm.contragentId, productName: gForm.productName.trim(), unit: gForm.unit || 'шт', direction: 'take', qty, note: gForm.note })
+    const r = await addGoodsDebt({ uid: user.id, contragentId: gForm.contragentId, productName: gForm.productName.trim(), unit: gForm.unit || 'шт', direction: gForm.mode, qty, note: gForm.note })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setGForm(null); await loadGDebt(); showMsg('✓ Записано: взяли в долг')
+    setGForm(null); await loadGDebt(); showMsg(gForm.mode === 'give' ? '✓ Записано: отдали в долг' : '✓ Записано: взяли в долг')
   }
   async function submitGRet() {
     if (!gRet) return
     const qty = num(gRet.qty)
     if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
     setBusy(true)
-    const r = await addGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, productName: gRet.productName, unit: gRet.unit || 'шт', direction: 'return', qty })
+    const r = await addGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, productName: gRet.productName, unit: gRet.unit || 'шт', direction: gRet.dir, qty })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setGRet(null); await loadGDebt(); showMsg('✓ Возврат товаром записан')
+    setGRet(null); await loadGDebt(); showMsg(gRet.dir === 'giveback' ? '✓ Сосед вернул — записано' : '✓ Возврат товаром записан')
   }
   async function removeGEntry(id: string) {
     setBusy(true)
@@ -180,7 +180,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     await loadGDebt(); showMsg('Запись удалена')
   }
-  const gTotalLeft = gDebt.balances.reduce((s, g: any) => s + (g.totalLeft || 0), 0)
+  const gWeOweTotal = gDebt.balances.reduce((s, g: any) => s + (g.weOweTotal || 0), 0)   // мы должны
+  const gTheyOweTotal = gDebt.balances.reduce((s, g: any) => s + (g.theyOweTotal || 0), 0) // нам должны
 
   const byName = useMemo(() => {
     const m: Record<string, any> = {}
@@ -701,10 +702,16 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
               {debtTab === 'goods' && (<>
                 <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div><div style={{ fontSize: 15, fontWeight: 800 }}>📦 Долг товаров</div><div style={{ fontSize: 12, color: '#a09889' }}>взяли у соседа — вернём товаром</div></div>
-                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>должны всего</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{qfmt(gTotalLeft)}</div></div>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>📦 Долг товаров</div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
+                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: '#a09889' }}>мы должны</div><div style={{ fontSize: 16, fontWeight: 800, color: '#c0532a' }}>{qfmt(gWeOweTotal)}</div></div>
+                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: '#a09889' }}>нам должны</div><div style={{ fontSize: 16, fontWeight: 800, color: BLUE }}>{qfmt(gTheyOweTotal)}</div></div>
+                  </div>
                 </div>
-                <button onClick={() => setGForm({ contragentId: '', productName: '', unit: 'шт', qty: '', note: '' })} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '13px 8px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>➕ Взяли товар в долг</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setGForm({ mode: 'take', contragentId: '', productName: '', unit: 'шт', qty: '', note: '' })} style={{ flex: 1, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>➕ Взяли в долг</button>
+                  <button onClick={() => setGForm({ mode: 'give', contragentId: '', productName: '', unit: 'шт', qty: '', note: '' })} style={{ flex: 1, border: 'none', background: BLUE, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>➖ Отдали в долг</button>
+                </div>
                 {gDebt.balances.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов по товарам нет 🎉</div>}
                 {gDebt.balances.map((g: any) => {
                   const open = gExpand === g.contragentId
@@ -714,33 +721,48 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       <div onClick={() => setGExpand(open ? '' : g.contragentId)} style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 14.5, fontWeight: 800 }}>{g.contragentName || 'Сосед'}</div>
-                          <div style={{ fontSize: 11.5, color: '#a09889' }}>{g.items.filter((i: any) => i.left > 0.0005).length} позиц. в долгу</div>
+                          <div style={{ fontSize: 11.5, color: '#a09889' }}>{g.items.filter((i: any) => i.weOwe > 0.0005 || i.theyOwe > 0.0005).length} позиц.</div>
                         </div>
-                        <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10.5, color: '#a09889' }}>должны</div><div style={{ fontSize: 15, fontWeight: 800, color: g.totalLeft > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(g.totalLeft)}</div></div>
+                        {g.weOweTotal > 0.0005 && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9.5, color: '#a09889' }}>мы должны</div><div style={{ fontSize: 15, fontWeight: 800, color: '#c0532a' }}>{qfmt(g.weOweTotal)}</div></div>}
+                        {g.theyOweTotal > 0.0005 && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9.5, color: '#a09889' }}>нам должны</div><div style={{ fontSize: 15, fontWeight: 800, color: BLUE }}>{qfmt(g.theyOweTotal)}</div></div>}
                         <span style={{ color: '#b7b0a6', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
                       </div>
                       <div style={{ borderTop: '1px solid #f1efec' }}>
                         {g.items.map((it: any, i: number) => (
-                          <div key={i} style={{ padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8, borderTop: i ? '1px solid #f6f3f0' : 'none' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.productName}</div>
-                              <div style={{ fontSize: 11, color: '#a09889' }}>взяли {qfmt(it.took)} · вернули {qfmt(it.returned)} {it.unit}</div>
-                            </div>
-                            <div style={{ textAlign: 'right', minWidth: 54 }}><div style={{ fontSize: 10, color: '#a09889' }}>остаток</div><div style={{ fontSize: 14, fontWeight: 800, color: it.left > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(it.left)}</div></div>
-                            {it.left > 0.0005 && <button onClick={() => setGRet({ contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.left, qty: String(Number(it.left.toFixed(3))) })} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
+                          <div key={i} style={{ padding: '9px 12px', borderTop: i ? '1px solid #f6f3f0' : 'none' }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{it.productName}</div>
+                            {/* МЫ ДОЛЖНЫ: взяли → вернули */}
+                            {it.took > 0.0005 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
+                                <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>взяли {qfmt(it.took)} · вернули {qfmt(it.returned)} {it.unit}</div>
+                                <div style={{ textAlign: 'right', minWidth: 48 }}><div style={{ fontSize: 9.5, color: '#a09889' }}>мы должны</div><div style={{ fontSize: 14, fontWeight: 800, color: it.weOwe > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(it.weOwe)}</div></div>
+                                {it.weOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'return', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.weOwe, qty: String(Number(it.weOwe.toFixed(3))) })} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
+                              </div>
+                            )}
+                            {/* НАМ ДОЛЖНЫ: отдали → сосед вернул */}
+                            {it.given > 0.0005 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
+                                <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>отдали {qfmt(it.given)} · вернул {qfmt(it.givenBack)} {it.unit}</div>
+                                <div style={{ textAlign: 'right', minWidth: 48 }}><div style={{ fontSize: 9.5, color: '#a09889' }}>нам должны</div><div style={{ fontSize: 14, fontWeight: 800, color: it.theyOwe > 0.0005 ? BLUE : GREEN }}>{qfmt(it.theyOwe)}</div></div>
+                                {it.theyOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'giveback', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.theyOwe, qty: String(Number(it.theyOwe.toFixed(3))) })} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Принял</button>}
+                              </div>
+                            )}
                           </div>
                         ))}
                         {open && (
                           <div style={{ borderTop: '1px solid #f1efec', padding: '8px 12px', background: '#faf8f6' }}>
                             <div style={{ fontSize: 11, color: '#a09889', fontWeight: 700, marginBottom: 4 }}>ЖУРНАЛ</div>
-                            {log.map((e: any) => (
-                              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
-                                <span style={{ width: 70, color: '#a09889', fontFamily: 'monospace', fontSize: 11 }}>{new Date(e.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                                <span style={{ fontWeight: 700, color: e.direction === 'return' ? GREEN : '#c0532a' }}>{e.direction === 'return' ? '↩ вернул' : '➕ взял'}</span>
-                                <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.productName} · {qfmt(Number(e.qty))} {e.unit}</span>
-                                <button onClick={() => removeGEntry(e.id)} title="Удалить запись" style={{ border: 'none', background: 'none', color: '#c88', cursor: 'pointer', fontSize: 14 }}>🗑</button>
-                              </div>
-                            ))}
+                            {log.map((e: any) => {
+                              const L = e.direction === 'return' ? { t: '↩ вернул', c: GREEN } : e.direction === 'give' ? { t: '➖ отдал', c: BLUE } : e.direction === 'giveback' ? { t: '↩ принял', c: GREEN } : { t: '➕ взял', c: '#c0532a' }
+                              return (
+                                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
+                                  <span style={{ width: 70, color: '#a09889', fontFamily: 'monospace', fontSize: 11 }}>{new Date(e.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span style={{ fontWeight: 700, color: L.c, whiteSpace: 'nowrap' }}>{L.t}</span>
+                                  <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.productName} · {qfmt(Number(e.qty))} {e.unit}</span>
+                                  <button onClick={() => removeGEntry(e.id)} title="Удалить запись" style={{ border: 'none', background: 'none', color: '#c88', cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                                </div>
+                              )
+                            })}
                           </div>
                         )}
                       </div>
@@ -1039,12 +1061,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         )
       })()}
 
-      {/* ВЗЯЛИ ТОВАР В ДОЛГ — шторка: сосед (свой контрагент) + товар + кол-во */}
-      {gForm && (
+      {/* ВЗЯЛИ / ОТДАЛИ ТОВАР В ДОЛГ — шторка: сосед (свой контрагент) + товар + кол-во */}
+      {gForm && (() => { const give = gForm.mode === 'give'; const acc = give ? BLUE : PRIMARY; return (
         <div onClick={() => setGForm(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>➕ Взяли товар в долг</div><div style={{ fontSize: 12, color: '#8a8377' }}>у соседа — вернём товаром</div></div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{give ? '➖ Отдали товар в долг' : '➕ Взяли товар в долг'}</div><div style={{ fontSize: 12, color: '#8a8377' }}>{give ? 'соседу — он вернёт товаром' : 'у соседа — вернём товаром'}</div></div>
               <button onClick={() => setGForm(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1070,18 +1092,18 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <input value={gForm.unit} onChange={e => setGForm(f => f ? { ...f, unit: e.target.value } : f)} placeholder="шт" style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
                 </div>
               </div>
-              <button disabled={busy} onClick={submitGForm} style={{ border: 'none', background: busy ? '#cbb5a8' : PRIMARY, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : '➕ Записать долг'}</button>
+              <button disabled={busy} onClick={submitGForm} style={{ border: 'none', background: busy ? '#cbb5a8' : acc, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : (give ? '➖ Записать (отдали)' : '➕ Записать долг')}</button>
             </div>
           </div>
         </div>
-      )}
+      ) })()}
 
-      {/* ВЕРНУЛ ТОВАРОМ — шторка: кол-во возврата по позиции долга */}
+      {/* ВЕРНУЛ / ПРИНЯЛ ТОВАРОМ — шторка: кол-во по позиции долга */}
       {gRet && (
         <div onClick={() => setGRet(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 800 }}>↩ Вернул товаром</div><div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {gRet.productName} · остаток {qfmt(gRet.left)} {gRet.unit}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{gRet.dir === 'giveback' ? '↩ Сосед вернул' : '↩ Вернул товаром'}</div><div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {gRet.productName} · остаток {qfmt(gRet.left)} {gRet.unit}</div></div>
               <button onClick={() => setGRet(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1090,7 +1112,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <input value={gRet.qty} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, qty: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
                 <div style={{ fontSize: 11.5, color: '#a09889', marginTop: 4 }}>можно вернуть больше остатка (переплата) — остаток не уйдёт в минус</div>
               </div>
-              <button disabled={busy} onClick={submitGRet} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : '↩ Записать возврат'}</button>
+              <button disabled={busy} onClick={submitGRet} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : (gRet.dir === 'giveback' ? '↩ Записать (принял)' : '↩ Записать возврат')}</button>
             </div>
           </div>
         </div>
