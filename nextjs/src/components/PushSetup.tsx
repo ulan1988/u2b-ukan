@@ -27,10 +27,19 @@ async function doSubscribe() {
 
 export default function PushSetup() {
   const [perm, setPerm] = useState<string>('unsupported')
+  const [iosHint, setIosHint] = useState(false)   // iPhone в Safari (не на домашнем экране) — подсказать установку
 
   useEffect(() => {
+    const ua = navigator.userAgent || ''
+    const isIOS = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)   // iPadOS маскируется под Mac
+    const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator as any).standalone === true
     const okEnv = typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window && !!VAPID
-    if (!okEnv) { setPerm('unsupported'); return }
+    if (!okEnv) {
+      // iOS в обычном Safari пуш не поддерживает — только из PWA на домашнем экране. Подскажем, если ещё не прятали.
+      let hidden = false; try { hidden = localStorage.getItem('u2b_ios_push_hint') === '1' } catch {}
+      if (isIOS && !standalone && !hidden) setIosHint(true)
+      setPerm('unsupported'); return
+    }
     setPerm(Notification.permission)
     if (Notification.permission === 'granted') doSubscribe().catch(() => {})
   }, [])
@@ -43,6 +52,18 @@ export default function PushSetup() {
     } catch { /* пользователь отказал */ }
   }
 
+  if (iosHint) {
+    return (
+      <div style={{ position: 'fixed', left: 12, right: 12, bottom: 16, zIndex: 120, maxWidth: 420, margin: '0 auto', background: '#211f1c', color: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 6px 22px rgba(0,0,0,.3)', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.4, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 20, lineHeight: 1 }}>📲</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, marginBottom: 3 }}>Уведомления на iPhone</div>
+          Открой в <b>Safari</b>, нажми <b>«Поделиться»</b> (квадрат со стрелкой ↑) → <b>«На экран „Домой"»</b>. Затем открой приложение с иконки и нажми «🔔 Включить уведомления».
+        </div>
+        <button onClick={() => { setIosHint(false); try { localStorage.setItem('u2b_ios_push_hint', '1') } catch {} }} style={{ border: 'none', background: 'rgba(255,255,255,.15)', color: '#fff', borderRadius: 8, padding: '4px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>✕</button>
+      </div>
+    )
+  }
   if (perm !== 'default') return null   // 'granted' (подписаны), 'denied' или unsupported — кнопку не показываем
   return (
     <button onClick={enable} style={{ position: 'fixed', left: 14, bottom: 16, zIndex: 120, display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 24, border: 'none', background: '#211f1c', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, boxShadow: '0 4px 16px rgba(0,0,0,.25)' }}>
