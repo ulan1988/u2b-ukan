@@ -38,7 +38,7 @@ export default function NomInline({ products, value, name, onPick }: {
     let base = products
     // group совпадает с полем group ИЛИ cat (устойчиво к перепутанным полям 1С).
     if (group) base = base.filter(p => norm(p.group) === norm(group) || norm(p.cat) === norm(group))
-    if (q.trim()) { const s = q.toLowerCase(); base = base.filter(p => (p.name || '').toLowerCase().includes(s)) }
+    if (q.trim()) { const s = q.toLowerCase(); base = base.filter(p => `${p.name || ''} ${p.alias || ''}`.toLowerCase().includes(s)) }
     return base.slice(0, 200)
   }, [products, group, q])
 
@@ -128,7 +128,9 @@ export default function NomInline({ products, value, name, onPick }: {
                       <div key={p.id} onClick={() => pick(p)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', cursor: 'pointer', borderTop: '1px solid #f6f3f0' }}
                         onMouseEnter={e => (e.currentTarget.style.background = '#fff8f5')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
                         <RalDot code={extractRal(p.name)} />
-                        <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>{p.alias
+                          ? <><span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#7a3aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷️ {p.alias}</span><span style={{ display: 'block', fontSize: 10.5, color: '#b0a89d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span></>
+                          : <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{p.name}</span>}</span>
                         {isCompl(p) ? <span style={{ fontSize: 11, color: COLORS.primary }}>цвет+см ›</span> : <span style={{ fontSize: 11, color: COLORS.textLight }}>{p.group || ''}</span>}
                       </div>
                     ))}
