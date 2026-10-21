@@ -206,9 +206,12 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   // потом пользователь тапает ячейку «Кол-во». Для обычного вида — только кол-во.
   const activeF = (p: any) => p.askCm ? (p.focus || 'cm') : 'qty'
   function padDigit(d: string) {
+    const dec = d === '.' || d === ','
     setPad(p => { if (!p) return p; const f = activeF(p)
-      if (f === 'cm') { const v = ((p.cmStr === '0' ? '' : p.cmStr || '') + d).slice(0, 4); return { ...p, cmStr: v } }
-      const v = ((p.digits === '0' ? '' : p.digits) + d).slice(0, 6); return { ...p, digits: v } })
+      if (f === 'cm') { if (dec) return p; const v = ((p.cmStr === '0' ? '' : p.cmStr || '') + d).slice(0, 4); return { ...p, cmStr: v } }
+      // Кол-во: поддержка дробного (лист режем на части) — одна точка, «.5» → «0.5».
+      if (dec) { if ((p.digits || '').includes('.')) return p; return { ...p, digits: ((p.digits || '') === '' ? '0.' : p.digits + '.') } }
+      const v = ((p.digits === '0' ? '' : p.digits) + d).slice(0, 8); return { ...p, digits: v } })
   }
   function padBack() {
     setPad(p => { if (!p) return p; const f = activeF(p)
@@ -217,7 +220,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   }
   function commitPad() {
     const p = padRef.current; if (!p) return
-    const qty = parseInt(p.digits || '0', 10) || 0; if (qty <= 0) return
+    const qty = parseFloat((p.digits || '0').replace(',', '.')) || 0; if (qty <= 0) return
     if (p.askCm && !(p.cmStr && p.cmStr.trim())) return   // изделие: длина (см) обязательна
     const cmNum = p.cmStr ? Number(p.cmStr) : p.widthCm
     const oral = p.askCm ? `${p.baseLabel}${p.cmStr ? ` ${p.cmStr} см` : ''}`.trim() : p.oral
@@ -227,6 +230,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     if (!pad) return
     function onKey(e: KeyboardEvent) {
       if (e.key >= '0' && e.key <= '9') { e.preventDefault(); padDigit(e.key) }
+      else if (e.key === '.' || e.key === ',') { e.preventDefault(); padDigit('.') }
       else if (e.key === 'Backspace') { e.preventDefault(); padBack() }
       else if (e.key === 'Enter') { e.preventDefault(); commitPad() }
       else if (e.key === 'Escape') { e.preventDefault(); setPad(null) }
@@ -369,7 +373,8 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map(d => <button key={d} onClick={() => padDigit(d)} style={keyBtn}>{d}</button>)}
-              <button onClick={() => padDigit('0')} style={{ ...keyBtn, gridColumn: 'span 2' }}>0</button>
+              <button onClick={() => padDigit('.')} style={{ ...keyBtn, fontWeight: 800 }} title="Дробное (лист по частям)">,</button>
+              <button onClick={() => padDigit('0')} style={keyBtn}>0</button>
               <button onClick={padBack} style={{ ...keyBtn, background: '#f1efec' }}>←</button>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}><button onClick={() => setPad(null)} style={{ flex: 1, border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', color: '#5f5952' }}>Отмена</button><button onClick={commitPad} style={{ flex: 2, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Добавить</button></div>
