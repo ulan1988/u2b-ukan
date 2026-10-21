@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 // Подписка на Web Push (уведомления в шторке телефона со звуком). Если разрешение
 // уже дано — подписываемся молча. Если нет — показываем кнопку «Включить уведомления»
 // (запрос разрешения требует жеста пользователя).
-const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+// Публичный VAPID-ключ не секретный (его и так получает браузер) — вшит как фолбэк,
+// чтобы кнопка подписки работала даже если env на Vercel не задан. Приватный ключ — только в env.
+const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BDc7pDdtoq8fXHAgZt5ptV1R3wc6SZDWp5LejgTPkD7BCbERe0jO9p6QVJFQZnBKz75hqHynqb1TqiqcBLMN_l8'
 
 function urlB64ToUint8Array(base64: string) {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4)
