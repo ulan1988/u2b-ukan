@@ -524,14 +524,18 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   {selIds.length > 0 && selIds.length < pos.length && (
                     <button onClick={() => doSplit(o.id, selIds)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f3eeff', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>➕ Вынести в новую карточку ({selIds.length})</button>
                   )}
-                  {!isSold
-                    ? <button disabled title="Сначала проведите продажу" style={{ width: '100%', border: 'none', background: '#e6e2dc', color: '#8a857c', borderRadius: 9, padding: '11px', cursor: 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🔒 Сначала продажа (касса / долг)</button>
-                    : (() => { const partial = selIds.length > 0 && selIds.length < leg1.length; const ids = partial ? selIds : undefined; return (
+                  {/* Отправка логисту — ТОЛЬКО для «Долг к головному» (карточка идёт к головному).
+                      Внутренняя продажа (касса) и долг Нипы логисту не отправляются. */}
+                  {o.pendingDebtHead
+                    ? (() => { const partial = selIds.length > 0 && selIds.length < leg1.length; const ids = partial ? selIds : undefined; return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <button onClick={() => sendCard(o.id, ids)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{partial ? `🚚 Отправить выбранные (${selIds.length}) →` : `🚚 Отправить всё логисту (${leg1.length}) →`}</button>
+                        <button onClick={() => sendCard(o.id, ids)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{partial ? `🚚 Отправить головному: выбранные (${selIds.length}) →` : `🚚 Отправить головному (${leg1.length}) →`}</button>
                         <button onClick={() => sendCard(o.id, ids, true)} title="Покупатель забрал сам — уходит в отчёт логиста со статусом «Забрано (Самовывоз)»" style={{ width: '100%', border: '1.5px solid #2a5aaa55', background: '#eef3fb', color: '#2a5aaa', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🙋 Забрано (самовывоз){partial ? ` — ${selIds.length}` : ''}</button>
                       </div>
-                    ) })()}
+                    ) })()
+                    : !isSold
+                      ? <button disabled title="Сначала проведите продажу" style={{ width: '100%', border: 'none', background: '#e6e2dc', color: '#8a857c', borderRadius: 9, padding: '11px', cursor: 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🔒 Сначала продажа (касса / долг)</button>
+                      : <div style={{ width: '100%', textAlign: 'center', background: '#f2fbf5', color: '#2e8a5e', borderRadius: 9, padding: '11px', fontSize: 13.5, fontWeight: 700 }}>✓ Внутренняя продажа — логисту не отправляется</div>}
                 </div>
               )}
             </div>
@@ -672,7 +676,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
                       <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', color: '#5f5952' }}>📋 Позиции ({total})</button>
                       {g.next && <button onClick={() => act(o.id, g.next!.action, `✓ ${g.next!.label.replace(/^[▶✓]\s*/, '')}`)} style={{ marginLeft: 'auto', border: `1.5px solid ${g.color}55`, background: `${g.color}14`, color: g.color, borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{g.next.label}</button>}
-                      <button onClick={() => sendCard(o.id)} style={{ marginLeft: g.next ? 0 : 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить</button>
+                      {/* «Отправить» логисту — ТОЛЬКО если карточка идёт к головному (Долг к головному).
+                          Внутренняя продажа (оплачено касса) и долг самой Нипы логисту не отправляются. */}
+                      {o.pendingDebtHead && <button onClick={() => sendCard(o.id)} style={{ marginLeft: g.next ? 0 : 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить головному</button>}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
                       <button onClick={() => returnToQueue(o.id)} title="Вернуть в «Заказы на производство» — изменить и заново принять" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ В заказ (изменить)</button>
