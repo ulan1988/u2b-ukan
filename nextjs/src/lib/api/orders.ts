@@ -89,7 +89,7 @@ export const clientOrders = (uid?: string) => getArray(`/api/client/orders${uid 
 export const branchOrders = (uid?: string) => getArray(`/api/branch/orders${uid ? `?uid=${uid}` : ''}`)
 // «Долг товаров» (касса магазина): журнал взяли/вернули + свёрнутые остатки.
 export const goodsDebts = (uid?: string) => getObj<{ entries: any[]; balances: any[] }>(`/api/branch/goods-debt${uid ? `?uid=${uid}` : ''}`, { entries: [], balances: [] })
-export async function addGoodsDebt(body: { uid?: string; contragentId: string; productId?: string; productName: string; unit?: string; direction: 'take' | 'return' | 'give' | 'giveback'; qty: number; note?: string }) {
+export async function addGoodsDebt(body: { uid?: string; contragentId: string; productId?: string; productName: string; unit?: string; direction: 'take' | 'return' | 'give' | 'giveback' | 'pay' | 'receive'; qty: number; note?: string; accountId?: string; amount?: number }) {
   const r = await post('/api/branch/goods-debt', body)
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }

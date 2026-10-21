@@ -83,7 +83,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [debtTab, setDebtTab] = useState<'clients' | 'goods'>('clients')
   const [gDebt, setGDebt] = useState<{ entries: any[]; balances: any[] }>({ entries: [], balances: [] })
   const [gForm, setGForm] = useState<null | { mode: 'take' | 'give'; contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли/отдали в долг»
-  const [gRet, setGRet] = useState<null | { dir: 'return' | 'giveback'; contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string }>(null)  // шторка «вернул/принял товаром»
+  const [gRet, setGRet] = useState<null | { dir: 'return' | 'giveback'; mode: 'goods' | 'money'; contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string; accountId: string; amount: string }>(null)  // шторка «погасить»: товаром или деньгами
   const [gExpand, setGExpand] = useState<string>('')   // раскрытый сосед (журнал по нему)
   const [showGCatalog, setShowGCatalog] = useState(false)   // каталог для выбора товара в «долг товаров»
   // каталог на экране
@@ -165,13 +165,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   }
   async function submitGRet() {
     if (!gRet) return
+    const money = gRet.mode === 'money'
+    const dir = money ? (gRet.dir === 'giveback' ? 'receive' : 'pay') : gRet.dir
+    if (money && !gRet.accountId) { showMsg('⚠ Выберите счёт оплаты'); return }
     const qty = num(gRet.qty)
     if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
     setBusy(true)
-    const r = await addGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, productName: gRet.productName, unit: gRet.unit || 'шт', direction: gRet.dir, qty })
+    const r = await addGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, productName: gRet.productName, unit: gRet.unit || 'шт', direction: dir, qty, ...(money ? { accountId: gRet.accountId, amount: num(gRet.amount) } : {}) })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setGRet(null); await loadGDebt(); showMsg(gRet.dir === 'giveback' ? '✓ Сосед вернул — записано' : '✓ Возврат товаром записан')
+    setGRet(null); await loadGDebt()
+    showMsg(money ? '✓ Оплата записана' : (gRet.dir === 'giveback' ? '✓ Сосед вернул — записано' : '✓ Возврат товаром записан'))
   }
   async function removeGEntry(id: string) {
     setBusy(true)
@@ -744,7 +748,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
                                 <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>взяли {qfmt(it.took)} · вернули {qfmt(it.returned)} {it.unit}</div>
                                 <div style={{ textAlign: 'right', minWidth: 48 }}><div style={{ fontSize: 9.5, color: '#a09889' }}>мы должны</div><div style={{ fontSize: 14, fontWeight: 800, color: it.weOwe > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(it.weOwe)}</div></div>
-                                {it.weOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'return', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.weOwe, qty: String(Number(it.weOwe.toFixed(3))) })} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
+                                {it.weOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'return', mode: 'goods', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.weOwe, qty: String(Number(it.weOwe.toFixed(3))), accountId: accounts[0]?.id || '', amount: '' })} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
                               </div>
                             )}
                             {/* НАМ ДОЛЖНЫ: отдали → сосед вернул */}
@@ -752,7 +756,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
                                 <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>отдали {qfmt(it.given)} · вернул {qfmt(it.givenBack)} {it.unit}</div>
                                 <div style={{ textAlign: 'right', minWidth: 48 }}><div style={{ fontSize: 9.5, color: '#a09889' }}>нам должны</div><div style={{ fontSize: 14, fontWeight: 800, color: it.theyOwe > 0.0005 ? BLUE : GREEN }}>{qfmt(it.theyOwe)}</div></div>
-                                {it.theyOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'giveback', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.theyOwe, qty: String(Number(it.theyOwe.toFixed(3))) })} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Принял</button>}
+                                {it.theyOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'giveback', mode: 'goods', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.theyOwe, qty: String(Number(it.theyOwe.toFixed(3))), accountId: accounts[0]?.id || '', amount: '' })} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Принял</button>}
                               </div>
                             )}
                           </div>
@@ -1111,16 +1115,35 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         <div onClick={() => setGRet(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{gRet.dir === 'giveback' ? '↩ Сосед вернул' : '↩ Вернул товаром'}</div><div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {gRet.productName} · остаток {qfmt(gRet.left)} {gRet.unit}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{gRet.dir === 'giveback' ? 'Принять: товаром или деньгами' : 'Погасить: товаром или деньгами'}</div><div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {gRet.productName} · остаток {qfmt(gRet.left)} {gRet.unit}</div></div>
               <button onClick={() => setGRet(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>КОЛ-ВО К ВОЗВРАТУ</div>
-                <input value={gRet.qty} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, qty: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
-                <div style={{ fontSize: 11.5, color: '#a09889', marginTop: 4 }}>можно вернуть больше остатка (переплата) — остаток не уйдёт в минус</div>
+              {/* переключатель: товаром / деньгами */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {([['goods', gRet.dir === 'giveback' ? '↩ Товаром' : '↩ Товаром'], ['money', '💵 Деньгами']] as const).map(([m, lbl]) => (
+                  <button key={m} onClick={() => setGRet(r => r ? { ...r, mode: m } : r)} style={{ flex: 1, border: 'none', borderRadius: 10, padding: '11px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 800, background: gRet.mode === m ? (m === 'money' ? GREEN : PRIMARY) : '#f1efec', color: gRet.mode === m ? '#fff' : '#8a8377' }}>{lbl}</button>
+                ))}
               </div>
-              <button disabled={busy} onClick={submitGRet} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : (gRet.dir === 'giveback' ? '↩ Записать (принял)' : '↩ Записать возврат')}</button>
+              <div>
+                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>{gRet.mode === 'money' ? 'КОЛ-ВО ТОВАРА (гасим)' : 'КОЛ-ВО К ВОЗВРАТУ'}</div>
+                <input value={gRet.qty} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, qty: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
+                <div style={{ fontSize: 11.5, color: '#a09889', marginTop: 4 }}>можно указать больше остатка (переплата) — остаток не уйдёт в минус</div>
+              </div>
+              {gRet.mode === 'money' && (<>
+                <div>
+                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>{gRet.dir === 'giveback' ? 'СЧЁТ ПРИХОДА' : 'СЧЁТ ОПЛАТЫ'}</div>
+                  <select value={gRet.accountId} onChange={e => setGRet(r => r ? { ...r, accountId: e.target.value } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 15 }}>
+                    <option value="">— выберите счёт —</option>
+                    {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
+                  <input value={gRet.amount} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, amount: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800 }} />
+                </div>
+              </>)}
+              <button disabled={busy} onClick={submitGRet} style={{ border: 'none', background: busy ? '#9bb5a6' : (gRet.mode === 'money' ? GREEN : (gRet.dir === 'giveback' ? BLUE : GREEN)), color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : gRet.mode === 'money' ? '💵 Оплатить' : (gRet.dir === 'giveback' ? '↩ Записать (принял)' : '↩ Записать возврат')}</button>
             </div>
           </div>
         </div>

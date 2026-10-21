@@ -35,11 +35,13 @@ export const goodsDebtSchema = z.object({
   productId: z.string().uuid().optional(),        // привязка к каталогу (необязательна)
   productName: z.string().min(1),                 // имя товара (из каталога или свободно)
   unit: z.string().optional().default('шт'),
-  // мы ДОЛЖНЫ: take = взяли в долг, return = вернули товаром;
-  // нам ДОЛЖНЫ: give = отдали в долг, giveback = сосед вернул нам
-  direction: z.enum(['take', 'return', 'give', 'giveback']),
+  // мы ДОЛЖНЫ: take = взяли в долг, return = вернули товаром, pay = оплатили деньгами;
+  // нам ДОЛЖНЫ: give = отдали в долг, giveback = сосед вернул товаром, receive = сосед оплатил деньгами
+  direction: z.enum(['take', 'return', 'give', 'giveback', 'pay', 'receive']),
   qty: z.coerce.number().positive(),
   note: z.string().optional().default(''),
+  accountId: z.string().uuid().optional(),           // для pay/receive — счёт движения денег
+  amount: z.coerce.number().nonnegative().optional(),// для pay/receive — сумма оплаты
 })
 
 // Возврат по чеку: позиции с кол-вом (пусто → весь чек, остаток по каждой) + счёт возврата.
