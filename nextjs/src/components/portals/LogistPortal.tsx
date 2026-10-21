@@ -42,7 +42,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [chatOpenPos, setChatOpenPos] = useState<string | null>(null)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
-  const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
+  const [period, setPeriod] = useState<Period>('today'); const [day, setDay] = useState('')   // по умолчанию — сегодня
   const showMsg = useCallback((m: string) => setToast(m), [])
   const supName = (id?: string) => suppliers.find(s => s.id === id)?.name || ''
 

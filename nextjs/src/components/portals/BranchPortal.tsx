@@ -60,7 +60,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [newTo, setNewTo] = useState(''); const [newText, setNewText] = useState(''); const [newLoading, setNewLoading] = useState(false); const [newDone, setNewDone] = useState<any>(null)
   const [behalf, setBehalf] = useState(''); const [hqId, setHqId] = useState('')   // «от имени заказчика» = контрагент головного
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
-  const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
+  const [period, setPeriod] = useState<Period>('today'); const [day, setDay] = useState('')   // по умолчанию — сегодня
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([]); const [showDirect, setShowDirect] = useState(false); const [showStock, setShowStock] = useState(false)
   const [specProjects, setSpecProjects] = useState<any[]>([]); const [showSpecBuilder, setShowSpecBuilder] = useState(false); const [specQ, setSpecQ] = useState<Record<string, string>>({})
   const [carveFor, setCarveFor] = useState<string | null>(null)   // проект в режиме «Создать карточку»
@@ -657,7 +657,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           ] as const).map(g => g.items.length === 0 ? null : (
             <div key={g.key} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: g.color, letterSpacing: '.04em', marginBottom: 8 }}>{g.title} · {g.items.length}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 10, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start', gridAutoFlow: 'row dense' }}>
               {g.items.map(o => {
                 const leg1 = (o.positions || []).filter((p: any) => Number(p.leg) === 1)
                 const total = (o.positions || []).length
@@ -709,7 +709,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           ] as const).map(sec => sec.items.length === 0 ? null : (
             <div key={sec.key} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: sec.color, letterSpacing: '.04em', marginBottom: 8 }}>{sec.title} · {sec.items.length}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 10, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start', gridAutoFlow: 'row dense' }}>
               {sec.items.map(o => {
                 const total = cardSum(o)
                 const debtLeft = cardDebt(o)
@@ -735,7 +735,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
           ))}
         </div>}
-        {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 10, alignItems: 'start' }}>{outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}</div>}
+        {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start', gridAutoFlow: 'row dense' }}>{outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}</div>}
         {tab === 'new' && (
           <div>
             {newDone ? (

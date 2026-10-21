@@ -99,7 +99,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
   const [newText, setNewText] = useState(''); const [newDeadline, setNewDeadline] = useState(''); const [newLoading, setNewLoading] = useState(false)
   const [newResult, setNewResult] = useState<any>(null)
   const [catalogPos, setCatalogPos] = useState<PickedPos[]>([]); const [showCatalog, setShowCatalog] = useState(false)
-  const [period, setPeriod] = useState<Period>('all'); const [day, setDay] = useState('')
+  const [period, setPeriod] = useState<Period>('today'); const [day, setDay] = useState('')   // по умолчанию — сегодня
   const [editQty, setEditQty] = useState<Record<string, string>>({}); const [addCatalogFor, setAddCatalogFor] = useState<string | null>(null); const [savingPos, setSavingPos] = useState(false)
   const [chat, setChat] = useState<Record<string, any[]>>({}); const [msg, setMsg] = useState('')
   const [behalf, setBehalf] = useState('')   // «от имени заказчика» (contactId) — в кассе филиала
