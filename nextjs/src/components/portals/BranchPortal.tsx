@@ -46,7 +46,7 @@ const fmtTime = (d?: string | null) => { if (!d) return '—'; const dt = new Da
 export default function BranchPortal({ user }: { user: { id: string; name: string; orgId: string; slug?: string } }) {
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<Tab>('production')
+  const [tab, setTab] = useState<Tab>('produce')   // по умолчанию — Стол мастера (Производство)
   const [toast, setToast] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'positions' | 'history' | 'chat'>('positions')
