@@ -12,7 +12,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!parsed.success) return NextResponse.json({ error: 'Действие не задано' }, { status: 400 })
 
   const r = await dispatchAction(params.id, parsed.data.action, s, parsed.data.payload)
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+  // доступ к error через каст — не зависит от сужения union (устойчиво к состоянию кэша сборки Vercel)
+  if (!r.ok) return NextResponse.json({ error: (r as { error?: string }).error }, { status: 400 })
   await pushSignal()
   return NextResponse.json({ ok: true })
 }
