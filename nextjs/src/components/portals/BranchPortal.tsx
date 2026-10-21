@@ -149,12 +149,21 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const awaitingZK = (o: any) => isZK(o) && ['incoming', 'reception'].includes(o.screen)
   const production = orders.filter(o => (isProd(o) || awaitingZK(o)) && !o.isCancelled && notClosed(o) && phase(o) === '' && inDate(o))
   // Стол мастера по этапам.
-  const accepted = orders.filter(o => prodBase(o) && phase(o) === 'accepted' && inDate(o))
-  const working = orders.filter(o => prodBase(o) && phase(o) === 'working' && inDate(o))
-  const ready = orders.filter(o => prodBase(o) && phase(o) === 'ready' && inDate(o))
+  // Активные этапы — только ещё НЕ проданные и НЕ «долг головному» (те уходят в свои разделы).
+  const notDisposed = (o: any) => !o.pendingDebtHead && !o.linkedDocId
+  const accepted = orders.filter(o => prodBase(o) && phase(o) === 'accepted' && notDisposed(o) && inDate(o))
+  const working = orders.filter(o => prodBase(o) && phase(o) === 'working' && notDisposed(o) && inDate(o))
+  const ready = orders.filter(o => prodBase(o) && phase(o) === 'ready' && notDisposed(o) && inDate(o))
   const inWork = [...accepted, ...working, ...ready]
-  // Продано мастером (проведена расходная) — по фазе sold, вне notClosed.
-  const sold = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && phase(o) === 'sold' && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  // 🏢 Долг головному — помечены «Долг к головному», ждут отправки логисту.
+  const headDebt = orders.filter(o => prodBase(o) && !!o.pendingDebtHead && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  // 💵 Касса Нипы — внутренняя продажа (расходная проведена), НЕ долг головному. Делим: оплачено / забрано (в долг).
+  const cardSum = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
+  const cardDebt = (o: any) => Math.max(0, Math.round(cardSum(o) - (Number(o.paidCash || 0) + Number(o.paidKaspi || 0) + Number(o.paidQr || 0))))
+  const kassaDone = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && !o.pendingDebtHead && (phase(o) === 'sold' || (!!o.linkedDocId && notClosed(o))) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  const kassaPaid = kassaDone.filter(o => cardDebt(o) <= 0)   // Оплатили
+  const kassaTaken = kassaDone.filter(o => cardDebt(o) > 0)    // Забрано (в долг)
+  const sold = kassaDone   // совместимость: пустой экран показывается, когда нет ни работы, ни продаж
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
   const prodQueue = [...production, ...incoming].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
@@ -644,6 +653,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             { key: 'accepted', title: '📥 ПРИНЯЛ', color: '#7a3aaa', items: accepted, next: { action: 'produceStart', label: '▶ В работу' } },
             { key: 'working', title: '🔧 В РАБОТЕ', color: '#c0532a', items: working, next: { action: 'produceReady', label: '✓ Готов к доставке' } },
             { key: 'ready', title: '✅ ГОТОВ К ДОСТАВКЕ', color: '#2e8a5e', items: ready, next: null as null | { action: string; label: string } },
+            { key: 'headDebt', title: '🏢 ДОЛГ ГОЛОВНОМУ', color: '#c0532a', items: headDebt, next: null as null | { action: string; label: string } },
           ] as const).map(g => g.items.length === 0 ? null : (
             <div key={g.key} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: g.color, letterSpacing: '.04em', marginBottom: 8 }}>{g.title} · {g.items.length}</div>
@@ -690,40 +700,36 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
           ))}
 
-          {sold.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>💵 ПРОДАНО · {sold.length}</div>
-              {sold.map(o => {
-                const total = (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
-                const leg1 = (o.positions || []).filter((p: any) => Number(p.leg) === 1)
-                // Остаток долга по чеку: продано − оплачено. >0 → ушла в долг → ОРАНЖЕВЫМ (до погашения).
-                const paidSum = Number(o.paidCash || 0) + Number(o.paidKaspi || 0) + Number(o.paidQr || 0)
-                const debtLeft = Math.max(0, Math.round(total - paidSum))
+          {/* 💵 КАССА НИПЫ — внутренняя продажа (логисту не отправляется). Два подраздела: Оплатили / Забрано (в долг). */}
+          {([
+            { key: 'paid', title: '💵 КАССА НИПЫ · ОПЛАТИЛИ', color: '#2e8a5e', ring: '#cfeadd', bg: '#fff', items: kassaPaid },
+            { key: 'taken', title: '🟠 КАССА НИПЫ · ЗАБРАНО (В ДОЛГ)', color: '#c0532a', ring: '#e0894a', bg: '#fff8f2', items: kassaTaken },
+          ] as const).map(sec => sec.items.length === 0 ? null : (
+            <div key={sec.key} style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: sec.color, letterSpacing: '.04em', marginBottom: 8 }}>{sec.title} · {sec.items.length}</div>
+              {sec.items.map(o => {
+                const total = cardSum(o)
+                const debtLeft = cardDebt(o)
                 return (
-                  <div key={o.id} style={{ background: debtLeft > 0 ? '#fff8f2' : '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${debtLeft > 0 ? '#e0894a' : '#cfeadd'}`, padding: '11px 13px', marginBottom: 8 }}>
+                  <div key={o.id} style={{ background: sec.bg, borderRadius: 12, boxShadow: `0 0 0 1.5px ${sec.ring}`, padding: '11px 13px', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: debtLeft > 0 ? '#c0532a' : '#2e8a5e' }}>{fmtCode(o.id)}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: debtLeft > 0 ? '#c0532a' : '#2e8a5e' }}>{Math.round(total).toLocaleString('ru-RU')} ₸</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: sec.color }}>{fmtCode(o.id)}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sec.color }}>{Math.round(total).toLocaleString('ru-RU')} ₸</span>
                       {o.payment && <span style={{ fontSize: 11, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{o.payment}</span>}
-                      {debtLeft > 0 && <span style={{ fontSize: 11.5, background: '#fde3d0', color: '#c0532a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Продано в долг — не погашено">🟠 долг {debtLeft.toLocaleString('ru-RU')} ₸</span>}
+                      {debtLeft > 0 && <span style={{ fontSize: 11.5, background: '#fde3d0', color: '#c0532a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Забрано в долг — не погашено">🟠 долг {debtLeft.toLocaleString('ru-RU')} ₸</span>}
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
-                      {leg1.length > 0
-                        ? <>
-                            <button onClick={() => sendCard(o.id, undefined, true)} title="Покупатель забрал сам — уходит в отчёт логиста со статусом «Забрано (Самовывоз)»" style={{ marginLeft: 'auto', border: '1.5px solid #2a5aaa55', background: '#eef3fb', color: '#2a5aaa', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🙋 Забрано (самовывоз)</button>
-                            <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Логисту ({leg1.length})</button>
-                          </>
-                        : <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a5aaa', fontWeight: 700 }}>🚚 у логиста</span>}
-                      <button onClick={() => doUnpay(o.id)} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
+                      <button onClick={() => setDrawerId(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>📋 Состав</button>
+                      <button onClick={() => doUnpay(o.id)} title="Отменить продажу (сторно)" style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
                     </div>
                   </div>
                 )
               })}
             </div>
-          )}
+          ))}
         </div>}
         {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}
         {tab === 'new' && (
