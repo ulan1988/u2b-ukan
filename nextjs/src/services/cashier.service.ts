@@ -420,17 +420,15 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   if (!filial) return { ok: false as const, error: 'Организация не найдена' }
   const [fromAcc] = await db.select().from(cashAccounts).where(and(eq(cashAccounts.id, fromAccountId), eq(cashAccounts.orgId, filialOrgId))).limit(1)
   if (!fromAcc) return { ok: false as const, error: 'Счёт списания не найден' }
-  // QR-счёт филиала в головном — по ключевому слову имени филиала (самое длинное совпадение).
-  const qrs = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, hq.id), eq(cashAccounts.archived, false), eq(cashAccounts.kind, 'bank')))
-  const words = (filial.name || '').toLowerCase().split(/\s+/).filter(w => w.length >= 4)
-  let headQR: any = null, best = 0
-  for (const a of qrs) { const n = (a.name || '').toLowerCase(); let sc = 0; for (const w of words) if (n.includes(w)) sc = Math.max(sc, w.length); if (sc > best) { best = sc; headQR = a } }
-  if (!headQR) return { ok: false as const, error: 'QR-счёт этого филиала в головном не найден' }
+  // Все инкассации филиалов приходят в ЕДИНЫЙ «Банковский счёт» головного; филиал видно по
+  // контрагенту-мосту в строке и по дате инкассации (не по отдельной колонке-счёту филиала).
+  const [headBank] = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, hq.id), eq(cashAccounts.archived, false), eq(cashAccounts.name, 'Банковский счет'))).limit(1)
+  if (!headBank) return { ok: false as const, error: 'Не найден «Банковский счёт» головного' }
   const [headBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, filialOrgId), eq(contragents.orgRefId, hq.id))).limit(1)
   const [filialBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, hq.id), eq(contragents.orgRefId, filialOrgId))).limit(1)
   if (!headBridge || !filialBridge) return { ok: false as const, error: 'Мост-контрагент между орг не найден' }
   const day = today()
-  await payRepo.insertPayment({ id: randomUUID(), orgId: filialOrgId, contragentId: headBridge.id, direction: 'out', amount: String(amount), date: day, cashAccountId: fromAccountId, documentId: null, comment: `Инкассация → головной (${headQR.name})` })
-  await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name}` })
-  return { ok: true as const, headQR: headQR.name }
+  await payRepo.insertPayment({ id: randomUUID(), orgId: filialOrgId, contragentId: headBridge.id, direction: 'out', amount: String(amount), date: day, cashAccountId: fromAccountId, documentId: null, comment: `Инкассация → головной (${fromAcc.name})` })
+  await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headBank.id, documentId: null, comment: `Инкассация от ${filial.name}` })
+  return { ok: true as const, headQR: headBank.name }
 }
