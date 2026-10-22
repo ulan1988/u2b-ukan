@@ -9,8 +9,8 @@ import { RAL_BY_CODE, RalDot, extractRal, ralOrdered } from '@/lib/ral'
 const PRIMARY = '#d4613a'
 const GLOW = '0 0 0 4px rgba(212,97,58,.25)'
 export interface PickedPos { name1c: string; oral: string; qty: number; unit: string; widthCm?: number }
-interface NomHit { id: string; name: string; unit: string; alias?: string }
-interface NomFull { id: string; name: string; alias?: string; unit: string; group: string; cat: string; subgroup: string }
+interface NomHit { id: string; name: string; unit: string; alias?: string; sortOrder?: number }
+interface NomFull { id: string; name: string; alias?: string; unit: string; group: string; cat: string; subgroup: string; sortOrder?: number }
 const NOCOLOR = '__none__'
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
 
@@ -60,7 +60,7 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
   useEffect(() => {
     setMounted(true)
     fetch('/api/products').then(r => r.ok ? r.json() : []).then((d: any[]) => {
-      setAllItems(Array.isArray(d) ? d.map(x => ({ id: x.id, name: x.name || '', alias: x.alias || '', unit: x.unit || 'шт', group: x.group || '', cat: x.cat || '', subgroup: x.subgroup || '' })) : [])
+      setAllItems(Array.isArray(d) ? d.map(x => ({ id: x.id, name: x.name || '', alias: x.alias || '', unit: x.unit || 'шт', group: x.group || '', cat: x.cat || '', subgroup: x.subgroup || '', sortOrder: Number(x.sortOrder) || 0 })) : [])
       setLoaded(true)
     }).catch(() => setLoaded(true))
     fetch('/api/folders').then(r => r.ok ? r.json() : []).then((f: any[]) => setFolders(Array.isArray(f) ? f : [])).catch(() => {})
@@ -152,8 +152,9 @@ export default function NomPicker({ onPick, onClose }: { onPick: (items: PickedP
     .filter(i => !thickRe || thickRe.test(i.name))
     .filter(i => mustWords.every(w => `${i.name} ${i.alias || ''}`.toLowerCase().includes(w)))   // поиск по имени И алиасу
     .map(i => ({ i, score: mustWords.filter(w => `${i.name} ${i.alias || ''}`.toLowerCase().includes(w)).length }))
-    .sort((a, b) => b.score - a.score || a.i.name.length - b.i.name.length)
-    .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit, alias: x.i.alias }))
+    // при поиске — по релевантности; при просмотре (score=0) — по ручному порядку номенклатуры (sortOrder), затем имя.
+    .sort((a, b) => b.score - a.score || (a.i.sortOrder || 0) - (b.i.sortOrder || 0) || a.i.name.localeCompare(b.i.name, 'ru'))
+    .map(x => ({ id: x.i.id, name: x.i.name, unit: x.i.unit, alias: x.i.alias, sortOrder: x.i.sortOrder }))
 
   function pickColor(c: string) { setColor(prev => prev === c ? '' : c); if (c && c !== NOCOLOR) setWarn('') }
   // Папка комплектующих (где живёт ВИД «Изделие») — для быстрого чипа «Изделие» в ряду категорий.

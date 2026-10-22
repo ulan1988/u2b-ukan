@@ -27,7 +27,7 @@ export const updateContragent = (id: string, patch: Partial<typeof contragents.$
 
 // Управление справочником — включая архивные (для UI правки). С orgId — цены продажи этой орг.
 export const listAllProducts = async (orgId?: string) => {
-  const rows = await db.select().from(products)
+  const rows = await db.select().from(products).orderBy(asc(products.sortOrder), asc(products.name))
   if (!orgId) return rows
   const { productPrices } = await import('../db/schema')
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))

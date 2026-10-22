@@ -1,7 +1,7 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
 import { organizations, contragents, warehouses, products, cashAccounts, specTypes, productPrices } from '../db/schema'
-import { and, eq, ne, or, isNull, isNotNull, getTableColumns } from 'drizzle-orm'
+import { and, eq, ne, or, isNull, isNotNull, getTableColumns, asc } from 'drizzle-orm'
 
 export const listOrganizations = () =>
   db.select().from(organizations).where(eq(organizations.archived, false))
@@ -34,6 +34,7 @@ export const listProducts = async (orgId?: string) => {
   const rows = await db.select({ ...getTableColumns(products), stdWidthCm: specTypes.widthCm, typeName: specTypes.name })
     .from(products).leftJoin(specTypes, eq(products.specTypeId, specTypes.id))
     .where(eq(products.archived, false))
+    .orderBy(asc(products.sortOrder), asc(products.name))   // ручной порядок номенклатуры → во всех каталогах
   if (!orgId) return rows
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
   const m = new Map(pp.map(x => [x.productId, x]))
