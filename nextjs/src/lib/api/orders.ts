@@ -93,6 +93,11 @@ export async function addGoodsDebt(body: { uid?: string; contragentId: string; p
   const r = await post('/api/branch/goods-debt', body)
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
+// Отмена продажи (касса магазина): сторно + аннулирование чека.
+export async function cancelStoreSale(body: { uid?: string; cardId: string }) {
+  const r = await post('/api/branch/cancel-sale', body)
+  return { ok: r.ok, error: r.error as string | undefined }
+}
 export async function deleteGoodsDebt(id: string, uid?: string) {
   const r = await send(`/api/branch/goods-debt?id=${id}${uid ? `&uid=${uid}` : ''}`, 'DELETE')
   return { ok: r.ok, error: r.error as string | undefined }

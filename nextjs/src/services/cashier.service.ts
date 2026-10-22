@@ -381,3 +381,13 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   await repo.updateOrder(id, { status: 'Доставлено' })
   return { ...res, id, seller }
 }
+
+// Отмена продажи в кассе магазина: сторнируем расходную+оплаты (unpostSale) и ПОЛНОСТЬЮ отменяем
+// карточку (товар вернулся на склад, деньги сняты, чек исчезает из журнала). Для исправления ошибок.
+export async function cancelStoreSale(cardId: string, actor?: Session | null) {
+  const r: any = await unpostSale(cardId, actor)
+  if (r?.ok === false) return r
+  await repo.updateOrder(cardId, { isCancelled: true, cancelReason: 'Отмена продажи (касса магазина)', screen: 'archive', prodPhase: '' })
+  await repo.insertHistory({ cardId, action: 'cancelSale', detail: 'Продажа отменена и карточка аннулирована', userName: actor?.name || 'Система' })
+  return { ok: true as const }
+}

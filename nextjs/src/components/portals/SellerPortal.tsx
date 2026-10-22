@@ -13,7 +13,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, returnSale, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt } from '@/lib/api/orders'
+import { branchOrders, sellCheck, returnSale, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -429,6 +429,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     for (const p of (o.positions || [])) { const rem = retRemain(o, p); if (rem > 0) { sel.add(p.id); qty[p.id] = rem } }
     setRetFor(o); setRetSel(sel); setRetQty(qty)
     setRetAcc(accounts[0]?.id || '')
+  }
+  // Отмена продажи: товар на склад, деньги снимаются, чек аннулируется (для ошибок).
+  async function doCancelSale(o: any) {
+    if (!confirm('Отменить продажу? Товар вернётся на склад, оплаты снимутся, чек исчезнет из журнала.')) return
+    setBusy(true)
+    const r = await cancelStoreSale({ uid: user.id, cardId: o.id })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setViewChk(null); await load(); showMsg('✓ Продажа отменена')
   }
   function toggleRetPos(id: string) {
     setRetSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -1068,6 +1077,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <button onClick={() => { const c = viewChk; setViewChk(null); openRepay(c) }} style={{ marginTop: 6, border: 'none', background: GREEN, color: '#fff', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>💵 Погасить долг · {money(checkDebt(o))} ₸</button>
                 )}
                 <button onClick={() => { const c = viewChk; setViewChk(null); openReturn(c) }} style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>↩ Возврат по чеку</button>
+                <button disabled={busy} onClick={() => doCancelSale(viewChk)} title="Полностью отменить продажу (товар на склад, деньги снять, чек аннулировать)" style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: busy ? 'default' : 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>🗑 Отменить продажу</button>
               </div>
             </div>
           </div>

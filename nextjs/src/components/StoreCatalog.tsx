@@ -3,6 +3,7 @@
 // алиасы · ввод кол-ва · сборка изделия (цвет+см). Возвращает выбранные позиции (PickedPos[]).
 // Заменяет старый NomPicker в кабинетах клиента/мастера и форме «Заказ».
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import type { PickedPos } from '@/components/NomPicker'
 import { itemName } from '@/lib/itemName'
 import { isIzdelie } from '@/lib/lineAmount'
@@ -34,6 +35,8 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
   const [q, setQ] = useState('')
   const [build, setBuild] = useState<any>(null)   // сборка изделия: { base, cm, qty }
   const [picked, setPicked] = useState<PickedPos[]>([])
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     const u = orgId ? `/api/products?orgId=${orgId}` : '/api/products'
@@ -117,8 +120,11 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
 
   const colorlessName = (p: any) => activeFolder.build ? itemName({ name: p.name, color }) : p.name
 
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: '#f1efec', zIndex: 500, display: 'flex', flexDirection: 'column', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
+  if (!mounted) return null
+  // Портал в body + высокий z-index — чтобы каталог покрывал ВСЁ (шапку, плавающие кнопки),
+  // не завися от стекинг-контекста родителя (кабинеты/заказ).
+  return createPortal((
+    <div style={{ position: 'fixed', inset: 0, background: '#f1efec', zIndex: 100000, display: 'flex', flexDirection: 'column', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {/* шапка */}
       <div style={{ background: '#211f1c', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <span style={{ color: '#fff', fontWeight: 800, fontSize: 15, flex: 1 }}>📖 Каталог</span>
@@ -233,5 +239,5 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
         </div>
       )}
     </div>
-  )
+  ), document.body)
 }
