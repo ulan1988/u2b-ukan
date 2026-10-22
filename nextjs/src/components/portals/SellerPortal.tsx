@@ -431,7 +431,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setRetFor(o); setRetSel(sel); setRetQty(qty)
     setRetAcc(accounts[0]?.id || '')
   }
-  // Инкассация: отправить сумму со счёта филиала в «Банковский счёт» головного.
+  // Инкассация: отправить сумму со счёта филиала в QR-счёт головного.
   function openEnc() { setEncAcc(accounts[0]?.id || ''); setEncAmt(''); setEncOpen(true) }
   async function doEncashment() {
     const amt = num(encAmt)
@@ -705,7 +705,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         <div style={{ padding: 12, maxWidth: 760, margin: '0 auto', paddingBottom: 86 }}>
           {tab === 'checks' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Инкассация: отправить деньги со счёта магазина в «Банковский счёт» головного */}
+              {/* Инкассация: отправить деньги со счёта магазина в QR-счёт головного */}
               <button onClick={openEnc} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 11, padding: '12px 8px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>🏦 Инкассация → головной</button>
               {/* фильтр по дню: сегодня / выбор даты + итог дня */}
               <div style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1223,12 +1223,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         </div>
       )}
 
-      {/* ИНКАССАЦИЯ — шторка: счёт магазина + сумма → в «Банковский счёт» головного */}
+      {/* ИНКАССАЦИЯ — шторка: счёт магазина + сумма → в QR-счёт головного */}
       {encOpen && (
         <div onClick={() => setEncOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>🏦 Инкассация → головной</div><div style={{ fontSize: 12, color: '#8a8377' }}>деньги придут в «Банковский счёт» головного</div></div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>🏦 Инкассация → головной</div><div style={{ fontSize: 12, color: '#8a8377' }}>деньги придут в QR-счёт магазина у головного</div></div>
               <button onClick={() => setEncOpen(false)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>

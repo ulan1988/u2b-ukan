@@ -19,6 +19,11 @@ export const bumpPaidSum = (docId: string, delta: number) =>
 export const accounts = (orgId: string) =>
   sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
 
+// Счета-КОЛОНКИ листа «Операции» (Касса дня): только помеченные cashday. Балансы/«Счета»
+// показывают все активные счета, а оперативный лист — компактный фикс-набор.
+export const cashdayAccounts = (orgId: string) =>
+  sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false and cashday=true order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
+
 // Справочник статей затрат (для расходных строк).
 export const expenseArticles = (orgId: string) =>
   sqlClient`select id::text, code, name, sort_order "sortOrder" from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Promise<any[]>

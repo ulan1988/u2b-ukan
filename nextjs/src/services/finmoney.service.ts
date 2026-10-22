@@ -7,7 +7,7 @@ const sumAmounts = (amts: any[]) => (amts || []).reduce((s, a) => s + num(a.amou
 // Полный день: счета, начальный/конечный остаток по счетам, строки, список дней, избранные.
 export async function financeDay(orgId: string, date: string) {
   const [accts, opening, rows, dates, favs, expArticles] = await Promise.all([
-    fin.accounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId),
+    fin.cashdayAccounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId),
   ])
   const open: Record<string, number> = {}
   for (const a of accts) open[a.id] = 0
