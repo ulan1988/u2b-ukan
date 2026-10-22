@@ -67,6 +67,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
   const [payOpen, setPayOpen] = useState(false)
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })   // скидка по чеку: ₸ или %
+  const [showCost, setShowCost] = useState(false)   // 👁 скрытая себестоимость чека — видно только пока держишь
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
@@ -354,6 +355,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const discPctN = disc.mode === 'pct' ? num(disc.val) : 0
   const discSum = Math.min(total, Math.max(0, disc.mode === 'pct' ? Math.round(total * discPctN / 100) : num(disc.val)))
   const net = Math.max(0, total - discSum)
+  // Себестоимость чека (закуп priceIn по товарам) — для скрытого «глазка». Изделия/см считает lineAmount.
+  const totalCost = rows.reduce((s, r) => { const p = byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId); return s + lineAmount({ name: r.name1c, qty: r.qty, price: Number((p as any)?.priceIn) || 0, widthCm: r.widthCm }) }, 0)
+  const margin = net - totalCost
   const cashN = num(pay.cash), kaspiN = num(pay.kaspi), qrN = num(pay.qr)
   const debtN = Math.max(0, net - cashN - kaspiN - qrN)
   const client = cags.find(c => c.id === contactId)
@@ -842,6 +846,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 5, borderTop: '1px solid #f1ede8' }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ИТОГО</span>
               <span style={{ fontSize: 12, color: '#a09889' }}>{rows.length} поз.</span>
+              {/* 👁 Скрытая себестоимость — видно только пока ДЕРЖИШЬ (для продавца, не для покупателя). */}
+              <button
+                onMouseDown={() => setShowCost(true)} onMouseUp={() => setShowCost(false)} onMouseLeave={() => setShowCost(false)}
+                onTouchStart={e => { e.preventDefault(); setShowCost(true) }} onTouchEnd={() => setShowCost(false)} onTouchCancel={() => setShowCost(false)}
+                onContextMenu={e => e.preventDefault()}
+                title="Зажми, чтобы увидеть себестоимость" style={{ border: 'none', background: showCost ? '#211f1c' : '#f1efec', color: showCost ? '#fff' : '#8a8377', borderRadius: 10, width: 38, height: 34, fontSize: 20, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>👁</button>
+              {showCost && (
+                <span style={{ fontSize: 12.5, color: '#6b645b', fontWeight: 700, whiteSpace: 'nowrap' }}>себест <b style={{ color: '#c0532a' }}>{money(totalCost)}</b> · наценка <b style={{ color: margin >= 0 ? GREEN : '#c0532a' }}>{money(margin)}</b></span>
+              )}
               <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 {discSum > 0 && <span style={{ fontSize: 13.5, color: '#a09889', textDecoration: 'line-through', fontWeight: 600 }}>{money(total)}</span>}
                 <span style={{ fontSize: 19, fontWeight: 800 }}>{money(net)} ₸</span>
