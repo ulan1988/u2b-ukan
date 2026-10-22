@@ -8,7 +8,8 @@ import { RalDot, extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { isIzdelie } from '@/lib/lineAmount'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
-import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import StoreCatalog from '@/components/StoreCatalog'
+import { type PickedPos } from '@/components/NomPicker'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
@@ -181,7 +182,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
   return (
     <div style={{ minHeight: embedded ? undefined : '100vh', background: embedded ? 'transparent' : '#f1efec', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
-      {addCatalogFor && <NomPicker onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
+      {addCatalogFor && <StoreCatalog orgId={user.orgId} onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
 
       {/* Встроенный режим (вкладка кассы продавца) — своя шапка/выход не нужны */}
       {!embedded && <div style={{ background: '#fff', borderBottom: '1px solid #e6e2dc', padding: '0 20px' }}>
@@ -352,7 +353,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>ЖЕЛАЕМЫЙ СРОК</label><input style={inp} type="date" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} /></div>
                   <button type="button" onClick={() => handleNewOrder()} disabled={newLoading} style={{ padding: '13px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1 }}>{newLoading ? 'Отправка...' : catalogPos.length ? `ОТПРАВИТЬ ЗАЯВКУ · ${catalogPos.length} поз. →` : 'ОТПРАВИТЬ ЗАЯВКУ →'}</button>
                 </div>
-                {showCatalog && <NomPicker onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
+                {showCatalog && <StoreCatalog orgId={user.orgId} onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
               </div>
             )}
           </div>

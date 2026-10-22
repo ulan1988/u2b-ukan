@@ -7,7 +7,8 @@
 // Чек = карточка-продажа в книге филиала + расходная (склад филиала −) + оплаты, всё это
 // делает `cashier.service.sellDirect`.
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import StoreCatalog from '@/components/StoreCatalog'
+import { type PickedPos } from '@/components/NomPicker'
 import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
@@ -1187,8 +1188,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         </div>
       )}
 
-      {showCatalog && <NomPicker onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
-      {showGCatalog && <NomPicker onPick={onPickGForm} onClose={() => setShowGCatalog(false)} />}
+      {showCatalog && <StoreCatalog orgId={user.orgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
+      {showGCatalog && <StoreCatalog orgId={user.orgId} onPick={onPickGForm} onClose={() => setShowGCatalog(false)} />}
       <PushSetup />
     </div>
   )

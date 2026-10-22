@@ -8,7 +8,8 @@ import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
-import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import StoreCatalog from '@/components/StoreCatalog'
+import { type PickedPos } from '@/components/NomPicker'
 import FinanceView from '@/components/portals/FinanceView'
 import ShiftView from '@/components/portals/ShiftView'
 import ProfitView from '@/components/portals/ProfitView'
@@ -374,7 +375,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   return (
     <div className="branch-shell" style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
-      {addCatalogFor && <NomPicker onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
+      {addCatalogFor && <StoreCatalog orgId={user.orgId} onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
 
       {/* Шторка позиций карточки мастера: смена статуса + отправка логисту (целиком/частями) */}
       {drawerId && (() => {
@@ -758,7 +759,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>КОММЕНТАРИЙ</label><textarea style={{ ...INP, minHeight: 70, resize: 'vertical' }} value={newText} onChange={e => setNewText(e.target.value)} placeholder="Уточнения — или опишите заявку словами" /></div>
                   <button type="button" onClick={() => handleNewOrder()} disabled={newLoading} style={{ padding: '13px', background: PRIMARY, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1 }}>{newLoading ? 'Отправка...' : 'ОТПРАВИТЬ ЗАЯВКУ →'}</button>
                 </div>
-                {showCatalog && <NomPicker onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
+                {showCatalog && <StoreCatalog orgId={user.orgId} onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
               </div>
             )}
           </div>
