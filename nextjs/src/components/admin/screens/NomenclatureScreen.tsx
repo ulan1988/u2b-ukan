@@ -1,7 +1,7 @@
 'use client'
 // Номенклатура — портирован из Улкана 1:1 (дерево групп/категорий/подгрупп,
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
-import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type CSSProperties } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices, copyColorPrices, reorderProducts } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
@@ -44,8 +44,8 @@ export default function NomenclatureScreen() {
   const [folders, setFolders] = useState<{ grp: string; cat: string; sub: string; hidden?: boolean }[]>([])
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   const [moveSrc, setMoveSrc] = useState<{ grp: string; cat: string; sub: string; label: string } | null>(null)
-  const [infoItem, setInfoItem] = useState<any>(null)   // модалка «инфо товара» (alias для каталога магазина)
-  const [infoAlias, setInfoAlias] = useState('')
+  const [infoItem, setInfoItem] = useState<any>(null)   // модалка «карточка товара» (полные данные: имя/дерево/ед./алиас)
+  const [infoForm, setInfoForm] = useState<{ name: string; unit: string; category: string; group: string; cat: string; subgroup: string; alias: string }>({ name: '', unit: 'шт', category: 'goods', group: '', cat: '', subgroup: '', alias: '' })
   const [infoBusy, setInfoBusy] = useState(false)
   const [toast, setToast] = useState('')
   useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
@@ -207,15 +207,27 @@ export default function NomenclatureScreen() {
     await archiveProduct(id); load(); showMsg('✓ В архив')
   }
   // Модалка «инфо товара» — алиас для каталога магазина (напр. «Кронштейн короткий»).
-  function openInfo(item: any) { setInfoItem(item); setInfoAlias(item.alias || '') }
+  function openInfo(item: any) {
+    setInfoItem(item)
+    setInfoForm({ name: item.name || '', unit: item.unit || 'шт', category: (item as any).category || 'goods', group: item.group || '', cat: item.cat || '', subgroup: item.subgroup || '', alias: item.alias || '' })
+  }
   async function saveInfo() {
     if (!infoItem) return
+    const f = infoForm
+    if (!f.name.trim()) { showMsg('⚠ Укажите наименование'); return }
     setInfoBusy(true)
-    const r: any = await editProduct(infoItem.id, { alias: infoAlias.trim() })
+    const r: any = await editProduct(infoItem.id, {
+      name: f.name.trim(), unit: f.unit.trim() || 'шт', category: f.category as any,
+      group: f.group.trim(), cat: f.cat.trim(), subgroup: f.subgroup.trim(), alias: f.alias.trim(),
+    })
     setInfoBusy(false)
     if (r?.ok === false) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setInfoItem(null); load(); showMsg('✓ Сохранено')
+    setInfoItem(null); load(); reloadFolders(); showMsg('✓ Сохранено')
   }
+  // Подсказки для дерева (существующие значения) — чтобы выбрать или ввести новое.
+  const allGroups = useMemo(() => Array.from(new Set(items.map(i => i.group).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru')), [items])
+  const allCats = useMemo(() => Array.from(new Set(items.filter(i => !infoForm.group || i.group === infoForm.group).map(i => i.cat).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru')), [items, infoForm.group])
+  const allSubs = useMemo(() => Array.from(new Set(items.filter(i => (!infoForm.group || i.group === infoForm.group) && (!infoForm.cat || i.cat === infoForm.cat)).map(i => i.subgroup).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru')), [items, infoForm.group, infoForm.cat])
   function openAdd() {
     setNewItem({ name: '', unit: 'шт', group: selGroup || '', cat: selCat || '', subgroup: selSubgroup || '' })
     setShowAdd(true)
@@ -564,17 +576,31 @@ export default function NomenclatureScreen() {
 
       {infoItem && (
         <div onClick={() => setInfoItem(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: 22 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.3 }}>{infoItem.name}</div>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+              <div><div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.3 }}>Карточка товара</div><div style={{ fontSize: 12, color: '#8a837a', marginTop: 2 }}>Все данные — имя, дерево, ед., алиас</div></div>
               <button onClick={() => setInfoItem(null)} style={{ border: 'none', background: '#f1efec', width: 36, height: 36, borderRadius: '50%', fontSize: 18, cursor: 'pointer', color: '#5f5952', flexShrink: 0 }}>✕</button>
             </div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#6b645b', letterSpacing: '.03em', marginBottom: 6 }}>🏷️ АЛИАС (для каталога магазина)</label>
-            <input value={infoAlias} onChange={e => setInfoAlias(e.target.value)} autoFocus placeholder="напр. Кронштейн короткий" style={{ width: '100%', padding: '11px 12px', border: '1.5px solid #cdb6e2', borderRadius: 10, fontSize: 15, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
-            <div style={{ fontSize: 12, color: '#8a837a', marginTop: 7 }}>Короткое удобное имя — покажется в каталоге магазина вместо длинного названия. Поиск работает и по алиасу, и по полному имени.</div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+            {(() => {
+              const L = (t: string) => <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#6b645b', letterSpacing: '.03em', marginBottom: 5 }}>{t}</label>
+              const F: CSSProperties = { width: '100%', padding: '10px 12px', border: '1.5px solid #e6e2dc', borderRadius: 10, fontSize: 14.5, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+                  <div>{L('НАИМЕНОВАНИЕ')}<input value={infoForm.name} onChange={e => setInfoForm(p => ({ ...p, name: e.target.value }))} placeholder="Полное имя товара" style={{ ...F, fontWeight: 600 }} /></div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>{L('ТИП')}<select value={infoForm.category} onChange={e => setInfoForm(p => ({ ...p, category: e.target.value }))} style={F}><option value="goods">Товар</option><option value="material">Материал</option><option value="service">Услуга</option></select></div>
+                    <div style={{ width: 120 }}>{L('ЕД. ИЗМ.')}<input value={infoForm.unit} onChange={e => setInfoForm(p => ({ ...p, unit: e.target.value }))} placeholder="шт" style={F} /></div>
+                  </div>
+                  <div>{L('ГРУППА')}<input list="nom-groups" value={infoForm.group} onChange={e => setInfoForm(p => ({ ...p, group: e.target.value }))} placeholder="напр. Водосток" style={F} /><datalist id="nom-groups">{allGroups.map(g => <option key={g} value={g} />)}</datalist></div>
+                  <div>{L('КАТЕГОРИЯ')}<input list="nom-cats" value={infoForm.cat} onChange={e => setInfoForm(p => ({ ...p, cat: e.target.value }))} placeholder="напр. Комплектующие" style={F} /><datalist id="nom-cats">{allCats.map(c => <option key={c} value={c} />)}</datalist></div>
+                  <div>{L('ПОДГРУППА')}<input list="nom-subs" value={infoForm.subgroup} onChange={e => setInfoForm(p => ({ ...p, subgroup: e.target.value }))} placeholder="напр. 7024 (цвет) / Без цвета" style={{ ...F, border: '1.5px solid #cdb6e2' }} /><datalist id="nom-subs">{allSubs.map(s => <option key={s} value={s} />)}</datalist><div style={{ fontSize: 11.5, color: '#8a837a', marginTop: 4 }}>Можно выбрать существующую или вписать новую подгруппу.</div></div>
+                  <div>{L('🏷️ АЛИАС (для каталога магазина)')}<input value={infoForm.alias} onChange={e => setInfoForm(p => ({ ...p, alias: e.target.value }))} placeholder="напр. Кронштейн короткий" style={{ ...F, border: '1.5px solid #cdb6e2' }} /><div style={{ fontSize: 11.5, color: '#8a837a', marginTop: 4 }}>Короткое имя для каталога; поиск — и по алиасу, и по полному имени.</div></div>
+                </div>
+              )
+            })()}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
               <button onClick={() => setInfoItem(null)} style={{ padding: '10px 18px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
-              <button onClick={saveInfo} disabled={infoBusy} style={{ padding: '10px 20px', borderRadius: 9, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: infoBusy ? 0.6 : 1 }}>{infoBusy ? 'Сохранение…' : '💾 Сохранить'}</button>
+              <button onClick={saveInfo} disabled={infoBusy} style={{ padding: '10px 20px', borderRadius: 9, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: infoBusy ? 0.6 : 1 }}>{infoBusy ? 'Сохранение…' : '💾 Записать и закрыть'}</button>
             </div>
           </div>
         </div>
