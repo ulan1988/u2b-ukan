@@ -75,7 +75,18 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
   // Товары/контрагенты — по орг ФИЛИАЛА (не по сессии смотрящего), иначе цены продажи (product_prices)
   // берутся от чужой орг (админ = головной → цены 0) и не подтягиваются в стол мастера.
-  useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []); const hq = (r.organizations || []).find((o: any) => o.kind === 'hq'); if (hq) setHqId(hq.id) }) }, [user.orgId])
+  useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []); setBpAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId)); const hq = (r.organizations || []).find((o: any) => o.kind === 'hq'); if (hq) setHqId(hq.id) }) }, [user.orgId])
+  const [bpAccounts, setBpAccounts] = useState<any[]>([])
+  const [encOpen, setEncOpen] = useState(false); const [encAcc, setEncAcc] = useState(''); const [encAmt, setEncAmt] = useState('')
+  async function doEncashment() {
+    const amt = Number((encAmt || '').replace(',', '.')) || 0
+    if (!encAcc) { showMsg('⚠ Выберите счёт'); return }
+    if (amt <= 0) { showMsg('⚠ Сумма больше 0'); return }
+    const { encashment } = await import('@/lib/api/orders')
+    const r = await encashment({ uid: user.id, fromAccountId: encAcc, amount: amt })
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setEncOpen(false); setEncAmt(''); showMsg(`🏦 Инкассировано ${Math.round(amt).toLocaleString('ru-RU')} ₸ → ${r.headQR || 'головной'}`)
+  }
   // «От имени заказчика» = ТОЛЬКО контрагенты головного (заказ уходит головному, в его книгу/кабинет).
   // Заказчик «от имени»: клиенты головного + мост на другой филиал (Магазин Кристалл); мост на себя исключён.
   const hqCags = cags.filter((c: any) => c.kind !== 'supplier' && (!hqId || c.orgId === hqId) && c.orgRefId !== user.orgId)
@@ -376,6 +387,26 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     <div className="branch-shell" style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
       {addCatalogFor && <StoreCatalog orgId={user.orgId} onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
+      {/* ИНКАССАЦИЯ Нипы → QR-счёт головного */}
+      {encOpen && (
+        <div onClick={() => setEncOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>🏦 Инкассация → головной</div><div style={{ fontSize: 12, color: '#8a8377' }}>деньги уйдут в QR-счёт Нипы у головного</div></div>
+              <button onClick={() => setEncOpen(false)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+            </div>
+            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div><div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СЧЁТ СПИСАНИЯ</div>
+                <select value={encAcc} onChange={e => setEncAcc(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                  <option value="">— выберите счёт —</option>{bpAccounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select></div>
+              <div><div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
+                <input value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 20, fontWeight: 800, fontFamily: 'inherit', boxSizing: 'border-box' }} /></div>
+              <button onClick={doEncashment} style={{ border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>🏦 Инкассировать</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Шторка позиций карточки мастера: смена статуса + отправка логисту (целиком/частями) */}
       {drawerId && (() => {
@@ -646,6 +677,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button onClick={() => { setShowDirect(v => !v); setShowStock(false) }} style={{ padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
             <button onClick={() => { setShowStock(v => !v); setShowDirect(false) }} title="Выпустить комплектующие/изделия на склад Нипы (без покупателя и оплаты)" style={{ padding: '9px 16px', borderRadius: 8, border: showStock ? '1.5px solid #e6e2dc' : '1.5px solid #2e8a5e', background: showStock ? '#fff' : '#e8f5ee', color: showStock ? '#5f5952' : '#2e8a5e', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showStock ? '× Отмена' : '📦 Создать запасы на склад'}</button>
+            <button onClick={() => { setEncAcc(bpAccounts[0]?.id || ''); setEncAmt(''); setEncOpen(true) }} title="Инкассация — отправить деньги со счёта в QR-счёт головного" style={{ padding: '9px 16px', borderRadius: 8, border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: '#2a5aaa', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🏦 Инкассация</button>
           </div>
           {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} onDone={() => { setShowDirect(false); load(); loadSpec() }} showMsg={showMsg} />}
           {showStock && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} stockMode onDone={() => { setShowStock(false); load() }} showMsg={showMsg} />}

@@ -93,6 +93,11 @@ export async function addGoodsDebt(body: { uid?: string; contragentId: string; p
   const r = await post('/api/branch/goods-debt', body)
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
+// Инкассация филиала → QR-счёт головного.
+export async function encashment(body: { uid?: string; fromAccountId: string; amount: number }) {
+  const r = await post('/api/branch/encashment', body)
+  return { ok: r.ok, error: r.error as string | undefined, headQR: r.data?.headQR as string | undefined }
+}
 // Отмена продажи (касса магазина): сторно + аннулирование чека.
 export async function cancelStoreSale(body: { uid?: string; cardId: string }) {
   const r = await post('/api/branch/cancel-sale', body)

@@ -391,3 +391,33 @@ export async function cancelStoreSale(cardId: string, actor?: Session | null) {
   await repo.insertHistory({ cardId, action: 'cancelSale', detail: 'Продажа отменена и карточка аннулирована', userName: actor?.name || 'Система' })
   return { ok: true as const }
 }
+
+// ИНКАССАЦИЯ: филиал отправляет деньги головному — попадают в ЕГО QR-счёт в книге головного.
+// Нипа листогиб → «QR Листогиб», Магазин Кристалл → «QR Кристалл» (авто-подбор по ключевому
+// слову имени филиала). В книге филиала: расход со счёта на мост-головной; в книге головного:
+// приход на QR-счёт от моста-филиала. Склад не трогается.
+export async function encashment(filialOrgId: string, fromAccountId: string, amount: number, actor?: Session | null) {
+  if (!(amount > 0)) return { ok: false as const, error: 'Сумма должна быть больше 0' }
+  const { db } = await import('../lib/db')
+  const { organizations, cashAccounts, contragents } = await import('../db/schema')
+  const { eq, and } = await import('drizzle-orm')
+  const [hq] = await db.select().from(organizations).where(and(eq(organizations.kind, 'hq'), eq(organizations.archived, false))).limit(1)
+  if (!hq) return { ok: false as const, error: 'Головной не найден' }
+  const [filial] = await db.select().from(organizations).where(eq(organizations.id, filialOrgId)).limit(1)
+  if (!filial) return { ok: false as const, error: 'Организация не найдена' }
+  const [fromAcc] = await db.select().from(cashAccounts).where(and(eq(cashAccounts.id, fromAccountId), eq(cashAccounts.orgId, filialOrgId))).limit(1)
+  if (!fromAcc) return { ok: false as const, error: 'Счёт списания не найден' }
+  // QR-счёт филиала в головном — по ключевому слову имени филиала (самое длинное совпадение).
+  const qrs = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, hq.id), eq(cashAccounts.archived, false), eq(cashAccounts.kind, 'bank')))
+  const words = (filial.name || '').toLowerCase().split(/\s+/).filter(w => w.length >= 4)
+  let headQR: any = null, best = 0
+  for (const a of qrs) { const n = (a.name || '').toLowerCase(); let sc = 0; for (const w of words) if (n.includes(w)) sc = Math.max(sc, w.length); if (sc > best) { best = sc; headQR = a } }
+  if (!headQR) return { ok: false as const, error: 'QR-счёт этого филиала в головном не найден' }
+  const [headBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, filialOrgId), eq(contragents.orgRefId, hq.id))).limit(1)
+  const [filialBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, hq.id), eq(contragents.orgRefId, filialOrgId))).limit(1)
+  if (!headBridge || !filialBridge) return { ok: false as const, error: 'Мост-контрагент между орг не найден' }
+  const day = today()
+  await payRepo.insertPayment({ id: randomUUID(), orgId: filialOrgId, contragentId: headBridge.id, direction: 'out', amount: String(amount), date: day, cashAccountId: fromAccountId, documentId: null, comment: `Инкассация → головной (${headQR.name})` })
+  await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name}` })
+  return { ok: true as const, headQR: headQR.name }
+}
