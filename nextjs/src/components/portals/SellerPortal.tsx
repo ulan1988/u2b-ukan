@@ -71,6 +71,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
+  const [hqBridge, setHqBridge] = useState<any>(null)   // контрагент-мост «Адал Строй» (головной) — для «долга на головного»
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
   const [checksDay, setChecksDay] = useState(localDay())
   const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
@@ -119,6 +120,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       setCags((r.contragents || []).filter((c: any) => !c.archived && c.orgId === user.orgId && !c.orgRefId))
       setProducts(r.products || [])
       setAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId))
+      // Мост на головной (Адал Строй) в книге магазина — для долга магазина перед головным.
+      const hq = (r.organizations || []).find((o: any) => o.kind === 'hq')
+      setHqBridge(hq ? ((r.contragents || []).find((c: any) => c.orgId === user.orgId && c.orgRefId === hq.id && !c.archived) || null) : null)
     })
   }, [user.orgId])
 
@@ -395,6 +399,25 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
     await load()
     showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
+  }
+
+  // Долг НА ГОЛОВНОГО (Адал Строй): чек в долг на мост-контрагент головного — его дебиторка
+  // гасит долг магазина перед головным (сразу, на отпускную сумму). Склад/оплаты как обычный долг.
+  async function sellDebtToHead() {
+    if (!rows.length) { showMsg('⚠ Чек пустой'); return }
+    if (noPrice) { showMsg('⚠ Есть позиции без цены'); return }
+    if (!hqBridge) { showMsg('⚠ Контрагент «Адал Строй» (головной) не найден'); return }
+    setBusy(true)
+    const r = await sellCheck({
+      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name,
+      discountSum: discSum, discountPct: discPctN, cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '',
+      positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
+    })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
+    await load()
+    showMsg(`🏢 Долг на Адал Строй · ${money(net)} ₸ — долг магазина уменьшен`)
   }
 
   // Остаток к возврату по позиции = продано − уже возвращено.
@@ -887,6 +910,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <button onClick={() => setPayOpen(true)} title="QR, сдача, смешанная оплата" style={{ width: 46, border: '1.5px solid #e6e2dc', background: '#fff', color: '#6b645b', borderRadius: 11, cursor: 'pointer', fontSize: 17, fontFamily: 'inherit' }}>⋯</button>
               </div>
             )}
+            {/* Долг на головного: чек в долг на Адал Строй — гасит долг магазина перед ним (сразу, на отпускную). */}
+            {hqBridge && <button disabled={busy} onClick={sellDebtToHead} title="Долг чека уходит на Адал Строй и уменьшает долг магазина перед головным" style={{ marginTop: 7, width: '100%', border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 11, padding: '11px 6px', cursor: busy ? 'default' : 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>🏢 В долг → Адал Строй (гасит долг магазина)</button>}
           </div>
           )}
         </div>
