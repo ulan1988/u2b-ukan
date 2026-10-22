@@ -157,6 +157,7 @@ export const cashAccounts = pgTable('cash_accounts', {
   kind: text('kind').notNull().default('cash'),           // cash | bank
   currency: text('currency').notNull().default('KZT'),
   sortOrder: integer('sort_order').notNull().default(0),  // порядок колонок в листе «Финанс»
+  clientPay: boolean('client_pay').notNull().default(false), // показывать клиенту как счёт для инкассации из кабинета
   archived: boolean('archived').notNull().default(false),
 }, t => ({ byOrg: index('cash_accounts_org_idx').on(t.orgId) }))
 

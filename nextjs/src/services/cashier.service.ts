@@ -392,6 +392,19 @@ export async function cancelStoreSale(cardId: string, actor?: Session | null) {
   return { ok: true as const }
 }
 
+// ОПЛАТА ИЗ КАБИНЕТА КЛИЕНТА (инкассация клиента): клиент выбирает счёт своей орг и сумму —
+// в книге орг приход на счёт от его контрагента, долг клиента (theyOwe) уменьшается.
+export async function clientPay(orgId: string, contragentId: string, accountId: string, amount: number, actor?: Session | null) {
+  if (!(amount > 0)) return { ok: false as const, error: 'Сумма должна быть больше 0' }
+  const { db } = await import('../lib/db')
+  const { cashAccounts } = await import('../db/schema')
+  const { eq, and } = await import('drizzle-orm')
+  const [acc] = await db.select().from(cashAccounts).where(and(eq(cashAccounts.id, accountId), eq(cashAccounts.orgId, orgId), eq(cashAccounts.clientPay, true))).limit(1)
+  if (!acc) return { ok: false as const, error: 'Счёт недоступен для оплаты из кабинета' }
+  await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId, direction: 'in', amount: String(amount), date: today(), cashAccountId: accountId, documentId: null, comment: `Оплата из кабинета (${acc.name})${actor?.name ? ' · ' + actor.name : ''}` })
+  return { ok: true as const, account: acc.name }
+}
+
 // ИНКАССАЦИЯ: филиал отправляет деньги головному — попадают в ЕГО QR-счёт в книге головного.
 // Нипа листогиб → «QR Листогиб», Магазин Кристалл → «QR Кристалл» (авто-подбор по ключевому
 // слову имени филиала). В книге филиала: расход со счёта на мост-головной; в книге головного:
