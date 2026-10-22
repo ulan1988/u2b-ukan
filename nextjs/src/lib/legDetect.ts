@@ -5,16 +5,26 @@
 // роли branch (users.contragent_id == contragents.id) — контрагент есть ВЛАДЕЛЕЦ кабинета.
 // Запасной вариант — совпадение имени (для контрагентов, ещё не привязанных к кабинету).
 import { db } from './db'
-import { users, contragents } from '../db/schema'
-import { eq, inArray } from 'drizzle-orm'
+import { users, contragents, organizations } from '../db/schema'
+import { eq, inArray, or } from 'drizzle-orm'
 
 const norm = (s?: string | null) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
 
 // Идентичность филиалов-поставщиков: id привязанных контрагентов + имена (нижний регистр).
+// Филиал-поставщик = пользователь роли branch ИЛИ кабинет-владелец филиальной орг
+// (producer_seller/seller): такие кабинеты заведены как role='admin', но их контрагент-мост
+// и есть «поставщик-филиал». Без них заказ головного на Нипу получал leg=2 и не падал в кабинет.
 export async function branchSuppliers(): Promise<{ ids: Set<string>; names: Set<string> }> {
-  const us = await db.select({ name: users.name, contragentId: users.contragentId }).from(users).where(eq(users.role, 'branch'))
+  const us = await db.select({ name: users.name, contragentId: users.contragentId, role: users.role, orgKind: organizations.kind })
+    .from(users).leftJoin(organizations, eq(users.orgId, organizations.id))
+    .where(or(eq(users.role, 'branch'), inArray(organizations.kind, ['producer_seller', 'seller'])))
   const ids = new Set<string>(); const names = new Set<string>()
-  for (const u of us) { if (u.contragentId) ids.add(u.contragentId); names.add(norm(u.name)) }
+  for (const u of us) {
+    // branch — по имени; филиальный кабинет — только если привязан к контрагенту-мосту.
+    if (u.role !== 'branch' && !u.contragentId) continue
+    if (u.contragentId) ids.add(u.contragentId)
+    names.add(norm(u.name))
+  }
   return { ids, names }
 }
 

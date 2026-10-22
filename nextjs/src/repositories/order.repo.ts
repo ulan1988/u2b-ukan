@@ -27,23 +27,26 @@ export const cabinetUserForContragent = async (contragentId: string) => {
 }
 
 // id карточек-ПРОДАЖ, где есть позиция с поставщиком-филиалом (совпадение имени контрагента).
-// Только kind='sale' — головные ЗП-закупы в кабинет НЕ тянем (у них нет заказчика и они
-// дублируют продажу → мастер видел два заказа, один без заказчика).
+// Тянем в кабинет филиала-поставщика: ПРОДАЖИ (заказы клиентов, где он поставщик) +
+// САМОСТОЯТЕЛЬНЫЕ закупы головного прямо на него (head заказал у Нипы для себя). Авто-закуп-
+// ЗЕРКАЛО продажи (есть procurement_links) НЕ тянем — иначе мастер видел два заказа, один
+// без заказчика (дубль продажи). `not exists(procurement_links)` = закуп не привязан к продаже.
+const supplierKindFilter = sql`(${orders.kind} = 'sale' or (${orders.kind} = 'purchase' and not exists (select 1 from procurement_links pl where pl.purchase_card_id = ${orders.id})))`
 export const orderIdsBySupplierName = async (name: string) => {
   const nm = (name || '').trim().toLowerCase()
   if (!nm) return [] as string[]
   const rows = await db.select({ id: orders.id }).from(orders)
     .innerJoin(orderPositions, eq(orderPositions.cardId, orders.id))
     .innerJoin(contragents, eq(orderPositions.supplierId, contragents.id))
-    .where(and(eq(orders.isCancelled, false), eq(orders.kind, 'sale'), sql`lower(trim(${contragents.name})) = ${nm}`))
+    .where(and(eq(orders.isCancelled, false), supplierKindFilter, sql`lower(trim(${contragents.name})) = ${nm}`))
   return Array.from(new Set(rows.map(r => r.id)))
 }
-// id карточек-ПРОДАЖ, где есть позиция с поставщиком = данный контрагент (владелец кабинета).
+// id карточек, где есть позиция с поставщиком = данный контрагент (владелец кабинета).
 export const orderIdsBySupplierId = async (contragentId: string) => {
   if (!contragentId) return [] as string[]
   const rows = await db.select({ id: orderPositions.cardId }).from(orderPositions)
     .innerJoin(orders, eq(orders.id, orderPositions.cardId))
-    .where(and(eq(orders.isCancelled, false), eq(orders.kind, 'sale'), eq(orderPositions.supplierId, contragentId)))
+    .where(and(eq(orders.isCancelled, false), supplierKindFilter, eq(orderPositions.supplierId, contragentId)))
   return Array.from(new Set(rows.map(r => r.id)))
 }
 export const ordersByIds = (ids: string[]) =>
