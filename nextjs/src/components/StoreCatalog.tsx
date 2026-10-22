@@ -108,6 +108,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
 
   function addBuilt() {
     const b = build; if (!b) return
+    if (!color) return   // цвет обязателен — иначе имя без цвета
     if (isIzdelie(b.base.name) && !num(b.cm)) { return }
     const name = itemName({ name: b.base.name, color, cm: b.cm })
     const qty = Math.max(1, num(b.qty) || 1)
@@ -202,6 +203,11 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
           </div>
         )}
 
+        {/* Комплектующие/изделия — ЦВЕТ ОБЯЗАТЕЛЕН (иначе имя без цвета+см). Подсказка. */}
+        {activeFolder.build && !color && (
+          <div style={{ margin: '0 12px 8px', background: '#fff3ee', color: '#c0532a', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, boxShadow: '0 0 0 1.5px #e6c9b8' }}>⚠ Выберите цвет сверху — для изделий/комплектующих цвет обязателен (имя: «Изделие 7004 26 см»).</div>
+        )}
+
         {/* список товаров */}
         <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
           {list.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: '#8a8377', fontSize: 13.5 }}>{color ? 'В этом цвете ничего нет' : 'Ничего не найдено'}</div>}
@@ -210,7 +216,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
             const name1c = colorlessName(p)
             const price = Number(p.priceRetail) || 0
             return (
-              <div key={p.id} onClick={() => { if (izd && !build) setBuild({ base: p, cm: '', qty: '1' }) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default' }}>
+              <div key={p.id} onClick={() => { if (izd && !build && color) setBuild({ base: p, cm: '', qty: '1' }) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default', opacity: (activeFolder.build && !color) ? 0.5 : 1 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {p.alias ? (<>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#7a3aaa', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷️ {p.alias}</div>
@@ -221,7 +227,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
                 {izd ? (
                   <span style={{ width: 40, height: 40, borderRadius: 11, background: PRIMARY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 700, flexShrink: 0 }}>+</span>
                 ) : (
-                  <input value={qtyOf(name1c) ? String(qtyOf(name1c)) : ''} inputMode="decimal" placeholder="кол-во" onClick={e => e.stopPropagation()}
+                  <input value={qtyOf(name1c) ? String(qtyOf(name1c)) : ''} inputMode="decimal" placeholder="кол-во" disabled={!!(activeFolder.build && !color)} onClick={e => e.stopPropagation()}
                     onChange={e => upsert(name1c, { qty: num(e.target.value.replace(/[^0-9.,]/g, '')), unit: p.unit || 'шт' })}
                     style={{ width: 74, padding: '9px 8px', borderRadius: 10, border: `1.5px solid ${qtyOf(name1c) > 0 ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />
                 )}
