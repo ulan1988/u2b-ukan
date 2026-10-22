@@ -643,6 +643,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           )}
 
           {/* товары папки */}
+          {activeFolder.build && !color ? (
+            <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', padding: 32, textAlign: 'center' }}>
+              <div style={{ fontSize: 34, marginBottom: 8 }}>🎨</div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#c0532a', marginBottom: 6 }}>Сначала выберите цвет ↑</div>
+              <div style={{ fontSize: 13, color: '#8a8377' }}>Для изделий и комплектующих цвет обязателен.</div>
+            </div>
+          ) : (
           <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
             {list.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: '#8a8377', fontSize: 13.5 }}>{color ? 'В этом цвете ничего нет — снимите цвет или выберите другой' : 'Ничего не найдено'}</div>}
             {list.map(p => {
@@ -677,6 +684,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               )
             })}
           </div>
+          )}
         </div>
       ) : (
         <div style={{ padding: 12, maxWidth: 760, margin: '0 auto', paddingBottom: 86 }}>

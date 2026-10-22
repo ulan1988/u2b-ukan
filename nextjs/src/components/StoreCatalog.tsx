@@ -203,12 +203,14 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
           </div>
         )}
 
-        {/* Комплектующие/изделия — ЦВЕТ ОБЯЗАТЕЛЕН (иначе имя без цвета+см). Подсказка. */}
-        {activeFolder.build && !color && (
-          <div style={{ margin: '0 12px 8px', background: '#fff3ee', color: '#c0532a', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, boxShadow: '0 0 0 1.5px #e6c9b8' }}>⚠ Выберите цвет сверху — для изделий/комплектующих цвет обязателен (имя: «Изделие 7004 26 см»).</div>
-        )}
-
-        {/* список товаров */}
+        {/* Комплектующие/изделия — ЦВЕТ ОБЯЗАТЕЛЕН: пока не выбран, список скрыт, показываем «выберите цвет». */}
+        {activeFolder.build && !color ? (
+          <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', padding: 32, textAlign: 'center' }}>
+            <div style={{ fontSize: 34, marginBottom: 8 }}>🎨</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#c0532a', marginBottom: 6 }}>Сначала выберите цвет ↑</div>
+            <div style={{ fontSize: 13, color: '#8a837a' }}>Для изделий и комплектующих цвет обязателен — тогда имя будет полным, напр. «Изделие 7004 26 см».</div>
+          </div>
+        ) : (
         <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
           {list.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: '#8a8377', fontSize: 13.5 }}>{color ? 'В этом цвете ничего нет' : 'Ничего не найдено'}</div>}
           {list.map(p => {
@@ -235,6 +237,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
             )
           })}
         </div>
+        )}
       </div>
 
       {/* нижняя панель: выбрано + Готово */}
