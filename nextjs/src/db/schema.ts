@@ -67,6 +67,7 @@ export const products = pgTable('products', {
   priceOpt: money('price_opt').notNull().default('0'),
   priceSpec: money('price_spec').notNull().default('0'), // спец-цена (для изделий — за см)
   specTypeId: uuid('spec_type_id').references(() => specTypes.id),  // тип изделия (спецификация: стандартный см + материал)
+  sortOrder: integer('sort_order').notNull().default(0),           // ручной порядок в номенклатуре (перетаскивание)
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name) }))

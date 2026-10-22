@@ -15,6 +15,12 @@ export const createCashAccount = (v: typeof cashAccounts.$inferInsert) => db.ins
 
 export const updateProduct = (id: string, patch: Partial<typeof products.$inferInsert>) =>
   db.update(products).set(patch).where(eq(products.id, id)).returning()
+
+// Массовое обновление порядка (перетаскивание в номенклатуре) — одним батчем.
+export const setSortOrders = (items: { id: string; sortOrder: number }[]) =>
+  items.length
+    ? db.batch(items.map(it => db.update(products).set({ sortOrder: it.sortOrder }).where(eq(products.id, it.id))) as [any, ...any[]])
+    : Promise.resolve()
 export const getProduct = (id: string) => db.select().from(products).where(eq(products.id, id)).limit(1)
 export const updateContragent = (id: string, patch: Partial<typeof contragents.$inferInsert>) =>
   db.update(contragents).set(patch).where(eq(contragents.id, id)).returning()

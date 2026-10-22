@@ -3,7 +3,7 @@
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices, copyColorPrices } from '@/lib/api/refs'
+import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices, copyColorPrices, reorderProducts } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import { extractRal } from '@/lib/ral'
 
@@ -11,7 +11,7 @@ import { extractRal } from '@/lib/ral'
 // на уровне категории (подгруппа пустая) и показывается в каждой цветной подгруппе этой категории.
 const isColorless = (name: string) => extractRal(name) === ''
 
-interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
+interface NomItem { id: string; name: string; unit: string; group: string; cat: string; subgroup: string; sortOrder?: number; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }
 
 // Цвета колонок цен: у каждого вида цены свой фон, чтобы столбцы делились чётко (Приход/Розн/Опт/Спец).
 const PCOL: Record<string, { c: string; hbg: string; bg: string }> = {
@@ -27,6 +27,7 @@ const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f595
 export default function NomenclatureScreen() {
   const { orgId, orgName } = useAdmin()   // цены продажи показываем/правим для выбранной орг
   const [items, setItems] = useState<NomItem[]>([])
+  const [dragId, setDragId] = useState<string | null>(null)   // перетаскивание строки товара (упорядочить)
   const [loading, setLoading] = useState(false)
   const [selGroup, setSelGroup] = useState<string | null>(null)
   const [selCat, setSelCat] = useState<string | null>(null)
@@ -140,6 +141,24 @@ export default function NomenclatureScreen() {
     .sort((a, b) => parseFloat(a.replace(',', '.')) - parseFloat(b.replace(',', '.')))
   const effThick = thicks.includes(selThick) ? selThick : ''   // авто-сброс при смене категории
   const filtered = effThick ? baseItems.filter(i => extractThick(i.name) === effThick) : baseItems
+
+  // Перетаскивание: переставить товар ВНУТРИ своей подгруппы, пересчитать и сохранить порядок (sortOrder).
+  const sgKey = (x: any) => (x.subgroup || '').trim().toLowerCase()
+  async function moveItem(fromId: string, toId: string) {
+    if (!fromId || fromId === toId) return
+    const from = items.find(i => i.id === fromId); const to = items.find(i => i.id === toId)
+    if (!from || !to) return
+    if (sgKey(from) !== sgKey(to)) { showMsg('Переставлять можно внутри одной подгруппы'); return }
+    const group = items.filter(i => sgKey(i) === sgKey(from))
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name, 'ru'))
+    const arr = group.filter(i => i.id !== fromId)
+    const idx = arr.findIndex(i => i.id === toId)
+    arr.splice(idx < 0 ? arr.length : idx, 0, from)   // вставить ПЕРЕД целевым
+    const updates = arr.map((i, k) => ({ id: i.id, sortOrder: (k + 1) * 10 }))
+    const byId = new Map(updates.map(u => [u.id, u.sortOrder]))
+    setItems(prev => prev.map(i => byId.has(i.id) ? { ...i, sortOrder: byId.get(i.id)! } : i))
+    try { await reorderProducts(updates) } catch { showMsg('Не удалось сохранить порядок') }
+  }
 
   // Соседние цвета (подгруппы) той же категории — получатели копирования цен.
   const siblingSubs = useMemo(() => {
@@ -414,18 +433,27 @@ export default function NomenclatureScreen() {
                 </tr></thead>
                 {loading || filtered.length === 0 ? null : (
                     <tbody>
-                      {[...filtered].sort((a, b) => (a.subgroup || '').localeCompare(b.subgroup || '', 'ru') || a.name.localeCompare(b.name, 'ru')).map((item, i, arr) => {
+                      {[...filtered].sort((a, b) => (a.subgroup || '').localeCompare(b.subgroup || '', 'ru') || ((a.sortOrder || 0) - (b.sortOrder || 0)) || a.name.localeCompare(b.name, 'ru')).map((item, i, arr) => {
                         const sg = item.subgroup || ''
                         const showHead = i === 0 || (arr[i - 1].subgroup || '') !== sg   // заголовок подпапки перед её товарами
                         return (
                         <Fragment key={item.id}>
                         {showHead && <tr><td colSpan={10} style={{ padding: '8px 14px', background: '#f1efec', fontWeight: 800, fontSize: 12.5, color: COLORS.primary, letterSpacing: '.02em' }}>📁 {sg || '— без подгруппы —'}</td></tr>}
-                        <tr style={{ borderTop: '1px solid #f1efec' }}>
+                        <tr
+                          draggable={!priceEdit && editItem?.id !== item.id}
+                          onDragStart={() => setDragId(item.id)}
+                          onDragEnd={() => setDragId(null)}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={e => { e.preventDefault(); if (dragId && dragId !== item.id) moveItem(dragId, item.id) }}
+                          style={{ borderTop: '1px solid #f1efec', background: dragId === item.id ? '#fff3ee' : undefined }}>
                           {/* Имя/ед./дерево — только чтение (общий шаблон), правим отдельно/через папки. Лёгкие линии-разделители колонок */}
                           <td style={{ padding: '9px 14px', fontSize: 14, fontWeight: 500 }}>{editItem?.id === item.id ? <input value={editItem.name} onChange={e => setEditItem(p => p ? { ...p, name: e.target.value } : p)} placeholder="Имя товара" style={{ ...INP, fontSize: 14, padding: '6px 9px', fontWeight: 600 }} /> : (
-                            <span onClick={() => openInfo(item)} title="Открыть карточку товара (алиас для каталога)" style={{ cursor: 'pointer' }}>
-                              {item.name}
-                              {(item as any).alias ? <span style={{ display: 'block', fontSize: 12, color: '#7a3aaa', fontWeight: 700, marginTop: 2 }}>🏷️ {(item as any).alias}</span> : null}
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {!priceEdit && <span title="Перетащите, чтобы упорядочить" style={{ cursor: 'grab', color: '#c3bcae', fontSize: 15, userSelect: 'none', flexShrink: 0 }}>⠿</span>}
+                              <span onClick={() => openInfo(item)} title="Открыть карточку товара (алиас для каталога)" style={{ cursor: 'pointer' }}>
+                                {item.name}
+                                {(item as any).alias ? <span style={{ display: 'block', fontSize: 12, color: '#7a3aaa', fontWeight: 700, marginTop: 2 }}>🏷️ {(item as any).alias}</span> : null}
+                              </span>
                             </span>
                           )}</td>
                           <td style={{ padding: '9px 14px', width: 80, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.unit}</span></td>

@@ -14,6 +14,8 @@ export const addProduct = (b: any) => post('/api/products', b)
 export const bulkSetPrices = (b: { ids: string[]; orgId?: string; priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }) => post('/api/products/bulk-price', b)
 export const editProduct = (id: string, b: any) => patch(`/api/products/${id}`, b)
 export const archiveProduct = (id: string) => patch(`/api/products/${id}`, { archived: true })
+// Сохранить порядок товаров (перетаскивание в номенклатуре).
+export const reorderProducts = (items: { id: string; sortOrder: number }[]) => post('/api/products/reorder', { items })
 
 // Папки номенклатуры (динамическое дерево grp/cat/sub).
 export const listFolders = () => getArray('/api/folders')

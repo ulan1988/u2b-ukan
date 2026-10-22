@@ -110,3 +110,10 @@ export async function editContragent(id: string, i: z.infer<typeof updateContrag
   const [c] = await repo.updateContragent(id, patch)
   return c
 }
+
+// Сохранить порядок товаров (перетаскивание в номенклатуре): [{id, sortOrder}].
+export async function reorderProducts(items: { id: string; sortOrder: number }[]) {
+  const clean = (items || []).filter(i => i && i.id && Number.isFinite(i.sortOrder))
+  await repo.setSortOrders(clean)
+  return { ok: true as const, n: clean.length }
+}
