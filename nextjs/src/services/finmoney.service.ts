@@ -174,9 +174,23 @@ async function revertRowEffects(rowId: string) {
 }
 
 // Журнал документов (проведённые операции за период) + счета для колонок.
+// Включает и ручные строки (fin_rows), и АВТО-операции (платежи без fin_row_id:
+// инкассации, оплаты из кабинета, ручные платежи, погашения, поставщики) — как в 1С.
 export async function financeJournal(orgId: string, from: string, to: string) {
-  const [rows, accts] = await Promise.all([fin.journalRows(orgId, from, to), fin.accounts(orgId)])
-  return { rows, accounts: accts }
+  const [rows, accts, autoPays, favs] = await Promise.all([
+    fin.journalRows(orgId, from, to), fin.accounts(orgId), fin.autoFinPayments(orgId), fin.favorites(orgId),
+  ])
+  const low = (s: any) => String(s || '').toLowerCase()
+  const opFav = favs.find((f: any) => low(f.label).includes('оплата от покупател'))
+  const spFav = favs.find((f: any) => low(f.label).includes('поставщ'))
+  const opArt = { code: opFav?.code || null, article: opFav?.label || 'Оплата от покупателей' }
+  const spArt = { code: spFav?.code || null, article: spFav?.label || 'Оплата поставщику' }
+  const autoRows = autoPays
+    .filter((p: any) => p.date >= from && p.date <= to)
+    .map((p: any) => { const a = p.direction === 'in' ? opArt : spArt; const signed = (p.direction === 'in' ? 1 : -1) * num(p.amount)
+      return { id: `auto-${p.id}`, auto: true, date: p.date, type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, comment: p.comment || '', docId: p.docId || null, docNumber: p.docNumber || null, amounts: p.cashAccountId ? [{ accountId: p.cashAccountId, amount: signed }] : [] } })
+  const all = [...rows.map((r: any) => ({ ...r, auto: false })), ...autoRows].sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0)
+  return { rows: all, accounts: accts }
 }
 
 // Правка документа: если был проведён — сторнируем эффекты, применяем правки, проводим заново.

@@ -516,7 +516,7 @@ function JournalMode({ cags, favs }: { cags: any[]; favs: any[] }) {
                   <tr key={r.id} onClick={() => setOpenDoc(r)} style={{ cursor: 'pointer', background: zebra }} onMouseEnter={e => (e.currentTarget.style.background = '#eaf1fb')} onMouseLeave={e => (e.currentTarget.style.background = zebra)}>
                     <td style={jtd}>{(r.date || '').split('-').reverse().join('.')}</td>
                     <td style={jtd}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: tc.bg, color: tc.c }}>{typeName(r.type)}</span></td>
-                    <td style={jtd}>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</td>
+                    <td style={jtd}>{r.auto && <span title="Авто-операция (из платежа)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '0 4px', marginRight: 4, background: '#eef2ff', color: '#4f46e5' }}>🔗</span>}{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</td>
                     <td style={jtd}>{r.contragent || r.who || ''}</td>
                     {accounts.map((a: any) => { const v = amtOf(r, a.id); return <td key={a.id} style={{ ...jtdNum, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td> })}
                     <td style={{ ...jtdNum, fontWeight: 700 }}>{fmt(tot)}</td>
@@ -533,6 +533,7 @@ function JournalMode({ cags, favs }: { cags: any[]; favs: any[] }) {
 }
 
 function DocEditModal({ doc, accounts, cags, favs, onClose, onDone }: any) {
+  const ro = !!doc.auto   // авто-операция (из платежа) — только просмотр, правка через материализацию
   const [d, setD] = useState<any>(() => ({ date: doc.date, type: doc.type, code: doc.code, article: doc.article, contragentId: doc.contragentId, who: doc.who, comment: doc.comment || '', amt: Object.fromEntries((doc.amounts || []).map((a: any) => [a.accountId, Number(a.amount)])) }))
   const [busy, setBusy] = useState(false)
   const total = accounts.reduce((s: number, a: any) => s + (Number(d.amt[a.id]) || 0), 0)
@@ -543,6 +544,27 @@ function DocEditModal({ doc, accounts, cags, favs, onClose, onDone }: any) {
     if (r?.ok) onDone(); else alert(r?.error || 'Ошибка')
   }
   async function del() { if (!confirm('Удалить документ безвозвратно?')) return; setBusy(true); await finDeleteDoc(doc.id); setBusy(false); onDone() }
+  if (ro) return (
+    <div style={ov} onClick={onClose}>
+      <div style={{ ...modalBox, maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontSize: 16, marginBottom: 2 }}>🔗 Операция · {(doc.date || '').split('-').reverse().join('.')}</h2>
+        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Авто-операция (из платежа) — только просмотр</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 7, alignItems: 'center', fontSize: 13.5 }}>
+          <span style={{ color: '#6b7686' }}>Тип</span><span style={{ fontWeight: 600 }}>{typeName(doc.type)}</span>
+          <span style={{ color: '#6b7686' }}>Статья</span><span>{doc.code ? doc.code + ' · ' : ''}{doc.article}</span>
+          <span style={{ color: '#6b7686' }}>Контрагент</span><span>{doc.contragent || doc.who || '—'}</span>
+          {doc.docNumber && <><span style={{ color: '#6b7686' }}>Документ</span><span>📄 {doc.docNumber}</span></>}
+          <span style={{ color: '#6b7686' }}>Комментарий</span><span style={{ color: '#6b7686' }}>{doc.comment || '—'}</span>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7686', margin: '12px 0 6px' }}>СУММЫ ПО СЧЕТАМ</div>
+        {accounts.filter((a: any) => Number(d.amt[a.id])).map((a: any) => <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, padding: '2px 0' }}><span>{a.name}</span><span style={{ fontFamily: 'Consolas, monospace', fontWeight: 600, color: Number(d.amt[a.id]) < 0 ? '#b3261e' : '#0f7b3d' }}>{fmt(Number(d.amt[a.id]))}</span></div>)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, borderTop: '1px solid #eee', paddingTop: 10 }}>
+          <span style={{ fontWeight: 700 }}>Общий: {fmt(total)}</span>
+          <button onClick={onClose} style={{ ...btn, marginLeft: 'auto' }}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  )
   return (
     <div style={ov} onClick={onClose}>
       <div style={{ ...modalBox, maxWidth: 560 }} onClick={e => e.stopPropagation()}>
