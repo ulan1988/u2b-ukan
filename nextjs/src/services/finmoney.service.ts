@@ -13,35 +13,47 @@ export async function financeDay(orgId: string, date: string) {
   for (const a of accts) open[a.id] = 0
   for (const o of opening) open[o.id] = o.amt
 
-  // ── АВТО-строки: инкассации филиалов + оплаты клиентов из кабинета (производно из payments,
-  // в БД листа НЕ пишем). Строка на КАЖДУЮ инкассацию/оплату (две точки «Базар Нипа» = две
-  // строки под одним контрагентом). У ВСЕХ: тип «Поступление», статья «Оплата от покупателей».
-  // Колонка = тип счёта-источника: инкассация — маркер в комментарии «… · банк|каспи|нал»;
-  // оплата клиента — её счёт поступления. Деньги копятся в 3 общих счетах головного.
+  // ── АВТО-строки: платежи орг без fin_row_id (инкассации филиалов, оплаты клиентов из кабинета,
+  // ручные, погашения, поставщики). В БД листа НЕ пишем. ОДНА строка на контрагента: суммы
+  // раскидываются по колонкам-счетам (Еркебулан = Каспи 200к + Наличные 50к в одной строке).
+  // Колонка = РЕАЛЬНЫЙ счёт платежа (как в базе, без принуждения). Приход → «Оплата от
+  // покупателей», расход → «Оплата поставщику». Порядок строк — фикс (RANK), прочие — после.
   const cashdayIds = new Set(accts.map(a => a.id))
   const low = (s: any) => String(s || '').toLowerCase()
   const bankId = accts.find(a => low(a.name).includes('банков'))?.id || accts.find(a => a.kind === 'bank')?.id || null
-  const kaspiId = accts.find(a => low(a.name).includes('касп') || low(a.name).includes('kaspi'))?.id || null
-  const cashId = accts.find(a => low(a.name).includes('налич'))?.id || null
   const opFav = favs.find((f: any) => low(f.label).includes('оплата от покупател'))
   const spFav = favs.find((f: any) => low(f.label).includes('поставщ'))
   const opArt = { code: opFav?.code || null, article: opFav?.label || 'Оплата от покупателей' }   // приход
   const spArt = { code: spFav?.code || null, article: spFav?.label || 'Оплата поставщику' }        // расход
-  const isIncas = (p: any) => low(p.comment).startsWith('инкассация')
-  const incasCol = (p: any) => { const t = low((p.comment || '').split('·').pop()); return t.includes('касп') ? (kaspiId || bankId) : t.includes('нал') ? (cashId || bankId) : bankId }
-  const colOf = (p: any) => isIncas(p) ? incasCol(p) : (p.cashAccountId && cashdayIds.has(p.cashAccountId) ? p.cashAccountId : bankId)
-  const artOf = (p: any) => p.direction === 'in' ? opArt : spArt   // приход — от покупателей, расход — поставщику
-  const autoRows: any[] = []
+  const colOf = (p: any) => (p.cashAccountId && cashdayIds.has(p.cashAccountId)) ? p.cashAccountId : bankId
+  // Фикс-порядок: 1 Кристалл · 2 Нипа листогиб · 3 Базар Нипа · 4 (Жанар) · 5 Еркебулан · 6 Жаркын · 7 Абай.
+  // Клиентов (имена) проверяем ДО «базар/жанар», иначе «Еркебулан Жанар базар» уедет к Базару.
+  const rankOf = (name: string) => { const n = low(name)
+    if (n.includes('кристалл')) return 1
+    if (n.includes('листогиб')) return 2
+    if (n.includes('еркебулан')) return 5
+    if (n.includes('жаркын') || n.includes('туркист') || n.includes('туркест')) return 6
+    if (n.includes('абай') || n.includes('нурмахан')) return 7
+    if (n.includes('базар') || n.includes('жанар')) return 3
+    return 99 }
+  // Группируем по контрагенту+направлению; суммы складываем по счёту.
+  const groups = new Map<string, any>()
   for (const p of autoPays) {
     const col = colOf(p); if (!col) continue
     const signed = (p.direction === 'in' ? 1 : -1) * num(p.amount)
     if (p.date < date) { open[col] = (open[col] || 0) + signed; continue }   // прошлые → в остаток на начало
-    if (p.date === date) {
-      const a = artOf(p)
-      autoRows.push({ id: `auto-${p.id}`, auto: true, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null, comment: p.comment || '', alloc: [], amounts: [{ accountId: col, amount: signed }] })
-    }
+    if (p.date !== date) continue
+    const key = (p.contragentId || 'x') + '|' + p.direction
+    let g = groups.get(key)
+    if (!g) { g = { contragentId: p.contragentId, contragent: p.contragent, direction: p.direction, rank: rankOf(p.contragent), amt: {} as Record<string, number>, docNumber: null as string | null }; groups.set(key, g) }
+    g.amt[col] = (g.amt[col] || 0) + signed
+    if (p.docNumber && !g.docNumber) g.docNumber = p.docNumber
   }
-  const allRows = [...rows, ...autoRows]
+  const autoRows = Array.from(groups.values())
+    .sort((a, b) => a.rank - b.rank || low(a.contragent).localeCompare(low(b.contragent)))
+    .map(g => { const a = g.direction === 'in' ? opArt : spArt
+      return { id: `auto-${g.contragentId || 'x'}-${g.direction}`, auto: true, status: 'posted', type: g.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: g.contragent || '', contragentId: g.contragentId, docId: null, docNumber: g.docNumber, comment: '', alloc: [], amounts: Object.entries(g.amt).map(([accountId, amount]) => ({ accountId, amount })) } })
+  const allRows = [...autoRows, ...rows]   // авто-строки (фикс-порядок) сверху, ручные ниже
 
   const closing: Record<string, number> = { ...open }
   for (const r of allRows) for (const am of (r.amounts || [])) closing[am.accountId] = (closing[am.accountId] || 0) + num(am.amount)
