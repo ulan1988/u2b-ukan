@@ -24,6 +24,16 @@ export const accounts = (orgId: string) =>
 export const cashdayAccounts = (orgId: string) =>
   sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false and cashday=true order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
 
+// Прямые платежи для АВТО-строк листа «Операции»: инкассации филиалов («Инкассация от …») и
+// оплаты клиентов из кабинета («Оплата из кабинета …»). Только они — продажи кассы сюда не тянем.
+export const autoFinPayments = (orgId: string) =>
+  sqlClient`select p.id::text, p.date::text, p.direction, p.amount::float amount, p.cash_account_id::text "cashAccountId",
+      p.contragent_id::text "contragentId", c.name "contragent", p.comment
+    from payments p left join contragents c on c.id=p.contragent_id
+    where p.org_id=${orgId} and p.fin_row_id is null
+      and (p.comment like 'Инкассация от%' or p.comment like 'Оплата из кабинета%')
+    order by p.date` as unknown as Promise<Array<{ id: string; date: string; direction: string; amount: number; cashAccountId: string | null; contragentId: string | null; contragent: string | null; comment: string | null }>>
+
 // Справочник статей затрат (для расходных строк).
 export const expenseArticles = (orgId: string) =>
   sqlClient`select id::text, code, name, sort_order "sortOrder" from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Promise<any[]>

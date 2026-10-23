@@ -33,7 +33,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
+  return { id: r.id, auto: !!r.auto, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -81,18 +81,18 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   async function addRow() { const r = { id: '', type: 'out', code: 'ПЛ-13', article: 'Прочие платежи', who: '', status: 'draft', contragentId: null, docId: null, amt: {} }; setRows(p => [...p, r]); await persist(r); await load() }
   async function cloneRow(i: number) {
     const src = rows[i]; const cp = { ...src, id: '', status: 'draft', amt: { ...src.amt } }
-    const id = await persist(cp); const ids = rows.map(r => r.id); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
+    const id = await persist(cp); const ids = rows.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
   }
   async function insertRow(i: number) {
     const src = rows[i]; const nr = { id: '', type: src.type, article: src.article, who: '', status: 'draft', contragentId: null, docId: null, amt: {} }
-    const id = await persist(nr); const ids = rows.map(r => r.id); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
+    const id = await persist(nr); const ids = rows.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
   }
   async function removeRow(i: number) { const r = rows[i]; if (r.id) await finDeleteRow(r.id); await load() }
   // Поменять местами строки (вверх/вниз) + сохранить порядок.
   async function moveRow(i: number, dir: number) {
     const j = i + dir; if (j < 0 || j >= rows.length) return
     const nr = [...rows];[nr[i], nr[j]] = [nr[j], nr[i]]; setRows(nr)
-    const ids = nr.map(r => r.id).filter(Boolean); if (ids.length) await finReorder(ids)
+    const ids = nr.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); if (ids.length) await finReorder(ids)
   }
   async function revertRow(r: any) { r.status = 'draft'; setRows(p => [...p]); await persist(r); await load() }
   async function postAll() {
@@ -240,7 +240,9 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                       ? <span style={{ fontSize: 12.5 }}>{r.comment}</span>
                       : <input value={r.comment || ''} onChange={e => { r.comment = e.target.value; setRows(p => [...p]); scheduleSave(r) }} placeholder="…" style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', fontSize: 12.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />}
                     </td>}
-                    <td style={td}><div style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
+                    <td style={td}>{r.auto
+                      ? <div style={{ textAlign: 'center' }}><span title="Авто-строка: инкассация/оплата из кабинета (не редактируется)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span></div>
+                      : <div style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
                         <button onClick={() => moveRow(i, -1)} title="Вверх" style={arrowBtn}>▲</button>
                         <button onClick={() => moveRow(i, 1)} title="Вниз" style={arrowBtn}>▼</button>
@@ -251,7 +253,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                           <button onClick={() => insertRow(i)} title="Вставить под этой" style={actBtn}>＋</button>
                           <button onClick={() => removeRow(i)} title="Убрать" style={{ ...actBtn, color: '#b3261e' }}>✕</button>
                         </>}
-                    </div></td>
+                    </div>}</td>
                   </tr>
                 )
               })}

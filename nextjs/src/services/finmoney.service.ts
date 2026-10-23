@@ -6,17 +6,43 @@ const sumAmounts = (amts: any[]) => (amts || []).reduce((s, a) => s + num(a.amou
 
 // Полный день: счета, начальный/конечный остаток по счетам, строки, список дней, избранные.
 export async function financeDay(orgId: string, date: string) {
-  const [accts, opening, rows, dates, favs, expArticles] = await Promise.all([
-    fin.cashdayAccounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId),
+  const [accts, opening, rows, dates, favs, expArticles, autoPays] = await Promise.all([
+    fin.cashdayAccounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId), fin.autoFinPayments(orgId),
   ])
   const open: Record<string, number> = {}
   for (const a of accts) open[a.id] = 0
   for (const o of opening) open[o.id] = o.amt
+
+  // ── АВТО-строки: инкассации филиалов + оплаты клиентов из кабинета (производно из payments,
+  // в БД листа НЕ пишем). Инкассация → колонка «Банковский счёт» (на «Счетах» деньги на QR),
+  // оплата клиента → на её счёт поступления. Статья инкассации берётся из избранного по
+  // контрагенту-мосту («Доходы Нипа листогиб» и т.п.), оплаты клиента — «Оплата от покупателей».
+  const cashdayIds = new Set(accts.map(a => a.id))
+  const bankId = accts.find(a => a.name === 'Банковский счет')?.id || null
+  const favByCag: Record<string, any> = {}; for (const f of favs) if (f.contragentId) favByCag[f.contragentId] = f
+  const isIncas = (p: any) => (p.comment || '').startsWith('Инкассация')
+  const colOf = (p: any) => isIncas(p) ? bankId : (p.cashAccountId && cashdayIds.has(p.cashAccountId) ? p.cashAccountId : bankId)
+  const artOf = (p: any) => {
+    if (isIncas(p)) { const f = p.contragentId ? favByCag[p.contragentId] : null; return { code: f?.code || null, article: f?.label || `Доходы ${p.contragent || ''}`.trim() } }
+    return { code: 'ОП-01', article: 'Оплата от покупателей' }
+  }
+  const autoRows: any[] = []
+  for (const p of autoPays) {
+    const col = colOf(p); if (!col) continue
+    const signed = (p.direction === 'in' ? 1 : -1) * num(p.amount)
+    if (p.date < date) { open[col] = (open[col] || 0) + signed; continue }   // прошлые → в остаток на начало
+    if (p.date === date) {
+      const a = artOf(p)
+      autoRows.push({ id: `auto-${p.id}`, auto: true, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: null, comment: p.comment || '', alloc: [], amounts: [{ accountId: col, amount: signed }] })
+    }
+  }
+  const allRows = [...rows, ...autoRows]
+
   const closing: Record<string, number> = { ...open }
-  for (const r of rows) for (const am of (r.amounts || [])) closing[am.accountId] = (closing[am.accountId] || 0) + num(am.amount)
-  const dl = dates.map(d => d.date)
-  if (!dl.includes(date)) dl.unshift(date)
-  return { accounts: accts, opening: open, closing, rows, dates: dl, favorites: favs, expenseArticles: expArticles }
+  for (const r of allRows) for (const am of (r.amounts || [])) closing[am.accountId] = (closing[am.accountId] || 0) + num(am.amount)
+  // Дни = дни листа + дни авто-платежей (чтобы день инкассации был в выборе) + текущий.
+  const dl = Array.from(new Set([date, ...dates.map(d => d.date), ...autoPays.map(p => p.date)])).sort((a, b) => a < b ? 1 : -1)
+  return { accounts: accts, opening: open, closing, rows: allRows, dates: dl, favorites: favs, expenseArticles: expArticles }
 }
 
 // Создать/обновить строку + её суммы по счетам. Правка только черновика.
