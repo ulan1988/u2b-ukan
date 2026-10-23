@@ -14,26 +14,27 @@ export async function financeDay(orgId: string, date: string) {
   for (const o of opening) open[o.id] = o.amt
 
   // ── АВТО-строки: инкассации филиалов + оплаты клиентов из кабинета (производно из payments,
-  // в БД листа НЕ пишем). Инкассация → колонка «Банковский счёт» (на «Счетах» деньги на QR),
-  // оплата клиента → на её счёт поступления. Статья инкассации берётся из избранного по
-  // контрагенту-мосту («Доходы Нипа листогиб» и т.п.), оплаты клиента — «Оплата от покупателей».
+  // в БД листа НЕ пишем). Строка на КАЖДУЮ инкассацию/оплату (две точки «Базар Нипа» = две
+  // строки под одним контрагентом). У ВСЕХ: тип «Поступление», статья «Оплата от покупателей».
+  // Колонка = тип счёта-источника: инкассация — маркер в комментарии «… · банк|каспи|нал»;
+  // оплата клиента — её счёт поступления. Деньги копятся в 3 общих счетах головного.
   const cashdayIds = new Set(accts.map(a => a.id))
-  const bankId = accts.find(a => a.name === 'Банковский счет')?.id || null
-  const favByCag: Record<string, any> = {}; for (const f of favs) if (f.contragentId) favByCag[f.contragentId] = f
-  const isIncas = (p: any) => (p.comment || '').startsWith('Инкассация')
-  const colOf = (p: any) => isIncas(p) ? bankId : (p.cashAccountId && cashdayIds.has(p.cashAccountId) ? p.cashAccountId : bankId)
-  const artOf = (p: any) => {
-    if (isIncas(p)) { const f = p.contragentId ? favByCag[p.contragentId] : null; return { code: f?.code || null, article: f?.label || `Доходы ${p.contragent || ''}`.trim() } }
-    return { code: 'ОП-01', article: 'Оплата от покупателей' }
-  }
+  const low = (s: any) => String(s || '').toLowerCase()
+  const bankId = accts.find(a => low(a.name).includes('банков'))?.id || accts.find(a => a.kind === 'bank')?.id || null
+  const kaspiId = accts.find(a => low(a.name).includes('касп') || low(a.name).includes('kaspi'))?.id || null
+  const cashId = accts.find(a => low(a.name).includes('налич'))?.id || null
+  const opFav = favs.find((f: any) => low(f.label).includes('оплата от покупател'))
+  const opArt = { code: opFav?.code || null, article: opFav?.label || 'Оплата от покупателей' }
+  const isIncas = (p: any) => low(p.comment).startsWith('инкассация')
+  const incasCol = (p: any) => { const t = low((p.comment || '').split('·').pop()); return t.includes('касп') ? (kaspiId || bankId) : t.includes('нал') ? (cashId || bankId) : bankId }
+  const colOf = (p: any) => isIncas(p) ? incasCol(p) : (p.cashAccountId && cashdayIds.has(p.cashAccountId) ? p.cashAccountId : bankId)
   const autoRows: any[] = []
   for (const p of autoPays) {
     const col = colOf(p); if (!col) continue
     const signed = (p.direction === 'in' ? 1 : -1) * num(p.amount)
     if (p.date < date) { open[col] = (open[col] || 0) + signed; continue }   // прошлые → в остаток на начало
     if (p.date === date) {
-      const a = artOf(p)
-      autoRows.push({ id: `auto-${p.id}`, auto: true, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: null, comment: p.comment || '', alloc: [], amounts: [{ accountId: col, amount: signed }] })
+      autoRows.push({ id: `auto-${p.id}`, auto: true, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: opArt.code, article: opArt.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: null, comment: p.comment || '', alloc: [], amounts: [{ accountId: col, amount: signed }] })
     }
   }
   const allRows = [...rows, ...autoRows]

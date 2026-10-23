@@ -431,7 +431,10 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   const [filialBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, hq.id), eq(contragents.orgRefId, filialOrgId))).limit(1)
   if (!headBridge || !filialBridge) return { ok: false as const, error: 'Мост-контрагент между орг не найден' }
   const day = today()
+  // Тип счёта-источника филиала → в какую колонку «Операций» головного падает (нал/каспи/банк).
+  const srcNm = (fromAcc.name || '').toLowerCase()
+  const srcType = (srcNm.includes('касп') || srcNm.includes('kaspi')) ? 'каспи' : (srcNm.includes('налич') || srcNm.includes('касса')) ? 'нал' : 'банк'
   await payRepo.insertPayment({ id: randomUUID(), orgId: filialOrgId, contragentId: headBridge.id, direction: 'out', amount: String(amount), date: day, cashAccountId: fromAccountId, documentId: null, comment: `Инкассация → головной (${headQR.name})` })
-  await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name}` })
+  await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name} · ${srcType}` })
   return { ok: true as const, headQR: headQR.name }
 }
