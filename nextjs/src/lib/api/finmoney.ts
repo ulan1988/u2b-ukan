@@ -11,6 +11,7 @@ export const finFavApply = (date: string) => post('/api/finance/money', { action
 export const finDocSearch = (q: string) => post('/api/finance/money', { action: 'docSearch', q })
 export const finOpenInvoices = (contragentId: string, dir: string) => post('/api/finance/money', { action: 'openInvoices', contragentId, dir })
 export const finJournal = (from: string, to: string) => post('/api/finance/money', { action: 'journal', from, to })
+export const finLedger = (from: string, to: string) => post('/api/finance/money', { action: 'ledger', from, to })
 export const finEditDoc = (id: string, row: any) => post('/api/finance/money', { action: 'editDoc', id, row })
 export const finDeleteDoc = (id: string) => post('/api/finance/money', { action: 'deleteDoc', id })
 export const finFavList = () => post('/api/finance/money', { action: 'favList' })

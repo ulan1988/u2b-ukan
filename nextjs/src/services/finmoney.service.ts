@@ -173,6 +173,19 @@ async function revertRowEffects(rowId: string) {
   await fin.deletePaymentsForRow(rowId)
 }
 
+// Режим «Финанс» Уканбана: счета орг + движения за период + остатки (начало/конец).
+export async function financeLedger(orgId: string, from: string, to: string) {
+  const f = from || '2000-01-01', t = to || '2100-01-01'
+  const [accts, moves, opening] = await Promise.all([
+    fin.accounts(orgId), fin.ledgerMovements(orgId, f, t), fin.ledgerOpening(orgId, f),
+  ])
+  const open: Record<string, number> = {}; for (const a of accts) open[a.id] = 0
+  for (const o of opening) open[o.acc] = o.amt
+  const close: Record<string, number> = { ...open }
+  for (const m of moves) close[m.acc] = (close[m.acc] || 0) + num(m.amount)
+  return { accounts: accts, movements: moves, opening: open, closing: close }
+}
+
 // Журнал документов (проведённые операции за период) + счета для колонок.
 // Включает и ручные строки (fin_rows), и АВТО-операции (платежи без fin_row_id:
 // инкассации, оплаты из кабинета, ручные платежи, погашения, поставщики) — как в 1С.

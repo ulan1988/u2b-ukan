@@ -38,6 +38,37 @@ export const autoFinPayments = (orgId: string) =>
       and (p.comment is null or p.comment not like 'Касса %')
     order by p.date` as unknown as Promise<Array<{ id: string; date: string; direction: string; amount: number; cashAccountId: string | null; contragentId: string | null; contragent: string | null; comment: string | null; docId: string | null; docNumber: string | null }>>
 
+// Движения по счетам орг за период (режим «Финанс» Уканбана): платежи + проведённые строки «Деньги».
+export const ledgerMovements = (orgId: string, from: string, to: string) =>
+  sqlClient`
+    select date::text, acc, amount::float amount, contragent, article, docn "docNumber", src from (
+      select p.date, p.cash_account_id::text acc,
+        (case when p.direction='in' then p.amount else -p.amount end) amount,
+        c.name contragent, coalesce(nullif(p.comment,''),'Платёж') article, dd.number docn, 'pay' src
+      from payments p
+      left join contragents c on c.id=p.contragent_id
+      left join documents dd on dd.id=p.document_id
+      where p.org_id=${orgId} and p.cash_account_id is not null and p.date between ${from} and ${to}
+      union all
+      select r.date, a.account_id::text acc, a.amount, c.name contragent, r.article, null docn, 'fin' src
+      from fin_row_amounts a
+      join fin_rows r on r.id=a.row_id
+      left join contragents c on c.id=r.contragent_id
+      where r.org_id=${orgId} and r.status='posted' and r.date between ${from} and ${to}
+    ) t order by date, acc` as unknown as Promise<Array<{ date: string; acc: string; amount: number; contragent: string | null; article: string | null; docNumber: string | null; src: string }>>
+
+// Остаток по счетам НА начало периода = Σ движений (платежи + строки «Деньги») до даты.
+export const ledgerOpening = (orgId: string, before: string) =>
+  sqlClient`
+    select acc, sum(amount)::float amt from (
+      select cash_account_id::text acc, (case when direction='in' then amount else -amount end) amount
+        from payments where org_id=${orgId} and cash_account_id is not null and date < ${before}
+      union all
+      select a.account_id::text acc, a.amount amount
+        from fin_row_amounts a join fin_rows r on r.id=a.row_id
+        where r.org_id=${orgId} and r.status='posted' and r.date < ${before}
+    ) t group by acc` as unknown as Promise<Array<{ acc: string; amt: number }>>
+
 // Справочник статей затрат (для расходных строк).
 export const expenseArticles = (orgId: string) =>
   sqlClient`select id::text, code, name, sort_order "sortOrder" from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Promise<any[]>

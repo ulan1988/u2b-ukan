@@ -6,6 +6,7 @@ import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { listPurchases, listSales, listReturns, updateDocument } from '@/lib/api/docs'
 import { listContragents, reconcile, financeSummary, listProducts, productMoves } from '@/lib/api/refs'
+import { finLedger } from '@/lib/api/finmoney'
 import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
 import InvoiceForm from '@/components/admin/InvoiceForm'
@@ -16,7 +17,7 @@ const MODES = [
   { key: 'reconcile', label: '📄 Акт сверки', ready: true },
   { key: 'debts', label: '💸 Долги', ready: true },
   { key: 'moves', label: '📦 Движение товара', ready: true },
-  { key: 'finance', label: '💰 Финанс', ready: false },
+  { key: 'finance', label: '💰 Финанс', ready: true },
   { key: 'deals', label: '📋 Сделки', ready: false },
 ]
 
@@ -43,7 +44,8 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
       {mode === 'debts' && <DebtsMode orgId={orgId} onOpen={cid => { setRecCid(cid); setMode('reconcile') }} />}
       {mode === 'moves' && <StockMode orgId={orgId} />}
       {mode === 'reconcile' && <ReconcileMode initialCid={recCid} />}
-      {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && mode !== 'moves' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
+      {mode === 'finance' && <FinanceMode orgId={orgId} />}
+      {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && mode !== 'moves' && mode !== 'finance' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
   )
 }
@@ -440,6 +442,111 @@ function StockMode({ orgId }: { orgId: string }) {
               </div>
             </div>
           )}
+    </div>
+  )
+}
+
+// ─── Режим «Финанс»: наши счета (выбираемые чипами) + движения по счёту за период с остатком ───
+function FinanceMode({ orgId }: { orgId: string }) {
+  const [period, setPeriod] = useState<DPeriod>('all')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [selInit, setSelInit] = useState(false)
+
+  // Период → диапазон дат (ручной from/to приоритетнее пресета).
+  const range = useMemo(() => {
+    if (from || to) return { f: from || '2000-01-01', t: to || '2100-01-01' }
+    const now = new Date(); const iso = (d: Date) => d.toISOString().slice(0, 10)
+    if (period === 'today') { const d = iso(now); return { f: d, t: d } }
+    if (period === 'yesterday') { const y = new Date(now); y.setDate(now.getDate() - 1); const d = iso(y); return { f: d, t: d } }
+    if (period === 'month') return { f: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`, t: iso(now) }
+    return { f: '2000-01-01', t: '2100-01-01' }
+  }, [period, from, to])
+
+  const load = useCallback(async () => {
+    setLoading(true); const r: any = await finLedger(range.f, range.t)
+    setData(r?.data || { accounts: [], movements: [], opening: {}, closing: {} }); setLoading(false)
+  }, [range.f, range.t])
+  useEffect(() => { load() }, [load])
+
+  const accounts: any[] = data?.accounts || []
+  useEffect(() => { if (!selInit && accounts.length) { setSel(new Set(accounts.map((a: any) => a.id))); setSelInit(true) } }, [accounts, selInit])
+
+  const opening: Record<string, number> = data?.opening || {}
+  const closing: Record<string, number> = data?.closing || {}
+  const moves: any[] = data?.movements || []
+  const toggle = (id: string) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  // Нарастающий остаток по каждому счёту (старт = остаток до периода). Фильтр по выбранным счетам.
+  const run: Record<string, number> = { ...opening }
+  const rows = moves.filter(m => sel.has(m.acc)).map(m => { run[m.acc] = (run[m.acc] || 0) + Number(m.amount); return { ...m, bal: run[m.acc], name: accounts.find(a => a.id === m.acc)?.name || '—' } })
+  const selIn = rows.reduce((s, m) => s + (m.amount > 0 ? Number(m.amount) : 0), 0)
+  const selOut = rows.reduce((s, m) => s + (m.amount < 0 ? -Number(m.amount) : 0), 0)
+  const selClose = accounts.filter(a => sel.has(a.id)).reduce((s, a) => s + (closing[a.id] || 0), 0)
+
+  return (
+    <div>
+      {/* Период */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        {([['all', 'Всё'], ['today', 'Сегодня'], ['yesterday', 'Вчера'], ['month', 'Месяц']] as [DPeriod, string][]).map(([p, l]) => (
+          <button key={p} onClick={() => { setPeriod(p); setFrom(''); setTo('') }} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', fontSize: 12.5, fontWeight: (!from && !to && period === p) ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: (!from && !to && period === p) ? COLORS.primary : '#f1efec', color: (!from && !to && period === p) ? '#fff' : '#6b655b' }}>{l}</button>
+        ))}
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted, marginLeft: 6 }}>от</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={dInp(from)} />
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>до</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={dInp(to)} />
+      </div>
+
+      {/* Выбор счетов — чипы с остатком; клик включает/выключает */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        {accounts.map(a => { const on = sel.has(a.id); const bal = closing[a.id] || 0; return (
+          <button key={a.id} onClick={() => toggle(a.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', background: on ? '#fff' : '#f4f3f0', boxShadow: on ? `0 0 0 2px ${COLORS.primary}` : '0 0 0 1.5px #e6e2dc', opacity: on ? 1 : .6 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#211f1c' }}>{a.name}</span>
+            <span style={{ fontSize: 13.5, fontFamily: 'Consolas, monospace', fontWeight: 700, color: bal < 0 ? '#b3261e' : '#2e8a5e' }}>{fmtMoney(bal)} ₸</span>
+          </button>
+        ) })}
+        {accounts.length > 0 && <>
+          <button onClick={() => setSel(new Set(accounts.map(a => a.id)))} style={{ padding: '5px 10px', borderRadius: 20, border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: '#eef2ff', color: '#4f46e5', fontWeight: 600 }}>Все</button>
+          <button onClick={() => setSel(new Set())} style={{ padding: '5px 10px', borderRadius: 20, border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: '#f1efec', color: '#6b655b', fontWeight: 600 }}>Снять</button>
+        </>}
+      </div>
+
+      {/* Сводка по выбранным */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ flex: '1 1 150px', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '10px 14px' }}><div style={{ fontSize: 11.5, color: '#15803d', fontWeight: 700 }}>ПРИХОД</div><div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'Consolas, monospace', color: '#15803d' }}>{fmtMoney(selIn)}</div></div>
+        <div style={{ flex: '1 1 150px', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 10, padding: '10px 14px' }}><div style={{ fontSize: 11.5, color: '#b3261e', fontWeight: 700 }}>РАСХОД</div><div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'Consolas, monospace', color: '#b3261e' }}>{fmtMoney(selOut)}</div></div>
+        <div style={{ flex: '1 1 150px', background: '#fff', border: '2px solid #211f1c', borderRadius: 10, padding: '10px 14px' }}><div style={{ fontSize: 11.5, color: '#6b7280', fontWeight: 700 }}>ОСТАТОК (выбранные)</div><div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'Consolas, monospace' }}>{fmtMoney(selClose)} ₸</div></div>
+      </div>
+
+      {/* Движения */}
+      {loading ? <div style={emptyBox}>Загрузка…</div>
+        : sel.size === 0 ? <div style={emptyBox}>Выберите счёт (или «Все») — появятся движения с остатком.</div>
+          : rows.length === 0 ? <div style={emptyBox}>Нет движений за период по выбранным счетам.</div>
+            : (
+              <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
+                  <thead><tr style={{ background: '#f4f3f0', color: '#6b655b', fontSize: 11.5 }}>
+                    <th style={thL}>Дата</th><th style={thL}>Счёт</th><th style={thL}>Контрагент</th><th style={thL}>Операция</th>
+                    <th style={thR}>Приход</th><th style={thR}>Расход</th><th style={thR}>Остаток счёта</th>
+                  </tr></thead>
+                  <tbody>
+                    {rows.map((m, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid #f1efec', background: i % 2 ? '#faf9f7' : '#fff' }}>
+                        <td style={tdL}>{fmtDate(m.date)}</td>
+                        <td style={tdL}>{m.name}</td>
+                        <td style={tdL}>{m.contragent || '—'}</td>
+                        <td style={{ ...tdL, color: '#6b655b' }}>{m.article || ''}{m.docNumber ? ` · 📄 ${m.docNumber}` : ''}</td>
+                        <td style={{ ...tdR, color: '#2e8a5e', fontFamily: 'Consolas, monospace' }}>{m.amount > 0 ? fmtMoney(m.amount) : ''}</td>
+                        <td style={{ ...tdR, color: '#b3261e', fontFamily: 'Consolas, monospace' }}>{m.amount < 0 ? fmtMoney(-m.amount) : ''}</td>
+                        <td style={{ ...tdR, fontWeight: 700, fontFamily: 'Consolas, monospace' }}>{fmtMoney(m.bal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
     </div>
   )
 }
