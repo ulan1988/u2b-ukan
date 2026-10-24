@@ -712,13 +712,17 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: g.color }}>{fmtCode(o.id)}</span>
                       <StatusBadge status={o.status} />
                       {!isPaid
-                        ? <span style={{ fontSize: 11.5, background: '#fef3c7', color: '#92700a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Не оплачено — касса ждёт оплату">💰 к оплате {Math.round(sum).toLocaleString('ru-RU')} ₸</span>
+                        ? <span style={{ fontSize: 11.5, background: '#fef3c7', color: '#92700a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Не оплачено — касса ждёт оплату">💰 к оплате</span>
                         : debtLeft > 0
                           ? <span style={{ fontSize: 11.5, background: '#fde3d0', color: '#c0532a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Оплачено частично — остаток в долг">🟠 долг {debtLeft.toLocaleString('ru-RU')} ₸</span>
                           : <span style={{ fontSize: 11.5, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Оплачено полностью">✓ оплачено</span>}
-                      {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
-                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{total} поз.</span>
+                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: '#26231f', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {custName(o) || o.toName || 'Без клиента'}</span>
+                      <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{total} поз.</span>
+                      <b style={{ marginLeft: 'auto', fontSize: 16, color: g.color, whiteSpace: 'nowrap' }}>{Math.round(sum).toLocaleString('ru-RU')} ₸</b>
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
@@ -752,12 +756,15 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   <div key={o.id} style={{ background: sec.bg, borderRadius: 12, boxShadow: `0 0 0 1.5px ${sec.ring}`, padding: '11px 13px', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: sec.color }}>{fmtCode(o.id)}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sec.color }}>{Math.round(total).toLocaleString('ru-RU')} ₸</span>
                       {o.payment && <span style={{ fontSize: 11, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{o.payment}</span>}
                       {debtLeft > 0 && <span style={{ fontSize: 11.5, background: '#fde3d0', color: '#c0532a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Забрано в долг — не погашено">🟠 долг {debtLeft.toLocaleString('ru-RU')} ₸</span>}
-                      {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: '#26231f', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {custName(o) || o.toName || 'Без клиента'}</span>
+                      <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{(o.positions || []).length} поз.</span>
+                      <b style={{ marginLeft: 'auto', fontSize: 16, color: sec.color, whiteSpace: 'nowrap' }}>{Math.round(total).toLocaleString('ru-RU')} ₸</b>
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
