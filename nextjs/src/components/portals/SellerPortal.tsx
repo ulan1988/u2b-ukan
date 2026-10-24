@@ -772,8 +772,6 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         <div style={{ padding: 12, maxWidth: 760, margin: '0 auto', paddingBottom: 86 }}>
           {tab === 'checks' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Инкассация: отправить деньги со счёта магазина в QR-счёт головного */}
-              <button onClick={openEnc} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 11, padding: '12px 8px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>🏦 Инкассация → головной</button>
               {/* фильтр по дню: сегодня / выбор даты + итог дня */}
               <div style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <button onClick={() => setChecksDay(localDay())} style={{ border: checksDay === localDay() ? 'none' : '1.5px solid #e6e2dc', background: checksDay === localDay() ? PRIMARY : '#fff', color: checksDay === localDay() ? '#fff' : DARK, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>Сегодня</button>
