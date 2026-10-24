@@ -218,3 +218,8 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   .bp-pair { flex-wrap: nowrap; }
   .bp-pair button { flex: 1 1 0; min-width: 0; padding: 8px 4px !important; font-size: 12.5px !important; justify-content: center; margin-left: 0 !important; }
 }
+
+/* Рабочая область кабинета мастера: справа место под плавающую панель (ПК), на телефоне панель внизу — во всю ширину */
+.bp-main { padding: 16px 62px 40px 12px; }
+@media (max-width: 899px) { .bp-main { padding: 12px 12px 96px; } }
+@media (max-width: 640px) { .bp-pair button { font-size: 12px !important; padding: 8px 2px !important; letter-spacing: -.01em; } }
