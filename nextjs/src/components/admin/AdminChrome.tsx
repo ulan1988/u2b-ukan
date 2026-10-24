@@ -132,8 +132,14 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const isBranchOrg = !!selKind && selKind !== 'hq'
   const isSellerOrg = selKind === 'seller'
   const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
-  const SELLER_HIDE = ['production', 'material', 'projects']
+  // Магазин (как в 1С): без карточной системы — только документы (приход/расход), ДДС, склад, касса. Карточные экраны убраны.
+  const SELLER_HIDE = ['production', 'material', 'projects', 'dashboard', 'history', 'filter', 'accounting', 'bookkeeping', 'archive']
   const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)))
+
+  // Открыт скрытый для магазина карточный экран (старая ссылка/закладка) → уходим на «Кассу дня».
+  useEffect(() => {
+    if (isSellerOrg && [...BRANCH_HIDE, ...SELLER_HIDE].includes(screen)) router.replace(`/admin/cashday?org=${orgId}`)
+  }, [isSellerOrg, screen, orgId])
 
   const orgName = orgs.find(o => o.id === orgId)?.name || ''
   const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
@@ -153,7 +159,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Сквозная цветная полоса сверху = насыщенный цвет орг */}
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} />}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} />}
         <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
