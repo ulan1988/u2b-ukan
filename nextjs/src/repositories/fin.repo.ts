@@ -24,9 +24,9 @@ export const accounts = (orgId: string) =>
 export const cashdayAccounts = (orgId: string) =>
   sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false and cashday=true order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
 
-// Прямые платежи для АВТО-строк листа «Операции»: ВСЕ платежи орг без fin_row_id (инкассации
-// филиалов, оплаты клиентов из кабинета, ручные оплаты, погашения долга, оплаты поставщикам).
-// Исключаем построчные касс-продажи («Касса …») — они живут в журнале чеков, не в казначействе.
+// Прямые платежи для АВТО-строк листа «Операции»/«Документы»: ВСЕ платежи орг без fin_row_id —
+// касса-продажи, инкассации, оплаты из кабинета, погашения долга, возвраты, оплаты поставщикам.
+// Каждый платёж = кассовый ордер (приход/расход) с привязкой к накладной (как в 1С «Деньги и документы»).
 export const autoFinPayments = (orgId: string) =>
   sqlClient`select p.id::text, p.date::text, p.direction, p.amount::float amount, p.cash_account_id::text "cashAccountId",
       p.contragent_id::text "contragentId", c.name "contragent", p.comment,
@@ -35,7 +35,6 @@ export const autoFinPayments = (orgId: string) =>
     left join contragents c on c.id=p.contragent_id
     left join documents d on d.id=p.document_id
     where p.org_id=${orgId} and p.fin_row_id is null
-      and (p.comment is null or p.comment not like 'Касса %')
     order by p.date` as unknown as Promise<Array<{ id: string; date: string; direction: string; amount: number; cashAccountId: string | null; contragentId: string | null; contragent: string | null; comment: string | null; docId: string | null; docNumber: string | null }>>
 
 // Вид орг (hq/producer_seller/seller) — фикс-строки «Операций» нужны только головному.
