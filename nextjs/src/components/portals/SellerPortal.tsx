@@ -499,6 +499,53 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
 
+  // Печать/отправка чека — узкий термо-формат (72 мм), открывается print-окно.
+  function printCheck(o: any) {
+    const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const disc = Number(o.discountSum) || 0
+    const total = cardTotal(o)
+    const dt = fmtDateTime(o.delivered || o.createdAt)
+    const buyer = o.toName || o.contactName || o.fromName || 'Розница'
+    const lines = (o.positions || []).map((p: any) => {
+      const nm = p.oral || p.name1c || ''
+      const qty = Number(p.qty) || 0, price = Number(p.price) || 0
+      const sum = lineAmount({ name: p.name1c || p.oral, qty, price, widthCm: p.widthCm })
+      const cm = (p.widthCm && isIzdelie(p.name1c || p.oral)) ? ` ${p.widthCm}см` : ''
+      return `<tr class="nm"><td colspan="2">${esc(nm)}</td></tr><tr class="sub"><td>${qty}${cm} × ${money(price)}</td><td class="r">${money(sum)}</td></tr>`
+    }).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Чек ${esc(o.docNumber || o.id)}</title><style>
+      @page{size:72mm auto;margin:0}*{box-sizing:border-box}
+      body{width:72mm;margin:0;padding:8px 9px;font-family:'Courier New',monospace;font-size:12px;color:#000}
+      h1{font-size:15px;margin:0 0 3px;text-align:center}.c{text-align:center}.b{font-weight:bold}.muted{font-size:11px;color:#000}
+      hr{border:none;border-top:1px dashed #000;margin:7px 0}
+      table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}
+      .r{text-align:right;white-space:nowrap}.nm td{padding-top:4px;font-weight:bold}.sub td{font-size:11px}
+      .tot td{font-size:15px;font-weight:bold;padding-top:3px}
+      @media print{.noprint{display:none}}
+      .noprint{text-align:center;margin-top:12px}.noprint button{font-size:13px;padding:8px 16px;margin:0 4px;border:1px solid #888;border-radius:8px;background:#fff;cursor:pointer}
+    </style></head><body>
+      <h1>${esc(orgName || 'ЧЕК')}</h1>
+      <div class="c b">Чек № ${esc(o.docNumber || o.id)}</div>
+      <div class="c muted">${esc(dt)}</div>
+      <hr>
+      <div class="muted">Продавец: ${esc(o.seller || '—')}</div>
+      <div class="muted">Покупатель: ${esc(buyer)}</div>
+      <hr>
+      <table>${lines}</table>
+      <hr>
+      ${disc > 0 ? `<table><tr><td>Скидка</td><td class="r">-${money(disc)}</td></tr></table>` : ''}
+      <table><tr class="tot"><td>ИТОГО</td><td class="r">${money(total)} ₸</td></tr></table>
+      <div class="muted">Оплата: ${esc(o.payment || '—')}</div>
+      <hr>
+      <div class="c muted">Спасибо за покупку!</div>
+      <div class="noprint"><button onclick="window.print()">🖨 Печать</button><button onclick="window.close()">Закрыть</button></div>
+    </body></html>`
+    const w = window.open('', '_blank', 'width=360,height=640')
+    if (!w) { showMsg('Разрешите всплывающие окна для печати'); return }
+    w.document.write(html); w.document.close(); w.focus()
+    setTimeout(() => { try { w.print() } catch { } }, 350)
+  }
+
   const inp = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'inherit', boxSizing: 'border-box' as const, width: '100%' }
   // Высота, которую резервируем под чек-шторку: свёрнута — узкая полоска (видно каталог).
   const checkH = rows.length ? (checkExpanded ? (payOpen ? 422 : 306) : 66) : 0
@@ -737,6 +784,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 15, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK }}>{money(t)} ₸</div>
                     </div>
+                    <button onClick={e => { e.stopPropagation(); printCheck(o) }} title="Печать / отправить чек" style={{ border: '1.5px solid #d6d0c7', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit' }}>🖨</button>
                     {!allBack && <button onClick={e => { e.stopPropagation(); openReturn(o) }} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
                   </div>
                 )
