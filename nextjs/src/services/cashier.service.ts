@@ -308,6 +308,7 @@ export async function payDebt(cardId: string, splits: { accountId: string; amoun
     remaining -= amt; paidNow += amt
   }
   await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(paidNow)} ₸ (остаток ${Math.round(debt - paidNow)})`, userName: actor?.name || 'Система' })
+  try { await syncSellerBankToHq(order.orgId) } catch { /* noop */ }
   return { ok: true as const, paid: paidNow, debtLeft: Math.max(0, debt - paidNow) }
 }
 
@@ -384,6 +385,8 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
   if (!res.ok) return res
   await repo.updateOrder(id, { status: 'Доставлено' })
+  // QR/банк магазина сразу к головному (наша кюар) — не роняем продажу при сбое синка.
+  try { await syncSellerBankToHq(orgId) } catch { /* noop */ }
   return { ...res, id, seller }
 }
 
@@ -414,7 +417,7 @@ export async function clientPay(orgId: string, contragentId: string, accountId: 
 // Нипа листогиб → «QR Листогиб», Магазин Кристалл → «QR Кристалл» (авто-подбор по ключевому
 // слову имени филиала). В книге филиала: расход со счёта на мост-головной; в книге головного:
 // приход на QR-счёт от моста-филиала. Склад не трогается.
-export async function encashment(filialOrgId: string, fromAccountId: string, amount: number, actor?: Session | null) {
+export async function encashment(filialOrgId: string, fromAccountId: string, amount: number, actor?: Session | null, dateOverride?: string) {
   if (!(amount > 0)) return { ok: false as const, error: 'Сумма должна быть больше 0' }
   const { db } = await import('../lib/db')
   const { organizations, cashAccounts, contragents } = await import('../db/schema')
@@ -435,7 +438,7 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   const [headBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, filialOrgId), eq(contragents.orgRefId, hq.id))).limit(1)
   const [filialBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, hq.id), eq(contragents.orgRefId, filialOrgId))).limit(1)
   if (!headBridge || !filialBridge) return { ok: false as const, error: 'Мост-контрагент между орг не найден' }
-  const day = today()
+  const day = dateOverride || today()
   // Тип счёта-источника филиала → в какую колонку «Операций» головного падает (нал/каспи/банк).
   const srcNm = (fromAcc.name || '').toLowerCase()
   const srcType = (srcNm.includes('касп') || srcNm.includes('kaspi')) ? 'каспи' : (srcNm.includes('налич') || srcNm.includes('касса')) ? 'нал' : 'банк'
@@ -444,24 +447,31 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   return { ok: true as const, headQR: headQR.name }
 }
 
-// АВТО-ИНКАССАЦИЯ магазинов (seller) после смены (пока по cron в 21:00): «Банковский счёт» магазина
-// = наш QR, деньги считаются в его кассе → переводим головному. Инкассируем ТЕКУЩИЙ остаток банк-счёта
-// (идемпотентно: после перевода остаток 0, повторный запуск ничего не делает). Нал/каспи не трогаем.
-export async function autoEncashSellers() {
+// СРАЗУ К ГОЛОВНОМУ: «Банковский счёт» магазина (seller) = наша QR = деньги головного. Инкассируем
+// ПО ДНЯМ (дата = дата продажи) остаток, который ещё не ушёл головному — так деньги реально у
+// головного и видны в его «Операциях» того же дня. Нал/каспи не трогаем (физическая касса). Идемпотентно:
+// gross(день) = все приходы банка кроме инкассаций; enc(день) = уже инкассировано; шлём разницу.
+export async function syncSellerBankToHq(sellerOrgId: string) {
   const { db, sqlClient } = await import('../lib/db')
   const { organizations, cashAccounts } = await import('../db/schema')
   const { eq, and } = await import('drizzle-orm')
-  const sellers = await db.select().from(organizations).where(and(eq(organizations.kind, 'seller'), eq(organizations.archived, false)))
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, sellerOrgId)).limit(1)
+  if (!org || org.kind !== 'seller' || org.archived) return { ok: true as const, skipped: true }
+  const banks = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, sellerOrgId), eq(cashAccounts.kind, 'bank'), eq(cashAccounts.archived, false)))
+  const bank = banks.find(a => (a.name || '').toLowerCase().includes('банков')) || banks[0]
+  if (!bank) return { ok: true as const, skipped: true }
+  const rows = await sqlClient`
+    select date::text d,
+      coalesce(sum(case when (comment is null or comment not like 'Инкассация%') then (case when direction='in' then amount else -amount end) else 0 end),0)::float gross,
+      coalesce(sum(case when comment like 'Инкассация → головной%' and direction='out' then amount else 0 end),0)::float enc
+    from payments where cash_account_id=${bank.id} group by date order by date
+  ` as unknown as Array<{ d: string; gross: number; enc: number }>
   const done: any[] = []
-  for (const s of sellers) {
-    const banks = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, s.id), eq(cashAccounts.kind, 'bank'), eq(cashAccounts.archived, false)))
-    const bank = banks.find(a => (a.name || '').toLowerCase().includes('банков')) || banks[0]
-    if (!bank) continue
-    const [row] = await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where cash_account_id=${bank.id}` as unknown as Array<{ v: number }>
-    const amount = Math.round((Number(row?.v) || 0) * 100) / 100
-    if (amount <= 0) { done.push({ org: s.name, amount: 0, skipped: true }); continue }
-    const res: any = await encashment(s.id, bank.id, amount, null)
-    done.push({ org: s.name, amount, ok: !!res?.ok, to: res?.headQR || null, error: res?.error || null })
+  for (const r of rows) {
+    const remain = Math.round(((Number(r.gross) || 0) - (Number(r.enc) || 0)) * 100) / 100
+    if (remain <= 0) continue
+    const res: any = await encashment(sellerOrgId, bank.id, remain, null, r.d)
+    done.push({ date: r.d, amount: remain, ok: !!res?.ok, error: res?.error || null })
   }
-  return { ok: true as const, count: done.filter(d => d.ok).length, done }
+  return { ok: true as const, done }
 }
