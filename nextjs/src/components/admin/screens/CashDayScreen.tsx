@@ -20,7 +20,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [flash, setFlash] = useState('')
   const [cur, setCur] = useState({ articleId: '', who: '', accountId: '', amount: '' })   // текущий расход
   const [wageAcc, setWageAcc] = useState('')                    // счёт списания ЗП
-  const [wsel, setWsel] = useState<Record<string, boolean>>({})    // ЗП: выбранные сотрудники (сумма = оклад)
+  const [wsel, setWsel] = useState<Record<string, boolean>>({})    // ЗП: выбранные сотрудники
+  const [wamt, setWamt] = useState<Record<string, string>>({})     // ЗП: сумма вручную (дефолт — оклад, но редактируется)
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
@@ -44,14 +45,19 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     const r: any = await cashExpense(orgId, { kind: 'current', who: cur.who, article, expenseArticleId: cur.articleId || undefined, accountId: cur.accountId, amount, date })
     if (r.ok) { toast('✓ Расход добавлен'); setCur({ articleId: '', who: '', accountId: '', amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
+  // Сумма ЗП сотрудника: введённая вручную (приоритет), иначе дневной оклад.
+  function wageEff(u: any): number {
+    const v = wamt[u.id]
+    const n = (v !== undefined && v !== '') ? Number(String(v).replace(/\s/g, '').replace(',', '.')) : Number(u.dailyWage)
+    return Math.max(0, Math.round(Number(n) || 0))
+  }
   async function payAllWages() {
     const acc = wageAcc || (data?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (data?.accounts || [])[0]?.id
     if (!acc) { toast('Нет счёта'); return }
-    // Сумма = дневной оклад выбранного сотрудника (без ручного ввода)
-    const items = (data?.staff || []).filter((u: any) => wsel[u.id] && Number(u.dailyWage) > 0).map((u: any) => ({ who: u.name, amount: Math.round(Number(u.dailyWage)) }))
-    if (!items.length) { toast('Отметьте сотрудников на смене'); return }
+    const items = (data?.staff || []).filter((u: any) => wsel[u.id] && wageEff(u) > 0).map((u: any) => ({ who: u.name, amount: wageEff(u) }))
+    if (!items.length) { toast('Отметьте сотрудников и укажите сумму ЗП'); return }
     const r: any = await cashWages(orgId, acc, items, date)
-    if (r.ok) { toast(`✓ ЗП оплачена: ${items.length} чел · ${m(r.total)}`); setWsel({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    if (r.ok) { toast(`✓ ЗП оплачена: ${items.length} чел · ${m(r.total)}`); setWsel({}); setWamt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Инкассация Нипа → головной СО СПЛИТОМ: нал → ГО Осн.касса, каспи(GOLD) → ГО Банковский счёт.
   async function doRemit() {
@@ -428,10 +434,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10, marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700 }}>👤 ЗП — отметить кто на смене</span>
-                  {(data.staff || []).some((u: any) => Number(u.dailyWage) > 0) && (() => {
-                    const payable = (data.staff || []).filter((u: any) => Number(u.dailyWage) > 0)
-                    const allOn = payable.every((u: any) => wsel[u.id])
-                    return <button onClick={() => setWsel(allOn ? {} : Object.fromEntries(payable.map((u: any) => [u.id, true])))} style={{ border: 'none', background: COLORS.bg, color: COLORS.textMuted, borderRadius: 6, padding: '3px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{allOn ? 'Снять всех' : 'Все'}</button>
+                  {(data.staff || []).length > 0 && (() => {
+                    const allOn = (data.staff || []).every((u: any) => wsel[u.id])
+                    return <button onClick={() => setWsel(allOn ? {} : Object.fromEntries((data.staff || []).map((u: any) => [u.id, true])))} style={{ border: 'none', background: COLORS.bg, color: COLORS.textMuted, borderRadius: 6, padding: '3px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{allOn ? 'Снять всех' : 'Все'}</button>
                   })()}
                   <span style={{ marginLeft: 'auto', fontSize: 12, color: COLORS.textMuted }}>со счёта{orgName ? ` (${orgName})` : ' филиала'}</span>
                   <select value={wageAcc} onChange={e => setWageAcc(e.target.value)} style={{ padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
@@ -440,18 +445,23 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 </div>
                 {(data.staff || []).length === 0 ? <div style={{ fontSize: 13, color: COLORS.textMuted, padding: '6px 0' }}>Нет сотрудников — добавьте в разделе «👥 Сотрудники»</div>
                   : (data.staff || []).map((u: any) => {
-                    const wage = Number(u.dailyWage) || 0
                     const on = !!wsel[u.id]
-                    const canPay = wage > 0
+                    const wage = Number(u.dailyWage) || 0
+                    const amtVal = wamt[u.id] !== undefined ? wamt[u.id] : (wage > 0 ? String(Math.round(wage)) : '')
+                    const toggle = () => setWsel(w => ({ ...w, [u.id]: !w[u.id] }))
                     return (
-                      <button key={u.id} disabled={!canPay} onClick={() => setWsel(w => ({ ...w, [u.id]: !w[u.id] }))} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '8px 8px', borderRadius: 8, border: 'none', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent', cursor: canPay ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canPay ? 1 : 0.55 }}>
-                        <span style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}` }}>{on ? '✓' : ''}</span>
-                        <span style={{ flex: 1, fontSize: 13.5 }}>{u.name}{u.position ? <span style={{ color: COLORS.textLight, fontSize: 12 }}> · {u.position}</span> : ''}</span>
-                        <b style={{ fontSize: 14, color: canPay ? (on ? '#2e8a5e' : COLORS.text) : COLORS.textMuted }}>{canPay ? m(wage) + ' ₸' : 'оклад не задан'}</b>
-                      </button>
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent' }}>
+                        <button onClick={toggle} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
+                        <span onClick={toggle} style={{ flex: 1, fontSize: 13.5, cursor: 'pointer' }}>{u.name}{u.position ? <span style={{ color: COLORS.textLight, fontSize: 12 }}> · {u.position}</span> : ''}</span>
+                        <input value={amtVal} inputMode="decimal" placeholder="сумма ЗП"
+                          onFocus={() => { if (!on) setWsel(w => ({ ...w, [u.id]: true })) }}
+                          onChange={e => { setWamt(w => ({ ...w, [u.id]: e.target.value })); if (!on && e.target.value) setWsel(w => ({ ...w, [u.id]: true })) }}
+                          style={{ width: 120, textAlign: 'right', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${on ? '#2e8a5e' : COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none' }} />
+                        <span style={{ fontSize: 13, color: COLORS.textMuted }}>₸</span>
+                      </div>
                     )
                   })}
-                {(() => { const tot = (data.staff || []).reduce((s: number, u: any) => s + (wsel[u.id] && Number(u.dailyWage) > 0 ? Math.round(Number(u.dailyWage)) : 0), 0); return <button onClick={payAllWages} disabled={!(tot > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: tot > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: tot > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Оплатить ЗП${tot > 0 ? ' · ' + m(tot) : ''}`}</button> })()}
+                {(() => { const tot = (data.staff || []).reduce((s: number, u: any) => s + (wsel[u.id] ? wageEff(u) : 0), 0); return <button onClick={payAllWages} disabled={!(tot > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: tot > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: tot > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Оплатить ЗП${tot > 0 ? ' · ' + m(tot) : ''}`}</button> })()}
               </div>
               {/* Текущий расход — по статье (как в 1С) */}
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>
