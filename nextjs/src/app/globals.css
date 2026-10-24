@@ -167,3 +167,10 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   .bp-rail-ic { font-size: 22px; }
   .bp-rail-lbl { display: block; font-size: 11px !important; line-height: 1.15; font-weight: 700; max-width: 100%; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 }
+
+/* Касса продавца на планшете/ноутбуке: каталог в две колонки */
+@media (min-width: 700px) {
+  .sp-list { display: grid; grid-template-columns: 1fr 1fr; }
+  .sp-list > div:only-child { grid-column: 1 / -1; }
+  .sp-list > div:nth-child(odd) { border-right: 1px solid #f4f1ed; }
+}

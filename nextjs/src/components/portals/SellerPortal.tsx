@@ -739,7 +739,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               <div style={{ fontSize: 13, color: '#8a8377' }}>Для изделий и комплектующих цвет обязателен.</div>
             </div>
           ) : (
-          <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
+          <div className="sp-list" style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
             {list.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: '#8a8377', fontSize: 13.5 }}>{color ? 'В этом цвете ничего нет — снимите цвет или выберите другой' : 'Ничего не найдено'}</div>}
             {list.map(p => {
               const izd = activeFolder.build && isIzdelie(p.name)   // «Изделие» — нужен см (сборка)
