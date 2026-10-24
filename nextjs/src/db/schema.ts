@@ -586,3 +586,13 @@ export const goodsDebts = pgTable('goods_debts', {
   createdBy: text('created_by').notNull().default(''),             // кто записал
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('goods_debts_org_idx').on(t.orgId, t.contragentId) }))
+
+// Расчёт (смета по фирмам/линейкам) — локальный тренировочный лист. Данные одним JSON:
+// { brands:[{id,name,color}], rows:[{id,name,qty,prices:{brandId:number}}] }.
+export const calcSheets = pgTable('calc_sheets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull(),
+  name: text('name').notNull().default('Расчёт'),
+  data: text('data').notNull().default('{}'),              // JSON (brands + rows)
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('calc_sheets_org_idx').on(t.orgId) }))

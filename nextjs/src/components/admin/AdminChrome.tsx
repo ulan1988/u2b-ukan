@@ -35,6 +35,7 @@ export const NAV: NavItem[] = [
   { key: 'nomenclature', label: 'Номенклатура', icon: '📦' },
   { key: 'material', label: 'Материал', icon: '🧱' },
   { key: 'projects', label: 'Проекты', icon: '📁' },
+  { key: 'calc', label: 'Расчёт', icon: '🧮' },
   { key: 'settings', label: 'Настройки', icon: '⚙️' },
 ]
 
