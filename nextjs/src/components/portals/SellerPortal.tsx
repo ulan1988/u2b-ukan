@@ -1321,30 +1321,49 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       {rcpt && (() => {
         const o = rcpt; const disc = Number(o.discountSum) || 0; const total = cardTotal(o)
         const buyer = o.toName || o.contactName || o.fromName || 'Розница'
+        const payColor = (() => { const s = String(o.payment || '').toLowerCase(); if (s.includes('qr') || s.includes('кюар')) return BLUE; if (s.includes('касп') || s.includes('kaspi')) return '#7a3aaa'; if (s.includes('нал')) return GREEN; if (s.includes('долг')) return '#b4791a'; return '#6b7280' })()
         return (
-          <div onClick={() => setRcpt(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 340, maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ background: '#fff', borderRadius: 14, padding: '18px 20px', overflowY: 'auto', fontFamily: '"Courier New", ui-monospace, monospace', color: '#1a1a1a' }}>
-                <div style={{ textAlign: 'center', fontSize: 17, fontWeight: 800, marginBottom: 2 }}>{orgName || 'ЧЕК'}</div>
-                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700 }}>Чек № {o.docNumber || o.id}</div>
-                <div style={{ textAlign: 'center', fontSize: 12, color: '#555', marginBottom: 8 }}>{fmtDateTime(o.delivered || o.createdAt)}</div>
-                <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
-                <div style={{ fontSize: 12.5 }}>Продавец: {o.seller || '—'}</div>
-                <div style={{ fontSize: 12.5 }}>Покупатель: {buyer}</div>
-                <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
-                {rLines(o).map((r: any, i: number) => (
-                  <div key={i} style={{ marginBottom: 5 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{r.nm}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#333' }}>
-                      <span>{r.qty}{r.cm} × {money(r.price)}</span><span style={{ fontWeight: 700 }}>{money(r.sum)}</span>
-                    </div>
+          <div onClick={() => setRcpt(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,16,12,.55)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(2px)' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 350, maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 16px 50px rgba(0,0,0,.3)', display: 'flex', flexDirection: 'column', maxHeight: '78vh' }}>
+                {/* Шапка */}
+                <div style={{ background: `linear-gradient(135deg, ${PRIMARY} 0%, #b94e2c 100%)`, color: '#fff', padding: '18px 20px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.1 }}>{orgName || 'Чек'}</div>
+                    <div style={{ fontSize: 28, lineHeight: 1 }}>🧾</div>
                   </div>
-                ))}
-                <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
-                {disc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span>Скидка</span><span>-{money(disc)}</span></div>}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 800, marginTop: 3 }}><span>ИТОГО</span><span>{money(total)} ₸</span></div>
-                <div style={{ fontSize: 12.5, color: '#555', marginTop: 2 }}>Оплата: {o.payment || '—'}</div>
-                <div style={{ textAlign: 'center', fontSize: 12, color: '#777', marginTop: 10 }}>Спасибо за покупку!</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <span style={{ background: 'rgba(255,255,255,.22)', borderRadius: 20, padding: '3px 11px', fontSize: 12.5, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>№ {o.docNumber || o.id}</span>
+                    <span style={{ fontSize: 12.5, opacity: .92 }}>{fmtDateTime(o.delivered || o.createdAt)}</span>
+                  </div>
+                </div>
+                {/* Контрагенты */}
+                <div style={{ padding: '12px 20px 4px', display: 'flex', gap: 18 }}>
+                  <div><div style={{ fontSize: 10, color: '#a09889', fontWeight: 800, letterSpacing: '.04em' }}>ПРОДАВЕЦ</div><div style={{ fontSize: 13.5, fontWeight: 600, color: DARK }}>{o.seller || '—'}</div></div>
+                  <div><div style={{ fontSize: 10, color: '#a09889', fontWeight: 800, letterSpacing: '.04em' }}>ПОКУПАТЕЛЬ</div><div style={{ fontSize: 13.5, fontWeight: 600, color: DARK }}>{buyer}</div></div>
+                </div>
+                {/* Позиции */}
+                <div style={{ padding: '6px 20px', overflowY: 'auto' }}>
+                  {rLines(o).map((r: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid #f3f0ec' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: DARK }}>{r.nm}</div>
+                        <div style={{ fontSize: 12, color: '#a09889', marginTop: 1 }}>{r.qty}{r.cm} × {money(r.price)} ₸</div>
+                      </div>
+                      <div style={{ fontSize: 14.5, fontWeight: 800, color: DARK, whiteSpace: 'nowrap' }}>{money(r.sum)}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Итог */}
+                <div style={{ background: '#fdeee7', padding: '13px 20px' }}>
+                  {disc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#b94e2c', fontWeight: 600, marginBottom: 5 }}><span>Скидка</span><span>−{money(disc)} ₸</span></div>}
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: DARK, letterSpacing: '.02em' }}>ИТОГО</span>
+                    <span style={{ fontSize: 24, fontWeight: 800, color: PRIMARY }}>{money(total)} <span style={{ fontSize: 15 }}>₸</span></span>
+                  </div>
+                  <div style={{ marginTop: 9 }}><span style={{ background: payColor, color: '#fff', borderRadius: 20, padding: '4px 13px', fontSize: 12.5, fontWeight: 700 }}>💳 {o.payment || '—'}</span></div>
+                </div>
+                <div style={{ textAlign: 'center', fontSize: 12, color: '#b0a89d', padding: '11px' }}>Спасибо за покупку! 🙌</div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => sendWhatsApp(o)} style={{ flex: 1, border: 'none', background: '#25D366', color: '#fff', borderRadius: 11, padding: '13px', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📲 WhatsApp</button>
