@@ -1348,8 +1348,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => sendWhatsApp(o)} style={{ flex: 1, border: 'none', background: '#25D366', color: '#fff', borderRadius: 11, padding: '13px', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📲 WhatsApp</button>
-                <button onClick={() => printCheck(o)} title="Печать (если есть принтер)" style={{ border: 'none', background: '#fff', color: '#5f5952', borderRadius: 11, padding: '13px 15px', fontSize: 16, cursor: 'pointer', fontFamily: 'inherit' }}>🖨</button>
-                <button onClick={() => setRcpt(null)} style={{ border: 'none', background: 'rgba(255,255,255,.85)', color: '#5f5952', borderRadius: 11, padding: '13px 15px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Закрыть</button>
+                <button onClick={() => printCheck(o)} title="Печать (если есть принтер)" style={{ border: '1.5px solid #c9c3b8', background: '#fff', color: '#3a362f', borderRadius: 11, padding: '13px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>🖨 Печать</button>
+                <button onClick={() => setRcpt(null)} style={{ border: '1.5px solid #e0dbd2', background: '#fff', color: '#5f5952', borderRadius: 11, padding: '13px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Закрыть</button>
               </div>
             </div>
           </div>
