@@ -688,7 +688,7 @@ function AccountsView() {
           <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Consolas, monospace', marginTop: 4 }}>{fmt(data.grandTotal)} ₸</div>
         </div>
         <div style={{ flex: '1 1 180px', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 12, padding: '14px 18px' }}>
-          <div style={{ fontSize: 12.5, color: '#15803d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Свои счета (головной)</div>
+          <div style={{ fontSize: 12.5, color: '#15803d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Свои счета (ГО + QR филиалов)</div>
           <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Consolas, monospace', marginTop: 4, color: '#15803d' }}>{fmt(data.ownTotal)} ₸</div>
         </div>
         <div style={{ flex: '1 1 180px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: '14px 18px' }}>
@@ -711,12 +711,19 @@ function AccountsView() {
                 {p && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#b45309', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 20, padding: '2px 10px', whiteSpace: 'nowrap' }}>⏳ в ожидании</span>}
               </div>
               <div style={{ padding: '4px 16px 8px' }}>
-                {b.items.map((a: any) => (
+                {b.items.map((a: any) => {
+                  // Банк/QR филиала (a.toHq) = деньги головного → зелёным «→ головному»/«инфо», не «в ожидании».
+                  const itemPending = b.kind !== 'hq' && !a.toHq
+                  const balColor = a.toHq ? '#15803d' : itemPending ? '#b45309' : '#211f1c'
+                  return (
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px dashed #eee' }}>
-                    <span style={{ fontSize: 13.5, color: '#4a4640' }}><span style={{ color: '#9ca3af', fontSize: 11.5, marginRight: 6 }}>{kindName(a.kind)}</span>{a.name}</span>
-                    <span style={{ fontFamily: 'Consolas, monospace', fontSize: 15, fontWeight: 700, color: p ? '#b45309' : '#211f1c' }}>{fmt(a.balance)}</span>
+                    <span style={{ fontSize: 13.5, color: '#4a4640' }}><span style={{ color: '#9ca3af', fontSize: 11.5, marginRight: 6 }}>{kindName(a.kind)}</span>{a.name}
+                      {a.toHq && <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 700, color: '#15803d', background: '#e8f5ee', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>{data.isHq ? '→ головному' : 'инфо · головному'}</span>}
+                      {itemPending && <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fff7ed', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>⏳ в ожидании</span>}
+                    </span>
+                    <span style={{ fontFamily: 'Consolas, monospace', fontSize: 15, fontWeight: 700, color: balColor }}>{fmt(a.balance)}</span>
                   </div>
-                ))}
+                ) })}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 9, marginTop: 2 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#6b7280' }}>Итого по счетам</span>
                   <span style={{ fontFamily: 'Consolas, monospace', fontSize: 18, fontWeight: 800, color: accent }}>{fmt(b.total)} ₸</span>

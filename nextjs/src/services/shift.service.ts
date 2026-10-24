@@ -297,15 +297,23 @@ export async function accountsOverview(viewerOrgId: string) {
   const finm = await sqlClient`select a.account_id::text acc, coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.status='posted' group by a.account_id`
   const bal = new Map<string, number>()
   for (const r of [...(pay as any[]), ...(finm as any[])]) bal.set(r.acc, (bal.get(r.acc) || 0) + num(r.v))
+  // Банк/QR филиала = наша кюар = деньги головного → сразу «свои», НЕ «в ожидании».
+  // Нал/каспи филиала — физические, инкассируются позже → «в ожидании».
+  const isBankQr = (a: any) => a.kind === 'bank' || /банков|qr|кюар|кюр/i.test(a.name || '')
   const blocks = (orgs as any[]).map(o => {
-    const items = (accs as any[]).filter(a => a.oid === o.id).map(a => ({ id: a.id, name: a.name, kind: a.kind, balance: num(bal.get(a.id)) }))
+    const isHqOrg = o.kind === 'hq'
+    const items = (accs as any[]).filter(a => a.oid === o.id).map(a => ({
+      id: a.id, name: a.name, kind: a.kind, balance: num(bal.get(a.id)),
+      toHq: !isHqOrg && isBankQr(a),   // деньги головного (у филиала — инфо)
+    }))
     const total = items.reduce((s, x) => s + x.balance, 0)
-    const pending = o.kind !== 'hq'   // деньги филиала = в ожидании инкассации головному
-    return { orgId: o.id, orgName: o.name, kind: o.kind, pending, items, total }
+    const pendingSum = items.filter((x: any) => !isHqOrg && !x.toHq).reduce((s: number, x: any) => s + x.balance, 0)
+    return { orgId: o.id, orgName: o.name, kind: o.kind, pending: !isHqOrg && pendingSum !== 0, items, total, pendingSum }
   })
   const grandTotal = blocks.reduce((s, b) => s + b.total, 0)
-  const ownTotal = blocks.filter(b => !b.pending).reduce((s, b) => s + b.total, 0)
-  const pendingTotal = blocks.filter(b => b.pending).reduce((s, b) => s + b.total, 0)
+  // «Свои» = счета головного + банк/QR филиалов (наша кюар). «В ожидании» = нал/каспи филиалов.
+  const ownTotal = blocks.reduce((s, b) => s + b.items.filter((x: any) => b.kind === 'hq' || x.toHq).reduce((t: number, x: any) => t + x.balance, 0), 0)
+  const pendingTotal = blocks.reduce((s, b) => s + b.items.filter((x: any) => b.kind !== 'hq' && !x.toHq).reduce((t: number, x: any) => t + x.balance, 0), 0)
   return { blocks, grandTotal, ownTotal, pendingTotal, isHq }
 }
 
