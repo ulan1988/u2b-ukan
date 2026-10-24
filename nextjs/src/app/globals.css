@@ -88,3 +88,51 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   .tb-pills { order: 4; }
   .tb-right > .tb-search { order: 5; }
 }
+
+/* ── Исходящие: карточка заказа ─────────────────────────────────────── */
+.og-pad { padding: 14px 18px; }
+.og-pos { display: flex; align-items: center; gap: 12px; }
+.og-pos-main { flex: 1; min-width: 0; }
+.og-pos-bar { width: 120px; }
+.og-foot { padding: 10px 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.og-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 768px) {
+  .og-pad { padding: 12px; }
+  /* позиция: название на всю ширину, ниже прогресс и статус в одну строку */
+  .og-pos { flex-wrap: wrap; gap: 6px 10px; padding: 10px 0 !important; }
+  .og-pos-main { flex: 1 0 100%; }
+  .og-pos-main > div:first-child { font-size: 15px !important; line-height: 1.3; }
+  .og-pos-main > div:last-child { font-size: 13px !important; line-height: 1.35; }
+  .og-pos-bar { flex: 1 1 60px; width: auto; }
+  .og-pos-sel { flex: 1 1 140px; min-height: 40px; font-size: 15px !important; }
+  .og-foot { padding: 10px 12px 12px; }
+  .og-btns { margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .og-btns .og-btn { min-height: 44px; font-size: 14px !important; padding: 8px 10px !important; }
+}
+
+/* ── Касса дня ──────────────────────────────────────────────────────── */
+.cd-rep { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.cd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.cd-row { display: flex; align-items: center; gap: 12px; }
+.cd-line { display: flex; gap: 10px; }
+.cd-wrap { display: flex; align-items: center; gap: 10px; }
+.cd-root b { white-space: nowrap; }
+@media (max-width: 1100px) { .cd-rep { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .cd-cols { grid-template-columns: 1fr; } }
+@media (max-width: 768px) {
+  .cd-rep { grid-template-columns: 1fr; gap: 14px; }
+  .cd-root { font-size: 15px; }
+  .cd-root label { font-size: 12.5px !important; }
+  .cd-root input, .cd-root select { font-size: 16px !important; min-height: 44px; }
+  /* строки журналов: поля переносятся, ширины снимаются, сумма уходит вправо */
+  .cd-row { flex-wrap: wrap; gap: 2px 10px; }
+  .cd-row > * { width: auto !important; white-space: normal !important; }
+  .cd-row > b:last-of-type, .cd-row > b:last-child { margin-left: auto; }
+  .cd-lines { padding-left: 16px !important; }
+  .cd-line { flex-wrap: wrap; gap: 0 10px; }
+  .cd-line > span { width: auto !important; }
+  .cd-line > span:first-child { flex: 1 0 100%; font-size: 14px; }
+  .cd-wrap { flex-wrap: wrap; }
+  .cd-wrap > * { flex: 1 1 140px; width: auto !important; min-width: 0; }
+  .cd-wrap > button { flex: 0 0 44px; min-height: 44px; }
+}

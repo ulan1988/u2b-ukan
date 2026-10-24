@@ -85,7 +85,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   )
 
   return (
-    <div className="anim-fade">
+    <div className="anim-fade cd-root">
       {flash && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: COLORS.dark, color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{flash}</div>}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -240,7 +240,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           return (
             <div style={{ ...card, marginBottom: 16, borderLeft: `4px solid ${COLORS.primary}` }}>
               <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 12 }}>📄 ОТЧЁТ ДНЯ</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
+              <div className="cd-rep">
                 {/* ПРОДАЖА */}
                 <div>
                   <div style={sub}>ПРОДАЖА</div>
@@ -280,7 +280,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               <b style={{ marginLeft: 'auto', fontSize: 16, color: COLORS.primaryDark }}>{m(data.debtTotal)} ₸</b>
             </div>
             {(data.debts || []).map((x: any) => (
-              <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderTop: `1px solid ${COLORS.borderLight}` }}>
+              <div key={x.id} className="cd-row" style={{ padding: '9px 16px', borderTop: `1px solid ${COLORS.borderLight}` }}>
                 <span style={{ fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{x.customer || 'Розница'}</span>
                 <span style={{ fontFamily: 'monospace', fontSize: 12.5, color: '#2e8a5e', width: 150 }}>{x.docNumber || x.id}</span>
                 <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 100 }}>{x.seller ? `👤 ${x.seller}` : '—'}</span>
@@ -318,7 +318,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               const debt = Math.max(0, Number(c.total || 0) - paid)
               return (
                 <div key={c.id} style={{ borderTop: `1px solid ${COLORS.borderLight}` }}>
-                  <div onClick={() => setOpenCheck(open ? '' : c.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', cursor: 'pointer', background: open ? COLORS.bgCard : 'transparent' }}>
+                  <div onClick={() => setOpenCheck(open ? '' : c.id)} className="cd-row" style={{ padding: '10px 16px', cursor: 'pointer', background: open ? COLORS.bgCard : 'transparent' }}>
                     <span style={{ fontSize: 12, color: COLORS.textLight, width: 42 }}>{time}</span>
                     <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#2e8a5e', width: 130 }}>{c.docNumber || c.id}</span>
                     <span style={{ fontSize: 13.5, width: 110, color: c.seller ? COLORS.text : COLORS.textLight }}>{c.seller ? `👤 ${c.seller}` : '—'}</span>
@@ -331,13 +331,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     <span style={{ color: COLORS.textLight, fontSize: 12, width: 14 }}>{open ? '▾' : '▸'}</span>
                   </div>
                   {open && (
-                    <div style={{ padding: '2px 16px 12px 70px', background: COLORS.bgCard }}>
+                    <div className="cd-lines" style={{ padding: '2px 16px 12px 70px', background: COLORS.bgCard }}>
                       {(c.lines || []).map((l: any, i: number) => {
                         const sum = /^изделие/i.test(l.name || '') && Number(l.widthCm) > 0
                           ? Number(l.qty) * Number(l.widthCm) * Number(l.price)
                           : Number(l.qty) * Number(l.price)
                         return (
-                          <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0', fontSize: 13, color: COLORS.textSubtle }}>
+                          <div key={i} className="cd-line" style={{ padding: '4px 0', fontSize: 13, color: COLORS.textSubtle }}>
                             <span style={{ flex: 1, minWidth: 0 }}>{l.name}</span>
                             <span style={{ width: 110, textAlign: 'right', color: COLORS.textLight }}>{Number(l.qty)} {l.unit || 'шт'}{Number(l.widthCm) > 0 ? ` × ${Number(l.widthCm)} см` : ''}</span>
                             <span style={{ width: 90, textAlign: 'right', color: COLORS.textLight }}>{m(l.price)}</span>
@@ -353,7 +353,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             })}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+        <div className="cd-cols">
           {/* Левая: счета + GOLD */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={card}>
@@ -451,7 +451,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     const amtVal = wamt[u.id] !== undefined ? wamt[u.id] : (wage > 0 ? String(Math.round(wage)) : '')
                     const toggle = () => setWsel(w => ({ ...w, [u.id]: !w[u.id] }))
                     return (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent' }}>
+                      <div key={u.id} className="cd-wrap" style={{ padding: '8px 8px', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent' }}>
                         <button onClick={toggle} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
                         <span onClick={toggle} style={{ flex: 1, fontSize: 13.5, cursor: 'pointer' }}>{u.name}{u.position ? <span style={{ color: COLORS.textLight, fontSize: 12 }}> · {u.position}</span> : ''}</span>
                         <input value={amtVal} inputMode="decimal" placeholder="сумма ЗП"
@@ -471,7 +471,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   <option value="">— статья ДДС —</option>
                   {(() => { const ACT: any = { operating: 'Операционная', transfer: 'Перемещения', financial: 'Финансовая', investing: 'Инвестиционная' }; return Object.entries((data.expenseArticles || []).reduce((g: any, a: any) => { const k = ACT[a.activity] || a.activity || 'Прочее'; (g[k] = g[k] || []).push(a); return g }, {})).map(([grp, arts]: any) => <optgroup key={grp} label={grp}>{arts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</optgroup>) })()}
                 </select>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="cd-wrap" style={{ gap: 8 }}>
                   <input value={cur.who} onChange={e => setCur(x => ({ ...x, who: e.target.value }))} placeholder="комментарий (необязательно)" style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
                   <select value={cur.accountId} onChange={e => setCur(x => ({ ...x, accountId: e.target.value }))} style={{ width: 150, padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', background: '#fff' }}>
                     <option value="">— счёт —</option>{accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}

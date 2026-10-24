@@ -17,7 +17,7 @@ function ProgressBar({ pct, height = 5 }: { pct: number; height?: number }) {
 
 function Btn({ onClick, children, variant, disabled }: { onClick: () => void; children: React.ReactNode; variant?: 'primary'; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled}
+    <button onClick={onClick} disabled={disabled} className="og-btn"
       style={{ padding: '6px 12px', borderRadius: 7, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 12,
         background: variant === 'primary' ? (disabled ? '#e9e5e0' : COLORS.primary) : COLORS.white, color: variant === 'primary' ? (disabled ? '#a89f95' : '#fff') : COLORS.text,
         boxShadow: variant === 'primary' ? 'none' : '0 0 0 1.5px #d8d3cc' }}>{children}</button>
@@ -35,7 +35,7 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', marginBottom: 12 }}>
       {/* Шапка */}
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1efec' }}>
+      <div className="og-pad" style={{ borderBottom: '1px solid #f1efec' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <span onClick={() => onOpen?.(order)} style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14, color: COLORS.primary, cursor: onOpen ? 'pointer' : 'default' }}>{order.id}</span>
           {overdue && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>⚠ Просрочено</span>}
@@ -53,16 +53,16 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
 
       {/* Позиции */}
       {ps.length > 0 && (
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1efec' }}>
+        <div className="og-pad" style={{ borderBottom: '1px solid #f1efec' }}>
           {ps.map((pos: any, i: number) => (
-            <div key={pos.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0', borderBottom: i < ps.length - 1 ? '1px solid #f8f6f3' : 'none' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
+            <div key={pos.id} className="og-pos" style={{ padding: '7px 0', borderBottom: i < ps.length - 1 ? '1px solid #f8f6f3' : 'none' }}>
+              <div className="og-pos-main">
                 <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}><RalDot code={extractRal(pos.name1c || pos.oral || '')} size={13} />{pos.name1c || pos.oral}</div>
                 <div style={{ fontSize: 12, color: '#5f5952' }}>{Number(pos.qty)} {pos.unit}{pos.resp ? ` · ${pos.resp}` : ''}{pos.supplier ? ` · ${pos.supplier}` : ''}</div>
               </div>
-              <div style={{ width: 120 }}><ProgressBar pct={posPct(pos)} height={4} /></div>
+              <div className="og-pos-bar"><ProgressBar pct={posPct(pos)} height={4} /></div>
               {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600, flexShrink: 0 }}>ПРОСРОЧ.</span>}
-              <select value={pos.status} onChange={e => setPos(pos.id, e.target.value)}
+              <select value={pos.status} onChange={e => setPos(pos.id, e.target.value)} className="og-pos-sel"
                 style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
                 {POS_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -72,9 +72,9 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
       )}
 
       {/* Футер */}
-      <div style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div className="og-foot">
         {cardSum(order) > 0 && <span style={{ fontSize: 14, fontWeight: 600, color: '#26231f' }}>Сумма: {fmtMoney(cardSum(order))}</span>}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div className="og-btns">
           {onOpen && <Btn onClick={() => onOpen(order)}>Открыть</Btn>}
           <Btn onClick={() => { navigator.clipboard.writeText(order.trackingLink); toast('Ссылка скопирована!') }}>📎 Ссылка клиенту</Btn>
           <Btn onClick={() => onAction(order.id, 'returnOut')}>← Вернуть</Btn>
