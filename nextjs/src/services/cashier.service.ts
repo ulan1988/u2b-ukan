@@ -244,7 +244,12 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
 
   // Текущий долг по чеку: всего(−скидка) − оплачено − уже применённый кредит возвратов.
   const total = Math.max(0, positions.reduce((s: number, p: any) => s + amtOf(p, Number(p.qty)), 0) - (Number((order as any).discountSum) || 0))
-  const paid = (Number(order.paidCash) || 0) + (Number(order.paidKaspi) || 0) + (Number(order.paidQr) || 0)
+  // Оплачено = ВСЕ приходы по документу чека (касса + погашение долга), а не только order.paid*
+  // (продажа в долг оплачивается позже отдельным платежом «Погашение долга» — он тоже считается).
+  const paid = Number((await sqlClient`
+    select coalesce(sum(amount),0)::float s from payments
+    where org_id=${order.orgId} and document_id=${order.linkedDocId} and direction='in'
+  ` as unknown as Array<any>)[0]?.s) || 0
   const prevRet = Number((await sqlClient`
     select coalesce(sum(total),0)::float s from documents
     where type='return_in' and status<>'cancelled' and source_order_id=${cardId}
