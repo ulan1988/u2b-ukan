@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { cardSum, cardProgress, posPct, barColor, fmtMoney, fmtDate, isOverdue } from '@/lib/adminFmt'
+import { cardSum, cardProgress, posPct, barColor, fmtMoney, fmtDate, isOverdue, fmtCreated } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import { setPosStatus } from '@/lib/adminApi'
 
@@ -47,6 +47,7 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{order.fromName} → {order.toName || '—'}</span>
           {order.deadline && <span style={{ fontSize: 13, color: '#5f5952' }}>срок {fmtDate(order.deadline)}</span>}
+          <span style={{ fontSize: 13, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(order.createdAt)}</span>
         </div>
         <div style={{ marginTop: 8 }}><ProgressBar pct={pct} height={6} /></div>
       </div>

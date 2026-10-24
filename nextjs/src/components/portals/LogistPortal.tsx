@@ -4,7 +4,7 @@
 // supplierId/fromName). Полный каталог-пикер довяжется в NomPicker (шаг 4).
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
-import { isPurchase } from '@/lib/adminFmt'
+import { isPurchase, fmtCreated } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import DateFilter, { inPeriod, type Period } from '@/components/DateFilter'
 import ChatWidget from '@/components/ChatWidget'
@@ -249,7 +249,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <span style={{ fontSize: 11.5, color: '#5f5952', background: '#f1efec', padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{poss.length} поз</span>
           {inway > 0 && <span style={{ fontSize: 11, color: '#c0532a', fontWeight: 700 }}>🚚{inway}</span>}
           {done > 0 && <span style={{ fontSize: 11, color: '#2e8a5e', fontWeight: 700 }}>✓{done}</span>}
-          <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>🕒 {fmtCreated(order.createdAt)}</span>
+          <span style={{ color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
         {!allDone && !changed && poss.length > 0 && (

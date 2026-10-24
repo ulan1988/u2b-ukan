@@ -12,6 +12,5 @@ export async function GET(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const t = await resolveTarget(s, new URL(req.url).searchParams.get('uid'))
-  const out = await listForBranch({ name: t.name, orgId: t.orgId, contragentId: (t as any).contragentId })
-  return NextResponse.json(out, { headers: { 'x-dbg': JSON.stringify((globalThis as any).__dbgBranch || {}) } })
+  return NextResponse.json(await listForBranch({ name: t.name, orgId: t.orgId, contragentId: (t as any).contragentId }))
 }

@@ -248,11 +248,8 @@ export async function listForBranch(target: { name: string; orgId: string; contr
   const { organizations } = await import('../db/schema')
   const { eq } = await import('drizzle-orm')
   const [org] = await db.select({ kind: organizations.kind }).from(organizations).where(eq(organizations.id, target.orgId)).limit(1)
-  let orgN = -1
-  if (org && org.kind !== 'hq') { const lo = await repo.listByOrg(target.orgId); orgN = lo.length; for (const o of lo) ids.add(o.id) }
-  const byIds = await repo.ordersByIds(Array.from(ids))
-  ;(globalThis as any).__dbgBranch = { orgKind: org?.kind, orgId: target.orgId, orgN, ids: ids.size, byIds: byIds.length }
-  return withPositions(byIds)
+  if (org && org.kind !== 'hq') for (const o of await repo.listByOrg(target.orgId)) ids.add(o.id)
+  return withPositions(await repo.ordersByIds(Array.from(ids)))
 }
 
 // Заявки клиента (кабинет): созданные им (fromId).

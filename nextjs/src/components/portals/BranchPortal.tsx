@@ -3,7 +3,7 @@
 // карточки (позиции/история/чат), действия филиала (Принял/К логисту/Вернуть),
 // правка кол-ва, добавление из каталога (NomPicker). Адаптировано под модель u2b.
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { cardProgress } from '@/lib/adminFmt'
+import { cardProgress, fmtCreated } from '@/lib/adminFmt'
 import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
@@ -329,7 +329,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         <div style={{ padding: '14px 16px', cursor: 'pointer' }} onClick={() => openOrder(o.id)}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: PRIMARY }}>{o.id}</span><StatusBadge status={o.status} /></div>
-            <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>{fmtDate(o.createdAt)}</span>
+            <span style={{ fontSize: 12, color: '#5f5952', flexShrink: 0 }}>🕒 {fmtCreated(o.createdAt)}</span>
           </div>
           <div style={{ fontSize: 14, marginBottom: 8 }}><strong>{o.fromName || 'не распределено'}</strong>{custName(o) && <span style={{ color: '#4a4640', fontSize: 13, marginLeft: 8, fontWeight: 600 }}>· 👤 {custName(o)}</span>}{o.deadline && <span style={{ color: '#5f5952', fontSize: 13, marginLeft: 8 }}>до {fmtDate(o.deadline)}</span>}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ flex: 1, height: 5, background: '#f1efec', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), borderRadius: 3, transition: 'width .3s' }} /></div><span style={{ fontSize: 13, fontWeight: 700, color: barColor(pct), minWidth: 36, textAlign: 'right' }}>{pct}%</span></div>
@@ -717,7 +717,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                           : <span style={{ fontSize: 11.5, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Оплачено полностью">✓ оплачено</span>}
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
-                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
+                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
@@ -758,6 +758,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {debtLeft > 0 && <span style={{ fontSize: 11.5, background: '#fde3d0', color: '#c0532a', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Забрано в долг — не погашено">🟠 долг {debtLeft.toLocaleString('ru-RU')} ₸</span>}
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
+                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
