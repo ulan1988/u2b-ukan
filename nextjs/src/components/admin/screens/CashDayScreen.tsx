@@ -7,6 +7,7 @@ import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import { cashDay, cashExpense, cashRemit, cashWages, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
+import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
@@ -312,7 +313,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             ? <div style={{ padding: '18px 16px 22px', textAlign: 'center', color: COLORS.textMuted, fontSize: 13.5 }}>За этот день чеков нет</div>
             : (data.cards || []).map((c: any) => {
               const open = openCheck === c.id
-              const time = c.ts ? new Date(c.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''
+              const time = fmtTime(c.ts)
               const paid = Number(c.paidCash || 0) + Number(c.paidKaspi || 0) + Number(c.paidQr || 0)
               const debt = Math.max(0, Number(c.total || 0) - paid)
               return (

@@ -41,8 +41,10 @@ function StatusBadge({ status }: { status: string }) {
   return <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }}>{status}</span>
 }
 const barColor = (pct: number) => pct >= 100 ? '#3a9d6e' : pct >= 60 ? '#c4a832' : PRIMARY
-const fmtDate = (d?: string | null) => !d ? '—' : new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
-const fmtTime = (d?: string | null) => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' · ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }
+// Метки БД в UTC → по Астане (UTC+5). Нормализуем 'Z' и фиксируем timeZone.
+const _utc = (d: any) => { if (!d) return null; let s = String(d).trim().replace(' ', 'T'); if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z'; const x = new Date(s); return isNaN(x.getTime()) ? null : x }
+const fmtDate = (d?: string | null) => { const x = _utc(d); return x ? x.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Almaty' }) : '—' }
+const fmtTime = (d?: string | null) => { const x = _utc(d); return x ? x.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Almaty' }) + ' · ' + x.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' }) : '—' }
 
 export default function BranchPortal({ user }: { user: { id: string; name: string; orgId: string; slug?: string } }) {
   const [orders, setOrders] = useState<any[]>([])

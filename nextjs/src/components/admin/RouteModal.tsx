@@ -5,12 +5,12 @@
 //  • Путь — движение документа по стадиям (граф-дерево из истории).
 import { useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { fmtMoney } from '@/lib/adminFmt'
+import { fmtMoney, fmtDateTime } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import { docChain } from '@/lib/api/docs'
 
 const COLW = 240, ROWH = 92, NW = 190, NH = 54
-const fmtDT = (s: any) => s ? new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+const fmtDT = (s: any) => fmtDateTime(s) || '—'
 const KIND: Record<string, { line: string; bg: string; ring: string }> = {
   supplier: { line: '#7a3aaa', bg: '#f3eeff', ring: '#d8c4ec' },
   product: { line: '#c0532a', bg: '#fff3ec', ring: '#f0d3c8' },

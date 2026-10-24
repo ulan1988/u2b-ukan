@@ -2,13 +2,11 @@
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { COLORS } from '@/lib/colors'
-import { barColor, fmtMoney } from '@/lib/adminFmt'
+import { barColor, fmtMoney, fmtDateTime } from '@/lib/adminFmt'
 import { fetchDashboard } from '@/lib/api/reports'
 import { sheetsAll, sheetsByOrgApi } from '@/lib/api/refs'
 import { RalDot } from '@/lib/ral'
 import { useLiveData } from '@/lib/live'
-
-const fmtDateTime = (d: any) => d ? new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
 function ProgressBar({ pct, height = 5 }: { pct: number; height?: number }) {
   return (

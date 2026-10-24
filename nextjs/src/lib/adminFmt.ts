@@ -23,9 +23,21 @@ export const cardProgress = (o: any) => {
 
 export const barColor = (pct: number) => (pct >= 100 ? COLORS.progress.high : pct >= 50 ? COLORS.progress.mid : COLORS.progress.low)
 export const fmtMoney = (n: number) => Number(n || 0).toLocaleString('ru-RU')
-export const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '')
-// Время создания ЧЧ:ММ (напр. «14:28») — показываем в карточках рядом с датой.
-export const fmtTime = (d: any) => (d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '')
+
+// Метки БД хранятся в UTC (иногда без 'Z' → V8 парсит как ЛОКАЛЬНОЕ, теряя пояс). Нормализуем в UTC
+// и показываем по Астане (UTC+5 — Казахстан, Шымкент). timeZone фиксирован, чтобы не зависеть от браузера.
+export const TZ = 'Asia/Almaty'
+const toUtc = (v: any): Date | null => {
+  if (!v) return null
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v
+  let s = String(v).trim().replace(' ', 'T')
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z'
+  const d = new Date(s); return isNaN(d.getTime()) ? null : d
+}
+export const fmtDate = (d: any) => { const x = toUtc(d); return x ? x.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: TZ }) : '' }
+// Время создания ЧЧ:ММ (напр. «14:28») — по Астане.
+export const fmtTime = (d: any) => { const x = toUtc(d); return x ? x.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '' }
+export const fmtDateTime = (d: any) => { const x = toUtc(d); return x ? x.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '' }
 
 const STATUS_MAP: Record<string, { bg: string; color: string }> = {
   'В ожидании': COLORS.status.waiting, 'Принят': COLORS.status.accepted, 'В обработке': COLORS.status.accepted,

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { isOverdue } from '@/lib/adminFmt'
+import { isOverdue, fmtDateTime } from '@/lib/adminFmt'
 import { COLORS } from '@/lib/colors'
 import { listNotifications, markRead } from '@/lib/api/notifications'
 
@@ -25,7 +25,7 @@ function Bell() {
             : items.map(n => (
               <div key={n.id} onClick={() => read(n)} style={{ padding: '10px 16px', borderBottom: '1px solid #f6f3f0', cursor: 'pointer', background: n.read ? '#fff' : '#fff8f5', fontSize: 13 }}>
                 <div style={{ color: '#26231f' }}>{n.text}</div>
-                <div style={{ color: '#837c72', fontSize: 11, marginTop: 2 }}>{new Date(n.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                <div style={{ color: '#837c72', fontSize: 11, marginTop: 2 }}>{fmtDateTime(n.createdAt)}</div>
               </div>
             ))}
         </div>

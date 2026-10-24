@@ -7,6 +7,7 @@
 // Чек = карточка-продажа в книге филиала + расходная (склад филиала −) + оплаты, всё это
 // делает `cashier.service.sellDirect`.
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { fmtTime, fmtDateTime } from '@/lib/adminFmt'
 import StoreCatalog from '@/components/StoreCatalog'
 import { type PickedPos } from '@/components/NomPicker'
 import ContragentPicker from '@/components/ContragentPicker'
@@ -720,7 +721,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               {soldDay.map((o: any) => {
                 const t = cardTotal(o)
                 const retSum = Number(o.returnedSum || 0)
-                const time = new Date(o.delivered || o.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                const time = fmtTime(o.delivered || o.createdAt)
                 const allBack = (o.positions || []).length > 0 && (o.positions || []).every((p: any) => retRemain(o, p) <= 0.0000001)
                 return (
                   <div key={o.id} onClick={() => setViewChk(o)} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
@@ -830,7 +831,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                               const L = e.direction === 'return' ? { t: '↩ вернул', c: GREEN } : e.direction === 'give' ? { t: '➖ отдал', c: BLUE } : e.direction === 'giveback' ? { t: '↩ принял', c: GREEN } : { t: '➕ взял', c: '#c0532a' }
                               return (
                                 <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
-                                  <span style={{ width: 70, color: '#a09889', fontFamily: 'monospace', fontSize: 11 }}>{new Date(e.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span style={{ width: 70, color: '#a09889', fontFamily: 'monospace', fontSize: 11 }}>{fmtDateTime(e.createdAt)}</span>
                                   <span style={{ fontWeight: 700, color: L.c, whiteSpace: 'nowrap' }}>{L.t}</span>
                                   <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.productName} · {qfmt(Number(e.qty))} {e.unit}</span>
                                   <button onClick={() => removeGEntry(e.id)} title="Удалить запись" style={{ border: 'none', background: 'none', color: '#c88', cursor: 'pointer', fontSize: 14 }}>🗑</button>
@@ -1060,7 +1061,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         const paidCash = Number(o.paidCash) || 0, paidKaspi = Number(o.paidKaspi) || 0, paidQr = Number(o.paidQr) || 0
         const paid = paidCash + paidKaspi + paidQr
         const debt = Math.max(0, t - paid)
-        const time = new Date(o.delivered || o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        const time = fmtDateTime(o.delivered || o.createdAt)
         const retSum = Number(o.returnedSum || 0)
         return (
           <div onClick={() => setViewChk(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>

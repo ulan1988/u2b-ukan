@@ -4,7 +4,7 @@ import { COLORS } from '@/lib/colors'
 import { getCard } from '@/lib/adminApi'
 import { updatePosition, deletePosition } from '@/lib/api/orders'
 import CardChat from '@/components/CardChat'
-import { isPurchase, statusStyle, fmtMoney, cardSum, fmtDate, fmtTime } from '@/lib/adminFmt'
+import { isPurchase, statusStyle, fmtMoney, cardSum, fmtDate, fmtTime, fmtDateTime } from '@/lib/adminFmt'
 
 export default function CardModal({ id, myId = '', onClose, onAction, onReload }: {
   id: string; myId?: string; onClose: () => void; onAction: (id: string, a: string) => void; onReload?: () => void
@@ -120,7 +120,7 @@ export default function CardModal({ id, myId = '', onClose, onAction, onReload }
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: COLORS.primary, marginTop: 6, flexShrink: 0 }} />
                         <div>
                           <div style={{ color: COLORS.text }}>{h.detail || h.action}</div>
-                          <div style={{ color: COLORS.textLight, fontSize: 11 }}>{h.userName} · {new Date(h.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                          <div style={{ color: COLORS.textLight, fontSize: 11 }}>{h.userName} · {fmtDateTime(h.createdAt)}</div>
                         </div>
                       </div>
                     ))}
