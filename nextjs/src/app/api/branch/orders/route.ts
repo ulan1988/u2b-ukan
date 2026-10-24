@@ -4,6 +4,7 @@ import { resolveTarget } from '@/services/auth.service'
 import { sessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 
 // Карточки филиала: где он поставщик (leg=1, проходят через него) + свои по орг.
 // uid — админ смотрит кабинет «от имени» филиала (resolveTarget), иначе сам филиал.

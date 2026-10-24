@@ -5,5 +5,7 @@ import { neon } from '@neondatabase/serverless'
 import * as schema from '../db/schema'
 
 const url = process.env.DATABASE_URL || ''
-export const sqlClient = neon(url)
+// Next.js кеширует fetch (Data Cache), а Neon HTTP ходит через fetch — без этого запрос к базе мог отдавать устаревший
+// ответ (кабинет Нипы не видел свежие карточки). Данные всегда живые: кеш выключен.
+export const sqlClient = neon(url, { fetchOptions: { cache: 'no-store' } })
 export const db = drizzle(sqlClient, { schema })
