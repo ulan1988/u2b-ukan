@@ -718,6 +718,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
+                      <button onClick={() => cancelCard(o.id)} title="Отменить / удалить карточку" style={{ border: '1px solid #ecd9cf', background: '#fff', color: '#b8b1a6', borderRadius: 7, padding: '2px 8px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap' }}>🗑</button>
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
@@ -729,7 +730,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 7 }}>
                       <button onClick={() => returnToQueue(o.id)} title="Вернуть в «Заказы на производство» — изменить и заново принять" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ В заказ (изменить)</button>
-                      <button onClick={() => cancelCard(o.id)} title="Отменить / удалить карточку" style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Удалить</button>
                     </div>
                   </div>
                 )
