@@ -220,10 +220,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
             return (
               <div key={p.id} onClick={() => { if (izd && !build && color) setBuild({ base: p, cm: '', qty: '1' }) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default', opacity: (activeFolder.build && !color) ? 0.5 : 1 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {p.alias ? (<>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#7a3aaa', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷️ {p.alias}</div>
-                    <div style={{ fontSize: 10.5, color: '#b0a89d', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                  </>) : (<div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25 }}>{p.name}</div>)}
+                  <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                   <div style={{ fontSize: 11.5, color: '#a09889' }}>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : p.unit || 'шт'}</div>
                 </div>
                 {izd ? (

@@ -464,7 +464,6 @@ export default function NomenclatureScreen() {
                               {!priceEdit && <span title="Перетащите, чтобы упорядочить" style={{ cursor: 'grab', color: '#c3bcae', fontSize: 15, userSelect: 'none', flexShrink: 0 }}>⠿</span>}
                               <span onClick={() => openInfo(item)} title="Открыть карточку товара (алиас для каталога)" style={{ cursor: 'pointer' }}>
                                 {item.name}
-                                {(item as any).alias ? <span style={{ display: 'block', fontSize: 12, color: '#7a3aaa', fontWeight: 700, marginTop: 2 }}>🏷️ {(item as any).alias}</span> : null}
                               </span>
                             </span>
                           )}</td>
