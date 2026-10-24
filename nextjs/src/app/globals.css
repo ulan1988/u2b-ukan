@@ -145,7 +145,7 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 }
 /* Кнопки и поля кабинетов: палец, а не курсор */
 @media (max-width: 900px) {
-  .branch-shell button, .sp-root button { min-height: 40px; }
+  .sp-root button { min-height: 40px; }
   .branch-shell input, .branch-shell select, .branch-shell textarea,
   .sp-root input, .sp-root select, .sp-root textarea { font-size: 16px !important; min-height: 40px; }
 }
@@ -199,3 +199,8 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   .lg-root input, .lg-root select, .lg-root textarea { font-size: 16px !important; min-height: 48px; }
   .lg-cardhead { padding: 15px 12px !important; }
 }
+
+/* Карточки стола мастера: кнопки компактные, в одну строку текста, ряд переносится целиком */
+.bp-actions { flex-wrap: wrap; }
+.bp-actions button { white-space: nowrap; min-height: 0; }
+@media (max-width: 640px) { .bp-actions button { min-height: 38px; } }

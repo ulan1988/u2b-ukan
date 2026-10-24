@@ -719,7 +719,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+                    <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
                       <button onClick={() => setDrawerId(o.id)} title="Позиции" style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', color: '#5f5952' }}>📋 Позиции ({total})</button>
                       {g.next && <button onClick={() => act(o.id, g.next!.action, `✓ ${g.next!.label.replace(/^[▶✓]\s*/, '')}`)} style={{ marginLeft: 'auto', border: `1.5px solid ${g.color}55`, background: `${g.color}14`, color: g.color, borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{g.next.label}</button>}
@@ -727,7 +727,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                           Внутренняя продажа (оплачено касса) и долг самой Нипы логисту не отправляются. */}
                       {o.pendingDebtHead && <button onClick={() => sendCard(o.id)} style={{ marginLeft: g.next ? 0 : 'auto', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить головному</button>}
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
+                    <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 7 }}>
                       <button onClick={() => returnToQueue(o.id)} title="Вернуть в «Заказы на производство» — изменить и заново принять" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ В заказ (изменить)</button>
                       <button onClick={() => cancelCard(o.id)} title="Отменить / удалить карточку" style={{ marginLeft: 'auto', border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>🗑 Удалить</button>
                     </div>
@@ -760,7 +760,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                    <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
                       <button onClick={() => setDrawerId(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>📋 Состав</button>
                       <button onClick={() => doUnpay(o.id)} title="Отменить продажу (сторно)" style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
