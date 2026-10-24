@@ -78,6 +78,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
   const [checksDay, setChecksDay] = useState(localDay())
   const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
+  const [rcpt, setRcpt] = useState<any>(null)            // чек-превью для показа/отправки (WhatsApp)
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
@@ -499,6 +500,31 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
 
+  // Строки чека (для превью/текста/печати): имя, кол-во, цена, сумма, см (для изделий).
+  function rLines(o: any) {
+    return (o.positions || []).map((p: any) => {
+      const nm = p.oral || p.name1c || ''
+      const qty = Number(p.qty) || 0, price = Number(p.price) || 0
+      const sum = lineAmount({ name: p.name1c || p.oral, qty, price, widthCm: p.widthCm })
+      const cm = (p.widthCm && isIzdelie(p.name1c || p.oral)) ? ` ${p.widthCm}см` : ''
+      return { nm, qty, price, sum, cm }
+    })
+  }
+  // Текст чека для отправки в WhatsApp (* = жирный в WhatsApp).
+  function receiptText(o: any) {
+    const disc = Number(o.discountSum) || 0, total = cardTotal(o)
+    const buyer = o.toName || o.contactName || o.fromName || 'Розница'
+    const L: string[] = [`🧾 *${orgName || 'ЧЕК'}*`, `Чек № ${o.docNumber || o.id}`, fmtDateTime(o.delivered || o.createdAt), `Продавец: ${o.seller || '—'}`, `Покупатель: ${buyer}`, '--------------------------------']
+    for (const r of rLines(o)) { L.push(r.nm); L.push(`  ${r.qty}${r.cm} × ${money(r.price)} = ${money(r.sum)}`) }
+    L.push('--------------------------------')
+    if (disc > 0) L.push(`Скидка: -${money(disc)}`)
+    L.push(`*ИТОГО: ${money(total)} ₸*`)
+    L.push(`Оплата: ${o.payment || '—'}`)
+    L.push('Спасибо за покупку!')
+    return L.join('\n')
+  }
+  const sendWhatsApp = (o: any) => window.open('https://wa.me/?text=' + encodeURIComponent(receiptText(o)), '_blank')
+
   // Печать/отправка чека — узкий термо-формат (72 мм), открывается print-окно.
   function printCheck(o: any) {
     const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -784,7 +810,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 15, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK }}>{money(t)} ₸</div>
                     </div>
-                    <button onClick={e => { e.stopPropagation(); printCheck(o) }} title="Печать / отправить чек" style={{ border: '1.5px solid #d6d0c7', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit' }}>🖨</button>
+                    <button onClick={e => { e.stopPropagation(); setRcpt(o) }} title="Показать / отправить чек" style={{ border: '1.5px solid #d6d0c7', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit' }}>🧾</button>
                     {!allBack && <button onClick={e => { e.stopPropagation(); openReturn(o) }} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
                   </div>
                 )
@@ -1297,6 +1323,45 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           </div>
         </div>
       )}
+
+      {/* Превью чека: чёткий вид + отправка в WhatsApp (принтера нет) */}
+      {rcpt && (() => {
+        const o = rcpt; const disc = Number(o.discountSum) || 0; const total = cardTotal(o)
+        const buyer = o.toName || o.contactName || o.fromName || 'Розница'
+        return (
+          <div onClick={() => setRcpt(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 340, maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ background: '#fff', borderRadius: 14, padding: '18px 20px', overflowY: 'auto', fontFamily: '"Courier New", ui-monospace, monospace', color: '#1a1a1a' }}>
+                <div style={{ textAlign: 'center', fontSize: 17, fontWeight: 800, marginBottom: 2 }}>{orgName || 'ЧЕК'}</div>
+                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700 }}>Чек № {o.docNumber || o.id}</div>
+                <div style={{ textAlign: 'center', fontSize: 12, color: '#555', marginBottom: 8 }}>{fmtDateTime(o.delivered || o.createdAt)}</div>
+                <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
+                <div style={{ fontSize: 12.5 }}>Продавец: {o.seller || '—'}</div>
+                <div style={{ fontSize: 12.5 }}>Покупатель: {buyer}</div>
+                <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
+                {rLines(o).map((r: any, i: number) => (
+                  <div key={i} style={{ marginBottom: 5 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{r.nm}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#333' }}>
+                      <span>{r.qty}{r.cm} × {money(r.price)}</span><span style={{ fontWeight: 700 }}>{money(r.sum)}</span>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
+                {disc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span>Скидка</span><span>-{money(disc)}</span></div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 800, marginTop: 3 }}><span>ИТОГО</span><span>{money(total)} ₸</span></div>
+                <div style={{ fontSize: 12.5, color: '#555', marginTop: 2 }}>Оплата: {o.payment || '—'}</div>
+                <div style={{ textAlign: 'center', fontSize: 12, color: '#777', marginTop: 10 }}>Спасибо за покупку!</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => sendWhatsApp(o)} style={{ flex: 1, border: 'none', background: '#25D366', color: '#fff', borderRadius: 11, padding: '13px', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📲 WhatsApp</button>
+                <button onClick={() => printCheck(o)} title="Печать (если есть принтер)" style={{ border: 'none', background: '#fff', color: '#5f5952', borderRadius: 11, padding: '13px 15px', fontSize: 16, cursor: 'pointer', fontFamily: 'inherit' }}>🖨</button>
+                <button onClick={() => setRcpt(null)} style={{ border: 'none', background: 'rgba(255,255,255,.85)', color: '#5f5952', borderRadius: 11, padding: '13px 15px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Закрыть</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {showCatalog && <StoreCatalog orgId={user.orgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
       {showGCatalog && <StoreCatalog orgId={user.orgId} onPick={onPickGForm} onClose={() => setShowGCatalog(false)} />}
