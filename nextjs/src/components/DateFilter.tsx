@@ -23,14 +23,14 @@ export function inPeriod(date: string | Date | null | undefined, period: Period,
   return true
 }
 
-export default function DateFilter({ period, day, onChange }: { period: Period; day: string; onChange: (period: Period, day: string) => void }) {
+export default function DateFilter({ period, day, onChange, dark }: { period: Period; day: string; onChange: (period: Period, day: string) => void; dark?: boolean }) {
   const chipStyle = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 20, border: 'none', fontSize: 12.5, fontWeight: on ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: on ? PRIMARY : '#f1efec', color: on ? '#fff' : '#6b655b' })
   const opts: [Period, string][] = [['today', 'Сегодня'], ['yesterday', 'Вчера'], ['week', 'Неделя'], ['month', 'Месяц'], ['all', 'Всё']]
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-      <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, marginRight: 2 }}>📅</span>
-      {opts.map(([p, label]) => <button key={p} onClick={() => onChange(p, '')} style={chipStyle(!day && period === p)}>{label}</button>)}
-      <input type="date" value={day} onChange={e => onChange(period, e.target.value)} style={{ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${day ? PRIMARY : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', color: '#26231f', outline: 'none' }} />
+    <div style={dark ? { display: 'flex', gap: 6, flexWrap: 'nowrap', alignItems: 'center', overflowX: 'auto', scrollbarWidth: 'none' } : { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+      {!dark && <span style={{ fontSize: 13, color: '#5f5952', fontWeight: 600, marginRight: 2 }}>📅</span>}
+      {opts.map(([p, label]) => { const on = !day && period === p; return <button key={p} onClick={() => onChange(p, '')} style={dark ? { ...chipStyle(on), padding: '6px 11px', whiteSpace: 'nowrap', flexShrink: 0, background: on ? PRIMARY : '#3a3632', color: on ? '#fff' : '#d6d0c6' } : chipStyle(on)}>{label}</button> })}
+      <input type="date" value={day} onChange={e => onChange(period, e.target.value)} style={{ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${day ? PRIMARY : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', color: dark ? '#fff' : '#26231f', background: dark ? '#3a3632' : undefined, colorScheme: dark ? 'dark' : undefined, outline: 'none', flexShrink: 0 }} />
       {day && <button onClick={() => onChange(period, '')} title="Сбросить дату" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>×</button>}
     </div>
   )

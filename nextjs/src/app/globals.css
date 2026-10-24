@@ -204,3 +204,17 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 .bp-actions { flex-wrap: wrap; }
 .bp-actions button { white-space: nowrap; min-height: 0; }
 @media (max-width: 640px) { .bp-actions button { min-height: 38px; } }
+
+/* Шапка кабинета мастера: логотип/название слева, фильтр дат в середине, кнопки справа; на телефоне фильтр — второй строкой */
+.bp-hdr { padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bp-hdr > div:first-child { flex-shrink: 0; }
+.bp-hdr-date { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; }
+.bp-hdr-date > div { max-width: 100%; }
+@media (max-width: 640px) {
+  .bp-hdr { padding: 10px 12px; gap: 8px; }
+  .bp-hdr > div:first-child { flex: 1 1 0; min-width: 0; }
+  .bp-hdr-date { order: 3; flex: 1 0 100%; justify-content: flex-start; }
+  /* два главных действия карточки — рядом, поровну, в одну строку */
+  .bp-pair { flex-wrap: nowrap; }
+  .bp-pair button { flex: 1 1 0; min-width: 0; padding: 8px 4px !important; font-size: 12.5px !important; justify-content: center; margin-left: 0 !important; }
+}

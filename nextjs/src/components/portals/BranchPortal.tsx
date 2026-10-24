@@ -586,12 +586,13 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         )
       })()}
 
-      <div style={{ background: '#211f1c', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100 }}>
+      <div className="bp-hdr" style={{ background: '#211f1c', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icons/icon-192.png" alt="U2B" style={{ width: 42, height: 42, borderRadius: 10, display: 'block' }} />
           <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>U2B · Филиал <span style={{ color: '#5a544c', fontSize: 10, fontWeight: 500 }}>v{process.env.NEXT_PUBLIC_BUILD_SHA}</span></div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
         </div>
+        <div className="bp-hdr-date"><DateFilter dark period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} /></div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={load} style={{ background: 'none', border: 'none', color: '#8c857a', fontSize: 18, cursor: 'pointer', padding: 4 }}>⟳</button><button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: 'none', border: '1px solid #444', color: '#ccc', fontSize: 13, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>Выйти</button></div>
       </div>
 
@@ -599,7 +600,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         {loading && orders.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>}
         {tab === 'production' && <div>
           <div style={{ background: '#f3eeff', color: '#7a3aaa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, fontWeight: 600 }}>📋 Входящие заказы на производство. «✓ Принял» → карточка на столе мастера (вкладка 🛠️ Производство).</div>
-          <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
           {prodQueue.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📋</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов на производство</div></div> : prodQueue.map(o => <OrderCard key={o.id} o={o} showActions={true} prodFlow={isProd(o) || isZK(o)} />)}
         </div>}
         {tab === 'spec' && <div>
@@ -674,7 +674,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           )}
         </div>}
         {tab === 'produce' && <div>
-          <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button onClick={() => { setShowDirect(v => !v); setShowStock(false) }} style={{ padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
             <button onClick={() => { setShowStock(v => !v); setShowDirect(false) }} title="Выпустить комплектующие/изделия на склад Нипы (без покупателя и оплаты)" style={{ padding: '9px 16px', borderRadius: 8, border: showStock ? '1.5px solid #e6e2dc' : '1.5px solid #2e8a5e', background: showStock ? '#fff' : '#e8f5ee', color: showStock ? '#5f5952' : '#2e8a5e', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showStock ? '× Отмена' : '📦 Создать запасы на склад'}</button>
@@ -722,7 +721,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{total} поз.</span>
                       <b style={{ marginLeft: 'auto', fontSize: 16, color: g.color, whiteSpace: 'nowrap' }}>{Math.round(sum).toLocaleString('ru-RU')} ₸</b>
                     </div>
-                    <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+                    <div className="bp-actions bp-pair" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
                       {g.next && <button onClick={() => act(o.id, g.next!.action, `✓ ${g.next!.label.replace(/^[▶✓]\s*/, '')}`)} style={{ marginLeft: 'auto', border: `1.5px solid ${g.color}55`, background: `${g.color}14`, color: g.color, borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{g.next.label}</button>}
                       {/* «Отправить» логисту — ТОЛЬКО если карточка идёт к головному (Долг к головному).
@@ -776,7 +775,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             </div>
           ))}
         </div>}
-        {tab === 'out' && <div><DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start', gridAutoFlow: 'row dense' }}>{outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}</div>}
+        {tab === 'out' && <div>{outgoing.length === 0 ? <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>📤</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет исходящих</div></div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: 10, alignItems: 'start', gridAutoFlow: 'row dense' }}>{outgoing.map(o => <OrderCard key={o.id} o={o} showActions={false} />)}</div>}</div>}
         {tab === 'new' && (
           <div>
             {newDone ? (
