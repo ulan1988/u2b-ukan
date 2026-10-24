@@ -64,12 +64,14 @@ export async function masterShift(orgId: string, date: string) {
     group by coalesce(nullif(dl.comment,''), p.name, 'Изделие'), dl.width_cm order by qty desc
   ` as unknown as Array<any>
 
-  // «Деньги» за день (расходы + переводы).
+  // «Деньги» за день (расходы + переводы). Авто-строки (инкассации/оплаты, r.auto) ИСКЛЮЧАЕМ —
+  // они выведены из payments и уже учтены в payMap; иначе задвоение остатков/расходов.
   const fd = await financeDay(orgId, date)
-  const expRows = (fd.rows || []).map((r: any) => ({ ...r, amt: (r.amounts || []).reduce((s: number, a: any) => s + num(a.amount), 0) })).filter((r: any) => r.amt < 0 && r.type !== 'mv')
+  const finRows = (fd.rows || []).filter((r: any) => !r.auto)
+  const expRows = finRows.map((r: any) => ({ ...r, amt: (r.amounts || []).reduce((s: number, a: any) => s + num(a.amount), 0) })).filter((r: any) => r.amt < 0 && r.type !== 'mv')
   const salaryTotal = expRows.filter((r: any) => (r.article || '') === 'ЗП').reduce((s: number, r: any) => s - r.amt, 0)
   const currentTotal = expRows.filter((r: any) => (r.article || '') !== 'ЗП').reduce((s: number, r: any) => s - r.amt, 0)
-  const hasDraft = (fd.rows || []).some((r: any) => r.status !== 'posted' && (r.amounts || []).some((a: any) => num(a.amount) !== 0))
+  const hasDraft = finRows.some((r: any) => r.status !== 'posted' && (r.amounts || []).some((a: any) => num(a.amount) !== 0))
 
   // Остаток по счетам за день: продажи (payments) + движения «Денег» (расходы/переводы).
   const payDay = await sqlClient`
@@ -77,7 +79,7 @@ export async function masterShift(orgId: string, date: string) {
     from payments where org_id=${orgId} and date=${date} and cash_account_id is not null group by cash_account_id
   ` as unknown as Array<any>
   const payMap: Record<string, number> = {}; for (const p of payDay) payMap[p.acc] = num(p.net)
-  const finMap: Record<string, number> = {}; for (const r of (fd.rows || [])) for (const am of (r.amounts || [])) finMap[am.accountId] = (finMap[am.accountId] || 0) + num(am.amount)
+  const finMap: Record<string, number> = {}; for (const r of finRows) for (const am of (r.amounts || [])) finMap[am.accountId] = (finMap[am.accountId] || 0) + num(am.amount)
   const accounts = (fd.accounts || []).map((a: any) => ({ id: a.id, name: a.name, fromSales: payMap[a.id] || 0, fromFin: finMap[a.id] || 0, net: (payMap[a.id] || 0) + (finMap[a.id] || 0) }))
 
   // Накопительные остатки по счетам (оплаты продаж + движения «Денег»). 3 уровня инкассации:
