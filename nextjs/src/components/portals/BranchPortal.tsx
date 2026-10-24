@@ -706,8 +706,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                 const accent = !isPaid ? '#eab308' : (debtLeft > 0 ? '#e0894a' : '#2e8a5e')
                 const bg = !isPaid ? '#fffdf5' : (debtLeft > 0 ? '#fff8f2' : '#f2fbf5')
                 return (
-                  <div key={o.id} style={{ background: bg, borderRadius: 12, boxShadow: `0 0 0 1.5px ${accent}`, padding: '11px 13px', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div key={o.id} style={{ position: 'relative', background: bg, borderRadius: 12, boxShadow: `0 0 0 1.5px ${accent}`, padding: '11px 13px', marginBottom: 8 }}>
+                    <button onClick={() => cancelCard(o.id)} title="Отменить / удалить карточку" aria-label="Удалить карточку" style={{ position: 'absolute', top: 7, right: 7, border: '1.5px solid #e8a8a0', background: '#fff0ee', color: '#c1121c', borderRadius: 9, width: 34, height: 34, padding: 0, cursor: 'pointer', fontSize: 17, fontFamily: 'inherit', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingRight: 40 }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: g.color }}>{fmtCode(o.id)}</span>
                       <StatusBadge status={o.status} />
                       {!isPaid
@@ -718,7 +719,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
                       <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
-                      <button onClick={() => cancelCard(o.id)} title="Отменить / удалить карточку" style={{ border: '1px solid #ecd9cf', background: '#fff', color: '#b8b1a6', borderRadius: 7, padding: '2px 8px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap' }}>🗑</button>
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>
