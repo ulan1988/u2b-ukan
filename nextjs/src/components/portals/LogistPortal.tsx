@@ -35,6 +35,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [updating, setUpdating] = useState<string | null>(null)
   const [supEditPos, setSupEditPos] = useState<string | null>(null)
   const [qtyEditPos, setQtyEditPos] = useState<string | null>(null); const [qtyVal, setQtyVal] = useState('')
+  const [confAllId, setConfAllId] = useState<string | null>(null)   // «Доставить всё»: подтверждение вторым тапом
   const [confDelPos, setConfDelPos] = useState<string | null>(null)   // подтверждение удаления в два тапа (чтобы не убрать случайно)
   const [addingCardId, setAddingCardId] = useState<string | null>(null)
   const [openCardId, setOpenCardId] = useState<string | null>(null)          // развёрнутая карточка (позиции — в шторке)
@@ -94,6 +95,12 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   // Логист правит кол-во / убирает позицию перед доставкой (недовоз, брак, ошибка).
   async function savePosQty(cardId: string, posId: string) { await updatePosition(cardId, posId, { qty: Number(qtyVal.replace(',', '.')) || 0 }); showMsg('✓ Кол-во изменено'); setQtyEditPos(null); setQtyVal(''); load() }
   async function removePos(cardId: string, posId: string) { setConfDelPos(null); const r = await deletePosition(cardId, posId); if (r.ok) { showMsg('✓ Позиция убрана'); load() } else showMsg('⚠ Не удалось убрать') }
+  // Весь заказ доставлен одним действием: позиции по очереди → «Доставлено» (за рулём — 2 тапа вместо N).
+  async function deliverAll(order: any, poss: any[]) {
+    setConfAllId(null); setUpdating(order.id)
+    for (const p of poss) { if (p.status !== 'Доставлено') await setPosStatus(order.id, 'Доставлено', p.id) }
+    showMsg(`✓ Доставлено: ${poss.filter((p: any) => p.status !== 'Доставлено').length} поз`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null)
+  }
   async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
   // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
   async function handleAccept(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'logistAccept'); if (r.ok) { showMsg('✓ Продажа принята → в работу'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось принять')); setUpdating(null) }
@@ -236,15 +243,22 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     return (
       <div style={{ marginBottom: 8, background: changed ? '#fffceb' : '#fff', borderRadius: 10, boxShadow: changed ? '0 0 0 2px #e4b73a' : '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
         {changed && <div style={{ background: '#fdf3d8', color: '#8a6f00', fontSize: 12, fontWeight: 700, padding: '6px 11px' }}>⚠ Есть изменение — проверьте и подтвердите</div>}
-        <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', cursor: 'pointer' }}>
+        <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 12px', cursor: 'pointer' }} className="lg-cardhead">
           <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
-          {order.fromName && <span style={{ fontSize: 12, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{order.fromName}</span>}
+          {order.fromName && <span style={{ fontSize: 14, fontWeight: 600, color: '#26231f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{order.fromName}</span>}
           <span style={{ fontSize: 11.5, color: '#5f5952', background: '#f1efec', padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{poss.length} поз</span>
           {inway > 0 && <span style={{ fontSize: 11, color: '#c0532a', fontWeight: 700 }}>🚚{inway}</span>}
           {done > 0 && <span style={{ fontSize: 11, color: '#2e8a5e', fontWeight: 700 }}>✓{done}</span>}
           <span style={{ marginLeft: 'auto', color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
+        {!allDone && !changed && poss.length > 0 && (
+          <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec', display: 'flex', gap: 8 }}>
+            {confAllId === order.id
+              ? <><button disabled={updating === order.id} onClick={() => deliverAll(order, poss)} className="lg-big" style={{ flex: 1, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Да, доставлено ({poss.length - done})</button><button onClick={() => setConfAllId(null)} className="lg-big" style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 12, fontWeight: 700, padding: '0 16px', cursor: 'pointer', fontFamily: 'inherit' }}>Нет</button></>
+              : <button disabled={updating === order.id} onClick={() => setConfAllId(order.id)} className="lg-big" style={{ flex: 1, border: '2px solid #2e8a5e', background: '#fff', color: '#2e8a5e', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>✓ Доставить всё ({poss.length - done})</button>}
+          </div>
+        )}
         {!buy && (changed
           ? <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => confirmChange(order.id)} style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit', opacity: updating === order.id ? .6 : 1 }}>✓ Подтвердить изменение</button></div>
           : (order.linkedDocId && allDone) && <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec' }}><button disabled={updating === order.id} onClick={() => reopenEdit(order.id)} style={{ width: '100%', border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 9, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>✏️ Изменить карточку (после доставки)</button></div>)}
@@ -253,14 +267,14 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   }
 
   return (
-    <div style={{ background: '#dedbd6', minHeight: '100vh', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
+    <div className="lg-root" style={{ background: '#dedbd6', minHeight: '100vh', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
       <div style={{ background: DARK, padding: '14px 20px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: 432, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/icon-192.png" alt="U2B" style={{ width: 42, height: 42, borderRadius: 10, display: 'block' }} />
-            <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>U2B · Портал{viewAs ? ' · просмотр' : ''}</div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
+            <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' }}>Логист{viewAs ? ' · просмотр' : ''}</div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={load} style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 10px', color: loading ? PRIMARY : '#cfc9c0', cursor: 'pointer', fontSize: 14 }}>⟳</button>
@@ -270,7 +284,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       </div>
 
       {/* На планшете колонка шире (одна колонка во всю ширину), на телефоне — как было */}
-      <div style={{ maxWidth: 'min(640px, 100%)', margin: '0 auto', padding: '16px 66px 40px 14px' }}>
+      <div className="lg-main" style={{ maxWidth: 'min(640px, 100%)', margin: '0 auto' }}>
         {tab === 'req' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>📥 ЗАКАЗЫ · ждут закупа</div>
@@ -404,18 +418,18 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         </div>
       )}
 
-      <div style={{ position: 'fixed', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="lg-bar">
         {[{ key: 'req' as Tab, icon: '📥', label: 'Заказы', badge: waitingCount, blink: false }, { key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'buy' as Tab, icon: '🛒', label: 'Закупки', badge: posBuy.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Выполнено', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Изменения', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
           const active = tab === key
           return (
-            <button key={key} onClick={() => setTab(key)} title={label} aria-label={label} className={blink ? 'uk-blink' : undefined} style={{ position: 'relative', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: active ? 'none' : '1.5px solid #ece7e0', background: active ? PRIMARY : 'rgba(255,255,255,.92)', boxShadow: active ? '0 4px 14px rgba(212,97,58,.4)' : '0 2px 8px rgba(0,0,0,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, transform: active ? 'scale(1.08)' : 'none' }}>
-              <span>{icon}</span>
+            <button key={key} onClick={() => setTab(key)} title={label} aria-label={label} className={'lg-tab' + (active ? ' on' : '') + (blink ? ' uk-blink' : '')}>
+              <span className="lg-tab-ic">{icon}</span><span className="lg-tab-lbl">{label}</span>
               {badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: blink ? '#c1121c' : (active ? '#fff' : PRIMARY), color: blink ? '#fff' : (active ? PRIMARY : '#fff'), fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}
             </button>
           )
         })}
       </div>
-      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />
+      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={84} />
       <AppBadge count={badgeCount} baseTitle="Логист · U2B" />
       <PushSetup />
       {catalogCardId && <NomPicker onPick={items => addFromCatalog(catalogCardId!, items)} onClose={() => setCatalogCardId(null)} />}

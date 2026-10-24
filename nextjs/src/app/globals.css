@@ -174,3 +174,28 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   .sp-list > div:only-child { grid-column: 1 / -1; }
   .sp-list > div:nth-child(odd) { border-right: 1px solid #f4f1ed; }
 }
+
+/* ── Кабинет логиста: телефон за рулём ─────────────────────────────────
+   Крупные цели нажатия, нижняя панель с подписями (достаёт большой палец),
+   текст не мельче 14px. */
+.lg-main { padding: 16px 66px 40px 14px; }
+.lg-bar { position: fixed; right: 10px; top: 50%; transform: translateY(-50%); z-index: 100; display: flex; flex-direction: column; gap: 10px; }
+.lg-tab { position: relative; width: 48px; height: 48px; border-radius: 50%; cursor: pointer; border: 1.5px solid #ece7e0; background: rgba(255,255,255,.92); box-shadow: 0 2px 8px rgba(0,0,0,.12); display: flex; align-items: center; justify-content: center; padding: 0; font-family: inherit; }
+.lg-tab.on { border: none; background: #d4613a; box-shadow: 0 4px 14px rgba(212,97,58,.4); transform: scale(1.08); }
+.lg-tab-ic { font-size: 22px; line-height: 1; }
+.lg-tab-lbl { display: none; }
+.lg-big { min-height: 56px; font-size: 16px; }
+@media (max-width: 899px) {
+  .lg-main { padding: 12px 12px 108px; max-width: 100% !important; }
+  .lg-bar { right: 0; left: 0; top: auto; bottom: 0; transform: none; flex-direction: row; gap: 0; background: #fff; border-top: 1px solid #e6e2dc; padding-bottom: env(safe-area-inset-bottom); }
+  .lg-tab, .lg-tab.on { flex: 1 1 0; min-width: 0; width: auto; height: 64px; border-radius: 0; border: none; background: transparent; box-shadow: none; transform: none; flex-direction: column; gap: 2px; padding: 4px 2px; color: #5f5952; }
+  .lg-tab.on { color: #d4613a; background: #fff6f2; box-shadow: inset 0 3px 0 #d4613a; }
+  .lg-tab-lbl { display: block; font-size: 11px !important; line-height: 1.1; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lg-tab .uk-blink, .lg-tab.uk-blink { }
+  /* текст не мельче 14px, кнопки и поля — под палец */
+  .lg-root [style*="font-size: 10"], .lg-root [style*="font-size: 11"], .lg-root [style*="font-size: 12"], .lg-root [style*="font-size: 13"] { font-size: 14px !important; }
+  .lg-root button { min-height: 48px; }
+  .lg-root .lg-tab { min-height: 64px; }
+  .lg-root input, .lg-root select, .lg-root textarea { font-size: 16px !important; min-height: 48px; }
+  .lg-cardhead { padding: 15px 12px !important; }
+}
