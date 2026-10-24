@@ -438,3 +438,25 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name} · ${srcType}` })
   return { ok: true as const, headQR: headQR.name }
 }
+
+// АВТО-ИНКАССАЦИЯ магазинов (seller) после смены (пока по cron в 21:00): «Банковский счёт» магазина
+// = наш QR, деньги считаются в его кассе → переводим головному. Инкассируем ТЕКУЩИЙ остаток банк-счёта
+// (идемпотентно: после перевода остаток 0, повторный запуск ничего не делает). Нал/каспи не трогаем.
+export async function autoEncashSellers() {
+  const { db, sqlClient } = await import('../lib/db')
+  const { organizations, cashAccounts } = await import('../db/schema')
+  const { eq, and } = await import('drizzle-orm')
+  const sellers = await db.select().from(organizations).where(and(eq(organizations.kind, 'seller'), eq(organizations.archived, false)))
+  const done: any[] = []
+  for (const s of sellers) {
+    const banks = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, s.id), eq(cashAccounts.kind, 'bank'), eq(cashAccounts.archived, false)))
+    const bank = banks.find(a => (a.name || '').toLowerCase().includes('банков')) || banks[0]
+    if (!bank) continue
+    const [row] = await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where cash_account_id=${bank.id}` as unknown as Array<{ v: number }>
+    const amount = Math.round((Number(row?.v) || 0) * 100) / 100
+    if (amount <= 0) { done.push({ org: s.name, amount: 0, skipped: true }); continue }
+    const res: any = await encashment(s.id, bank.id, amount, null)
+    done.push({ org: s.name, amount, ok: !!res?.ok, to: res?.headQR || null, error: res?.error || null })
+  }
+  return { ok: true as const, count: done.filter(d => d.ok).length, done }
+}
