@@ -139,7 +139,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: COLORS.bg, fontFamily: "'Golos Text', system-ui, sans-serif", overflow: 'hidden' }}>
+    <div className="adm-shell" style={{ display: 'flex', background: COLORS.bg, fontFamily: "'Golos Text', system-ui, sans-serif", overflow: 'hidden' }}>
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
       {sideOpen && <div className="mobile-overlay" onClick={() => setSideOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 99, display: 'none' }} />}
 
@@ -154,7 +154,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
         {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} />}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
         </div>

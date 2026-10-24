@@ -49,3 +49,32 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 /* ── Кабинет мастера (BranchPortal): узкий на телефоне, широкий на ноутбуке ── */
 .branch-shell { max-width: 480px; margin: 0 auto; }
 @media (min-width: 900px) { .branch-shell { max-width: 940px; } }
+
+/* ── Шапка админки: одна раскладка для телефона / планшета / ПК ─────────── */
+.tb { display: flex; align-items: center; gap: 12px; padding: 12px 24px; }
+.tb-pills { display: flex; gap: 8px; margin-left: 20px; flex-wrap: wrap; }
+.tb-pill { font-size: 13px; padding: 4px 12px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
+.tb-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.tb-btn { min-height: 40px; min-width: 40px; }
+@media (max-width: 1100px) {
+  .tb { flex-wrap: wrap; padding: 10px 16px; row-gap: 8px; }
+  .tb-pills { order: 3; flex: 1 0 100%; margin-left: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tb-pills::-webkit-scrollbar { display: none; }
+  .tb-search { width: 160px !important; }
+}
+@media (max-width: 768px) {
+  .tb { padding: 8px 12px; gap: 8px; }
+  .tb-title { flex: 1; min-width: 0; }
+  .tb-date { display: none; }
+  .tb-right { display: contents; }
+  .tb-right > * { order: 2; }
+  .tb-right > .tb-search { order: 4; flex: 1 0 100%; width: 100% !important; min-height: 44px; font-size: 16px !important; }
+  .tb-lbl { display: none; }
+  .tb-org select { max-width: 150px; font-size: 14px !important; min-height: 36px; }
+}
+
+/* Рабочая область: высота под адресную строку телефона, поля и место под кнопку чата */
+.adm-shell { height: 100vh; height: 100dvh; }
+.adm-main { padding: 24px; }
+@media (max-width: 1100px) { .adm-main { padding: 16px; } }
+@media (max-width: 768px) { .adm-main { padding: 12px 12px 88px; } }
