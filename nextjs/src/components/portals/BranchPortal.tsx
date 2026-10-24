@@ -718,7 +718,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                           : <span style={{ fontSize: 11.5, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 9px', borderRadius: 20, fontWeight: 800 }} title="Оплачено полностью">✓ оплачено</span>}
                       {custName(o) && <span style={{ fontSize: 12, color: '#4a4640' }}>👤 {custName(o)}</span>}
                       <NoteTag o={o} />
-                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{leg1.length < total ? `${total - leg1.length}/${total} у логиста` : `${total} поз.`}</span>
+                      <span style={{ fontSize: 12, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(o.createdAt)}</span><span style={{ fontSize: 12, color: '#5f5952' }}>{total} поз.</span>
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                       <button onClick={() => setDrawerId(o.id)} title="Открыть карточку: касса/оплата (нал·каспи·QR·долг) + позиции" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' }}>💳 Открыть карточку</button>

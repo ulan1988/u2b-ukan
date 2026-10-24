@@ -37,14 +37,11 @@ const toUtc = (v: any): Date | null => {
 export const fmtDate = (d: any) => { const x = toUtc(d); return x ? x.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: TZ }) : '' }
 // Время создания ЧЧ:ММ (напр. «14:28») — по Астане.
 export const fmtTime = (d: any) => { const x = toUtc(d); return x ? x.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '' }
-// Когда создана карточка и сколько прошло: «17:24 · 1 ч 20 мин назад» (вчера и раньше — с датой: «23 окт 17:24 · 1 дн назад»).
+// Время создания карточки: сегодня — «17:24», раньше — с датой «23 окт 17:24».
 export const fmtCreated = (d: any) => {
   const x = toUtc(d); if (!x) return ''
-  const mins = Math.max(0, Math.round((Date.now() - x.getTime()) / 60000))
-  const age = mins < 60 ? `${mins} мин` : mins < 1440 ? `${Math.floor(mins / 60)} ч${mins % 60 ? ' ' + (mins % 60) + ' мин' : ''}` : `${Math.floor(mins / 1440)} дн`
   const day = (t: Date) => t.toLocaleDateString('ru-RU', { timeZone: TZ })
-  const when = day(x) === day(new Date()) ? fmtTime(x) : fmtDateTime(x)
-  return `${when} · ${age} назад`
+  return day(x) === day(new Date()) ? fmtTime(x) : fmtDateTime(x)
 }
 export const fmtDateTime = (d: any) => { const x = toUtc(d); return x ? x.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '' }
 
