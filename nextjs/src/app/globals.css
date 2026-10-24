@@ -170,7 +170,7 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 
 /* Касса продавца на планшете/ноутбуке: каталог в две колонки */
 @media (min-width: 700px) {
-  .sp-list { display: grid; grid-template-columns: 1fr 1fr; }
+  .sp-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .sp-list > div:only-child { grid-column: 1 / -1; }
   .sp-list > div:nth-child(odd) { border-right: 1px solid #f4f1ed; }
 }
