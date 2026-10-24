@@ -419,7 +419,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       )}
 
       <div className="lg-bar">
-        {[{ key: 'req' as Tab, icon: '📥', label: 'Заказы', badge: waitingCount, blink: false }, { key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'buy' as Tab, icon: '🛒', label: 'Закупки', badge: posBuy.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Выполнено', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Изменения', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
+        {[{ key: 'req' as Tab, icon: '📥', label: 'Заказы', badge: waitingCount, blink: false }, { key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'buy' as Tab, icon: '🛒', label: 'Закупки', badge: posBuy.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Готово', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Правки', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
           const active = tab === key
           return (
             <button key={key} onClick={() => setTab(key)} title={label} aria-label={label} className={'lg-tab' + (active ? ' on' : '') + (blink ? ' uk-blink' : '')}>
