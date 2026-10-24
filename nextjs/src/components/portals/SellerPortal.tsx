@@ -579,7 +579,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Экран выбора продавца: показывается при первом заходе с этого телефона и по кнопке «сменить».
   if (sellerReady && (!seller || pickSeller)) {
     return (
-      <div style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
+      <div className="sp-root" style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
         <div style={{ background: DARK, color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 22 }}>🏪</span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -610,7 +610,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
+    <div className="sp-root" style={{ minHeight: '100vh', background: BG, fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {/* шапка */}
       <div style={{ background: DARK, color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 60 }}>
         <span style={{ fontSize: 20 }}>🏪</span>
