@@ -45,7 +45,7 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
           <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: barColor(pct) }}>{pct}%</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>{order.fromName} → {order.toName || '—'}</span>
+          <span style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.fromName} → {order.toName || '—'}</span><span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>
           {order.deadline && <span style={{ fontSize: 13, color: '#5f5952' }}>срок {fmtDate(order.deadline)}</span>}
           <span style={{ fontSize: 13, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(order.createdAt)}</span>
         </div>

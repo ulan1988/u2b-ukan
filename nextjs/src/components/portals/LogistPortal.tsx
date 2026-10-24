@@ -243,14 +243,18 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     return (
       <div style={{ marginBottom: 8, background: changed ? '#fffceb' : '#fff', borderRadius: 10, boxShadow: changed ? '0 0 0 2px #e4b73a' : '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
         {changed && <div style={{ background: '#fdf3d8', color: '#8a6f00', fontSize: 12, fontWeight: 700, padding: '6px 11px' }}>⚠ Есть изменение — проверьте и подтвердите</div>}
-        <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 12px', cursor: 'pointer' }} className="lg-cardhead">
-          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
-          {order.fromName && <span style={{ fontSize: 14, fontWeight: 600, color: '#26231f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{order.fromName}</span>}
-          <span style={{ fontSize: 11.5, color: '#5f5952', background: '#f1efec', padding: '1px 8px', borderRadius: 20, fontWeight: 700 }}>{poss.length} поз</span>
-          {inway > 0 && <span style={{ fontSize: 11, color: '#c0532a', fontWeight: 700 }}>🚚{inway}</span>}
-          {done > 0 && <span style={{ fontSize: 11, color: '#2e8a5e', fontWeight: 700 }}>✓{done}</span>}
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>🕒 {fmtCreated(order.createdAt)}</span>
-          <span style={{ color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
+        <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ padding: '13px 12px', cursor: 'pointer' }} className="lg-cardhead">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
+            {inway > 0 && <span style={{ fontSize: 12, color: '#c0532a', fontWeight: 700 }}>🚚{inway}</span>}
+            {done > 0 && <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700 }}>✓{done}</span>}
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>🕒 {fmtCreated(order.createdAt)}</span>
+            <span style={{ color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 7 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#26231f', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {order.fromName || '—'}</span>
+            <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{poss.length} поз.</span>
+          </div>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
         {!allDone && !changed && poss.length > 0 && (

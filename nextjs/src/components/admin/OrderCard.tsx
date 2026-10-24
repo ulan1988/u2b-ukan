@@ -1,6 +1,6 @@
 'use client'
 import { COLORS } from '@/lib/colors'
-import { isPurchase, cardSum, cardProgress, barColor, statusStyle, sourceStyle, sourceLabel, isOverdue, fmtMoney, fmtDate, fmtTime } from '@/lib/adminFmt'
+import { isPurchase, cardSum, cardProgress, barColor, statusStyle, sourceStyle, sourceLabel, isOverdue, fmtMoney, fmtCreated } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 
 export interface CardAction { action: string; label: string; variant?: 'primary' | 'default' | 'danger' }
@@ -36,19 +36,23 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
         {order.isChanged && <span style={{ fontSize: 11, background: '#fdf3d8', color: '#8a6f00', padding: '2px 8px', borderRadius: 20, fontWeight: 800 }}>⚠ ИЗМЕНЕНИЕ · проверьте</span>}
         {isOverdue(order) && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
         {order.postponed && <span style={{ fontSize: 12, background: '#eef2ff', color: '#4a5aaa', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ОТЛОЖЕН</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>{fmtDate(order.createdAt)} · <b style={{ color: COLORS.text }}>{fmtTime(order.createdAt)}</b></span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>🕒 {fmtCreated(order.createdAt)}</span>
       </div>
 
-      {/* Маршрут from → to + % */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: ps.length > 0 ? 8 : 0, cursor: onOpen ? 'pointer' : 'default' }} onClick={() => onOpen?.(order)}>
-        <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>{order.fromName || '—'}</span>
-        {order.toName && <span style={{ fontSize: 13, color: '#5f5952' }}>→ {order.toName}</span>}
-        <span style={{ fontSize: 14, fontWeight: 700, color: barColor(pct) }}>{pct}%</span>
+      {/* Клиент крупно + число позиций + сумма */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: ps.length > 0 ? 8 : 0, cursor: onOpen ? 'pointer' : 'default' }} onClick={() => onOpen?.(order)}>
+        <span style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.fromName || '—'}</span>
+        {order.toName && <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>→ {order.toName}</span>}
+        {ps.length > 0 && <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>}
+        {sum > 0 && <b style={{ marginLeft: 'auto', fontSize: 16, whiteSpace: 'nowrap' }}>{fmtMoney(sum)} ₸</b>}
       </div>
 
       {ps.length > 0 && (
-        <div style={{ height: 5, background: '#f1efec', borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), transition: 'width .3s', borderRadius: 4 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, height: 5, background: '#f1efec', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: barColor(pct), transition: 'width .3s', borderRadius: 4 }} />
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: barColor(pct) }}>{pct}%</span>
         </div>
       )}
       {order.comment && ps.length === 0 && <div style={{ fontSize: 13, color: '#5f5952', marginTop: 4 }}>{order.comment.slice(0, 80)}{order.comment.length > 80 ? '...' : ''}</div>}
@@ -56,7 +60,6 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
       {/* Превью позиций с RAL-точкой */}
       {ps.length > 0 && (
         <div style={{ fontSize: 12, color: '#5f5952', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span>{ps.length} позиций</span>
           {ps.slice(0, 3).map((p: any) => (
             <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <RalDot code={extractRal(p.name1c || p.oral || '')} size={12} />
@@ -66,7 +69,6 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
           {ps.length > 3 && <span>…</span>}
         </div>
       )}
-      {sum > 0 && <div style={{ fontSize: 12, color: '#5f5952', marginTop: 4 }}>{fmtMoney(sum)} ₸</div>}
 
       {/* Кнопки действий (для экранов-списков) */}
       {actions.length > 0 && (
