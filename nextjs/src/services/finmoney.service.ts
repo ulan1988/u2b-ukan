@@ -6,9 +6,10 @@ const sumAmounts = (amts: any[]) => (amts || []).reduce((s, a) => s + num(a.amou
 
 // Полный день: счета, начальный/конечный остаток по счетам, строки, список дней, избранные.
 export async function financeDay(orgId: string, date: string) {
-  const [accts, opening, rows, dates, favs, expArticles, autoPays] = await Promise.all([
-    fin.cashdayAccounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId), fin.autoFinPayments(orgId),
+  const [accts, opening, rows, dates, favs, expArticles, autoPays, okind] = await Promise.all([
+    fin.cashdayAccounts(orgId), fin.openingByAccount(orgId, date), fin.rowsForDay(orgId, date), fin.datesForOrg(orgId), fin.favorites(orgId), fin.expenseArticles(orgId), fin.autoFinPayments(orgId), fin.orgKind(orgId),
   ])
+  const isHq = (okind?.[0]?.kind || '') === 'hq'
   const open: Record<string, number> = {}
   for (const a of accts) open[a.id] = 0
   for (const o of opening) open[o.id] = o.amt
@@ -26,44 +27,58 @@ export async function financeDay(orgId: string, date: string) {
   const opArt = { code: opFav?.code || null, article: opFav?.label || 'Оплата от покупателей' }   // приход
   const spArt = { code: spFav?.code || null, article: spFav?.label || 'Оплата поставщику' }        // расход
   const colOf = (p: any) => (p.cashAccountId && cashdayIds.has(p.cashAccountId)) ? p.cashAccountId : bankId
-  // 7 фикс-слотов (всегда видны, в этом порядке). slotOf: контрагент → индекс. Клиентов (имена)
-  // проверяем ДО «базар/жанар», иначе «Еркебулан Жанар базар» уедет к Базару. Слот 4 (Жанар) —
-  // вторая точка Базар Нипа, авто-данных нет (ведётся вручную), пока пустой.
-  const SLOTS = ['Магазин Кристалл', 'Нипа листогиб', 'Базар Нипа', 'Базар Нипа (Жанар Базар)', 'Еркебулан Жанар базар', 'Жаркын Туркестан', 'Абай Нурмаханов']
-  const slotOf = (name: string) => { const n = low(name)
-    if (n.includes('кристалл')) return 0
-    if (n.includes('листогиб')) return 1
-    if (n.includes('еркебулан')) return 4
-    if (n.includes('жаркын') || n.includes('туркист') || n.includes('туркест')) return 5
-    if (n.includes('абай') || n.includes('нурмахан')) return 6
-    if (n.includes('базар') || n.includes('жанар')) return 2
-    return -1 }
-  const slotAmt: Array<Record<string, number>> = SLOTS.map(() => ({}))
-  const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))
-  const others = new Map<string, any>()
+  const artOf = (p: any) => p.direction === 'in' ? opArt : spArt
+
+  // Прошлые дни → в остаток на начало; платежи дня → todayPays.
+  const todayPays: any[] = []
   for (const p of autoPays) {
     const col = colOf(p); if (!col) continue
     const signed = (p.direction === 'in' ? 1 : -1) * num(p.amount)
-    if (p.date < date) { open[col] = (open[col] || 0) + signed; continue }   // прошлые → в остаток на начало
-    if (p.date !== date) continue
-    const s = slotOf(p.contragent)
-    if (s >= 0) {
-      slotAmt[s][col] = (slotAmt[s][col] || 0) + signed
-      if (!slotCag[s].id && p.contragentId) slotCag[s].id = p.contragentId
-      if (!slotCag[s].doc && p.docNumber) slotCag[s].doc = p.docNumber
-    } else {
-      const key = (p.contragentId || 'x') + '|' + p.direction
-      let g = others.get(key)
-      if (!g) { g = { contragentId: p.contragentId, contragent: p.contragent, direction: p.direction, amt: {} as Record<string, number>, doc: null as string | null }; others.set(key, g) }
-      g.amt[col] = (g.amt[col] || 0) + signed
-      if (p.docNumber && !g.doc) g.doc = p.docNumber
-    }
+    if (p.date < date) { open[col] = (open[col] || 0) + signed; continue }
+    if (p.date === date) todayPays.push({ ...p, col, signed })
   }
-  const fixedRows = SLOTS.map((label, i) => ({ id: `auto-slot-${i}`, auto: true, status: 'posted', type: 'in', code: opArt.code, article: opArt.article, who: '', contragent: label, contragentId: slotCag[i].id, docId: null, docNumber: slotCag[i].doc, comment: '', alloc: [], amounts: Object.entries(slotAmt[i]).map(([accountId, amount]) => ({ accountId, amount })) }))
-  const otherRows = Array.from(others.values()).sort((a, b) => low(a.contragent).localeCompare(low(b.contragent)))
-    .map(g => { const a = g.direction === 'in' ? opArt : spArt
-      return { id: `auto-${g.contragentId || 'x'}-${g.direction}`, auto: true, status: 'posted', type: g.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: g.contragent || '', contragentId: g.contragentId, docId: null, docNumber: g.doc, comment: '', alloc: [], amounts: Object.entries(g.amt).map(([accountId, amount]) => ({ accountId, amount })) } })
-  const allRows = [...fixedRows, ...otherRows, ...rows]   // 7 фикс сверху, прочие авто, ручные — в конце
+
+  let autoRows: any[]
+  if (isHq) {
+    // ГОЛОВНОЙ: 7 фикс-слотов (всегда видны, в этом порядке) + прочие контрагенты ниже.
+    // slotOf: клиентов (имена) проверяем ДО «базар/жанар», иначе «Еркебулан Жанар базар» уедет к Базару.
+    const SLOTS = ['Магазин Кристалл', 'Нипа листогиб', 'Базар Нипа', 'Базар Нипа (Жанар Базар)', 'Еркебулан Жанар базар', 'Жаркын Туркестан', 'Абай Нурмаханов']
+    const slotOf = (name: string) => { const n = low(name)
+      if (n.includes('кристалл')) return 0
+      if (n.includes('листогиб')) return 1
+      if (n.includes('еркебулан')) return 4
+      if (n.includes('жаркын') || n.includes('туркист') || n.includes('туркест')) return 5
+      if (n.includes('абай') || n.includes('нурмахан')) return 6
+      if (n.includes('базар') || n.includes('жанар')) return 2
+      return -1 }
+    const slotAmt: Array<Record<string, number>> = SLOTS.map(() => ({}))
+    const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))
+    const others = new Map<string, any>()
+    for (const p of todayPays) {
+      const s = slotOf(p.contragent)
+      if (s >= 0) {
+        slotAmt[s][p.col] = (slotAmt[s][p.col] || 0) + p.signed
+        if (!slotCag[s].id && p.contragentId) slotCag[s].id = p.contragentId
+        if (!slotCag[s].doc && p.docNumber) slotCag[s].doc = p.docNumber
+      } else {
+        const key = (p.contragentId || 'x') + '|' + p.direction
+        let g = others.get(key)
+        if (!g) { g = { contragentId: p.contragentId, contragent: p.contragent, direction: p.direction, amt: {} as Record<string, number>, doc: null as string | null }; others.set(key, g) }
+        g.amt[p.col] = (g.amt[p.col] || 0) + p.signed
+        if (p.docNumber && !g.doc) g.doc = p.docNumber
+      }
+    }
+    const fixedRows = SLOTS.map((label, i) => ({ id: `auto-slot-${i}`, auto: true, status: 'posted', type: 'in', code: opArt.code, article: opArt.article, who: '', contragent: label, contragentId: slotCag[i].id, docId: null, docNumber: slotCag[i].doc, comment: '', alloc: [], amounts: Object.entries(slotAmt[i]).map(([accountId, amount]) => ({ accountId, amount })) }))
+    const otherRows = Array.from(others.values()).sort((a, b) => low(a.contragent).localeCompare(low(b.contragent)))
+      .map(g => { const a = g.direction === 'in' ? opArt : spArt
+        return { id: `auto-${g.contragentId || 'x'}-${g.direction}`, auto: true, status: 'posted', type: g.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: g.contragent || '', contragentId: g.contragentId, docId: null, docNumber: g.doc, comment: '', alloc: [], amounts: Object.entries(g.amt).map(([accountId, amount]) => ({ accountId, amount })) } })
+    autoRows = [...fixedRows, ...otherRows]
+  } else {
+    // ФИЛИАЛ/МАГАЗИН: строка на КАЖДЫЙ платёж (кассовый ордер) с привязкой к накладной (docNumber).
+    autoRows = todayPays.map(p => { const a = artOf(p)
+      return { id: `auto-${p.id}`, auto: true, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null, comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed }] } })
+  }
+  const allRows = [...autoRows, ...rows]   // авто-строки сверху, ручные — в конце
 
   const closing: Record<string, number> = { ...open }
   for (const r of allRows) for (const am of (r.amounts || [])) closing[am.accountId] = (closing[am.accountId] || 0) + num(am.amount)

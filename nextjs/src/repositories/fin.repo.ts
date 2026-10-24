@@ -38,6 +38,10 @@ export const autoFinPayments = (orgId: string) =>
       and (p.comment is null or p.comment not like 'Касса %')
     order by p.date` as unknown as Promise<Array<{ id: string; date: string; direction: string; amount: number; cashAccountId: string | null; contragentId: string | null; contragent: string | null; comment: string | null; docId: string | null; docNumber: string | null }>>
 
+// Вид орг (hq/producer_seller/seller) — фикс-строки «Операций» нужны только головному.
+export const orgKind = (orgId: string) =>
+  sqlClient`select kind from organizations where id=${orgId} limit 1` as unknown as Promise<Array<{ kind: string }>>
+
 // Движения по счетам орг за период (режим «Финанс» Уканбана): платежи + проведённые строки «Деньги».
 export const ledgerMovements = (orgId: string, from: string, to: string) =>
   sqlClient`
