@@ -54,8 +54,9 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const load = useCallback(async () => {
     if (!didInit.current) setLoading(true)   // «Загрузка…» только при первом открытии — без мигания на каждом обновлении
     let d = await finDay(date)
-    // Пустой день + есть избранное → сразу подставляем статьи из избранного («первым откроется избранное»).
-    if ((d?.rows || []).length === 0 && (d?.favorites || []).length > 0) { await finFavApply(date); d = await finDay(date) }
+    // Нет РУЧНЫХ строк (авто-слоты не считаем) + есть избранное → подставляем статьи из избранного.
+    // Иначе шаблон статей (Доходы/Оплата поставщикам/займы…) не появлялся из-за авто-строк.
+    if ((d?.rows || []).filter((r: any) => !r.auto).length === 0 && (d?.favorites || []).length > 0) { await finFavApply(date); d = await finDay(date) }
     setData(d); setRows((d?.rows || []).map(mapRow)); setFavs(d?.favorites || [])
     didInit.current = true; setLoading(false)
   }, [date])
