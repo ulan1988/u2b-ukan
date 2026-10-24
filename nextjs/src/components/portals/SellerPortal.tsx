@@ -1339,18 +1339,18 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 </div>
                 {/* Контрагенты */}
                 <div style={{ padding: '12px 20px 4px', display: 'flex', gap: 18 }}>
-                  <div><div style={{ fontSize: 10, color: '#a09889', fontWeight: 800, letterSpacing: '.04em' }}>ПРОДАВЕЦ</div><div style={{ fontSize: 13.5, fontWeight: 600, color: DARK }}>{o.seller || '—'}</div></div>
-                  <div><div style={{ fontSize: 10, color: '#a09889', fontWeight: 800, letterSpacing: '.04em' }}>ПОКУПАТЕЛЬ</div><div style={{ fontSize: 13.5, fontWeight: 600, color: DARK }}>{buyer}</div></div>
+                  <div><div style={{ fontSize: 10, color: PRIMARY, fontWeight: 800, letterSpacing: '.04em' }}>ПРОДАВЕЦ</div><div style={{ fontSize: 13.5, fontWeight: 700, color: BLUE }}>{o.seller || '—'}</div></div>
+                  <div><div style={{ fontSize: 10, color: PRIMARY, fontWeight: 800, letterSpacing: '.04em' }}>ПОКУПАТЕЛЬ</div><div style={{ fontSize: 13.5, fontWeight: 700, color: GREEN }}>{buyer}</div></div>
                 </div>
                 {/* Позиции */}
                 <div style={{ padding: '6px 20px', overflowY: 'auto' }}>
                   {rLines(o).map((r: any, i: number) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid #f3f0ec' }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: DARK }}>{r.nm}</div>
-                        <div style={{ fontSize: 12, color: '#a09889', marginTop: 1 }}>{r.qty}{r.cm} × {money(r.price)} ₸</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: DARK }}>{r.nm}</div>
+                        <div style={{ fontSize: 12, color: BLUE, fontWeight: 600, marginTop: 1 }}>{r.qty}{r.cm} × {money(r.price)} ₸</div>
                       </div>
-                      <div style={{ fontSize: 14.5, fontWeight: 800, color: DARK, whiteSpace: 'nowrap' }}>{money(r.sum)}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: GREEN, whiteSpace: 'nowrap' }}>{money(r.sum)}</div>
                     </div>
                   ))}
                 </div>
@@ -1363,7 +1363,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   </div>
                   <div style={{ marginTop: 9 }}><span style={{ background: payColor, color: '#fff', borderRadius: 20, padding: '4px 13px', fontSize: 12.5, fontWeight: 700 }}>💳 {o.payment || '—'}</span></div>
                 </div>
-                <div style={{ textAlign: 'center', fontSize: 12, color: '#b0a89d', padding: '11px' }}>Спасибо за покупку! 🙌</div>
+                <div style={{ textAlign: 'center', fontSize: 12.5, color: PRIMARY, fontWeight: 700, padding: '11px' }}>Спасибо за покупку! 🙌</div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => sendWhatsApp(o)} style={{ flex: 1, border: 'none', background: '#25D366', color: '#fff', borderRadius: 11, padding: '13px', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📲 WhatsApp</button>
