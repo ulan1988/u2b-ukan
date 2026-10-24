@@ -132,8 +132,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const isBranchOrg = !!selKind && selKind !== 'hq'
   const isSellerOrg = selKind === 'seller'
   const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
-  // Магазин (как в 1С): без карточной системы — только документы (приход/расход), ДДС, склад, касса. Карточные экраны убраны.
-  const SELLER_HIDE = ['production', 'material', 'projects', 'dashboard', 'history', 'filter', 'accounting', 'bookkeeping', 'archive']
+  // Магазин (как в 1С): документы (приход/расход), ДДС, склад, касса. Карточные экраны убраны, кроме У-Канбан («всевидящее око»).
+  const SELLER_HIDE = ['production', 'material', 'projects', 'dashboard', 'history', 'filter', 'bookkeeping', 'archive']
   const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)))
 
   // Открыт скрытый для магазина карточный экран (старая ссылка/закладка) → уходим на «Кассу дня».
