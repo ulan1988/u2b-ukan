@@ -53,7 +53,7 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
       {mode === 'debts' && <DebtsMode orgId={orgId} onOpen={cid => { setRecCid(cid); setMode('reconcile') }} />}
       {mode === 'moves' && <StockMode orgId={orgId} links={links} />}
       {mode === 'reconcile' && <ReconcileMode initialCid={recCid} links={links} />}
-      {mode === 'finance' && <FinanceMode orgId={orgId} />}
+      {mode === 'finance' && <FinanceMode orgId={orgId} links={links} />}
       {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && mode !== 'moves' && mode !== 'finance' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
   )
@@ -492,7 +492,9 @@ function StockMode({ orgId, links = false }: { orgId: string; links?: boolean })
 }
 
 // ─── Режим «Финанс»: наши счета (выбираемые чипами) + движения по счёту за период с остатком ───
-function FinanceMode({ orgId }: { orgId: string }) {
+function FinanceMode({ orgId, links = false }: { orgId: string; links?: boolean }) {
+  const [cagFilter, setCagFilter] = useState('')              // клик по контрагенту в «Составе денег» → только его движения
+  const [routeDoc, setRouteDoc] = useState<string | null>(null)   // «Связки»: дерево пути документа
   const [period, setPeriod] = useState<DPeriod>('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [data, setData] = useState<any>(null)
@@ -526,7 +528,17 @@ function FinanceMode({ orgId }: { orgId: string }) {
 
   // Нарастающий остаток по каждому счёту (старт = остаток до периода). Фильтр по выбранным счетам.
   const run: Record<string, number> = { ...opening }
-  const rows = moves.filter(m => sel.has(m.acc)).map(m => { run[m.acc] = (run[m.acc] || 0) + Number(m.amount); return { ...m, bal: run[m.acc], name: accounts.find(a => a.id === m.acc)?.name || '—' } })
+  const allRows = moves.filter(m => sel.has(m.acc)).map(m => { run[m.acc] = (run[m.acc] || 0) + Number(m.amount); return { ...m, bal: run[m.acc], name: accounts.find(a => a.id === m.acc)?.name || '—' } })
+  const NO_CAG = 'Без контрагента'
+  const rows = cagFilter ? allRows.filter(m => (m.contragent || NO_CAG) === cagFilter) : allRows
+  // Состав денег по выбранным счетам: от кого пришло и кому ушло (по контрагентам/поставщикам).
+  const comp = (() => {
+    const m = new Map<string, { name: string; inn: number; out: number }>()
+    for (const r of allRows) { const k = r.contragent || NO_CAG; const e = m.get(k) || { name: k, inn: 0, out: 0 }; if (r.amount > 0) e.inn += Number(r.amount); else e.out += -Number(r.amount); m.set(k, e) }
+    return Array.from(m.values())
+  })()
+  const compIn = comp.filter(c => c.inn > 0).sort((a, b) => b.inn - a.inn)
+  const compOut = comp.filter(c => c.out > 0).sort((a, b) => b.out - a.out)
   const selIn = rows.reduce((s, m) => s + (m.amount > 0 ? Number(m.amount) : 0), 0)
   const selOut = rows.reduce((s, m) => s + (m.amount < 0 ? -Number(m.amount) : 0), 0)
   const selClose = accounts.filter(a => sel.has(a.id)).reduce((s, a) => s + (closing[a.id] || 0), 0)
@@ -565,6 +577,34 @@ function FinanceMode({ orgId }: { orgId: string }) {
         <div style={{ flex: '1 1 150px', background: '#fff', border: '2px solid #211f1c', borderRadius: 10, padding: '10px 14px' }}><div style={{ fontSize: 11.5, color: '#6b7280', fontWeight: 700 }}>ОСТАТОК (выбранные)</div><div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'Consolas, monospace' }}>{fmtMoney(selClose)} ₸</div></div>
       </div>
 
+      {/* Состав денег: выбрали счёт → видим, из каких поставщиков/клиентов он собран. Клик по имени = фильтр движений. */}
+      {!loading && sel.size > 0 && allRows.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginBottom: 12 }}>
+          {([['💰 Откуда пришли деньги', compIn, 'inn', '#2e8a5e', '#f0fdf4'], ['📤 Кому ушли', compOut, 'out', '#b3261e', '#fef2f2']] as const).map(([title, list, key, color, bg]) => (
+            <div key={title} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+              <div style={{ padding: '9px 14px', background: bg, color, fontWeight: 800, fontSize: 13 }}>{title} <span style={{ fontWeight: 600, opacity: .7 }}>· {list.length}</span></div>
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                {list.length === 0 ? <div style={{ padding: 14, color: '#9a938a', fontSize: 13 }}>—</div> : list.map((c: any) => {
+                  const total = list.reduce((x: number, y: any) => x + y[key], 0) || 1
+                  const on = cagFilter === c.name
+                  return (
+                    <div key={c.name} onClick={() => setCagFilter(on ? '' : c.name)} title="Клик — показать только движения этого контрагента"
+                      style={{ padding: '8px 14px', borderTop: '1px solid #f4f1ed', cursor: 'pointer', background: on ? bg : 'transparent' }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                        <b style={{ fontFamily: 'Consolas, monospace', fontSize: 14, color, whiteSpace: 'nowrap' }}>{fmtMoney(c[key])} ₸</b>
+                      </div>
+                      <div style={{ height: 4, background: '#f1efec', borderRadius: 3, marginTop: 5 }}><div style={{ height: '100%', width: `${Math.max(3, Math.round(c[key] / total * 100))}%`, background: color, borderRadius: 3, opacity: .75 }} /></div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {cagFilter && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13 }}><span style={{ color: '#6b655b' }}>Показаны движения:</span><span style={{ padding: '4px 10px', borderRadius: 20, background: '#faf7fd', border: '1.5px solid #7a3aaa', fontWeight: 700 }}>🏢 {cagFilter}</span><button onClick={() => setCagFilter('')} style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button></div>}
+
       {/* Движения */}
       {loading ? <div style={emptyBox}>Загрузка…</div>
         : sel.size === 0 ? <div style={emptyBox}>Выберите счёт (или «Все») — появятся движения с остатком.</div>
@@ -578,7 +618,7 @@ function FinanceMode({ orgId }: { orgId: string }) {
                   </tr></thead>
                   <tbody>
                     {rows.map((m, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid #f1efec', background: i % 2 ? '#faf9f7' : '#fff' }}>
+                      <tr key={i} onClick={() => links && m.docId && setRouteDoc(m.docId)} title={links && m.docId ? 'Показать путь документа' : ''} style={{ borderTop: '1px solid #f1efec', background: i % 2 ? '#faf9f7' : '#fff', cursor: links && m.docId ? 'pointer' : 'default' }}>
                         <td style={tdL}>{fmtDate(m.date)}</td>
                         <td style={tdL}>{m.name}</td>
                         <td style={tdL}>{m.contragent || '—'}</td>
@@ -592,6 +632,7 @@ function FinanceMode({ orgId }: { orgId: string }) {
                 </table>
               </div>
             )}
+      {routeDoc && <RouteModal docId={routeDoc} onClose={() => setRouteDoc(null)} />}
     </div>
   )
 }

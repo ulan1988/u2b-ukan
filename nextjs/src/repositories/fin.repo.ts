@@ -44,21 +44,21 @@ export const orgKind = (orgId: string) =>
 // Движения по счетам орг за период (режим «Финанс» Уканбана): платежи + проведённые строки «Деньги».
 export const ledgerMovements = (orgId: string, from: string, to: string) =>
   sqlClient`
-    select date::text, acc, amount::float amount, contragent, article, docn "docNumber", src from (
+    select date::text, acc, amount::float amount, contragent, article, docn "docNumber", docid "docId", src from (
       select p.date, p.cash_account_id::text acc,
         (case when p.direction='in' then p.amount else -p.amount end) amount,
-        c.name contragent, coalesce(nullif(p.comment,''),'Платёж') article, dd.number docn, 'pay' src
+        c.name contragent, coalesce(nullif(p.comment,''),'Платёж') article, dd.number docn, dd.id::text docid, 'pay' src
       from payments p
       left join contragents c on c.id=p.contragent_id
       left join documents dd on dd.id=p.document_id
       where p.org_id=${orgId} and p.cash_account_id is not null and p.date between ${from} and ${to}
       union all
-      select r.date, a.account_id::text acc, a.amount, c.name contragent, r.article, null docn, 'fin' src
+      select r.date, a.account_id::text acc, a.amount, c.name contragent, r.article, null docn, null::text docid, 'fin' src
       from fin_row_amounts a
       join fin_rows r on r.id=a.row_id
       left join contragents c on c.id=r.contragent_id
       where r.org_id=${orgId} and r.status='posted' and r.date between ${from} and ${to}
-    ) t order by date, acc` as unknown as Promise<Array<{ date: string; acc: string; amount: number; contragent: string | null; article: string | null; docNumber: string | null; src: string }>>
+    ) t order by date, acc` as unknown as Promise<Array<{ date: string; acc: string; amount: number; contragent: string | null; article: string | null; docNumber: string | null; docId: string | null; src: string }>>
 
 // Остаток по счетам НА начало периода = Σ движений (платежи + строки «Деньги») до даты.
 export const ledgerOpening = (orgId: string, before: string) =>
