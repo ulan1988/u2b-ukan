@@ -104,8 +104,14 @@ function InvoicesMode({ orgId }: { orgId: string }) {
     else if (kind === 'sale') base = base.filter(d => d.type === 'sale')
     else if (kind === 'return') base = base.filter(d => d.type === 'return_in' || d.type === 'return_out')
     base = base.filter(d => matchDate(d.date, period, from, to))
-    const s = q.trim().toLowerCase()
-    if (s) base = base.filter(d => `${d.number} ${d.contragent || ''} ${d.items || ''} ${d.total} ${fmtDate(d.date)}`.toLowerCase().includes(s))
+    // Поиск по ВСЕМУ: каждое слово запроса должно встретиться где угодно в накладной (номер, контрагент, любые товары,
+    // сумма, дата, статус, комментарий…). Порядок слов и точная фраза не важны; ё = е.
+    const norm = (v: any) => String(v ?? '').toLowerCase().replace(/ё/g, 'е')
+    const words = norm(q).split(/\s+/).filter(Boolean)
+    if (words.length) base = base.filter(d => {
+      const hay = norm([...Object.values(d).filter(v => typeof v === 'string' || typeof v === 'number'), fmtDate(d.date), Math.round(Number(d.total) || 0).toLocaleString('ru-RU'), d.type === 'purchase' ? 'приход закуп' : d.type === 'sale' ? 'расход продажа' : 'возврат'].join(' '))
+      return words.every(w => hay.includes(w))
+    })
     return base
   }, [docs, kind, q, period, from, to])
 
@@ -122,7 +128,7 @@ function InvoicesMode({ orgId }: { orgId: string }) {
         <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}{kindBtn('return', '↩ Возвраты')}</div>
         <button onClick={() => setLinks(v => !v)} title="Клик по накладной покажет её путь (граф)" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: links ? '#7a3aaa' : '#fff', color: links ? '#fff' : COLORS.textMuted, boxShadow: links ? 'none' : '0 0 0 1.5px #e6e2dc' }}>🔗 Связки {links ? 'вкл' : 'выкл'}</button>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, контрагент, товар…"
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск по всему: номер, контрагент, товар, сумма…"
           style={{ marginLeft: 'auto', minWidth: 240, flex: '1 1 240px', maxWidth: 400, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
       </div>
 
