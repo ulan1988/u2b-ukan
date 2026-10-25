@@ -3,7 +3,7 @@
 //  • Цепочка — Поставщик → Товар → Заказчик (как листы закуп-отчёта); клик по узлу
 //    «разлетает» его цепочку (подсветка связанной компоненты). Много поставщиков/покупателей.
 //  • Путь — движение документа по стадиям (граф-дерево из истории).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDateTime } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
@@ -11,7 +11,7 @@ import { docChain } from '@/lib/api/docs'
 
 const COLW = 240, ROWH = 92, NW = 190, NH = 54
 // Компактная цепочка: узлы ниже и ближе друг к другу (граф «Путь» остаётся на своих размерах).
-const CCOLW = 250, CROWH = 50, CNW = 176, CNH = 40
+const CROWH = 50, CNH = 40
 // Цвет цепочки = цвет товара: линии поставщик→товар→заказчик одного цвета, видно кто куда идёт.
 const PALETTE = ['#e6194b', '#3b82f6', '#16a34a', '#f59e0b', '#9333ea', '#0891b2', '#db2777', '#65a30d', '#b45309', '#475569', '#0d9488', '#dc2626']
 const fmtDT = (s: any) => fmtDateTime(s) || '—'
@@ -33,10 +33,20 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
   const [data, setData] = useState<any>(null)
   const [tab, setTab] = useState<'chain' | 'path'>('chain')
   const [full, setFull] = useState(false)   // во весь экран
+  // Ширина области графа → колонки раздвигаются по всей ширине (на широком экране линиям много места: дорожки чёткие и редкие).
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [cw, setCw] = useState(760)
+  const CNW = cw > 1100 ? 230 : 176
+  const CCOLW = Math.max(250, Math.min(520, (cw - 14 - CNW - 10) / 2))
   const [selCh, setSelCh] = useState<string | null>(null)
   const [selP, setSelP] = useState<number | null>(null)
 
   useEffect(() => { docChain(docId).then((d: any) => { setData(d); const cur = (d?.nodes || []).find((n: any) => n.state === 'current'); setSelP(cur ? cur.id : (d?.nodes?.[0]?.id ?? null)); setSelCh(null); if (!(d?.chain?.nodes || []).length) setTab('path') }) }, [docId])
+  useEffect(() => {
+    const el = scrollRef.current; if (!el) return
+    const upd = () => setCw(el.clientWidth || 760)
+    upd(); const ro = new ResizeObserver(upd); ro.observe(el); return () => ro.disconnect()
+  }, [data, tab, full])
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key !== 'Escape') return; if (selCh) setSelCh(null); else if (full) setFull(false); else onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose, selCh, full])
 
   const doc = data?.document
@@ -94,7 +104,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
       const down = g.filter(x => x.y2 > x.y1).sort((p, q) => p.y1 - q.y1 || p.y2 - q.y2)   // вниз: чем выше старт, тем дальше дорожка от узла
       const up = g.filter(x => x.y2 < x.y1).sort((p, q) => q.y1 - p.y1 || q.y2 - p.y2)
       const n = down.length + up.length; if (!n) continue
-      const x1 = g[0].x1, x2 = g[0].x2, step = Math.min(7, (x2 - x1 - 24) / n)
+      const x1 = g[0].x1, x2 = g[0].x2, step = Math.min(13, (x2 - x1 - 24) / n)
       const right = x2 - 12
       down.forEach((x, k) => { xl[x.i] = right - k * step })
       up.forEach((x, k) => { xl[x.i] = right - (down.length + k) * step })
@@ -108,7 +118,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
       out[g.i] = `M${g.x1} ${g.y1} H${x - r} Q${x} ${g.y1} ${x} ${g.y1 + sg * r} V${g.y2 - sg * r} Q${x} ${g.y2} ${x + r} ${g.y2} H${g.x2}`
     }
     return out
-  }, [chNodes, chEdges, ports]) // eslint-disable-line
+  }, [chNodes, chEdges, ports, CCOLW, CNW]) // eslint-disable-line
   const prodColor: Record<string, string> = {}
   chNodes.filter(n => n.kind === 'product').forEach((n, i) => { prodColor[n.id] = PALETTE[i % PALETTE.length] })
   const colorsOf = (id: string) => (chAdj[id] || []).map(x => prodColor[x]).filter(Boolean)   // цвета товаров, связанных с узлом (для поставщика/заказчика)
@@ -158,7 +168,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
         )}
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <div onClick={() => tab === 'chain' && setSelCh(null)} title="Клик по пустому месту — снять выбор" style={{ flex: 1, overflow: 'auto', background: '#f7f8fa' }}>
+          <div ref={scrollRef} onClick={() => tab === 'chain' && setSelCh(null)} title="Клик по пустому месту — снять выбор" style={{ flex: 1, overflow: 'auto', background: '#f7f8fa' }}>
             {!data ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
               : tab === 'chain' ? (
                 chNodes.length === 0 ? <div style={{ padding: 40, color: COLORS.textMuted }}>Нет данных цепочки</div> : (
