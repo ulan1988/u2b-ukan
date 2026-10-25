@@ -134,12 +134,16 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
   // Магазин (как в 1С): документы (приход/расход), ДДС, склад, касса. Карточные экраны убраны, кроме У-Канбан («всевидящее око»).
   const SELLER_HIDE = ['production', 'material', 'projects', 'dashboard', 'history', 'filter', 'bookkeeping', 'archive']
-  const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)))
+  // Головной (Адал Строй 2) не производит: без кабинета мастера, Производства, Материала и Расчёта.
+  const isHqOrg = selKind === 'hq'
+  const HQ_HIDE = ['production', 'material', 'calc']
+  const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)) && !(isHqOrg && HQ_HIDE.includes(n.key)))
 
   // Открыт скрытый для магазина карточный экран (старая ссылка/закладка) → уходим на «Кассу дня».
   useEffect(() => {
     if (isSellerOrg && [...BRANCH_HIDE, ...SELLER_HIDE].includes(screen)) router.replace(`/admin/cashday?org=${orgId}`)
-  }, [isSellerOrg, screen, orgId])
+    else if (isHqOrg && HQ_HIDE.includes(screen)) router.replace(`/admin/dashboard?org=${orgId}`)
+  }, [isSellerOrg, isHqOrg, screen, orgId])
 
   const orgName = orgs.find(o => o.id === orgId)?.name || ''
   const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
@@ -159,7 +163,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Сквозная цветная полоса сверху = насыщенный цвет орг */}
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
         <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
