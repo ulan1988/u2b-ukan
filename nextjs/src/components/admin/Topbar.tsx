@@ -34,10 +34,10 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug, canSwitchOrg = true }: {
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug, canSwitchOrg = true, extra }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
   orgs?: { id: string; name: string; kind?: string; color?: string }[]; orgId?: string; onOrg?: (id: string) => void
-  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean; branchSlug?: string; canSwitchOrg?: boolean
+  orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean; branchSlug?: string; canSwitchOrg?: boolean; extra?: React.ReactNode
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -86,6 +86,7 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
         ))}
         {!hideOrderInfo && <input className="tb-search" style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
         <Bell />
+        {extra}
       </div>
     </div>
   )

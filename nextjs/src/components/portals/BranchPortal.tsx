@@ -594,7 +594,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>U2B · Филиал <span style={{ color: '#5a544c', fontSize: 10, fontWeight: 500 }}>v{process.env.NEXT_PUBLIC_BUILD_SHA}</span></div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
         </div>
         <div className="bp-hdr-date"><DateFilter dark period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} /></div>
-        <div style={{ display: 'flex', gap: 8 }}><button onClick={load} style={{ background: 'none', border: 'none', color: '#8c857a', fontSize: 18, cursor: 'pointer', padding: 4 }}>⟳</button><button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: 'none', border: '1px solid #444', color: '#ccc', fontSize: 13, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>Выйти</button></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><ChatWidget placement="inline" myId={user.id} orgId={user.orgId} /><button onClick={load} style={{ background: 'none', border: 'none', color: '#8c857a', fontSize: 18, cursor: 'pointer', padding: 4 }}>⟳</button><button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: 'none', border: '1px solid #444', color: '#ccc', fontSize: 13, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>Выйти</button></div>
       </div>
 
       <div className="bp-main">
@@ -816,7 +816,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           return <button key={key} onClick={() => setTab(key)} title={label} className={'bp-rail-btn' + (active ? ' on' : '')}><span className="bp-rail-ic">{icon}</span><span className="bp-rail-lbl">{label}</span>{badge > 0 && <span style={{ position: 'absolute', top: -3, right: -3, background: active ? '#fff' : PRIMARY, color: active ? PRIMARY : '#fff', fontSize: 11, fontWeight: 800, padding: '1px 5px', borderRadius: 10, minWidth: 16, textAlign: 'center' }}>{badge}</span>}</button>
         })}
       </div>
-      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={76} />
       <AppBadge count={badgeCount} baseTitle="Филиал · U2B" />
       <PushSetup />
     </div>

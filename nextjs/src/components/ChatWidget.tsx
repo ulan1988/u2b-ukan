@@ -21,7 +21,9 @@ const seenKey = (cardId: string) => `chat-seen-${cardId}`
 
 // Плавающий чат-виджет: пузырь в правом нижнем углу + список чатов по заказам,
 // «новые» = позже моего lastSeen (localStorage). orgId — скоуп по организации/филиалу.
-function ChatWidget({ myId, orgId, bottomOffset = 24 }: { myId: string; orgId?: string; bottomOffset?: number }) {
+// placement: 'bottom' — плавающая кнопка снизу (по умолчанию); 'top' — плавающая сверху справа (не закрывает контент);
+// 'inline' — обычная маленькая кнопка внутри шапки страницы (рядом с другими кнопками).
+function ChatWidget({ myId, orgId, bottomOffset = 24, placement = 'bottom', topOffset = 10 }: { myId: string; orgId?: string; bottomOffset?: number; placement?: 'bottom' | 'top' | 'inline'; topOffset?: number }) {
   const [threads, setThreads] = useState<Thread[]>([])
   const [open, setOpen] = useState(false)
   const [activeCard, setActiveCard] = useState<string | null>(null)
@@ -46,7 +48,11 @@ function ChatWidget({ myId, orgId, bottomOffset = 24 }: { myId: string; orgId?: 
     <>
       {!open && (
         <button onClick={() => { setOpen(true); load() }} aria-label="Чаты"
-          style={{ position: 'fixed', right: 18, bottom: bottomOffset, zIndex: 8000, width: 56, height: 56, borderRadius: '50%', border: 'none', background: PRIMARY, color: '#fff', fontSize: 24, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          style={placement === 'inline'
+            ? { position: 'relative', flexShrink: 0, width: 40, height: 40, borderRadius: '50%', border: 'none', background: PRIMARY, color: '#fff', fontSize: 19, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }
+            : placement === 'top'
+              ? { position: 'fixed', right: 12, top: topOffset, zIndex: 8000, width: 42, height: 42, borderRadius: '50%', border: 'none', background: PRIMARY, color: '#fff', fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+              : { position: 'fixed', right: 18, bottom: bottomOffset, zIndex: 8000, width: 56, height: 56, borderRadius: '50%', border: 'none', background: PRIMARY, color: '#fff', fontSize: 24, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           💬
           {mounted && newCount > 0 && (
             <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 10, background: '#b03020', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff' }}>{newCount}</span>
@@ -55,7 +61,7 @@ function ChatWidget({ myId, orgId, bottomOffset = 24 }: { myId: string; orgId?: 
       )}
 
       {open && (
-        <div style={{ position: 'fixed', right: 16, bottom: bottomOffset, zIndex: 8000, width: 'min(360px, calc(100vw - 24px))', height: 'min(72vh, 560px)', background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'inherit' }}>
+        <div style={{ position: 'fixed', right: placement === 'bottom' ? 16 : 12, ...(placement === 'bottom' ? { bottom: bottomOffset } : { top: placement === 'top' ? topOffset + 50 : 64 }), zIndex: 8000, width: 'min(360px, calc(100vw - 24px))', height: placement === 'bottom' ? 'min(72vh, 560px)' : 'min(78vh, 560px)', background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'inherit' }}>
           <div style={{ background: DARK, color: '#fff', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
             {active ? <button onClick={() => setActiveCard(null)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', padding: 0 }}>←</button> : <span style={{ fontSize: 18 }}>💬</span>}
             <div style={{ flex: 1, minWidth: 0 }}>

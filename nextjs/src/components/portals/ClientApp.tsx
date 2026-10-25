@@ -383,7 +383,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
           </div>
         )}
       </div>
-      {!embedded && <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={16} />}
+      {!embedded && <ChatWidget placement="top" topOffset={64} myId={user.id} orgId={user.orgId} />}
       {!embedded && <AppBadge count={unread} baseTitle="Мои заявки · U2B" />}
       {!embedded && <PushSetup />}
     </div>

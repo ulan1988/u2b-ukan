@@ -159,7 +159,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Сквозная цветная полоса сверху = насыщенный цвет орг */}
         {orgs.length > 1 && <div style={{ height: 4, background: orgColor, flexShrink: 0 }} title={orgs.find(o => o.id === orgId)?.name} />}
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} />}
+        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
         <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
@@ -167,7 +167,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
       </div>
 
       {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} onReload={load} />}
-      <ChatWidget myId={user.id} orgId={orgId} />
+      {(screen === 'money' || screen === 'accounting') && <ChatWidget placement="top" myId={user.id} orgId={orgId} />}   {/* на экранах без общей шапки — плавающая сверху */}
       <AppBadge count={newCount} baseTitle="U2B ERP" />
       <PushSetup />
     </div>

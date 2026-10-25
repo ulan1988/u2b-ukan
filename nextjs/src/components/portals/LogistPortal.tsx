@@ -281,7 +281,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
             <img src="/icons/icon-192.png" alt="U2B" style={{ width: 42, height: 42, borderRadius: 10, display: 'block' }} />
             <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' }}>Логист{viewAs ? ' · просмотр' : ''}</div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <ChatWidget placement="inline" myId={user.id} orgId={user.orgId} />
             <button onClick={load} style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 10px', color: loading ? PRIMARY : '#cfc9c0', cursor: 'pointer', fontSize: 14 }}>⟳</button>
             <button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 12px', color: '#cfc9c0', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Выйти</button>
           </div>
@@ -434,7 +435,6 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           )
         })}
       </div>
-      <ChatWidget myId={user.id} orgId={user.orgId} bottomOffset={84} />
       <AppBadge count={badgeCount} baseTitle="Логист · U2B" />
       <PushSetup />
       {catalogCardId && <NomPicker onPick={items => addFromCatalog(catalogCardId!, items)} onClose={() => setCatalogCardId(null)} />}
