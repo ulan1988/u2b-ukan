@@ -25,6 +25,11 @@ const MODES = [
 export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId: string; onAction?: (id: string, a: string) => void; onOpen?: (o: any) => void }) {
   const [mode, setMode] = useState('invoices')
   const [recCid, setRecCid] = useState('')   // предвыбранный контрагент для акта сверки (клик из «Долги»)
+  // «Связки» — глобальный переключатель сверху: при включении клик по ЛЮБОЙ накладной (в любой вкладке)
+  // открывает дерево «откуда → как → куда». Не пропадает при смене вкладки, запоминается на устройстве.
+  const [links, setLinksState] = useState(false)
+  useEffect(() => { try { setLinksState(localStorage.getItem('u2b_links') === '1') } catch {} }, [])
+  const setLinks = (v: boolean) => { setLinksState(v); try { localStorage.setItem('u2b_links', v ? '1' : '0') } catch {} }
 
   return (
     <div>
@@ -39,12 +44,15 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
             </button>
           ))}
         </div>
+        <button onClick={() => setLinks(!links)} title="Включите, потом нажмите на любую накладную — покажу её путь (откуда, как, куда)"
+          style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: links ? '#7a3aaa' : '#fff', color: links ? '#fff' : COLORS.textMuted, boxShadow: links ? '0 2px 10px rgba(122,58,170,.4)' : '0 0 0 1.5px #e6e2dc' }}>🔗 Связки {links ? 'вкл' : 'выкл'}</button>
+        {links && <span style={{ fontSize: 12.5, color: '#7a3aaa', fontWeight: 600 }}>нажмите на любую накладную — покажу откуда и как она пришла</span>}
       </div>
 
-      {mode === 'invoices' && <InvoicesMode orgId={orgId} />}
+      {mode === 'invoices' && <InvoicesMode orgId={orgId} links={links} />}
       {mode === 'debts' && <DebtsMode orgId={orgId} onOpen={cid => { setRecCid(cid); setMode('reconcile') }} />}
-      {mode === 'moves' && <StockMode orgId={orgId} />}
-      {mode === 'reconcile' && <ReconcileMode initialCid={recCid} />}
+      {mode === 'moves' && <StockMode orgId={orgId} links={links} />}
+      {mode === 'reconcile' && <ReconcileMode initialCid={recCid} links={links} />}
       {mode === 'finance' && <FinanceMode orgId={orgId} />}
       {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && mode !== 'moves' && mode !== 'finance' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
@@ -77,7 +85,7 @@ const COLS = [
   { key: 'cancelled', label: '❌ Отменён', tint: '#faeaea', test: (d: any) => d.status === 'cancelled' },
 ]
 
-function InvoicesMode({ orgId }: { orgId: string }) {
+function InvoicesMode({ orgId, links }: { orgId: string; links: boolean }) {
   const [docs, setDocs] = useState<any[]>([])
   const [kind, setKind] = useState<'all' | 'purchase' | 'sale' | 'return'>('all')
   const [q, setQ] = useState('')
@@ -88,7 +96,6 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [openDocId, setOpenDocId] = useState<string | null>(null)
   const [routeDocId, setRouteDocId] = useState<string | null>(null)
-  const [links, setLinks] = useState(false)   // тумблер «Связки»: клик → граф пути
 
   const load = useCallback(async () => {
     const [p, s, r] = await Promise.all([listPurchases(orgId), listSales(orgId), listReturns(orgId)])
@@ -149,7 +156,6 @@ function InvoicesMode({ orgId }: { orgId: string }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{byBoth.length}</b></span>
         <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}{kindBtn('return', '↩ Возвраты')}</div>
-        <button onClick={() => setLinks(v => !v)} title="Клик по накладной покажет её путь (граф)" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: links ? '#7a3aaa' : '#fff', color: links ? '#fff' : COLORS.textMuted, boxShadow: links ? 'none' : '0 0 0 1.5px #e6e2dc' }}>🔗 Связки {links ? 'вкл' : 'выкл'}</button>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск по всему: номер, контрагент, товар, сумма…"
           style={{ marginLeft: 'auto', minWidth: 240, flex: '1 1 240px', maxWidth: 400, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
@@ -226,7 +232,8 @@ const tdR: React.CSSProperties = { textAlign: 'right', padding: '7px 10px', whit
 const emptyBox: React.CSSProperties = { padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }
 const dInp = (v: string): React.CSSProperties => ({ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${v ? COLORS.primary : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none' })
 
-function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
+function ReconcileMode({ initialCid = '', links = false }: { initialCid?: string; links?: boolean }) {
+  const [routeDoc, setRouteDoc] = useState<string | null>(null)   // «Связки»: дерево пути документа
   const [cags, setCags] = useState<any[]>([])
   const [cid, setCid] = useState(initialCid)
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
@@ -296,7 +303,7 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
                       </tr>
                       {data.rows.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Движений в периоде нет</td></tr>
                         : data.rows.map((r: any, i: number) => (
-                          <tr key={i} onClick={() => r.docId && setOpenDoc(r.docId)} title={r.docId ? 'Открыть документ справа' : ''}
+                          <tr key={i} onClick={() => r.docId && (links ? setRouteDoc(r.docId) : setOpenDoc(r.docId))} title={r.docId ? (links ? 'Показать путь документа' : 'Открыть документ справа') : ''}
                             style={{ borderTop: '1px solid #f1efec', cursor: r.docId ? 'pointer' : 'default', background: openDoc === r.docId ? '#fff8f5' : 'transparent' }}
                             onMouseEnter={e => { if (r.docId) e.currentTarget.style.background = '#faf8f6' }} onMouseLeave={e => { e.currentTarget.style.background = openDoc === r.docId ? '#fff8f5' : 'transparent' }}>
                             <td style={tdL}>{fmtDate(r.date)}</td>
@@ -318,6 +325,7 @@ function ReconcileMode({ initialCid = '' }: { initialCid?: string }) {
 
       {/* Правая выезжающая панель с данными документа (клик по строке-накладной) */}
       {openDoc && <InvoiceForm id={openDoc} drawer onClose={() => setOpenDoc(null)} onSaved={() => setRefresh(x => x + 1)} />}
+      {routeDoc && <RouteModal docId={routeDoc} onClose={() => setRouteDoc(null)} />}
     </div>
   )
 }
@@ -400,7 +408,8 @@ function DebtsMode({ orgId, onOpen }: { orgId: string; onOpen: (cid: string) => 
 }
 
 // ─── Режим «Движение товара»: приход/расход/возвраты по выбранному товару + остаток ───
-function StockMode({ orgId }: { orgId: string }) {
+function StockMode({ orgId, links = false }: { orgId: string; links?: boolean }) {
+  const [routeDoc, setRouteDoc] = useState<string | null>(null)   // «Связки»: дерево пути документа
   const [products, setProducts] = useState<any[]>([])
   const [pid, setPid] = useState('')
   const [pname, setPname] = useState('')
@@ -430,6 +439,7 @@ function StockMode({ orgId }: { orgId: string }) {
 
   return (
     <div>
+      {routeDoc && <RouteModal docId={routeDoc} onClose={() => setRouteDoc(null)} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>Товар:</span>
         <div style={{ minWidth: 280 }}><NomInline products={products} value={pid} name={pname} onPick={(p: any) => { setPid(p.id); setPname(p.name) }} /></div>
@@ -463,7 +473,7 @@ function StockMode({ orgId }: { orgId: string }) {
                   <tbody>
                     {rows.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Движений в периоде нет</td></tr>
                       : rows.map((m: any, i: number) => { const b = badge(m.type); return (
-                        <tr key={i} style={{ borderTop: '1px solid #f1efec' }}>
+                        <tr key={i} onClick={() => links && m.docId && setRouteDoc(m.docId)} title={links ? 'Показать путь документа' : ''} style={{ borderTop: '1px solid #f1efec', cursor: links && m.docId ? 'pointer' : 'default' }}>
                           <td style={tdL}>{fmtDate(m.date)}</td>
                           <td style={tdL}><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: b.c }}>{m.number}</span> <span style={{ fontSize: 11, color: b.c }}>{b.txt}</span></td>
                           <td style={tdL}>{m.contragent || '—'}</td>

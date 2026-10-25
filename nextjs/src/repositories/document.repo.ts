@@ -189,14 +189,14 @@ export const updateLine = (id: string, patch: Partial<NewLine>) =>
 // + приход/возврат от клиента, − расход/возврат поставщику. Отменённые исключены.
 export async function productMovements(orgId: string, productId: string) {
   return sqlClient`
-    select d.date, d.number, d.type, coalesce(c.name,'') as contragent,
+    select d.id as "docId", d.date, d.number, d.type, coalesce(c.name,'') as contragent,
       dl.qty::float as qty, dl.unit, dl.price::float as price,
       case when d.type in ('purchase','return_in') then dl.qty::float else -dl.qty::float end as signed
     from document_lines dl
     join documents d on d.id = dl.document_id
     left join contragents c on c.id = d.contragent_id
     where d.org_id = ${orgId} and dl.product_id = ${productId} and d.status <> 'cancelled'
-    order by d.date asc, d.number asc` as unknown as Promise<Array<{ date: string; number: string; type: string; contragent: string; qty: number; unit: string; price: number; signed: number }>>
+    order by d.date asc, d.number asc` as unknown as Promise<Array<{ docId: string; date: string; number: string; type: string; contragent: string; qty: number; unit: string; price: number; signed: number }>>
 }
 
 export function stockByWarehouse(orgId: string, warehouseId: string) {
