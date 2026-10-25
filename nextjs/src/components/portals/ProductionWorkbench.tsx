@@ -9,7 +9,7 @@ import NomInline from '@/components/NomInline'
 import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
-import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder, produceStock } from '@/lib/api/orders'
+import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder, produceStock, updateCard } from '@/lib/api/orders'
 import { listProjectsByClient } from '@/lib/api/refs'
 import { itemName } from '@/lib/itemName'
 import { lineAmount, isIzdelie, priceForClient as priceByType } from '@/lib/lineAmount'
@@ -22,8 +22,9 @@ function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
 }
 
-export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg, stockMode = false }: {
+export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg, stockMode = false, editOnly = false, onCancel }: {
   order: any | null; uid?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void; stockMode?: boolean
+  editOnly?: boolean; onCancel?: () => void   // editOnly: правка карточки на месте (этап не меняется), без «В работу»
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
   const [note, setNote] = useState(order?.comment && order.comment !== 'Прямой заказ на производство' ? order.comment : '')
@@ -156,6 +157,13 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         showMsg(res?.ok ? `📦 Выпущено на склад: ${res.produced} поз.${res.number ? ` (${res.number})` : ''}` : `⚠ ${res?.error || 'Не удалось'}`)
         if (res?.ok === false) { setBusy(false); return }
       }
+      else if (order?.id && editOnly) {
+        // Правка на месте: позиции/цены/кол-во + заказчик, комментарий, проект. Этап карточки (Принял/В работе/…) не меняем.
+        await syncPositions(order.id)
+        const LABEL = 'Прямой заказ на производство'
+        await updateCard(order.id, { contactId: cid || undefined, specProjectId: specProjectId || '', comment: note.trim() || (order.comment === LABEL ? LABEL : '') })
+        showMsg('✓ Изменения сохранены')
+      }
       else if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
@@ -180,8 +188,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 14, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>{stockMode ? '📦 Запасы на склад' : `🔧 ${order?.id || 'Прямой заказ'}`}</span>
-        <span style={{ fontSize: 11, background: '#f3eeff', color: '#7a3aaa', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{stockMode ? 'Без покупателя и оплаты' : order ? (order.status || 'К выполнению') : 'Новый заказ'}</span>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>{stockMode ? '📦 Запасы на склад' : `${editOnly ? '✎ Изменение' : '🔧'} ${order?.id || 'Прямой заказ'}`}</span>
+        {editOnly && onCancel && <button onClick={onCancel} style={{ marginLeft: 'auto', border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13 }}>✕ Закрыть</button>}
+        <span style={{ fontSize: 11, background: '#f3eeff', color: '#7a3aaa', padding: '2px 8px', borderRadius: 20, fontWeight: 700, order: -1 }}>{stockMode ? 'Без покупателя и оплаты' : order ? (order.status || 'К выполнению') : 'Новый заказ'}</span>
       </div>
       {stockMode && <div style={{ background: '#eef7f0', color: '#2e8a5e', borderRadius: 8, padding: '8px 11px', marginBottom: 10, fontSize: 12.5, fontWeight: 600 }}>📦 Укажите, сколько комплектующих/изделий сделано на запас — выпустим прямо на склад Нипы (без чека, в Кассе дня → «производство в запас»).</div>}
 
@@ -292,7 +301,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
         {noColor.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 700, color: '#c1121c' }}>⚠ Без цвета: {noColor.length} изд. — выберите цвет (RAL)</span>}
         {!stockMode && noPrice.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: '#c0532a' }}>⚠ Без цены: {noPrice.length} поз. — впишите «тг за шт» или цену за см</span>}
-        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? (stockMode ? '#2e8a5e' : '#7a3aaa') : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : stockMode ? '📦 Внести на склад' : '✓ Создать карточку'}</button>
+        <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? (stockMode ? '#2e8a5e' : '#7a3aaa') : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : stockMode ? '📦 Внести на склад' : editOnly ? '✓ Сохранить изменения' : '✓ Создать карточку'}</button>
       </div>
     </div>
   )

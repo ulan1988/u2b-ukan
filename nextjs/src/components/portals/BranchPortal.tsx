@@ -202,6 +202,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     } catch { showMsg('⚠ Ошибка сети') }
   }
   // Вернуть карточку в «Заказы на производство» (изменить/переоформить и заново принять).
+  const [editOrder, setEditOrder] = useState<any>(null)   // карточка, открытая на правку в моделе (в этой же вкладке «Производство»)
   async function returnToQueue(id: string) {
     if (!confirm('Вернуть карточку в «Заказы на производство»? Там её можно изменить и заново принять.')) return
     setDrawerId(null); await act(id, 'produceReset', '↩ Возвращена в заказы на производство')
@@ -678,6 +679,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
             <button onClick={() => { setShowDirect(v => !v); setShowStock(false) }} style={{ padding: '9px 16px', borderRadius: 8, border: showDirect ? '1.5px solid #e6e2dc' : 'none', background: showDirect ? '#fff' : PRIMARY, color: showDirect ? '#5f5952' : '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showDirect ? '× Отмена' : '＋ Прямой заказ на производство'}</button>
             <button onClick={() => { setShowStock(v => !v); setShowDirect(false) }} title="Выпустить комплектующие/изделия на склад Нипы (без покупателя и оплаты)" style={{ padding: '9px 16px', borderRadius: 8, border: showStock ? '1.5px solid #e6e2dc' : '1.5px solid #2e8a5e', background: showStock ? '#fff' : '#e8f5ee', color: showStock ? '#5f5952' : '#2e8a5e', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{showStock ? '× Отмена' : '📦 Создать запасы на склад'}</button>
           </div>
+          {editOrder && <ProductionWorkbench key={editOrder.id} order={editOrder} editOnly uid={user.id} contragents={cags} products={products} specProjects={specProjects} onCancel={() => setEditOrder(null)} onDone={() => { setEditOrder(null); load(); loadSpec() }} showMsg={showMsg} />}
           {showDirect && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} onDone={() => { setShowDirect(false); load(); loadSpec() }} showMsg={showMsg} />}
           {showStock && <ProductionWorkbench order={null} uid={user.id} contragents={cags} products={products} specProjects={specProjects} stockMode onDone={() => { setShowStock(false); load() }} showMsg={showMsg} />}
           {inWork.length === 0 && sold.length === 0 && !showDirect && !showStock && <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc' }}><div style={{ fontSize: 32, marginBottom: 10 }}>🔧</div><div style={{ fontWeight: 600, marginBottom: 6 }}>Нет заказов в работе</div><div style={{ fontSize: 13, color: '#5f5952' }}>Прими заказ во вкладке «Заказы на производство» или создай прямой.</div></div>}
@@ -729,7 +731,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {o.pendingDebtHead && <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить логисту</button>}
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 7 }}>
-                      <button onClick={() => returnToQueue(o.id)} title="Вернуть в «Заказы на производство» — изменить и заново принять" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ В заказ (изменить)</button>
+                      <button onClick={() => { setEditOrder(o); setShowDirect(false); setShowStock(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }} title="Открыть карточку в моделе: поменять позиции, кол-во, цены, заказчика" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>✎ Изменить</button>
                     </div>
                   </div>
                 )
