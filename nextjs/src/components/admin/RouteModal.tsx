@@ -46,7 +46,23 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
   const chW = Math.max(400, 24 + 3 * COLW)
   const chH = Math.max(200, 24 + Math.max(1, chByCol[0].length, chByCol[1].length, chByCol[2].length) * ROWH)
   const chAdj = useMemo(() => { const m: Record<string, string[]> = {}; for (const e of chEdges) { (m[e.from] ||= []).push(e.to); (m[e.to] ||= []).push(e.from) } return m }, [chEdges])
-  const chComp = useMemo(() => { const set = new Set<string>(); if (!selCh) return set; const st = [selCh]; while (st.length) { const x = st.pop()!; if (set.has(x)) continue; set.add(x); for (const y of (chAdj[x] || [])) st.push(y) } return set }, [selCh, chAdj])
+  // Путь выбранного узла (а не вся связная компонента): заказчик → его товары → их поставщики; поставщик → его товары → их
+  // заказчики; товар → его поставщики и заказчики. Остальные линии серые — сразу видно путь одного узла.
+  const { chComp, chEdgeOn } = useMemo(() => {
+    const nodesOn = new Set<string>(), edgesOn = new Set<number>()
+    if (!selCh) return { chComp: nodesOn, chEdgeOn: edgesOn }
+    const kindOf: Record<string, string> = {}; for (const n of chNodes) kindOf[n.id] = n.kind
+    const sel = selCh; nodesOn.add(sel)
+    const nb = (id: string, kind?: string) => (chAdj[id] || []).filter(x => !kind || kindOf[x] === kind)
+    const takeEdges = (a: string, b: string) => chEdges.forEach((e, i) => { if ((e.from === a && e.to === b) || (e.from === b && e.to === a)) edgesOn.add(i) })
+    const k = kindOf[sel]
+    if (k === 'product') { for (const x of nb(sel)) { nodesOn.add(x); takeEdges(sel, x) } }
+    else {
+      const far = k === 'buyer' ? 'supplier' : 'buyer'
+      for (const p of nb(sel, 'product')) { nodesOn.add(p); takeEdges(sel, p); for (const f of nb(p, far)) { nodesOn.add(f); takeEdges(p, f) } }
+    }
+    return { chComp: nodesOn, chEdgeOn: edgesOn }
+  }, [selCh, chNodes, chEdges, chAdj])
   const chSel = chNodes.find(n => n.id === selCh)
   const prodColor: Record<string, string> = {}
   chNodes.filter(n => n.kind === 'product').forEach((n, i) => { prodColor[n.id] = PALETTE[i % PALETTE.length] })
@@ -106,7 +122,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                       {['🏭 Поставщики', warehouse ? `🏬 ${warehouse} · товары` : '📦 Товары', '🧑 Заказчики'].map((h, i) => <div key={i} style={{ width: COLW, fontSize: 12, fontWeight: 700, color: '#8b94a0' }}>{h}</div>)}
                     </div>
                     <svg width={chW} height={chH} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                      {chEdges.map((e, i) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || (chComp.has(e.from) && chComp.has(e.to)); const col = prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa'; return <path key={i} d={bez(pa.x + NW, pa.y + NH / 2, pb.x, pb.y + NH / 2, false)} fill="none" stroke={col} strokeWidth={selCh && on ? 3.2 : 2} opacity={on ? 0.9 : 0.12} style={{ transition: 'opacity .15s' }} /> })}
+                      {chEdges.map((e, i) => ({ e, i })).sort((x, y) => (selCh ? Number(chEdgeOn.has(x.i)) - Number(chEdgeOn.has(y.i)) : 0)).map(({ e, i }) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || chEdgeOn.has(i); const col = !selCh ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : on ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : '#c9d0d8'; return <path key={i} d={bez(pa.x + NW, pa.y + NH / 2, pb.x, pb.y + NH / 2, false)} fill="none" stroke={col} strokeWidth={selCh ? (on ? 3.4 : 1.2) : 2} opacity={on ? 0.95 : 0.6} style={{ transition: 'stroke .15s, opacity .15s' }} /> })}
                     </svg>
                     {chNodes.map(n => { const p = chPos(n), c = KIND[n.kind], on = chComp.has(n.id), isSel = n.id === selCh; return (
                       <div key={n.id} onClick={() => setSelCh(n.id)} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: NW, height: NH, borderRadius: 12, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', transition: 'opacity .15s, border-color .15s' }}>
