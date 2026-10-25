@@ -304,9 +304,9 @@ export async function setPositions(cardId: string, posId: string | undefined, st
           const { payCard } = await import('./cashier.service')
           const r = await payCard(cardId, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', finalize: true } as any, actor)
           posted = !!(r && r.ok)
-        } catch {}
+        } catch (e) { console.error('deliver chain', cardId, e) }
       } else {
-        try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor); posted = !!(r && r.ok) } catch {}
+        try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor); posted = !!(r && r.ok) } catch (e) { console.error('deliver post', cardId, e) }
       }
     }
     // Провести не удалось (нет 1С-товара/поставщика) → карточка видна в «К учёту» как мост-просмотр.

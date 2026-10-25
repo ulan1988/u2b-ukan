@@ -232,7 +232,7 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (action === 'markAll') {
     await repo.updatePositionsByCard(id, { status: 'Доставлено' })
     try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
-    if (!order.linkedDocId) { try { const { postOrderInvoice } = await import('./invoice.service'); await postOrderInvoice(id, actor) } catch {} }
+    if (!order.linkedDocId) { try { const { postOrderInvoice } = await import('./invoice.service'); await postOrderInvoice(id, actor) } catch (e) { console.error('markAll post', id, e) } }
   }
   // Возврат из Исходящих: сброс позиций (кроме плеча филиала).
   if (action === 'returnOut' || action === 'returnToReception') {

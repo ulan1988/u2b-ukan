@@ -148,9 +148,9 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   let inv: any
   if (chain) {
     await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
-    inv = await postOrderInvoice(cardId, actor)
-    await repo.updateOrder(cardId, { contactId: endClient as string })   // вернуть заказчика на карточку (для отображения)
-    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).specProjectId) } catch {} }
+    try { inv = await postOrderInvoice(cardId, actor) }
+    finally { await repo.updateOrder(cardId, { contactId: endClient as string }) }   // вернуть заказчика даже при сбое проведения
+    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).specProjectId) } catch (e) { console.error('createHqSaleToClient', cardId, e) } }
   } else {
     inv = await postOrderInvoice(cardId, actor)
   }
@@ -300,12 +300,20 @@ export async function payDebt(cardId: string, splits: { accountId: string; amoun
   const debt = Math.max(0, net - paidBefore)
   if (debt <= 0) return { ok: false as const, error: 'Долга нет' }
   let remaining = debt, paidNow = 0
+  const myIds: string[] = []
   for (const s of valid) {
     if (remaining <= 0.0000001) break
     const amt = Math.min(Math.max(0, Number(s.amount) || 0), remaining)
     if (amt <= 0) continue
-    await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: today(), cashAccountId: s.accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
+    const pid = randomUUID(); myIds.push(pid)
+    await payRepo.insertPayment({ id: pid, orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: today(), cashAccountId: s.accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
     remaining -= amt; paidNow += amt
+  }
+  // Двойной тап/параллельный запрос: если после записи оплат стало больше чека — откатываем свои
+  const paidAfter = Number((await sqlClient`select coalesce(sum(amount),0)::float s from payments where direction='in' and document_id=${order.linkedDocId}` as unknown as Array<any>)[0]?.s) || 0
+  if (paidAfter > net + 0.01 && myIds.length) {
+    await sqlClient`delete from payments where id = any(${myIds})`
+    return { ok: false as const, error: 'Долг уже погашен (повторное нажатие)' }
   }
   await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(paidNow)} ₸ (остаток ${Math.round(debt - paidNow)})`, userName: actor?.name || 'Система' })
   try { await syncSellerBankToHq(order.orgId) } catch { /* noop */ }
