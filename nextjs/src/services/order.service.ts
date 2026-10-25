@@ -685,7 +685,7 @@ export async function cardRoute(cardId: string) {
     let transit = false
     if (!purchase && isTransit(own)) { const o2 = await origins(p); transit = true; sNames = o2.length ? o2 : [own + ' (поставщик не определён)'] }
     const tid = 'T' + i
-    chNodes.push({ id: tid, col: 1, kind: 'product', label: p.name1c || p.oral || '—', sub: `${Number(p.qty)} ${p.unit || 'шт'}${transit ? ' · через ' + own : ''}` })
+    chNodes.push({ id: tid, col: 1, kind: 'product', label: p.name1c || p.oral || '—', sub: `${Number(p.qty)} ${p.unit || 'шт'}` })
     for (const sName of sNames) {
       const sk = 'sup:' + sName.toLowerCase()
       if (!supNode[sk]) { supNode[sk] = 'S' + i + '_' + Object.keys(supNode).length; chNodes.push({ id: supNode[sk], col: 0, kind: 'supplier', label: sName }) }
@@ -720,7 +720,7 @@ export async function cardRoute(cardId: string) {
   return {
     document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', supplier: (!purchase && isTransit(supplier)) ? (chNodes.filter(n => n.kind === 'supplier').map(n => n.label).join(', ') || supplier) : supplier, buyer, status: o.status },
     nodes, edges,
-    chain: { nodes: chNodes, edges: chEdges },
+    chain: { nodes: chNodes, edges: chEdges, warehouse: (purchase || positions.some((p: any) => !p.supplierId || isTransit(cagName[p.supplierId] || ''))) ? 'Центр-Склад' : '' },
   }
 }
 

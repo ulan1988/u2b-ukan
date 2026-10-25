@@ -10,6 +10,8 @@ import { RalDot, extractRal } from '@/lib/ral'
 import { docChain } from '@/lib/api/docs'
 
 const COLW = 240, ROWH = 92, NW = 190, NH = 54
+// Цвет цепочки = цвет товара: линии поставщик→товар→заказчик одного цвета, видно кто куда идёт.
+const PALETTE = ['#e6194b', '#3b82f6', '#16a34a', '#f59e0b', '#9333ea', '#0891b2', '#db2777', '#65a30d', '#b45309', '#475569', '#0d9488', '#dc2626']
 const fmtDT = (s: any) => fmtDateTime(s) || '—'
 const KIND: Record<string, { line: string; bg: string; ring: string }> = {
   supplier: { line: '#7a3aaa', bg: '#f3eeff', ring: '#d8c4ec' },
@@ -31,7 +33,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
   const [selCh, setSelCh] = useState<string | null>(null)
   const [selP, setSelP] = useState<number | null>(null)
 
-  useEffect(() => { docChain(docId).then((d: any) => { setData(d); const cur = (d?.nodes || []).find((n: any) => n.state === 'current'); setSelP(cur ? cur.id : (d?.nodes?.[0]?.id ?? null)); setSelCh((d?.chain?.nodes || [])[0]?.id ?? null); if (!(d?.chain?.nodes || []).length) setTab('path') }) }, [docId])
+  useEffect(() => { docChain(docId).then((d: any) => { setData(d); const cur = (d?.nodes || []).find((n: any) => n.state === 'current'); setSelP(cur ? cur.id : (d?.nodes?.[0]?.id ?? null)); setSelCh(null); if (!(d?.chain?.nodes || []).length) setTab('path') }) }, [docId])
   useEffect(() => { const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose])
 
   const doc = data?.document
@@ -46,6 +48,10 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
   const chAdj = useMemo(() => { const m: Record<string, string[]> = {}; for (const e of chEdges) { (m[e.from] ||= []).push(e.to); (m[e.to] ||= []).push(e.from) } return m }, [chEdges])
   const chComp = useMemo(() => { const set = new Set<string>(); if (!selCh) return set; const st = [selCh]; while (st.length) { const x = st.pop()!; if (set.has(x)) continue; set.add(x); for (const y of (chAdj[x] || [])) st.push(y) } return set }, [selCh, chAdj])
   const chSel = chNodes.find(n => n.id === selCh)
+  const prodColor: Record<string, string> = {}
+  chNodes.filter(n => n.kind === 'product').forEach((n, i) => { prodColor[n.id] = PALETTE[i % PALETTE.length] })
+  const colorsOf = (id: string) => (chAdj[id] || []).map(x => prodColor[x]).filter(Boolean)   // цвета товаров, связанных с узлом (для поставщика/заказчика)
+  const warehouse: string = data?.chain?.warehouse || ''
 
   // ── Путь ──
   const nodes: any[] = data?.nodes || []
@@ -97,17 +103,18 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                 chNodes.length === 0 ? <div style={{ padding: 40, color: COLORS.textMuted }}>Нет данных цепочки</div> : (
                   <div style={{ position: 'relative', width: chW, height: chH, minWidth: '100%' }}>
                     <div style={{ display: 'flex', gap: 0, padding: '4px 24px', position: 'sticky', top: 0 }}>
-                      {['🏭 Поставщики', '📦 Товары', '🧑 Заказчики'].map((h, i) => <div key={i} style={{ width: COLW, fontSize: 12, fontWeight: 700, color: '#8b94a0' }}>{h}</div>)}
+                      {['🏭 Поставщики', warehouse ? `🏬 ${warehouse} · товары` : '📦 Товары', '🧑 Заказчики'].map((h, i) => <div key={i} style={{ width: COLW, fontSize: 12, fontWeight: 700, color: '#8b94a0' }}>{h}</div>)}
                     </div>
                     <svg width={chW} height={chH} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                      {chEdges.map((e, i) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = chComp.has(e.from) && chComp.has(e.to); return <path key={i} d={bez(pa.x + NW, pa.y + NH / 2, pb.x, pb.y + NH / 2, false)} fill="none" stroke={on ? '#7a3aaa' : '#e0e4ea'} strokeWidth={on ? 2.4 : 1.5} style={{ transition: 'stroke .15s' }} /> })}
+                      {chEdges.map((e, i) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || (chComp.has(e.from) && chComp.has(e.to)); const col = prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa'; return <path key={i} d={bez(pa.x + NW, pa.y + NH / 2, pb.x, pb.y + NH / 2, false)} fill="none" stroke={col} strokeWidth={selCh && on ? 3.2 : 2} opacity={on ? 0.9 : 0.12} style={{ transition: 'opacity .15s' }} /> })}
                     </svg>
                     {chNodes.map(n => { const p = chPos(n), c = KIND[n.kind], on = chComp.has(n.id), isSel = n.id === selCh; return (
-                      <div key={n.id} onClick={() => setSelCh(n.id)} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: NW, height: NH, borderRadius: 12, background: c.bg, border: `1.5px solid ${isSel ? c.line : c.ring}`, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: on ? 1 : 0.72, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', transition: 'opacity .15s, border-color .15s' }}>
+                      <div key={n.id} onClick={() => setSelCh(n.id)} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: NW, height: NH, borderRadius: 12, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', transition: 'opacity .15s, border-color .15s' }}>
                         {n.kind === 'product' && <RalDot code={extractRal(n.label)} size={12} />}
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 12.5, fontWeight: 700, color: c.line, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.label}</div>
                           {n.sub && <div style={{ fontSize: 11, color: '#8b94a0' }}>{n.sub}</div>}
+                          {n.kind !== 'product' && <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>{colorsOf(n.id).slice(0, 12).map((cl, k) => <span key={k} style={{ width: 8, height: 8, borderRadius: '50%', background: cl }} />)}</div>}
                         </div>
                       </div>
                     ) })}
