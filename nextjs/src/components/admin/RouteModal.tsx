@@ -11,7 +11,7 @@ import { docChain } from '@/lib/api/docs'
 
 const COLW = 240, ROWH = 92, NW = 190, NH = 54
 // Компактная цепочка: узлы ниже и ближе друг к другу (граф «Путь» остаётся на своих размерах).
-const CCOLW = 210, CROWH = 50, CNW = 176, CNH = 40
+const CCOLW = 250, CROWH = 50, CNW = 176, CNH = 40
 // Цвет цепочки = цвет товара: линии поставщик→товар→заказчик одного цвета, видно кто куда идёт.
 const PALETTE = ['#e6194b', '#3b82f6', '#16a34a', '#f59e0b', '#9333ea', '#0891b2', '#db2777', '#65a30d', '#b45309', '#475569', '#0d9488', '#dc2626']
 const fmtDT = (s: any) => fmtDateTime(s) || '—'
@@ -78,6 +78,37 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
     return rank
   }, [chNodes, chEdges]) // eslint-disable-line
   const portY = (k: number, n: number) => CNH * (0.5 + (n > 1 ? (k / (n - 1) - 0.5) * 0.6 : 0))
+  // Прямоугольные линии: из узла горизонтально → вертикально по своей дорожке → в узел. Поворот на 90° чуть скруглён.
+  // Дорожки в промежутке между колонками подобраны так, чтобы линии не наезжали друг на друга и почти не пересекались.
+  const chPaths = useMemo(() => {
+    const geo = chEdges.map((e, i) => {
+      const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to)
+      if (!a || !b) return null
+      const pa = chPos(a), pb = chPos(b)
+      return { i, col: a.col, x1: pa.x + CNW, y1: pa.y + portY(ports[i]?.o ?? 0, ports[i]?.n ?? 1), x2: pb.x, y2: pb.y + portY(ports[i]?.i ?? 0, ports[i]?.m ?? 1) }
+    }).filter(Boolean) as Array<{ i: number; col: number; x1: number; y1: number; x2: number; y2: number }>
+    const xl: Record<number, number> = {}
+    const cols = Array.from(new Set(geo.map(g => g.col)))
+    for (const c of cols) {
+      const g = geo.filter(x => x.col === c && Math.abs(x.y2 - x.y1) > 1)
+      const down = g.filter(x => x.y2 > x.y1).sort((p, q) => p.y1 - q.y1 || p.y2 - q.y2)   // вниз: чем выше старт, тем дальше дорожка от узла
+      const up = g.filter(x => x.y2 < x.y1).sort((p, q) => q.y1 - p.y1 || q.y2 - p.y2)
+      const n = down.length + up.length; if (!n) continue
+      const x1 = g[0].x1, x2 = g[0].x2, step = Math.min(7, (x2 - x1 - 24) / n)
+      const right = x2 - 12
+      down.forEach((x, k) => { xl[x.i] = right - k * step })
+      up.forEach((x, k) => { xl[x.i] = right - (down.length + k) * step })
+    }
+    const out: Record<number, string> = {}
+    for (const g of geo) {
+      const dy = g.y2 - g.y1
+      if (Math.abs(dy) <= 1) { out[g.i] = `M${g.x1} ${g.y1} H${g.x2}`; continue }
+      const x = xl[g.i] ?? (g.x1 + g.x2) / 2, sg = dy > 0 ? 1 : -1
+      const r = Math.max(2, Math.min(9, Math.abs(dy) / 2, x - g.x1 - 1, g.x2 - x - 1))
+      out[g.i] = `M${g.x1} ${g.y1} H${x - r} Q${x} ${g.y1} ${x} ${g.y1 + sg * r} V${g.y2 - sg * r} Q${x} ${g.y2} ${x + r} ${g.y2} H${g.x2}`
+    }
+    return out
+  }, [chNodes, chEdges, ports]) // eslint-disable-line
   const prodColor: Record<string, string> = {}
   chNodes.filter(n => n.kind === 'product').forEach((n, i) => { prodColor[n.id] = PALETTE[i % PALETTE.length] })
   const colorsOf = (id: string) => (chAdj[id] || []).map(x => prodColor[x]).filter(Boolean)   // цвета товаров, связанных с узлом (для поставщика/заказчика)
@@ -136,7 +167,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                       {['🏭 Поставщики', warehouse ? `🏬 ${warehouse} · товары` : '📦 Товары', '🧑 Заказчики'].map((h, i) => <div key={i} style={{ width: CCOLW, fontSize: 12, fontWeight: 700, color: '#8b94a0' }}>{h}</div>)}
                     </div>
                     <svg width={chW} height={chH} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                      {chEdges.map((e, i) => ({ e, i })).sort((x, y) => (selCh ? Number(chEdgeOn.has(x.i)) - Number(chEdgeOn.has(y.i)) : 0)).map(({ e, i }) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || chEdgeOn.has(i); const col = !selCh ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : on ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : '#c9d0d8'; return <path key={i} d={`M${pa.x + CNW} ${pa.y + portY((ports[i]?.o ?? 0), (ports[i]?.n ?? 1))} L${pb.x} ${pb.y + portY((ports[i]?.i ?? 0), (ports[i]?.m ?? 1))}`} fill="none" stroke={col} strokeLinecap="round" strokeWidth={selCh ? (on ? 3.4 : 1.2) : 2} opacity={on ? 0.95 : 0.6} style={{ transition: 'stroke .15s, opacity .15s' }} /> })}
+                      {chEdges.map((e, i) => ({ e, i })).sort((x, y) => (selCh ? Number(chEdgeOn.has(x.i)) - Number(chEdgeOn.has(y.i)) : 0)).map(({ e, i }) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || chEdgeOn.has(i); const col = !selCh ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : on ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : '#c9d0d8'; return <path key={i} d={chPaths[i] || ''} fill="none" stroke={col} strokeLinecap="round" strokeLinejoin="round" strokeWidth={selCh ? (on ? 3.4 : 1.2) : 2} opacity={on ? 0.95 : 0.6} style={{ transition: 'stroke .15s, opacity .15s' }} /> })}
                     </svg>
                     {chNodes.map(n => { const p = chPos(n), c = KIND[n.kind], on = chComp.has(n.id), isSel = n.id === selCh; return (
                       <div key={n.id} onClick={e => { e.stopPropagation(); setSelCh(selCh === n.id ? null : n.id) }} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: CNW, height: CNH, borderRadius: 10, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', transition: 'opacity .15s, border-color .15s' }}>
