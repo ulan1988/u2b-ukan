@@ -648,15 +648,51 @@ export async function cardRoute(cardId: string) {
   // Много поставщиков/товаров/покупателей: клик по узлу «разлетает» его цепочку.
   const chNodes: any[] = [], chEdges: any[] = []
   const supNode: Record<string, string> = {}, prodTid: Record<string, string> = {}
-  positions.forEach((p: any, i: number) => {
-    const sName = p.supplierId ? (cagName[p.supplierId] || '—') : (purchase ? '—' : 'Центр-Склад')
-    const sk = 'sup:' + sName.toLowerCase()
-    if (!supNode[sk]) { supNode[sk] = 'S' + i; chNodes.push({ id: supNode[sk], col: 0, kind: 'supplier', label: sName }) }
+  // Склад (Центр-Склад) — только ПЕРЕДАЁТ товар. Начинающий поставщик = тот, от кого товар пришёл на склад:
+  // по связкам закуп↔продажа (точно), иначе по последним приходным накладным этого товара (пока не покроют кол-во).
+  const isTransit = (n: string) => /склад/i.test(n || '')
+  const origins = async (p: any): Promise<string[]> => {
+    const prodName = (p.name1c || p.oral || '').trim().toLowerCase()
+    try {
+      const { db, sqlClient } = await import('../lib/db')
+      const { procurementLinks } = await import('../db/schema')
+      const { eq } = await import('drizzle-orm')
+      const names: string[] = []
+      const links: any[] = await db.select().from(procurementLinks).where(eq(procurementLinks.saleCardId, cardId))
+      for (const l of links.filter(x => (x.product || '').trim().toLowerCase() === prodName)) {
+        for (const pp of await repo.positionsByCard(l.purchaseCardId)) {
+          if ((pp.name1c || pp.oral || '').trim().toLowerCase() === prodName && pp.supplierId) { const nm = cagName[pp.supplierId]; if (nm && !isTransit(nm) && !names.includes(nm)) names.push(nm) }
+        }
+      }
+      if (names.length) return names
+      const need = Number(p.qty) || 0
+      const rows = await sqlClient`
+        select c.name supplier, dl.qty::float qty from document_lines dl
+        join documents d on d.id = dl.document_id join products pr on pr.id = dl.product_id
+        join contragents c on c.id = d.contragent_id
+        where d.type = 'purchase' and d.status <> 'cancelled' and lower(trim(pr.name)) = ${prodName}
+          and d.org_id = (select id from organizations where kind = 'hq' and archived = false limit 1)   -- закупы головного: там внешние поставщики
+        order by d.date desc, d.number desc limit 12` as unknown as Array<{ supplier: string; qty: number }>
+      let got = 0
+      for (const r of rows) { if (!isTransit(r.supplier) && !names.includes(r.supplier)) names.push(r.supplier); got += Number(r.qty) || 0; if (got >= need || names.length >= 3) break }
+      return names
+    } catch { return [] }
+  }
+  for (let i = 0; i < positions.length; i++) {
+    const p: any = positions[i]
+    const own = p.supplierId ? (cagName[p.supplierId] || '—') : (purchase ? '—' : 'Центр-Склад')
+    let sNames: string[] = [own]
+    let transit = false
+    if (!purchase && isTransit(own)) { const o2 = await origins(p); transit = true; sNames = o2.length ? o2 : [own + ' (поставщик не определён)'] }
     const tid = 'T' + i
-    chNodes.push({ id: tid, col: 1, kind: 'product', label: p.name1c || p.oral || '—', sub: `${Number(p.qty)} ${p.unit || 'шт'}` })
-    chEdges.push({ from: supNode[sk], to: tid })
+    chNodes.push({ id: tid, col: 1, kind: 'product', label: p.name1c || p.oral || '—', sub: `${Number(p.qty)} ${p.unit || 'шт'}${transit ? ' · через ' + own : ''}` })
+    for (const sName of sNames) {
+      const sk = 'sup:' + sName.toLowerCase()
+      if (!supNode[sk]) { supNode[sk] = 'S' + i + '_' + Object.keys(supNode).length; chNodes.push({ id: supNode[sk], col: 0, kind: 'supplier', label: sName }) }
+      chEdges.push({ from: supNode[sk], to: tid })
+    }
     prodTid[(p.name1c || p.oral || '').trim().toLowerCase()] = tid
-  })
+  }
   try {
     const { db } = await import('../lib/db')
     const { procurementLinks } = await import('../db/schema')
@@ -682,7 +718,7 @@ export async function cardRoute(cardId: string) {
   } catch { /* цепочка не критична */ }
 
   return {
-    document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', supplier, buyer, status: o.status },
+    document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', supplier: (!purchase && isTransit(supplier)) ? (chNodes.filter(n => n.kind === 'supplier').map(n => n.label).join(', ') || supplier) : supplier, buyer, status: o.status },
     nodes, edges,
     chain: { nodes: chNodes, edges: chEdges },
   }
