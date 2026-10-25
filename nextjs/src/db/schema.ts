@@ -2,7 +2,7 @@
 // Правила: org_id на каждой бизнес-таблице; деньги/кол-во = numeric (не float);
 // удаления нет (status=cancelled / archived); индексы под агрегаты.
 import {
-  pgTable, uuid, text, numeric, boolean, timestamp, date, integer, index, uniqueIndex,
+  pgTable, uuid, text, numeric, boolean, timestamp, date, integer, index, uniqueIndex, jsonb,
 } from 'drizzle-orm/pg-core'
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2 })
@@ -596,3 +596,48 @@ export const calcSheets = pgTable('calc_sheets', {
   data: text('data').notNull().default('{}'),              // JSON (brands + rows)
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('calc_sheets_org_idx').on(t.orgId) }))
+
+// ─── Бухгалтерия: официальные документы (счёт / накладная З-2 / акт Р-1 / КП) ───
+// Перенесено из u2b-vertex-erp. Отдельно от documents (складские накладные ERP-ядра): это печатные формы.
+export const accDocs = pgTable('acc_docs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  type: text('type').notNull(),                            // invoice | nakladnaya | akt | kp
+  number: integer('number').notNull(),                     // порядковый номер по типу в орг
+  docNo: text('doc_no'),                                   // «Счет на оплату № 12»
+  docDate: date('doc_date'),
+  buyerName: text('buyer_name'),
+  buyerBin: text('buyer_bin'),
+  buyerAddress: text('buyer_address'),
+  buyerRequisites: text('buyer_requisites'),
+  bank: text('bank'),                                      // key банка из реквизитов (kaspi | bck | …)
+  items: jsonb('items').$type<Array<{ name: string; sku?: string | null; qty: number; unit: string; price: number; sum: number }>>().notNull().default([]),
+  total: money('total').notNull().default('0'),
+  amountWords: text('amount_words'),
+  withStamp: boolean('with_stamp').notNull().default(false),
+  withSign: boolean('with_sign').notNull().default(false),
+  comment: text('comment'),
+  createdBy: uuid('created_by'),
+  createdByName: text('created_by_name'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byOrg: index('acc_docs_org_idx').on(t.orgId, t.type) }))
+
+// Реквизиты организации для печатных форм: название, БИН, директор, банки, логотип/печать/подпись и ГОСТ-шаблоны (base64).
+export const accOrgSettings = pgTable('acc_org_settings', {
+  orgId: uuid('org_id').primaryKey().references(() => organizations.id),
+  companyName: text('company_name'),
+  companyFull: text('company_full'),
+  bin: text('bin'),
+  address: text('address'),
+  phone: text('phone'),
+  directorName: text('director_name'),
+  banks: jsonb('banks').$type<Array<{ key: string; name: string; iik: string; bik: string; kbe?: string }>>().notNull().default([]),
+  logoB64: text('logo_b64'),
+  stampB64: text('stamp_b64'),
+  signB64: text('sign_b64'),
+  invoiceTemplateB64: text('invoice_template_b64'),
+  naklTemplateB64: text('nakl_template_b64'),
+  aktTemplateB64: text('akt_template_b64'),
+  kpTemplateB64: text('kp_template_b64'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
