@@ -7,6 +7,7 @@ import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
+import FinanceBalances from '@/components/admin/FinanceBalances'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
 const typeName = (t: string) => TYPES[t] || `⚠ ${t}`   // неизвестный тип показываем громко, не прячем
@@ -46,7 +47,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [toast, setToast] = useState('')
   const [modalRow, setModalRow] = useState<any | null>(null)
   const [favOpen, setFavOpen] = useState(false)
-  const [view, setView] = useState<'sheet' | 'dds' | 'journal' | 'accounts'>('sheet')
+  const [view, setView] = useState<'sheet' | 'dds' | 'journal' | 'accounts' | 'balance'>('sheet')
   const [showComment, setShowComment] = useState(false)   // колонка «Комментарий» со шторкой
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
@@ -140,14 +141,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const td: React.CSSProperties = { border: '1px solid #d0d5db', padding: '1px 6px', fontSize: 13 }
   const tdNum = { ...td, textAlign: 'right' as const, fontFamily: 'Consolas, monospace', fontSize: 15.5, fontWeight: 700 }
 
-  const tabBtn = (v: 'sheet' | 'dds' | 'journal' | 'accounts', label: string) => (
+  const tabBtn = (v: 'sheet' | 'dds' | 'journal' | 'accounts' | 'balance', label: string) => (
     <button onClick={() => setView(v)} style={{ padding: '6px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: view === v ? COLORS.primary : '#fff', color: view === v ? '#fff' : COLORS.textMuted, boxShadow: view === v ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
   )
   const dayIn = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t > 0 ? t : 0) }, 0)
   const dayOut = rows.reduce((s, r) => { const t = rowTotal(r); return s + (t < 0 ? -t : 0) }, 0)
   const headerBar = (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}{tabBtn('journal', '📋 Документы')}{tabBtn('accounts', '🏦 Счета')}
+      {tabBtn('sheet', '💵 Операции')}{tabBtn('dds', '📊 Отчёт ДДС')}{tabBtn('journal', '📋 Документы')}{tabBtn('accounts', '🏦 Счета')}{tabBtn('balance', '⚖ Баланс')}
       {view === 'sheet' && <>
         <div style={{ flex: 1 }} />
         <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} title="Выбрать день" style={{ padding: '6px 10px', border: '1px solid #8f99a6', borderRadius: 6, fontWeight: 600, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }} />
@@ -161,6 +162,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   if (view === 'dds') return <div style={{ marginTop: -12 }}>{headerBar}<DdsReport /></div>
   if (view === 'journal') return <div style={{ marginTop: -12 }}>{headerBar}<JournalMode cags={cags} favs={data?.favorites || []} /></div>
   if (view === 'accounts') return <div style={{ marginTop: -12 }}>{headerBar}<AccountsView /></div>
+  if (view === 'balance') return <div style={{ marginTop: -12 }}>{headerBar}<FinanceBalances orgId={orgId} /></div>
 
   return (
     <div style={{ marginTop: -12 }}>
