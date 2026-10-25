@@ -32,11 +32,12 @@ const STATE: Record<string, { line: string; bg: string; ring: string }> = {
 export default function RouteModal({ docId, onClose }: { docId: string; onClose: () => void }) {
   const [data, setData] = useState<any>(null)
   const [tab, setTab] = useState<'chain' | 'path'>('chain')
+  const [full, setFull] = useState(false)   // во весь экран
   const [selCh, setSelCh] = useState<string | null>(null)
   const [selP, setSelP] = useState<number | null>(null)
 
   useEffect(() => { docChain(docId).then((d: any) => { setData(d); const cur = (d?.nodes || []).find((n: any) => n.state === 'current'); setSelP(cur ? cur.id : (d?.nodes?.[0]?.id ?? null)); setSelCh(null); if (!(d?.chain?.nodes || []).length) setTab('path') }) }, [docId])
-  useEffect(() => { const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose])
+  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key !== 'Escape') return; if (selCh) setSelCh(null); else if (full) setFull(false); else onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose, selCh, full])
 
   const doc = data?.document
   // ── Цепочка ──
@@ -104,15 +105,16 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
   )
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(20,28,40,.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} className="anim-pop" style={{ width: 'min(960px,96vw)', height: 'min(640px,90vh)', background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(20,28,40,.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: full ? 0 : 16 }}>
+      <div onClick={e => e.stopPropagation()} className="anim-pop" style={{ width: full ? '100vw' : 'min(960px,96vw)', height: full ? '100vh' : 'min(640px,90vh)', background: '#fff', borderRadius: full ? 0 : 14, boxShadow: '0 20px 60px rgba(0,0,0,.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid #eef0f3', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 800, fontSize: 16 }}>🔗 Связки</span>
           {doc && <><span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{doc.no}</span>
             <span style={{ fontSize: 13, color: COLORS.textMuted }}>{doc.kind}</span>
             <span style={{ fontSize: 13, fontWeight: 700 }}>{fmtMoney(Number(doc.sum || 0))} ₸</span></>}
           <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>{tabBtn('chain', '🧩 Цепочка')}{tabBtn('path', '🛤 Путь')}</div>
-          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
+          <button onClick={() => setFull(v => !v)} title={full ? 'Свернуть окно' : 'Развернуть во весь экран'} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, color: COLORS.textMuted }}>{full ? '🗗 Свернуть' : '⛶ Во весь экран'}</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
         </div>
         {doc && (
           <div style={{ padding: '6px 14px', borderBottom: '1px solid #eef0f3', display: 'flex', alignItems: 'center', gap: 8, background: '#faf9fc', flexWrap: 'wrap' }}>
@@ -125,7 +127,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
         )}
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <div style={{ flex: 1, overflow: 'auto', background: '#f7f8fa' }}>
+          <div onClick={() => tab === 'chain' && setSelCh(null)} title="Клик по пустому месту — снять выбор" style={{ flex: 1, overflow: 'auto', background: '#f7f8fa' }}>
             {!data ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
               : tab === 'chain' ? (
                 chNodes.length === 0 ? <div style={{ padding: 40, color: COLORS.textMuted }}>Нет данных цепочки</div> : (
@@ -137,7 +139,7 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                       {chEdges.map((e, i) => ({ e, i })).sort((x, y) => (selCh ? Number(chEdgeOn.has(x.i)) - Number(chEdgeOn.has(y.i)) : 0)).map(({ e, i }) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || chEdgeOn.has(i); const col = !selCh ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : on ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : '#c9d0d8'; return <path key={i} d={`M${pa.x + CNW} ${pa.y + portY((ports[i]?.o ?? 0), (ports[i]?.n ?? 1))} L${pb.x} ${pb.y + portY((ports[i]?.i ?? 0), (ports[i]?.m ?? 1))}`} fill="none" stroke={col} strokeLinecap="round" strokeWidth={selCh ? (on ? 3.4 : 1.2) : 2} opacity={on ? 0.95 : 0.6} style={{ transition: 'stroke .15s, opacity .15s' }} /> })}
                     </svg>
                     {chNodes.map(n => { const p = chPos(n), c = KIND[n.kind], on = chComp.has(n.id), isSel = n.id === selCh; return (
-                      <div key={n.id} onClick={() => setSelCh(n.id)} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: CNW, height: CNH, borderRadius: 10, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', transition: 'opacity .15s, border-color .15s' }}>
+                      <div key={n.id} onClick={e => { e.stopPropagation(); setSelCh(selCh === n.id ? null : n.id) }} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: CNW, height: CNH, borderRadius: 10, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', transition: 'opacity .15s, border-color .15s' }}>
                         {n.kind === 'product' && <RalDot code={extractRal(n.label)} size={12} />}
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: c.line, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: CNW - 28, lineHeight: 1.2 }}>{n.label}</div>
