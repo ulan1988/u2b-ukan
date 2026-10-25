@@ -6,6 +6,7 @@ import { accDocNext, accDocCreate, accSettings } from '@/lib/api/accDocs'
 import { listContragents, listProducts } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { amountInWordsKzt } from '@/dto/accDocs.dto'
+import ModalShell from '@/components/admin/accDocs/ModalShell'
 
 export const DOC_TYPES = [
   { key: 'invoice', icon: '🧾', label: 'Счёт на оплату', sub: 'Каспи / БЦК · сумма прописью' },
@@ -61,12 +62,7 @@ export default function DocCreateModal({ type, orgId, orgName, onClose, onCreate
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(20,28,40,.45)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(760px, 100%)', maxHeight: '94vh', overflowY: 'auto', background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,.3)', padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>➕ {meta?.icon} {meta?.label} <span style={{ color: '#837c72', fontWeight: 600, fontSize: 14 }}>· {orgName}</span></div>
-          <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
-        </div>
+    <ModalShell onClose={onClose} width={760} title={<>➕ {meta?.icon} {meta?.label} <span style={{ color: '#837c72', fontWeight: 600, fontSize: 14 }}>· {orgName}</span></>}>
         {err && <div style={{ background: '#faeaea', color: '#b03020', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 14, fontWeight: 600 }}>{err}</div>}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
@@ -134,7 +130,6 @@ export default function DocCreateModal({ type, orgId, orgName, onClose, onCreate
           <button onClick={save} disabled={busy} style={{ padding: '11px 22px', borderRadius: 9, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '…' : 'Создать документ'}</button>
           <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Отмена</button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   )
 }

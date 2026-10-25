@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { accSettings, accSettingsSave } from '@/lib/api/accDocs'
+import ModalShell from '@/components/admin/accDocs/ModalShell'
 
 type Bank = { key: string; name: string; iik: string; bik: string; kbe?: string }
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fff' }
@@ -56,12 +57,7 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, toast }: { o
   )
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(20,28,40,.45)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(760px, 100%)', maxHeight: '94vh', overflowY: 'auto', background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,.3)', padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>⚙ Реквизиты для документов <span style={{ color: '#837c72', fontWeight: 600, fontSize: 14 }}>· {orgName}</span></div>
-          <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
-        </div>
+    <ModalShell onClose={onClose} width={760} title={<>⚙ Реквизиты для документов <span style={{ color: '#837c72', fontWeight: 600, fontSize: 14 }}>· {orgName}</span></>}>
         {!o ? <div style={{ padding: 30, color: COLORS.textMuted }}>Загрузка…</div> : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
@@ -109,7 +105,6 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, toast }: { o
             </div>
           </>
         )}
-      </div>
-    </div>
+    </ModalShell>
   )
 }
