@@ -3,7 +3,9 @@
 import { SignJWT, jwtVerify } from 'jose'
 import type { NextRequest } from 'next/server'
 
-const secret = new TextEncoder().encode(process.env.AUTH_SECRET || 'dev-secret-change-me-min-32-characters!!')
+// Запасного секрета нет: без AUTH_SECRET подпись/проверка сессии невозможна (иначе токены можно подделать).
+const secret = new TextEncoder().encode(process.env.AUTH_SECRET || '')
+function requireSecret() { if (!process.env.AUTH_SECRET) throw new Error('AUTH_SECRET не задан') }
 export const COOKIE = 'u2b_session'
 
 export interface Session { id: string; name: string; role: string; orgId: string; slug?: string; contragentId?: string }
@@ -22,10 +24,12 @@ export function homePathFor(s: Session): string {
 }
 
 export async function createToken(s: Session): Promise<string> {
+  requireSecret()
   return new SignJWT({ ...s }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('30d').sign(secret)
 }
 
 export async function verifyToken(token: string): Promise<Session | null> {
+  if (!process.env.AUTH_SECRET) return null
   try { const { payload } = await jwtVerify(token, secret); return payload as unknown as Session } catch { return null }
 }
 
