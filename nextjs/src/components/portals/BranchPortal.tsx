@@ -265,10 +265,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     await load(); showMsg('↩ Продажа отменена')
   }
   // Производство: внести изделия карточки в базу (создать товар + выпуск на склад).
-  async function doToBase(id: string) {
-    const r = await produceToBase(id); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    await refreshDetail(id); await load(); showMsg(`📦 Внесено в базу${r.produced ? ` · ${r.produced} изд.` : ''}`)
-  }
 
   async function saveQty(orderId: string, posId: string, qty: string) { await updatePosition(orderId, posId, { qty: Number(qty.replace(',', '.')) || 0 }); setEditQty(prev => { const n = { ...prev }; delete n[posId]; return n }); await refreshDetail(orderId); showMsg('✓ Количество изменено') }
   async function addToOrder(orderId: string, items: PickedPos[]) { setAddCatalogFor(null); if (!items.length) return; for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, widthCm: it.widthCm, supplierId: undefined }); await refreshDetail(orderId); showMsg(`✓ Добавлено: ${items.length}`) }
@@ -424,7 +420,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         const ph = phase(o)
         const total = pos.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
         const isSold = ph === 'sold' || !!o.linkedDocId
-        const needBase = pos.length > 0 && pos.some((p: any) => !p.productId)
         const cashN = Number((pay.cash || '').replace(',', '.')) || 0, kaspiN = Number((pay.kaspi || '').replace(',', '.')) || 0, qrN = Number((pay.qr || '').replace(',', '.')) || 0
         const changeN = Number((pay.change || '').replace(',', '.')) || 0
         // Оплачено минус выданная сдача = сколько реально закрыто. Переплата (без сдачи) = сдача к выдаче.
@@ -467,12 +462,6 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   </div>
                 ) : (
                   <>
-                    {needBase && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f3eeff', borderRadius: 8, padding: '8px 10px' }}>
-                        <span style={{ fontSize: 12.5, color: '#7a3aaa', flex: 1 }}>Изделия ещё не в базе (складе)</span>
-                        <button onClick={() => doToBase(o.id)} style={{ border: 'none', background: '#7a3aaa', color: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>📦 Внести в базу</button>
-                      </div>
-                    )}
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
                       <span style={{ fontSize: 11, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>КАССА</span>
                       <span style={{ fontSize: 13, color: '#5f5952' }}>сумма <b style={{ color: '#26231f' }}>{fmtMoney(total)}</b> ₸</span>
