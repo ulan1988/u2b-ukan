@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
@@ -40,9 +40,10 @@ export default function ProcurementScreen({ orgId }: { orgId: string }) {
 function ChainReport({ orgId }: { orgId: string }) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const didInit = useRef(false)
   const load = useCallback(async () => {
-    setLoading(true)
-    try { setRows(await chainReport(orgId) as any[]) } catch { setRows([]) } finally { setLoading(false) }
+    if (!didInit.current) setLoading(true)
+    try { setRows(await chainReport(orgId) as any[]) } catch { setRows([]) } finally { didInit.current = true; setLoading(false) }
   }, [orgId])
   useLiveData(load, [orgId])
 

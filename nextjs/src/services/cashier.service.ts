@@ -270,7 +270,13 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   // деньги не возвращаем, остаток остаётся кредитом контрагента (отрицательной дебиторкой).
   const refundOut = opts.accountId ? refund : 0
   if (refundOut > 0) {
-    await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refundOut), date: today(), cashAccountId: opts.accountId as string, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
+    try {
+      await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refundOut), date: today(), cashAccountId: opts.accountId as string, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
+    } catch (e) {
+      // не удалось вернуть деньги → откатываем возвратную накладную, чтобы товар не вернулся на склад без выплаты
+      await cancelDocument(ret.id).catch(() => {})
+      return { ok: false as const, error: 'Не удалось провести выплату возврата, возврат отменён' }
+    }
   }
   const debtCleared = Math.min(R, currentDebt)
   // Чек полностью возвращён, когда по каждой позиции возвращённое + текущее ≥ проданного.
@@ -448,8 +454,12 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   // Тип счёта-источника филиала → в какую колонку «Операций» головного падает (нал/каспи/банк).
   const srcNm = (fromAcc.name || '').toLowerCase()
   const srcType = (srcNm.includes('касп') || srcNm.includes('kaspi')) ? 'каспи' : (srcNm.includes('налич') || srcNm.includes('касса')) ? 'нал' : 'банк'
-  await payRepo.insertPayment({ id: randomUUID(), orgId: filialOrgId, contragentId: headBridge.id, direction: 'out', amount: String(amount), date: day, cashAccountId: fromAccountId, documentId: null, comment: `Инкассация → головной (${headQR.name})` })
-  await payRepo.insertPayment({ id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name} · ${srcType}` })
+  // Обе проводки ОДНИМ запросом: либо обе, либо ни одной (раньше сбой между ними оставлял деньги «в воздухе»)
+  const { payments: paymentsTbl } = await import('../db/schema')
+  await db.insert(paymentsTbl).values([
+    { id: randomUUID(), orgId: filialOrgId, contragentId: headBridge.id, direction: 'out', amount: String(amount), date: day, cashAccountId: fromAccountId, documentId: null, comment: `Инкассация → головной (${headQR.name})` },
+    { id: randomUUID(), orgId: hq.id, contragentId: filialBridge.id, direction: 'in', amount: String(amount), date: day, cashAccountId: headQR.id, documentId: null, comment: `Инкассация от ${filial.name} · ${srcType}` },
+  ])
   return { ok: true as const, headQR: headQR.name }
 }
 

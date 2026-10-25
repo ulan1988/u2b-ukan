@@ -94,7 +94,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const hqCags = cags.filter((c: any) => c.kind !== 'supplier' && (!hqId || c.orgId === hqId) && c.orgRefId !== user.orgId)
 
   // uid — если кабинет открыт админом «от имени» филиала, все запросы идут от этого филиала.
-  const load = useCallback(async () => { setLoading(true); setOrders(await branchOrders(user.id)); setLoading(false) }, [user.id])
+  const didInit = useRef(false)
+  const load = useCallback(async () => { if (!didInit.current) setLoading(true); setOrders(await branchOrders(user.id)); didInit.current = true; setLoading(false) }, [user.id])
   // Пауза live-обновления пока идёт правка: каталог, правка кол-ва, чат, заполнение прямого
   // заказа мастера (showDirect) или открыта шторка — иначе перезагрузка списка сбрасывает ввод.
   const pausedRef = useRef(false); pausedRef.current = addCatalogFor !== null || Object.keys(editQty).length > 0 || (selected !== null && detailTab === 'chat') || showDirect || showStock || drawerId !== null || showSpecBuilder || carveFor !== null

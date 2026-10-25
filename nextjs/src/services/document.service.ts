@@ -231,8 +231,17 @@ export async function createReturn(input: CreateSaleInput & { sourceOrderId?: st
   }
   // Номер возврата = <ВП|ВС>-<порядковый>-<номер карточки/накладной-источника>.
   const prefix = kind === 'return_in' ? 'ВП' : 'ВС'
-  const seq2 = String(count + 1).padStart(2, '0')
-  const number = srcCard ? `${prefix}-${seq2}-${srcCard}` : docNumber(kind, count)
+  const { sqlClient: sqlNum } = await import('../lib/db')
+  let number = docNumber(kind, count)
+  if (srcCard) {
+    // порядковый возврат ПО ЭТОЙ карточке; при совпадении номера (параллельные возвраты) берём следующий
+    const cnt = Number((await sqlNum`select count(*)::int c from documents where org_id=${input.orgId} and type=${kind} and source_order_id=${srcCard}` as unknown as Array<any>)[0]?.c) || 0
+    for (let i = cnt + 1; i < cnt + 50; i++) {
+      number = `${prefix}-${String(i).padStart(2, '0')}-${srcCard}`
+      const ex = await sqlNum`select 1 from documents where org_id=${input.orgId} and number=${number} limit 1` as unknown as Array<any>
+      if (!ex.length) break
+    }
+  }
 
   let total = 0
   const lines = input.lines.map((l: any) => {

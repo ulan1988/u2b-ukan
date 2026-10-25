@@ -57,10 +57,11 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [reportSent, setReportSent] = useState(false); const [reportLoading, setReportLoading] = useState(false)
   const [editingDate, setEditingDate] = useState<string | null>(null); const [pastDrafts, setPastDrafts] = useState<any[]>([])
 
+  const didInit = useRef(false)
   const load = useCallback(async () => {
-    setLoading(true)
+    if (!didInit.current) setLoading(true)   // «Загрузка…» только при первом открытии, не на живых обновлениях
     const [o, n] = await Promise.all([logistOrders(viewAs ? user.id : undefined), viewAs ? Promise.resolve([]) : listNotifications()])
-    setOrders(o); setNotifications(n as any); setLoading(false)
+    setOrders(o); setNotifications(n as any); didInit.current = true; setLoading(false)
   }, [viewAs, user.id])
   const pausedRef = useRef(false); pausedRef.current = supEditPos !== null || qtyEditPos !== null || addingCardId !== null || catalogCardId !== null || chatOpenPos !== null
   useLiveData(() => { if (!pausedRef.current) load() }, [])

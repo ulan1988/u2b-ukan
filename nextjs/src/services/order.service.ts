@@ -173,10 +173,14 @@ export async function listForLogist(orgId: string, userId: string) {
 // чтобы карточки Улкана рисовались 1:1 (маршрут from→to, «resp · supplier» в позиции).
 async function withPositions(rows: any[]) {
   if (!rows.length) return []
-  const [pos, users, cags] = await Promise.all([
-    repo.positionsByCards(rows.map(r => r.id)),
-    userRepo.listUsers(),
-    refsRepo.listContragents(),
+  const pos = await repo.positionsByCards(rows.map(r => r.id))
+  // Имена только тех, кто реально встречается в позициях (раньше грузили ВСЕХ пользователей и контрагентов на каждый список)
+  const uIds = Array.from(new Set(pos.map((p: any) => p.respUserId).filter(Boolean))) as string[]
+  const cIds = Array.from(new Set(pos.map((p: any) => p.supplierId).filter(Boolean))) as string[]
+  const { sqlClient: sqlNames } = await import('../lib/db')
+  const [users, cags] = await Promise.all([
+    uIds.length ? sqlNames`select id, name from users where id = any(${uIds})` as unknown as Promise<Array<any>> : Promise.resolve([] as any[]),
+    cIds.length ? sqlNames`select id, name from contragents where id = any(${cIds})` as unknown as Promise<Array<any>> : Promise.resolve([] as any[]),
   ])
   const userName: Record<string, string> = {}
   for (const u of users as any[]) userName[u.id] = u.name

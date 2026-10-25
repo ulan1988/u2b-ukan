@@ -2,7 +2,7 @@
 // Касса дня (десктоп-финанс): дневная сверка филиала — доходы по способам (нал/каспи/QR/долг),
 // проверка «оплаты+долг=продано», счета за день, остаток KASPI GOLD + перевод в банк,
 // расходы (ЗП/текущие через «Деньги»), производство в запас, закрытие смены. Орг — из селектора.
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
@@ -29,11 +29,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [month, setMonth] = useState<any>(null)
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
 
-  const load = useCallback(async () => { setLoading(true); const d = await cashDay(orgId, date); setData(d); setWageAcc(prev => prev || (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''); setLoading(false) }, [orgId, date])
+  const loadedKey = useRef('')
+  const load = useCallback(async () => { const k = orgId + date; if (loadedKey.current !== k) setLoading(true); const d = await cashDay(orgId, date); loadedKey.current = k; setData(d); setWageAcc(prev => prev || (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''); setLoading(false) }, [orgId, date])
+  const monthKey = useRef('')
   const loadMonth = useCallback(async () => {
-    setLoading(true)
+    if (monthKey.current !== orgId + ym) setLoading(true)
     const [y, mo] = ym.split('-').map(Number); const last = new Date(y, mo, 0).getDate()
-    setMonth(await cashMonth(orgId, `${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`)); setLoading(false)
+    setMonth(await cashMonth(orgId, `${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`)); monthKey.current = orgId + ym; setLoading(false)
   }, [orgId, ym])
   // Живое обновление: перезагрузка активного вида при realtime-сигнале (продажа/оплата в кабинете).
   useLiveData(() => { view === 'month' ? loadMonth() : load() }, [view, load, loadMonth])

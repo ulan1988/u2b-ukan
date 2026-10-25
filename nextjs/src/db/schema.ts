@@ -206,6 +206,7 @@ export const documents = pgTable('documents', {
   byOrg: index('documents_org_idx').on(t.orgId),
   byContragent: index('documents_contragent_idx').on(t.contragentId),
   byTypeDate: index('documents_type_date_idx').on(t.type, t.date),
+  bySourceOrder: index('documents_source_order_idx').on(t.sourceOrderId),
 }))
 
 export const documentLines = pgTable('document_lines', {
@@ -260,6 +261,7 @@ export const payments = pgTable('payments', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({
   byOrg: index('payments_org_idx').on(t.orgId),
+  byDoc: index('payments_doc_idx').on(t.documentId),
   byContragent: index('payments_contragent_idx').on(t.contragentId),
 }))
 
@@ -275,7 +277,7 @@ export const stockMovements = pgTable('stock_movements', {
   cardId: text('card_id'),                                // заявка-источник резерва
   documentId: uuid('document_id').references(() => documents.id),
   date: date('date').notNull(),
-}, t => ({ byWhProduct: index('stock_wh_product_idx').on(t.warehouseId, t.productId) }))
+}, t => ({ byWhProduct: index('stock_wh_product_idx').on(t.warehouseId, t.productId), byDoc: index('stock_doc_idx').on(t.documentId) }))
 
 // Начальные остатки (разовый импорт из 1С)
 export const openingBalances = pgTable('opening_balances', {
@@ -349,6 +351,7 @@ export const orders = pgTable('orders', {
 }, t => ({
   byOrgScreen: index('orders_org_screen_idx').on(t.orgId, t.screen),
   byContact: index('orders_contact_idx').on(t.contactId),
+  byLinkedDoc: index('orders_linked_doc_idx').on(t.linkedDocId),
 }))
 
 export const orderPositions = pgTable('order_positions', {
