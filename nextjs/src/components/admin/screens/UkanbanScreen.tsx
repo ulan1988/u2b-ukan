@@ -532,10 +532,12 @@ function FinanceMode({ orgId, links = false }: { orgId: string; links?: boolean 
   const NO_CAG = 'Без контрагента'
   const rows = cagFilter ? allRows.filter(m => (m.contragent || NO_CAG) === cagFilter) : allRows
   // Состав денег по выбранным счетам: от кого пришло и кому ушло (по контрагентам/поставщикам).
+  // Чистое движение по контрагенту (приход − расход) по выбранным счетам: переносы между своими счетами (QR → Банковский)
+  // взаимно гасятся и не считаются дважды. Плюс → «откуда пришли», минус → «кому ушли».
   const comp = (() => {
-    const m = new Map<string, { name: string; inn: number; out: number }>()
-    for (const r of allRows) { const k = r.contragent || NO_CAG; const e = m.get(k) || { name: k, inn: 0, out: 0 }; if (r.amount > 0) e.inn += Number(r.amount); else e.out += -Number(r.amount); m.set(k, e) }
-    return Array.from(m.values())
+    const m = new Map<string, number>()
+    for (const r of allRows) { const k = r.contragent || NO_CAG; m.set(k, (m.get(k) || 0) + Number(r.amount)) }
+    return Array.from(m, ([name, net]) => ({ name, inn: net > 0.5 ? net : 0, out: net < -0.5 ? -net : 0 }))
   })()
   const compIn = comp.filter(c => c.inn > 0).sort((a, b) => b.inn - a.inn)
   const compOut = comp.filter(c => c.out > 0).sort((a, b) => b.out - a.out)
