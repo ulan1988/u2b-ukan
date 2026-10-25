@@ -10,6 +10,7 @@ import { useAdmin } from '@/components/admin/AdminChrome'
 import DocCreateModal, { DOC_TYPES } from '@/components/admin/accDocs/DocCreateModal'
 import OrgSettingsModal from '@/components/admin/accDocs/OrgSettingsModal'
 import InvoicePicker from '@/components/admin/accDocs/InvoicePicker'
+import DocPreviewModal from '@/components/admin/accDocs/DocPreview'
 
 const TLABEL: Record<string, string> = { invoice: '🧾 Счёт', nakladnaya: '📦 Накладная', akt: '📝 Акт', kp: '📄 КП' }
 const fmt = (n: any) => (Number(n) || 0).toLocaleString('ru-RU') + ' ₸'
@@ -20,6 +21,7 @@ export default function BookkeepingScreen({ orgId }: { orders?: any[]; orgId: st
   const [loading, setLoading] = useState(true)
   const [create, setCreate] = useState<{ type: string; fromDocId?: string } | null>(null)
   const [settings, setSettings] = useState(false)
+  const [preview, setPreview] = useState<any>(null)   // документ журнала, открытый на просмотр
   const [filter, setFilter] = useState('all')
   const [q, setQ] = useState('')
   const [flash, setFlash] = useState('')
@@ -76,6 +78,7 @@ export default function BookkeepingScreen({ orgId }: { orders?: any[]; orgId: st
                     <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(d.total)}</td>
                     <td style={{ padding: '9px 8px', fontSize: 12.5, color: COLORS.textMuted }}>{d.createdByName || '—'}</td>
                     <td style={{ padding: '9px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => setPreview(d)} title="Предварительный просмотр" style={{ ...fileBtn, cursor: 'pointer', fontFamily: 'inherit' }}>👁 Просмотр</button>
                       <a href={accDocFileUrl(d.id, 'excel')} title="Скачать Excel" style={{ ...fileBtn }}>⬇ Excel</a>
                       <a href={accDocFileUrl(d.id, 'word')} title="Скачать Word" style={{ ...fileBtn }}>⬇ Word</a>
                       <button onClick={() => del(d)} title="Удалить" style={{ border: 'none', background: 'none', color: '#c1121c', cursor: 'pointer', fontSize: 16, marginLeft: 4 }}>🗑</button>
@@ -88,6 +91,7 @@ export default function BookkeepingScreen({ orgId }: { orders?: any[]; orgId: st
       </div>
 
       {create && <DocCreateModal type={create.type} fromDocId={create.fromDocId} orgId={orgId} orgName={orgName} onClose={() => setCreate(null)} onCreated={() => { toast('✅ Документ создан'); load() }} />}
+      {preview && <DocPreviewModal orgId={orgId} orgName={orgName} onClose={() => setPreview(null)} doc={{ type: preview.type, number: preview.number, docNo: preview.docNo, docDate: preview.docDate, buyerName: preview.buyerName, buyerBin: preview.buyerBin, buyerAddress: preview.buyerAddress, bank: preview.bank, items: preview.items || [], withStamp: preview.withStamp, withSign: preview.withSign }} />}
       {settings && <OrgSettingsModal orgId={orgId} orgName={orgName} onClose={() => setSettings(false)} toast={toast} />}
     </div>
   )

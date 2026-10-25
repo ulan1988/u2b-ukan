@@ -8,6 +8,7 @@ import { getDocument } from '@/lib/api/docs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { amountInWordsKzt } from '@/dto/accDocs.dto'
 import ModalShell from '@/components/admin/accDocs/ModalShell'
+import DocPreviewModal from '@/components/admin/accDocs/DocPreview'
 
 export const DOC_TYPES = [
   { key: 'invoice', icon: '🧾', label: 'Счёт на оплату', sub: 'Каспи / БЦК · сумма прописью' },
@@ -33,6 +34,7 @@ export default function DocCreateModal({ type, orgId, orgName, fromDocId, onClos
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [showPrev, setShowPrev] = useState(false)
 
   useEffect(() => {
     accDocNext(orgId, type).then(setNum)
@@ -141,8 +143,10 @@ export default function DocCreateModal({ type, orgId, orgName, fromDocId, onClos
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button onClick={save} disabled={busy} style={{ padding: '11px 22px', borderRadius: 9, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '…' : 'Создать документ'}</button>
+          <button onClick={() => setShowPrev(true)} style={{ padding: '11px 18px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>👁 Предпросмотр</button>
           <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Отмена</button>
         </div>
+      {showPrev && <DocPreviewModal orgId={orgId} orgName={orgName} onClose={() => setShowPrev(false)} doc={{ type, number: num, docDate: f.date, buyerName: f.buyerName, buyerBin: f.buyerBin, buyerAddress: f.buyerAddress, bank: f.bank, items, withStamp: f.withStamp, withSign: f.withSign }} />}
     </ModalShell>
   )
 }
