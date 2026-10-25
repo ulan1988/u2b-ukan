@@ -6,6 +6,7 @@ import * as settingsRepo from '../repositories/settings.repo'
 import { isIzdelie as isIzd } from '../lib/lineAmount'
 import { matchCategoryKey } from '../lib/nomCatalog'
 import { listRules } from '../repositories/categoryRule.repo'
+import { listProducts } from '../repositories/refs.repo'
 import type { Session } from '../lib/auth'
 
 const normNom = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -86,17 +87,30 @@ export async function demandSummary(orgId: string) {
   for (const c of cards) cardName[c.id] = c.fromName || c.id
   const procuredSet = new Set(procured.map(p => `${p.saleCardId}::${(p.product || '').trim().toLowerCase()}`))
 
-  const byProduct: Record<string, { name: string; unit: string; total: number; widthCm?: number | null; rows: { cardId: string; from: string; qty: number }[] }> = {}
+  const byProduct: Record<string, { name: string; unit: string; total: number; widthCm?: number | null; folder: string; folderOrder: number; rows: { cardId: string; from: string; qty: number }[] }> = {}
+  // Папка номенклатуры каждого товара (группа > категория > подгруппа) — автозакуп собирается по папкам.
+  const prods = await listProducts()
+  const folderOf = new Map<string, { folder: string; order: number }>()
+  const firstOrder: Record<string, number> = {}
+  prods.forEach((pr: any, i: number) => {
+    const cat = (pr.cat || '').trim(), sub = (pr.subgroup || '').trim(), grp = (pr.group || '').trim()
+    const folder = sub ? (sub.toLowerCase().includes(cat.toLowerCase()) && cat ? sub : (cat ? `${cat} · ${sub}` : sub)) : (cat || grp || 'Без папки')
+    const key = [grp, cat, sub].join('>')
+    if (firstOrder[key] === undefined) firstOrder[key] = i   // порядок папок = порядок первой номенклатуры в дереве
+    for (const nm of [pr.name, pr.alias]) if (nm) folderOf.set(normNom(nm), { folder, order: firstOrder[key] })
+  })
   for (const p of positions) {
     const name = (p.name1c || p.oral || '').trim()
     if (!name) continue
     if (procuredSet.has(`${p.cardId}::${name.toLowerCase()}`)) continue     // уже закуплено
     const key = name.toLowerCase()
-    if (!byProduct[key]) byProduct[key] = { name, unit: p.unit || 'шт', total: 0, widthCm: p.widthCm != null ? Number(p.widthCm) : null, rows: [] }
+    const fo = folderOf.get(normNom(name))
+    if (!byProduct[key]) byProduct[key] = { name, unit: p.unit || 'шт', total: 0, widthCm: p.widthCm != null ? Number(p.widthCm) : null, folder: fo?.folder || 'Без папки', folderOrder: fo ? fo.order : 1e9, rows: [] }
     byProduct[key].total += Number(p.qty)
     byProduct[key].rows.push({ cardId: p.cardId, from: cardName[p.cardId] || p.cardId, qty: Number(p.qty) })
   }
-  return Object.values(byProduct).sort((a, b) => b.total - a.total)
+  // По папкам (в порядке номенклатуры), внутри папки — по названию.
+  return Object.values(byProduct).sort((a, b) => a.folderOrder - b.folderOrder || a.folder.localeCompare(b.folder, 'ru') || a.name.localeCompare(b.name, 'ru', { numeric: true }))
 }
 
 // Отчёт-цепочка ЗАКУП→СКЛАД→ПРОДАЖА из ProcurementLink.

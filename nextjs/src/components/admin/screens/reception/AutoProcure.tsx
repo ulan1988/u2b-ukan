@@ -1,6 +1,6 @@
 'use client'
 // Автозакуп: сводка потребности новых продаж по товару → в черновик закупа одной кнопкой.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { RalDot, extractRal } from '@/lib/ral'
 import { demandSummary, stage } from '@/lib/api/procurement'
 
@@ -37,10 +37,21 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
       {openBlk && (
         <div style={{ padding: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-            {rows.map(r => {
+            {rows.map((r, idx) => {
+              const newFolder = idx === 0 || rows[idx - 1].folder !== r.folder
+              const inFolder = rows.filter((x: any) => x.folder === r.folder)
+              const allOn = inFolder.every((x: any) => checked[x.name])
               const on = !!checked[r.name]
               return (
-                <div key={r.name} style={{ border: `1.5px solid ${on ? '#7a3aaa' : '#f0eaf6'}`, borderRadius: 10, padding: '10px 12px', background: on ? '#faf7fd' : '#fff' }}>
+                <Fragment key={r.name}>
+                {newFolder && (
+                  <div onClick={() => setChecked(c => { const n = { ...c }; for (const x of inFolder) n[x.name] = !allOn; return n })} title="Нажмите — выбрать/снять всю папку" style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center', margin: idx === 0 ? '0 0 2px' : '10px 0 2px', cursor: 'pointer' }}>
+                    <span style={{ flex: 1, height: 1, background: '#e3d4f0' }} />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: '#7a3aaa', letterSpacing: '.04em', textTransform: 'uppercase' }}>📁 {r.folder} <span style={{ fontWeight: 600, color: '#9a8aaa' }}>· {inFolder.length}</span></span>
+                    <span style={{ flex: 1, height: 1, background: '#e3d4f0' }} />
+                  </div>
+                )}
+                <div style={{ border: `1.5px solid ${on ? '#7a3aaa' : '#f0eaf6'}`, borderRadius: 10, padding: '10px 12px', background: on ? '#faf7fd' : '#fff' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <input type="checkbox" checked={on} onChange={e => setChecked(c => ({ ...c, [r.name]: e.target.checked }))} style={{ width: 17, height: 17, cursor: 'pointer', accentColor: '#7a3aaa' }} />
                     <RalDot code={extractRal(r.name)} size={13} />
@@ -51,6 +62,7 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
                     {(r.rows || []).map((x: any, ri: number) => <span key={ri} style={{ fontSize: 12, background: '#f6f3f0', color: '#5f5952', padding: '2px 9px', borderRadius: 20 }}>{x.from}: <b style={{ color: '#211f1c' }}>{x.qty} {r.unit}</b></span>)}
                   </div>
                 </div>
+                </Fragment>
               )
             })}
           </div>
