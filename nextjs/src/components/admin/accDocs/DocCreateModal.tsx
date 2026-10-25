@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { accDocNext, accDocCreate, accSettings } from '@/lib/api/accDocs'
 import { listContragents, listProducts } from '@/lib/api/refs'
+import { getDocument } from '@/lib/api/docs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { amountInWordsKzt } from '@/dto/accDocs.dto'
 import ModalShell from '@/components/admin/accDocs/ModalShell'
@@ -20,7 +21,8 @@ const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f595
 const fmt = (n: number) => (Number(n) || 0).toLocaleString('ru-RU') + ' ₸'
 const today = () => new Date().toISOString().slice(0, 10)
 
-export default function DocCreateModal({ type, orgId, orgName, onClose, onCreated }: { type: string; orgId: string; orgName: string; onClose: () => void; onCreated: () => void }) {
+export default function DocCreateModal({ type, orgId, orgName, fromDocId, onClose, onCreated }: { type: string; orgId: string; orgName: string; fromDocId?: string; onClose: () => void; onCreated: () => void }) {
+  const [fromNo, setFromNo] = useState('')   // номер накладной, из которой берём данные
   const meta = DOC_TYPES.find(t => t.key === type)
   const [num, setNum] = useState<number | null>(null)
   const [banks, setBanks] = useState<Array<{ key: string; name: string }>>([])
@@ -38,6 +40,17 @@ export default function DocCreateModal({ type, orgId, orgName, onClose, onCreate
     listContragents().then(r => setCags((r as any[]).filter(c => !c.archived)))
     listProducts(orgId).then(setProducts)
   }, [orgId, type])
+  // Из накладной: покупатель, БИН, дата и позиции подставляются сами (цена = сумма строки / кол-во, чтобы итог совпал).
+  useEffect(() => {
+    if (!fromDocId) return
+    ;(async () => {
+      const r: any = await getDocument(fromDocId); if (!r?.doc) return
+      const cag = (await listContragents(true) as any[]).find(c => c.id === r.doc.contragentId)
+      setFromNo(r.doc.number || '')
+      setF(x => ({ ...x, buyerName: r.contragent?.name || r.customer?.name || cag?.name || x.buyerName, buyerBin: cag?.bin || x.buyerBin, date: String(r.doc.date || x.date).slice(0, 10) }))
+      setItems((r.lines || []).map((l: any) => { const qty = Number(l.qty) || 0; return { name: l.name, qty, unit: l.unit || 'шт', price: qty ? Math.round(((Number(l.amount) || 0) / qty) * 100) / 100 : Number(l.price) || 0 } }))
+    })()
+  }, [fromDocId])
 
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase().replace(/ё/g, 'е'); if (!s) return []
@@ -62,7 +75,7 @@ export default function DocCreateModal({ type, orgId, orgName, onClose, onCreate
   }
 
   return (
-    <ModalShell onClose={onClose} width={760} title={<>➕ {meta?.icon} {meta?.label} <span style={{ color: '#837c72', fontWeight: 600, fontSize: 14 }}>· {orgName}</span></>}>
+    <ModalShell onClose={onClose} width={760} title={<>➕ {meta?.icon} {meta?.label} <span style={{ color: '#837c72', fontWeight: 600, fontSize: 14 }}>· {fromNo ? `из накладной ${fromNo}` : orgName}</span></>}>
         {err && <div style={{ background: '#faeaea', color: '#b03020', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 14, fontWeight: 600 }}>{err}</div>}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>

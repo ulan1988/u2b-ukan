@@ -9,6 +9,7 @@ import { accDocsList, accDocDelete, accDocFileUrl } from '@/lib/api/accDocs'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import DocCreateModal, { DOC_TYPES } from '@/components/admin/accDocs/DocCreateModal'
 import OrgSettingsModal from '@/components/admin/accDocs/OrgSettingsModal'
+import InvoicePicker from '@/components/admin/accDocs/InvoicePicker'
 
 const TLABEL: Record<string, string> = { invoice: '🧾 Счёт', nakladnaya: '📦 Накладная', akt: '📝 Акт', kp: '📄 КП' }
 const fmt = (n: any) => (Number(n) || 0).toLocaleString('ru-RU') + ' ₸'
@@ -17,7 +18,7 @@ export default function BookkeepingScreen({ orgId }: { orders?: any[]; orgId: st
   const orgName = (useAdmin() as any)?.orgName || ''
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [create, setCreate] = useState<string | null>(null)
+  const [create, setCreate] = useState<{ type: string; fromDocId?: string } | null>(null)
   const [settings, setSettings] = useState(false)
   const [filter, setFilter] = useState('all')
   const [q, setQ] = useState('')
@@ -44,22 +45,17 @@ export default function BookkeepingScreen({ orgId }: { orders?: any[]; orgId: st
         <button onClick={() => setSettings(true)} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>⚙ Реквизиты, печать и шаблоны</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, margin: '14px 0 18px' }}>
-        {DOC_TYPES.map(t => (
-          <div key={t.key} onClick={() => setCreate(t.key)} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', boxShadow: '0 0 0 1.5px #e6e2dc', cursor: 'pointer' }}>
-            <div style={{ fontSize: 28 }}>{t.icon}</div>
-            <div style={{ fontWeight: 700, marginTop: 4 }}>{t.label}</div>
-            <div style={{ fontSize: 12, color: COLORS.textMuted }}>{t.sub}</div>
-            <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: COLORS.primary }}>＋ Создать</div>
-          </div>
-        ))}
+      <div style={{ margin: '14px 0 0' }}><InvoicePicker orgId={orgId} onCreate={(docId, type) => setCreate({ type, fromDocId: docId })} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 18px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: COLORS.textMuted, fontWeight: 600 }}>Или создать с нуля:</span>
+        {DOC_TYPES.map(t => <button key={t.key} onClick={() => setCreate({ type: t.key })} style={{ padding: '8px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{t.icon} {t.label}</button>)}
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
         {([['all', 'Все'], ...DOC_TYPES.map(t => [t.key, TLABEL[t.key]])] as [string, string][]).map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)} style={{ padding: '6px 14px', borderRadius: 20, border: 'none', fontSize: 13, fontWeight: filter === k ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: filter === k ? COLORS.primary : '#fff', color: filter === k ? '#fff' : '#6b655b', boxShadow: filter === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{l}</button>
         ))}
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск: номер, покупатель, товар, сумма…" style={{ marginLeft: 'auto', flex: '1 1 240px', maxWidth: 380, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск по созданным документам…" style={{ marginLeft: 'auto', flex: '1 1 240px', maxWidth: 380, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflowX: 'auto' }}>
@@ -91,7 +87,7 @@ export default function BookkeepingScreen({ orgId }: { orders?: any[]; orgId: st
           )}
       </div>
 
-      {create && <DocCreateModal type={create} orgId={orgId} orgName={orgName} onClose={() => setCreate(null)} onCreated={() => { toast('✅ Документ создан'); load() }} />}
+      {create && <DocCreateModal type={create.type} fromDocId={create.fromDocId} orgId={orgId} orgName={orgName} onClose={() => setCreate(null)} onCreated={() => { toast('✅ Документ создан'); load() }} />}
       {settings && <OrgSettingsModal orgId={orgId} orgName={orgName} onClose={() => setSettings(false)} toast={toast} />}
     </div>
   )
