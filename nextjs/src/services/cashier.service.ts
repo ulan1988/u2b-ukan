@@ -413,10 +413,9 @@ export async function clientPay(orgId: string, contragentId: string, accountId: 
   return { ok: true as const, account: acc.name }
 }
 
-// ИНКАССАЦИЯ: филиал отправляет деньги головному — попадают в ЕГО QR-счёт в книге головного.
-// Нипа листогиб → «QR Листогиб», Магазин Кристалл → «QR Кристалл» (авто-подбор по ключевому
-// слову имени филиала). В книге филиала: расход со счёта на мост-головной; в книге головного:
-// приход на QR-счёт от моста-филиала. Склад не трогается.
+// ИНКАССАЦИЯ: филиал отправляет деньги головному — сразу на главный «Банковский счёт» головного.
+// В книге филиала: расход со счёта на мост-головной; в книге головного:
+// приход на главный «Банковский счёт» от моста-филиала. Склад не трогается.
 export async function encashment(filialOrgId: string, fromAccountId: string, amount: number, actor?: Session | null, dateOverride?: string) {
   if (!(amount > 0)) return { ok: false as const, error: 'Сумма должна быть больше 0' }
   const { db } = await import('../lib/db')
@@ -428,13 +427,12 @@ export async function encashment(filialOrgId: string, fromAccountId: string, amo
   if (!filial) return { ok: false as const, error: 'Организация не найдена' }
   const [fromAcc] = await db.select().from(cashAccounts).where(and(eq(cashAccounts.id, fromAccountId), eq(cashAccounts.orgId, filialOrgId))).limit(1)
   if (!fromAcc) return { ok: false as const, error: 'Счёт списания не найден' }
-  // Приход — в QR-счёт ЭТОГО филиала у головного (вкладка «Счета» принимает на кюар): подбор по
-  // ключевому слову имени филиала. Нипа листогиб → «QR Листогиб», Магазин Кристалл → «QR Кристалл».
+  // Приход — СРАЗУ на главный «Банковский счёт» головного (а не на отдельный QR-счёт филиала): деньги магазина/филиала
+  // не копятся на QR, откуда их потом надо собирать руками. Откуда пришло — видно по контрагенту-мосту и комментарию.
   const banks = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, hq.id), eq(cashAccounts.archived, false), eq(cashAccounts.kind, 'bank')))
-  const words = (filial.name || '').toLowerCase().split(/\s+/).filter(w => w.length >= 4)
-  let headQR: any = null, best = 0
-  for (const a of banks) { const n = (a.name || '').toLowerCase(); if (!n.includes('qr') && !n.includes('кюар') && !n.includes('кюр')) continue; let sc = 0; for (const w of words) if (n.includes(w)) sc = Math.max(sc, w.length); if (sc > best) { best = sc; headQR = a } }
-  if (!headQR) return { ok: false as const, error: 'QR-счёт этого филиала в головном не найден' }
+  const isQr = (n: string) => { const x = (n || '').toLowerCase(); return x.includes('qr') || x.includes('кюар') || x.includes('кюр') }
+  const headQR: any = banks.find(a => a.clientPay && (a.name || '').toLowerCase().includes('банков')) || banks.find(a => (a.name || '').toLowerCase().includes('банков')) || banks.find(a => !isQr(a.name || '')) || null
+  if (!headQR) return { ok: false as const, error: 'Главный «Банковский счёт» головного не найден' }
   const [headBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, filialOrgId), eq(contragents.orgRefId, hq.id))).limit(1)
   const [filialBridge] = await db.select().from(contragents).where(and(eq(contragents.orgId, hq.id), eq(contragents.orgRefId, filialOrgId))).limit(1)
   if (!headBridge || !filialBridge) return { ok: false as const, error: 'Мост-контрагент между орг не найден' }
