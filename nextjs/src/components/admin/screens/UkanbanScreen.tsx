@@ -11,6 +11,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import NomInline from '@/components/NomInline'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import RouteModal from '@/components/admin/RouteModal'
+import PickSearch, { normSearch, searchWords } from '@/components/admin/PickSearch'
 
 const MODES = [
   { key: 'invoices', label: '🧾 Накладные', ready: true },
@@ -80,6 +81,8 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   const [docs, setDocs] = useState<any[]>([])
   const [kind, setKind] = useState<'all' | 'purchase' | 'sale' | 'return'>('all')
   const [q, setQ] = useState('')
+  const [qProd, setQProd] = useState(''); const [prodPick, setProdPick] = useState('')   // поиск 1: товар
+  const [qCag, setQCag] = useState(''); const [cagPick, setCagPick] = useState('')        // поиск 2: контрагент/поставщик
   const [showCancelled, setShowCancelled] = useState(false)
   const [period, setPeriod] = useState<DPeriod>('all')
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
@@ -115,7 +118,27 @@ function InvoicesMode({ orgId }: { orgId: string }) {
     return base
   }, [docs, kind, q, period, from, to])
 
-  const cols = COLS.filter(c => c.key !== 'cancelled' || showCancelled).map(c => ({ ...c, items: filtered.filter(c.test) }))
+  // Два поиска работают совместно (И): товар + контрагент. Выбор из подсказки = точное совпадение, набор текста = по словам.
+  const matchProd = (d: any) => prodPick
+    ? String(d.items || '').split(' | ').includes(prodPick)
+    : searchWords(qProd).every(w => normSearch(d.items).includes(w))
+  const matchCag = (d: any) => cagPick
+    ? (d.contragent || '') === cagPick
+    : searchWords(qCag).every(w => normSearch(d.contragent).includes(w))
+  const byBoth = useMemo(() => filtered.filter(d => matchProd(d) && matchCag(d)), [filtered, prodPick, qProd, cagPick, qCag]) // eslint-disable-line
+  // Подсказки сужаются другим полем: выбрал поставщика → в товарах только то, что он брал, и наоборот.
+  const prodOptions = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const d of filtered.filter(matchCag)) for (const n of Array.from(new Set(String(d.items || '').split(' | ').filter(Boolean)))) m.set(n, (m.get(n) || 0) + 1)
+    return Array.from(m, ([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, 'ru'))
+  }, [filtered, cagPick, qCag]) // eslint-disable-line
+  const cagOptions = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const d of filtered.filter(matchProd)) if (d.contragent) m.set(d.contragent, (m.get(d.contragent) || 0) + 1)
+    return Array.from(m, ([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, 'ru'))
+  }, [filtered, prodPick, qProd]) // eslint-disable-line
+
+  const cols = COLS.filter(c => c.key !== 'cancelled' || showCancelled).map(c => ({ ...c, items: byBoth.filter(c.test) }))
 
   const kindBtn = (k: 'all' | 'purchase' | 'sale' | 'return', label: string) => (
     <button onClick={() => setKind(k)} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: kind === k ? '#7a3aaa' : '#fff', color: kind === k ? '#fff' : COLORS.textMuted, boxShadow: kind === k ? 'none' : '0 0 0 1.5px #e6e2dc' }}>{label}</button>
@@ -124,12 +147,18 @@ function InvoicesMode({ orgId }: { orgId: string }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{filtered.length}</b></span>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>накладных: <b style={{ color: COLORS.text }}>{byBoth.length}</b></span>
         <div style={{ display: 'flex', gap: 6 }}>{kindBtn('all', 'Всё')}{kindBtn('purchase', '🛒 Приходные')}{kindBtn('sale', '📄 Расходные')}{kindBtn('return', '↩ Возвраты')}</div>
         <button onClick={() => setLinks(v => !v)} title="Клик по накладной покажет её путь (граф)" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: links ? '#7a3aaa' : '#fff', color: links ? '#fff' : COLORS.textMuted, boxShadow: links ? 'none' : '0 0 0 1.5px #e6e2dc' }}>🔗 Связки {links ? 'вкл' : 'выкл'}</button>
         <label style={{ fontSize: 13, color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> показать отменённые</label>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Поиск по всему: номер, контрагент, товар, сумма…"
           style={{ marginLeft: 'auto', minWidth: 240, flex: '1 1 240px', maxWidth: 400, padding: '9px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', fontSize: 14 }} />
+      </div>
+
+      {/* Два поиска вместе: выбрал товар + выбрал поставщика → накладные, где поставщик брал/отдавал именно этот товар */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <PickSearch icon="📦" placeholder="Товар: начните вводить и выберите…" text={qProd} onText={setQProd} picked={prodPick} onPick={setProdPick} options={prodOptions} />
+        <PickSearch icon="🏢" placeholder="Контрагент / поставщик: введите и выберите…" text={qCag} onText={setQCag} picked={cagPick} onPick={setCagPick} options={cagOptions} />
       </div>
 
       {/* Фильтр по датам: пресеты + диапазон от-до */}
