@@ -43,7 +43,10 @@ export async function middleware(req: NextRequest) {
   // Роль: раздел только для сотрудников → остальным 403 (+ складской менеджер видит только свою организацию)
   if (isApi) {
     const rule = RULES.find(r => r.re.test(pathname))
-    if (rule && !rule.roles.includes(session.role)) return noStore(NextResponse.json({ error: 'Нет доступа' }, { status: 403 }))
+    // Каталог: GET /api/products (БЕЗ ?all, т.е. без себестоимости) нужен кабинетам (StoreCatalog) —
+    // пускаем любого авторизованного. Запись (POST/PATCH/…) и ?all (себестоимость) — только staff.
+    const catalogRead = pathname === '/api/products' && req.method === 'GET' && !req.nextUrl.searchParams.get('all')
+    if (rule && !catalogRead && !rule.roles.includes(session.role)) return noStore(NextResponse.json({ error: 'Нет доступа' }, { status: 403 }))
     if (rule && session.role === 'warehouse_manager') {
       const q = req.nextUrl.searchParams.get('orgId')
       if (q && q !== session.orgId) return noStore(NextResponse.json({ error: 'Нет доступа' }, { status: 403 }))

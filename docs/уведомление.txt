@@ -1,1 +1,5 @@
  VAPID_PRIVATE_KEY            │ 84Blt4Vg6cJ6tE0SdToPh186mbiMJ_3dpmsR_vDaU9U
+
+
+ауз секрет
+wEGbUfBT8DSHAwsY0bsAX8nwP6ou/Tqw/VdE1IblKX8j0Pe/Zj8g1XhYJOKpOLQC
