@@ -22,7 +22,6 @@ import NomenclatureScreen from '@/components/admin/screens/NomenclatureScreen'
 import ProjectsScreen from '@/components/admin/screens/ProjectsScreen'
 import MaterialScreen from '@/components/admin/screens/MaterialScreen'
 import CalcScreen from '@/components/admin/screens/CalcScreen'
-import ShiftSheetScreen from '@/components/admin/screens/ShiftSheetScreen'
 import SettingsScreen from '@/components/admin/screens/SettingsScreen'
 
 export default function AdminScreenPage() {
@@ -53,7 +52,6 @@ export default function AdminScreenPage() {
     case 'projects': return <ProjectsScreen orgId={a.orgId} onOpen={a.openCard} onReload={a.reload} />
     case 'material': return <MaterialScreen orgId={a.orgId} />
     case 'calc': return <CalcScreen orgId={a.orgId} />
-    case 'attendance': return <ShiftSheetScreen orgId={a.orgId} />
     case 'settings': return <SettingsScreen orgId={a.orgId} />
     default: return <div style={{ color: '#5f5952', padding: 20 }}>Раздел не найден</div>
   }

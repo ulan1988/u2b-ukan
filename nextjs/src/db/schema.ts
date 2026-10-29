@@ -644,13 +644,3 @@ export const accOrgSettings = pgTable('acc_org_settings', {
   kpTemplateB64: text('kp_template_b64'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
-
-// Табель (смена) — посещаемость сотрудников по дням месяца. Данные одним JSON:
-// { [employeeId]: { days: {"1":"бар"|"жок",...}, avans: number, shtraf: number } }.
-export const shiftAttendance = pgTable('shift_attendance', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  orgId: uuid('org_id').notNull(),
-  month: text('month').notNull(),                         // 'YYYY-MM'
-  data: text('data').notNull().default('{}'),             // JSON
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, t => ({ byOrgMonth: uniqueIndex('shift_attendance_org_month_idx').on(t.orgId, t.month) }))
