@@ -91,6 +91,8 @@ export const archiveDdsArticle = (id: string) => send(`/api/dds-articles?id=${id
 
 // Справочник сотрудников (для ЗП).
 export const listEmployees = (orgId: string, all = false) => getArray(`/api/employees?orgId=${orgId}${all ? '&all=1' : ''}`)
+export const attendanceGet = (orgId: string, month: string) => getObj<any>(`/api/attendance?orgId=${orgId}&month=${month}`, { data: {} })
+export const attendanceSave = (orgId: string, month: string, data: any) => post('/api/attendance', { orgId, month, data })
 export const saveEmployee = (b: any) => post('/api/employees', b)
 export const archiveEmployee = (id: string) => send(`/api/employees?id=${id}`, 'DELETE')
 
