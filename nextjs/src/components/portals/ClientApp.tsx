@@ -160,7 +160,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
     for (const it of items) await addPosition(orderId, { name1c: it.name1c || '', oral: it.oral, qty: it.qty, unit: it.unit, widthCm: it.widthCm })
     await load(); setToast(`✓ Добавлено: ${items.length}`)
   }
-  async function handleNewOrder(e?: React.FormEvent) {
+  async function handleNewOrder(target: 'head' | 'producer' = 'head', e?: React.FormEvent) {
     e?.preventDefault()
     if (!newText.trim() && catalogPos.length === 0) { setToast('Опишите заявку или соберите по каталогу'); return }
     setNewLoading(true)
@@ -168,7 +168,8 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
       const positions = catalogPos.map(p => ({ name1c: p.name1c || p.oral, oral: p.oral, qty: p.qty, unit: p.unit, widthCm: p.widthCm }))
       // uid при просмотре-как (админ смотрит кабинет клиента) — иначе заявка создаётся от админа,
       // заказчик (contactId=контрагент кабинета) теряется и заказ не виден клиенту.
-      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions, contactId: behalf || undefined }, viewAs ? user.id : undefined)
+      // target: 'head' = Берик (головной), 'producer' = Листогиб (Нипа, прямо на производство).
+      const r = await createClientOrder({ comment: newText, deadline: newDeadline || undefined, specProjectId: newProject || undefined, positions, contactId: behalf || undefined, target }, viewAs ? user.id : undefined)
       if (r.ok && r.data?.id) { setNewResult({ id: r.data.id, trackingUrl: `/track?id=${encodeURIComponent(r.data.id)}` }); setNewText(''); setCatalogPos([]); setNewProject(''); setBehalf(''); load() }
       else setToast('⚠ ' + (r.error || 'Не удалось отправить заявку'))
     } catch (err: any) { setToast('⚠ Ошибка: ' + (err?.message || 'сеть недоступна')) }
@@ -346,7 +347,11 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
                   )}
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>КОММЕНТАРИЙ <span style={{ fontWeight: 400 }}>(необязательно)</span></label><textarea style={{ ...inp, minHeight: 72, resize: 'vertical' }} value={newText} onChange={e => setNewText(e.target.value)} placeholder="Уточнения, пожелания — или опишите заявку словами" /></div>
                   <div><label style={{ fontSize: 13, fontWeight: 600, color: '#5f5952', marginBottom: 4, display: 'block' }}>ЖЕЛАЕМЫЙ СРОК</label><input style={inp} type="date" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} /></div>
-                  <button type="button" onClick={() => handleNewOrder()} disabled={newLoading} style={{ padding: '13px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1 }}>{newLoading ? 'Отправка...' : catalogPos.length ? `ОТПРАВИТЬ ЗАЯВКУ · ${catalogPos.length} поз. →` : 'ОТПРАВИТЬ ЗАЯВКУ →'}</button>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#5f5952', marginBottom: -2 }}>КУДА ЗАЯВКА{catalogPos.length ? ` · ${catalogPos.length} поз.` : ''}</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" onClick={() => handleNewOrder('head')} disabled={newLoading} style={{ flex: 1, padding: '13px 10px', background: '#d4613a', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: 14.5, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1, lineHeight: 1.15 }}>{newLoading ? '…' : <>🏢 Берику<div style={{ fontSize: 10.5, fontWeight: 600, opacity: .9 }}>головной</div></>}</button>
+                    <button type="button" onClick={() => handleNewOrder('producer')} disabled={newLoading} style={{ flex: 1, padding: '13px 10px', background: '#7a3aaa', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: 14.5, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1, lineHeight: 1.15 }}>{newLoading ? '…' : <>🏭 Листогибу<div style={{ fontSize: 10.5, fontWeight: 600, opacity: .9 }}>Нипа · на производство</div></>}</button>
+                  </div>
                 </div>
                 {showCatalog && <StoreCatalog orgId={user.orgId} onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
               </div>

@@ -26,20 +26,30 @@ export async function POST(req: NextRequest) {
   // Заказ мастера производства обязан иметь заказчика (запрет карточки без имени заказчика).
   if (body?.prodOrder && !body?.contactId) return NextResponse.json({ error: 'Выберите заказчика' }, { status: 400 })
   const t = await resolveTarget(s, new URL(req.url).searchParams.get('uid'))
-  // Форма заказа кабинета (что филиалу/клиенту нужно) уходит ГОЛОВНОМУ — он получает заявку и
-  // собирает автозакуп. Заказ мастера на производство (prodOrder) остаётся у филиала (свой цикл).
+  // Форма заказа кабинета: выбор КУДА заказ (снимает нагрузку с головного/Берика):
+  //  • target='head' (Берик, по умолчанию) — заявка ГОЛОВНОМУ (он собирает автозакуп, как было);
+  //  • target='producer' (Листогиб) — ПРЯМО к Нипе как заказ на производство (минуя головного),
+  //    попадает на стол мастера листогиба. Заказ мастера (prodOrder) остаётся у филиала (свой цикл).
   let targetOrg = t.orgId
   let contactId = body.contactId || t.contragentId || undefined
+  let prodOrder = !!body?.prodOrder
   if (!body?.prodOrder) {
-    const hq = (await refsRepo.listOrganizations() as any[]).find(o => o.kind === 'hq')
-    if (hq && hq.id !== t.orgId) {
-      targetOrg = hq.id
-      // Заказчик в книге головного = мост-контрагент на орг кабинета (ГО знает, кто заказал).
-      const [bridge] = await contragentByOrgRef(hq.id, t.orgId)
-      contactId = body.contactId || bridge?.id || undefined
+    const orgs = await refsRepo.listOrganizations() as any[]
+    if (body?.target === 'producer') {
+      const nipa = orgs.find(o => o.kind === 'producer_seller' && !o.archived)
+      if (nipa) { targetOrg = nipa.id; prodOrder = true; contactId = body.contactId || t.contragentId || undefined }
+    } else {
+      const hq = orgs.find(o => o.kind === 'hq')
+      if (hq && hq.id !== t.orgId) {
+        targetOrg = hq.id
+        // Заказчик в книге головного = мост-контрагент на орг кабинета (ГО знает, кто заказал).
+        const [bridge] = await contragentByOrgRef(hq.id, t.orgId)
+        contactId = body.contactId || bridge?.id || undefined
+      }
     }
   }
-  const parsed = createOrderSchema.safeParse({ ...body, orgId: targetOrg, kind: 'sale', source: 'cabinet', fromId: t.id, fromName: t.name, contactId })
+  if (prodOrder && !contactId) return NextResponse.json({ error: 'Выберите заказчика' }, { status: 400 })
+  const parsed = createOrderSchema.safeParse({ ...body, orgId: targetOrg, kind: 'sale', source: 'cabinet', fromId: t.id, fromName: t.name, contactId, prodOrder })
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте позиции' }, { status: 400 })
   const res = await createOrder(parsed.data, s)
   await pushSignal()
