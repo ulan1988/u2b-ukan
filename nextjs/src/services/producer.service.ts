@@ -90,7 +90,8 @@ export async function ensureProduct(name: string): Promise<string> {
 }
 
 // Внести изделия карточки в базу: создать товары + провести производство (выпуск на склад).
-export async function produceToBase(cardId: string, actor?: Session | null) {
+// date — рабочая дата документа производства (проведение задним числом); пусто → today().
+export async function produceToBase(cardId: string, actor?: Session | null, date?: string) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   const positions = await repo.positionsByCard(cardId)
@@ -154,7 +155,7 @@ export async function produceToBase(cardId: string, actor?: Session | null) {
     consumed = await consumeForCut(order.orgId, made)
   } catch { /* нехватка листов не должна ронять выпуск */ }
 
-  const doc = await createProduction({ orgId: order.orgId, warehouseId: wh.id, inputs: [], outputs, comment: `Производство изделий · заявка ${cardId}` } as any)
+  const doc = await createProduction({ orgId: order.orgId, warehouseId: wh.id, inputs: [], outputs, date: date || undefined, comment: `Производство изделий · заявка ${cardId}` } as any)
   const cut = consumed
     ? ` · листов: ${consumed.sheets}, обрезь: ${consumed.remnants}` + (consumed.shortfall ? `, не хватило: ${consumed.shortfall}` : '')
     : ''

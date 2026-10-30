@@ -61,7 +61,7 @@ async function hqOrgId(): Promise<string | null> {
 // 2-й уровень долга: головной продаёт конечному заказчику (Машон) → расходная у головного на его имя,
 // заказчик становится должником головного (в его кабинете долг растёт). Товар у головного — из
 // зеркальной приходной (производитель→головной), поэтому расход не уходит в минус по факту.
-async function createHqSaleToClient(clientId: string, positions: any[], cardId: string, projectId?: string | null) {
+async function createHqSaleToClient(clientId: string, positions: any[], cardId: string, projectId?: string | null, date?: string) {
   const hq = await hqOrgId(); if (!hq || !clientId) return null
   const refsRepo = await import('../repositories/refs.repo')
   const wh = await refsRepo.centralWarehouse(hq); if (!wh) return null
@@ -79,10 +79,12 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   })
   if (!lines.length) return null
   const docSvc = await import('./document.service')
-  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
+  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: date || today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
 }
 
-export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean; finalize?: boolean }
+// date — рабочая дата (проведение задним числом): расходная + платежи лягут на этот день.
+// Пусто → today() (поведение магазина-продавца не меняется). Разрешена любая дата.
+export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean; finalize?: boolean; date?: string }
 
 export async function payCard(cardId: string, p: PayInput, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
@@ -109,7 +111,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   // product_id подхватит `ensureProductIdsByName` при проведении накладной.
   if (orgKind === 'producer_seller' && positions.some((x: any) => !x.productId)) {
     const { produceToBase } = await import('./producer.service')
-    const pr = await produceToBase(cardId, actor)
+    const pr = await produceToBase(cardId, actor, p.date)
     if (!pr.ok) return { ok: false as const, error: pr.error }
   }
   const { lineAmount } = await import('../lib/lineAmount')
@@ -148,11 +150,11 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   let inv: any
   if (chain) {
     await repo.updateOrder(cardId, { contactId: bridge as string })   // расходная производителя → головному (мост → зеркало)
-    try { inv = await postOrderInvoice(cardId, actor) }
+    try { inv = await postOrderInvoice(cardId, actor, p.date) }
     finally { await repo.updateOrder(cardId, { contactId: endClient as string }) }   // вернуть заказчика даже при сбое проведения
-    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).specProjectId) } catch (e) { console.error('createHqSaleToClient', cardId, e) } }
+    if (inv.ok) { try { await createHqSaleToClient(endClient as string, positions, cardId, (order as any).specProjectId, p.date) } catch (e) { console.error('createHqSaleToClient', cardId, e) } }
   } else {
-    inv = await postOrderInvoice(cardId, actor)
+    inv = await postOrderInvoice(cardId, actor, p.date)
   }
   if (!inv.ok) return { ok: false as const, error: inv.error }
   const [after] = await repo.getOrder(cardId)
@@ -160,7 +162,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
 
   // Оплаты нал/каспи в кассу (гасят дебиторку), привязка к документу.
   const acc = await ensureCashAccounts(order.orgId)
-  const day = today()
+  const day = p.date || today()   // рабочая дата: платежи лягут на выбранный день (проведение задним числом)
   const projectId = (order as any).specProjectId || null   // разбивка оплат по проекту контрагента
   if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: docId, projectId, comment: `Касса ${cardId} · нал` })
   if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: docId, projectId, comment: `Касса ${cardId} · каспи` })

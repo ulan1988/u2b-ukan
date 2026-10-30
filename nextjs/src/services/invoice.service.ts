@@ -8,7 +8,7 @@ import * as refsRepo from '../repositories/refs.repo'
 import { toYMD, today } from '../lib/num'
 import type { Session } from '../lib/auth'
 
-export async function postOrderInvoice(cardId: string, actor?: Session | null) {
+export async function postOrderInvoice(cardId: string, actor?: Session | null, dateOverride?: string) {
   const [o] = await orderRepo.getOrder(cardId)
   if (!o) return { ok: false as const, error: 'Заявка не найдена' }
   if (o.linkedDocId) return { ok: false as const, error: 'Накладная уже проведена' }
@@ -19,8 +19,9 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null) {
   if (!withProd.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
 
   const isPurchase = o.kind === 'purchase'
-  // Дата документа = день, когда логист принял/довёз (delivered), иначе сегодня.
-  const acceptDate = o.delivered ? toYMD(o.delivered as any) : today()
+  // Дата документа = рабочая дата (проведение задним числом, если передана), иначе день
+  // доставки (delivered), иначе сегодня. dateOverride разрешает ЛЮБУЮ дату (касса мастера).
+  const acceptDate = dateOverride || (o.delivered ? toYMD(o.delivered as any) : today())
   const projectId = (o as any).specProjectId || null
   const transitAgent = (o as any).transitAgent || ''
 

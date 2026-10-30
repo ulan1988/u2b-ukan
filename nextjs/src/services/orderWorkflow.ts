@@ -246,7 +246,8 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (action === 'produceReady') {
     try {
       const { alreadyProduced, produceToBase } = await import('./producer.service')
-      if (!(await alreadyProduced(id))) await produceToBase(id, actor)
+      // Рабочая дата (проведение задним числом) из payload — документ производства ляжет на неё.
+      if (!(await alreadyProduced(id))) await produceToBase(id, actor, (payload as any)?.date)
     } catch { /* производство не должно ронять смену этапа */ }
   }
   // Закуп оформлен → открыть связанные продажи: перенести поставщика/цену/логиста,

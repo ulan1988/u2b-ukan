@@ -8,8 +8,12 @@ import { shiftSummary, closeShiftDay } from '@/lib/api/orders'
 const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
-export default function ShiftView({ uid }: { uid?: string }) {
-  const [date, setDate] = useState(todayStr())
+// workDate/onWorkDate — единая рабочая дата кабинета (проведение задним числом). Когда переданы,
+// «Смена» показывает тот же день, что и касса/производство (одна дата на весь кабинет).
+export default function ShiftView({ uid, workDate, onWorkDate }: { uid?: string; workDate?: string; onWorkDate?: (d: string) => void }) {
+  const [localDate, setLocalDate] = useState(todayStr())
+  const date = workDate ?? localDate
+  const setDate = (d: string) => { onWorkDate ? onWorkDate(d) : setLocalDate(d) }
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [flash, setFlash] = useState('')

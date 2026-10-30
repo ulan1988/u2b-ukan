@@ -51,3 +51,22 @@ export const actionSchema = z.object({
   action: z.string().min(1),
   payload: z.record(z.string(), z.any()).optional().default({}),
 })
+
+// Рабочая дата (проведение задним числом) — любой календарный день (в т.ч. будущий).
+const ymdOptional = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD').optional()
+
+// Касса мастера: оплата/продажа. Все поля опциональны (пустое тело = просто провести).
+export const paySchema = z.object({
+  cash: z.coerce.number().optional(),
+  kaspi: z.coerce.number().optional(),
+  qr: z.coerce.number().optional(),
+  change: z.coerce.number().optional(),
+  changeFrom: z.string().optional().default(''),
+  localDebt: z.boolean().optional(),
+  markOnly: z.boolean().optional(),
+  finalize: z.boolean().optional(),
+  date: ymdOptional,
+})
+
+// «Внести в базу» (производство): только рабочая дата документа производства.
+export const tobaseSchema = z.object({ date: ymdOptional })

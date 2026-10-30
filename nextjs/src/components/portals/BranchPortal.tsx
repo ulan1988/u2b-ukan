@@ -45,6 +45,9 @@ const barColor = (pct: number) => pct >= 100 ? '#3a9d6e' : pct >= 60 ? '#c4a832'
 const _utc = (d: any) => { if (!d) return null; let s = String(d).trim().replace(' ', 'T'); if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z'; const x = new Date(s); return isNaN(x.getTime()) ? null : x }
 const fmtDate = (d?: string | null) => { const x = _utc(d); return x ? x.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Almaty' }) : '—' }
 const fmtTime = (d?: string | null) => { const x = _utc(d); return x ? x.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Almaty' }) + ' · ' + x.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' }) : '—' }
+// Рабочая дата (проведение задним числом) — локальный день, не UTC-срез.
+const todayYMD = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const ddmm = (ymd: string) => { const [y, m, d] = (ymd || '').split('-'); return d && m ? `${d}.${m}` : ymd }
 
 export default function BranchPortal({ user }: { user: { id: string; name: string; orgId: string; slug?: string } }) {
   const [orders, setOrders] = useState<any[]>([])
@@ -72,6 +75,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const [clientProjs, setClientProjs] = useState<any[]>([])       // проекты заказчика открытой карточки (для тега)
   const [sel, setSel] = useState<Record<string, boolean>>({})     // выбор позиций в шторке для частичной отправки
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })   // касса мастера
+  // Рабочая дата кабинета: все операции (касса/оплата, производство, смена) проводятся этим днём.
+  // По умолчанию — сегодня; разрешена любая дата (в т.ч. будущая) — на случай «забыли провести».
+  const [workDate, setWorkDate] = useState(todayYMD())
+  const backdated = workDate !== todayYMD()
+  // Дата для записи: undefined когда сегодня (бэкенд сам ставит today), иначе выбранный день.
+  const wd = () => (backdated ? workDate : undefined)
   const isZK = (o: any) => /^ЗК-/.test(o.id || '')
   const fmtCode = (id: string) => isZK({ id }) ? id.replace(/-/g, ' ') : id
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
@@ -197,7 +206,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
 
   async function act(id: string, action: string, okMsg: string) {
     try {
-      const r = await orderAction(id, action)
+      // Рабочая дата — в payload: produceReady (авто-производство на «Готов к доставке») проведёт документ этим днём.
+      const r = await orderAction(id, action, backdated ? { date: workDate } : {})
       if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось выполнить')); return }
       await load(); await refreshDetail(id); showMsg(okMsg)
     } catch { showMsg('⚠ Ошибка сети') }
@@ -243,14 +253,14 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // Касса: оплатить (продать) → расходная + оплаты; отменить продажу → сторно.
   // Оплатить: принять нал/каспи/QR, ОСТАТОК долга остаётся дебиторкой Нипы на заказчика (localDebt).
   async function doPay(id: string) {
-    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, qr: Number((pay.qr || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom, localDebt: true }
+    const body = { cash: Number((pay.cash || '').replace(',', '.')) || 0, kaspi: Number((pay.kaspi || '').replace(',', '.')) || 0, qr: Number((pay.qr || '').replace(',', '.')) || 0, change: Number((pay.change || '').replace(',', '.')) || 0, changeFrom: pay.changeFrom, localDebt: true, date: wd() }
     const r = await payCard(id, body); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`💵 Продано${r.number ? ` (${r.number})` : ''}${r.debt ? ` · долг ${r.debt}` : ''}`)
   }
   // Долг Нипе: вся карточка в долг, дебиторка ОСТАЁТСЯ у Нипы (учёт в её кабинете) — свои клиенты.
   async function payDebtLocal(id: string) {
     if (!confirm('Продать в ДОЛГ Нипе? Долг останется дебиторкой филиала (учёт в его кабинете).')) return
-    const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', localDebt: true }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    const r = await payCard(id, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', localDebt: true, date: wd() }); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDrawerId(null); await load(); showMsg(`🏪 Долг Нипе${r.number ? ` (${r.number})` : ''}${r.debt ? ` · ${r.debt}` : ''}`)
   }
   // Долг к головному: ПОМЕТИТЬ карточку (долг, цепочка в головной) — расходная проведётся
@@ -584,6 +594,15 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>U2B · Филиал <span style={{ color: '#5a544c', fontSize: 10, fontWeight: 500 }}>v{process.env.NEXT_PUBLIC_BUILD_SHA}</span></div><div style={{ color: '#8c857a', fontSize: 12 }}>{user.name}</div></div>
         </div>
         <div className="bp-hdr-date"><DateFilter dark period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} /></div>
+        {/* 🗓 Рабочая дата: все операции (касса/оплата, производство, смена) проводятся этим днём.
+            Дефолт — сегодня; при другой дате — оранжевая подсветка «задним числом dd.mm». */}
+        <div title="Рабочая дата: продажи и производство лягут на этот день (на случай «забыли провести»)" style={{ display: 'flex', alignItems: 'center', gap: 6, background: backdated ? '#5a2c18' : '#2e2b27', border: `1.5px solid ${backdated ? '#d4613a' : '#3a3630'}`, borderRadius: 9, padding: '4px 8px' }}>
+          <span style={{ fontSize: 14 }}>🗓</span>
+          <input type="date" value={workDate} onChange={e => setWorkDate(e.target.value || todayYMD())} style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 13, fontFamily: 'inherit', outline: 'none', colorScheme: 'dark' }} />
+          {backdated
+            ? <button onClick={() => setWorkDate(todayYMD())} title="Вернуть на сегодня" style={{ fontSize: 10.5, fontWeight: 800, color: '#ffd9c7', background: '#d4613a', border: 'none', borderRadius: 20, padding: '2px 7px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>задн. {ddmm(workDate)} ✕</button>
+            : <span style={{ fontSize: 10.5, fontWeight: 700, color: '#8c857a', whiteSpace: 'nowrap' }}>сегодня</span>}
+        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><ChatWidget placement="inline" myId={user.id} orgId={user.orgId} /><button onClick={load} style={{ background: 'none', border: 'none', color: '#8c857a', fontSize: 18, cursor: 'pointer', padding: 4 }}>⟳</button><button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: 'none', border: '1px solid #444', color: '#ccc', fontSize: 13, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>Выйти</button></div>
       </div>
 
@@ -795,7 +814,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           </div>
         )}
         {tab === 'finance' && <FinanceView />}
-        {tab === 'shift' && <ShiftView uid={user.id} />}
+        {tab === 'shift' && <ShiftView uid={user.id} workDate={workDate} onWorkDate={setWorkDate} />}
         {tab === 'profit' && <ProfitView uid={user.id} />}
         {tab === 'docs' && <DocsView orgId={user.orgId} />}
       </div>

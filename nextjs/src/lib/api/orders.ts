@@ -25,7 +25,7 @@ export async function splitCard(cardId: string, posIds: string[]) {
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
 // Касса мастера: оплатить (продать) — нал/каспи/сдача, долг авто.
-export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean }) {
+export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean; date?: string }) {
   const r = await post(`/api/orders/${cardId}/pay`, body)
   return { ok: r.ok, error: r.error as string | undefined, debt: r.data?.debt as number | undefined, number: r.data?.number as string | undefined, pending: r.data?.pending as boolean | undefined }
 }
@@ -49,8 +49,8 @@ export async function returnSale(body: { uid?: string; cardId: string; items?: {
   }
 }
 // Производство: внести изделия карточки в базу (создать товар + выпуск на склад).
-export async function produceToBase(cardId: string) {
-  const r = await post(`/api/orders/${cardId}/tobase`, {})
+export async function produceToBase(cardId: string, date?: string) {
+  const r = await post(`/api/orders/${cardId}/tobase`, date ? { date } : {})
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, produced: r.data?.produced as number | undefined }
 }
 export async function setPosStatus(cardId: string, status: string, posId?: string) {
