@@ -126,11 +126,11 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     const sheet = sheetCache.get(color) || null
     const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
 
-    // ИЗДЕЛИЕ — под единый товар «Изделие» (umbrella), БЕЗ per-cm SKU: цвет/см/цена/себестоимость
-    // живут в строке (номенклатура остаётся чистой схемой). Профили/прочее — товар по имени (как было).
+    // ИЗДЕЛИЕ — СВОЙ товар по цвету и см («Изделие {РАЛ} {см} см»): изделие без цвета на складе
+    // запрещено, остаток обязан считаться по цветам. Голые (без РАЛ/см) отсеяны выше.
     let productId = p.productId as string | null
     if (izd) {
-      productId = await ensureProduct('Изделие')
+      productId = await ensureProduct(nm)
     } else if (!productId) {
       productId = await ensureProduct(nm)
       created++
@@ -139,7 +139,7 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     if (productId !== p.productId) patch.productId = productId
     if (cost > 0) patch.costPrice = String(Math.round(cost))   // себестоимость строки (доля листа)
     if (Object.keys(patch).length) await repo.updatePosition(p.id, patch)
-    if (!izd) await setProductCost(productId as string, cost)  // профилям — в price_in товара; umbrella не трогаем
+    await setProductCost(productId as string, cost)   // себестоимость в price_in товара (у изделий — доля листа)
 
     outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: width || undefined })
     made.push(p)
@@ -190,9 +190,9 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     const sheet = sheetCache.get(color) || null
     const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
     let productId = it.productId || null
-    if (izd) productId = await ensureProduct('Изделие')
+    if (izd) productId = await ensureProduct(nm)   // «Изделие {РАЛ} {см} см» — без цвета на склад нельзя
     else if (!productId) { productId = await ensureProduct(nm); created++ }
-    if (!izd && productId) await setProductCost(productId, cost)
+    if (productId) await setProductCost(productId, cost)
     outputs.push({ productId, qty, price: cost || 0, widthCm: width || undefined, comment: nm })
     made.push({ name1c: nm, oral: nm, widthCm: width, qty, productId })
   }

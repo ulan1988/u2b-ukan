@@ -13,5 +13,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const parsed = createProductionSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля', issues: parsed.error.flatten() }, { status: 400 })
-  return NextResponse.json(await createProduction(parsed.data), { status: 201 })
+  try {
+    return NextResponse.json(await createProduction(parsed.data), { status: 201 })
+  } catch (e: any) {
+    // напр. «Изделие без цвета нельзя выпустить на склад» — показываем текст в UI
+    return NextResponse.json({ error: e?.message || 'Не удалось провести производство' }, { status: 400 })
+  }
 }

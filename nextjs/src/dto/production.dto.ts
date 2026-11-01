@@ -16,6 +16,7 @@ const outputLine = z.object({
   rate: z.coerce.number().min(0).optional(),   // ставка за м²
   price: z.coerce.number().min(0).optional(),  // если без размеров — цена за единицу
   comment: z.string().optional(),              // полное имя изделия (с цветом) для списков
+  ral: z.string().optional(),                  // цвет изделия: голое «Изделие» выпускать ЗАПРЕЩЕНО
 })
 
 export const createProductionSchema = z.object({

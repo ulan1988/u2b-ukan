@@ -8,6 +8,8 @@ import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { fetchRefs, stockOverview } from '@/lib/api/refs'
 import { listProduction, createProduction, getDocument, cancelDocument } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
+import { RAL_COLORS, extractRal } from '@/lib/ral'
+import { isIzdelie } from '@/lib/lineAmount'
 
 const TABS = [
   { key: 'orders', label: '📋 Заказы на производство', ready: false },
@@ -103,7 +105,7 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
   const [openDocId, setOpenDocId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [ins, setIns] = useState<{ productId: string; qty: string; price: string }[]>([{ productId: '', qty: '', price: '' }])
-  const [outs, setOuts] = useState<{ productId: string; qty: string; lengthCm: string; widthCm: string; rate: string; price: string }[]>([{ productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '' }])
+  const [outs, setOuts] = useState<{ productId: string; qty: string; lengthCm: string; widthCm: string; rate: string; price: string; ral?: string }[]>([{ productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '', ral: '' }])
   const load = useCallback(() => { listProduction(orgId).then((d: any) => setDocs(d || [])) }, [orgId])
   useEffect(() => { load() }, [load])
 
@@ -122,13 +124,13 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
 
   async function submit() {
     const inputs = ins.filter(r => r.productId && Number(r.qty) > 0).map(r => ({ productId: r.productId, qty: Number(r.qty), price: Number(r.price) || 0 }))
-    const outputs = outs.filter(r => r.productId && Number(r.qty) > 0).map(r => ({ productId: r.productId, qty: Number(r.qty), lengthCm: r.lengthCm ? Number(r.lengthCm) : undefined, widthCm: r.widthCm ? Number(r.widthCm) : undefined, rate: r.rate ? Number(r.rate) : undefined, price: r.price ? Number(r.price) : undefined }))
+    const outputs = outs.filter(r => r.productId && Number(r.qty) > 0).map(r => ({ productId: r.productId, qty: Number(r.qty), lengthCm: r.lengthCm ? Number(r.lengthCm) : undefined, widthCm: r.widthCm ? Number(r.widthCm) : undefined, rate: r.rate ? Number(r.rate) : undefined, price: r.price ? Number(r.price) : undefined, ral: r.ral || undefined }))
     if (!outputs.length) { onMsg('⚠ Добавьте хотя бы одно изделие'); return }
     if (!warehouseId) { onMsg('⚠ Нет склада у этой организации'); return }
     setBusy(true)
     const r: any = await createProduction({ orgId, warehouseId, inputs, outputs })
     setBusy(false)
-    if (r.ok || r.data?.id) { onMsg(`✓ Производство ${r.data?.number || ''} проведено`); setOpen(false); setIns([{ productId: '', qty: '', price: '' }]); setOuts([{ productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '' }]); load() }
+    if (r.ok || r.data?.id) { onMsg(`✓ Производство ${r.data?.number || ''} проведено`); setOpen(false); setIns([{ productId: '', qty: '', price: '' }]); setOuts([{ productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '', ral: '' }]); load() }
     else onMsg('⚠ ' + (r.error || 'Ошибка'))
   }
 
@@ -161,6 +163,13 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
             {outs.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 200px', minWidth: 0 }}><NomInline products={products} value={r.productId} name={pById(r.productId)?.name || ''} onPick={p => setOut(i, { productId: p.id, price: r.price || String(p.priceRetail ?? '') })} /></div>
+                {/* Изделие без цвета выпускать нельзя — для umbrella «Изделие» обязателен РАЛ */}
+                {isIzdelie(pById(r.productId)?.name) && !extractRal(pById(r.productId)?.name || '') && (
+                  <select value={r.ral || ''} onChange={e => setOut(i, { ral: e.target.value })} title="цвет изделия (обязателен)" style={{ ...INP, width: 104, border: `1.5px solid ${r.ral ? '#e6e2dc' : COLORS.primary}` }}>
+                    <option value="">цвет…</option>
+                    {RAL_COLORS.map(c => <option key={c.code} value={c.code}>{c.code === 'decor' ? 'дерево' : `${c.code} · ${c.name}`}</option>)}
+                  </select>
+                )}
                 <input style={{ ...INP, width: 70, textAlign: 'right' }} type="number" placeholder="кол-во" value={r.qty} onChange={e => setOut(i, { qty: e.target.value })} />
                 <input style={{ ...INP, width: 64, textAlign: 'right' }} type="number" placeholder="см" value={r.lengthCm} onChange={e => setOut(i, { lengthCm: e.target.value })} title="длина, см (размерное ценообразование)" />
                 <input style={{ ...INP, width: 64, textAlign: 'right' }} type="number" placeholder="см" value={r.widthCm} onChange={e => setOut(i, { widthCm: e.target.value })} title="ширина, см" />
@@ -170,7 +179,7 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
               </div>
             ))}
           </div>
-          <button onClick={() => setOuts(rs => [...rs, { productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '' }])} style={{ border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '4px 12px', background: 'none', cursor: 'pointer', fontSize: 12.5, color: '#5f5952', fontFamily: 'inherit' }}>＋ изделие</button>
+          <button onClick={() => setOuts(rs => [...rs, { productId: '', qty: '', lengthCm: '', widthCm: '', rate: '', price: '', ral: '' }])} style={{ border: '1.5px dashed #d8d3cc', borderRadius: 7, padding: '4px 12px', background: 'none', cursor: 'pointer', fontSize: 12.5, color: '#5f5952', fontFamily: 'inherit' }}>＋ изделие</button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, paddingTop: 12, borderTop: '1px solid #f1efec' }}>
             <span style={{ fontSize: 13, color: COLORS.textMuted }}>Себестоимость материалов: <b style={{ color: COLORS.text }}>{fmtMoney(inCost)} ₸</b></span>

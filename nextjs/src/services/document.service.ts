@@ -309,7 +309,38 @@ export async function acceptDocByContragent(docId: string, contragentId: string,
 
 // Производство: сырьё (input) списывается со склада, готовый товар (output)
 // приходуется. Готовый товар — размерное ценообразование: (см×см)/10000=м² × ставка × кол-во.
+// ЖЁСТКИЙ ЗАПРЕТ: изделие без цвета на склад не выпускается. Голое «Изделие» — это схема
+// (umbrella), а не складская единица. Строку с umbrella переводим на товар
+// «Изделие {РАЛ} {см} см» (lib/itemName); нет цвета или см — отказ с понятным текстом.
+async function resolveIzdelieOutputs(outputs: CreateProductionInput['outputs']) {
+  const { isIzdelie } = await import('../lib/lineAmount')
+  const { itemName } = await import('../lib/itemName')
+  const { extractRal } = await import('../lib/ral')
+  const { ensureProduct } = await import('./producer.service')
+  const { db } = await import('../lib/db')
+  const { products } = await import('../db/schema')
+  const { inArray } = await import('drizzle-orm')
+
+  const ids = Array.from(new Set(outputs.map(o => o.productId)))
+  const rows = ids.length ? await db.select().from(products).where(inArray(products.id, ids)) : []
+  const nameById = new Map(rows.map(p => [p.id, p.name]))
+
+  const out = []
+  for (const o of outputs) {
+    const base = nameById.get(o.productId) || ''
+    // товар уже конкретный (цвет в имени) или это не изделие — ничего не меняем
+    if (!isIzdelie(base) || extractRal(base)) { out.push(o); continue }
+    const ral = (o as any).ral || extractRal((o as any).comment || '')
+    const cm = Number(o.widthCm) || 0
+    if (!ral || !(cm > 0)) throw new Error('Изделие без цвета нельзя выпустить на склад: укажите цвет (РАЛ) и размер в см')
+    const name = itemName({ name: 'Изделие', color: ral, cm })
+    out.push({ ...o, productId: await ensureProduct(name), comment: name })
+  }
+  return out
+}
+
 export async function createProduction(input: CreateProductionInput) {
+  input = { ...input, outputs: await resolveIzdelieOutputs(input.outputs) }
   const count = await docRepo.countByType(input.orgId, 'production')
   const docId = randomUUID()
   const date = input.date || today()
