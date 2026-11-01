@@ -6,7 +6,7 @@ import { useState, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
-import { cashDay, cashExpense, cashRemit, cashWages, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashTabelSet, cashPayZp, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -21,8 +21,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [flash, setFlash] = useState('')
   const [cur, setCur] = useState({ articleId: '', who: '', accountId: '', amount: '' })   // текущий расход
   const [wageAcc, setWageAcc] = useState('')                    // счёт списания ЗП
-  const [wsel, setWsel] = useState<Record<string, boolean>>({})    // ЗП: выбранные сотрудники
-  const [wamt, setWamt] = useState<Record<string, string>>({})     // ЗП: сумма вручную (дефолт — оклад, но редактируется)
+  const [wsel, setWsel] = useState<Record<string, boolean>>({})    // Табель: кто отмечен на смене (из employee_shifts)
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
@@ -30,7 +29,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
 
   const loadedKey = useRef('')
-  const load = useCallback(async () => { const k = orgId + date; if (loadedKey.current !== k) setLoading(true); const d = await cashDay(orgId, date); loadedKey.current = k; setData(d); setWageAcc(prev => prev || (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''); setLoading(false) }, [orgId, date])
+  const load = useCallback(async () => { const k = orgId + date; if (loadedKey.current !== k) setLoading(true); const d = await cashDay(orgId, date); loadedKey.current = k; setData(d); setWsel(Object.fromEntries(((d?.attendance || []) as string[]).map(id => [id, true]))); setWageAcc(prev => prev || (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''); setLoading(false) }, [orgId, date])
   const monthKey = useRef('')
   const loadMonth = useCallback(async () => {
     if (monthKey.current !== orgId + ym) setLoading(true)
@@ -48,19 +47,20 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     const r: any = await cashExpense(orgId, { kind: 'current', who: cur.who, article, expenseArticleId: cur.articleId || undefined, accountId: cur.accountId, amount, date })
     if (r.ok) { toast('✓ Расход добавлен'); setCur({ articleId: '', who: '', accountId: '', amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
-  // Сумма ЗП сотрудника: введённая вручную (приоритет), иначе дневной оклад.
-  function wageEff(u: any): number {
-    const v = wamt[u.id]
-    const n = (v !== undefined && v !== '') ? Number(String(v).replace(/\s/g, '').replace(',', '.')) : Number(u.dailyWage)
-    return Math.max(0, Math.round(Number(n) || 0))
+  // Табель: отметить/снять сотрудника на смене — СРАЗУ сохраняем набор дня (начисление, деньги не трогаем).
+  async function saveMarks(next: Record<string, boolean>) {
+    setWsel(next)
+    const ids = (data?.staff || []).filter((u: any) => next[u.id]).map((u: any) => u.id)
+    const r: any = await cashTabelSet(orgId, ids, date)
+    if (r.ok) load(); else toast('⚠ Табель не сохранился')
   }
-  async function payAllWages() {
+  const toggleMark = (id: string) => saveMarks({ ...wsel, [id]: !wsel[id] })
+  // Выплата ЗП+40% отмеченным: оклад + 40%·маржа/N.
+  async function payZp() {
     const acc = wageAcc || (data?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (data?.accounts || [])[0]?.id
     if (!acc) { toast('Нет счёта'); return }
-    const items = (data?.staff || []).filter((u: any) => wsel[u.id] && wageEff(u) > 0).map((u: any) => ({ who: u.name, amount: wageEff(u) }))
-    if (!items.length) { toast('Отметьте сотрудников и укажите сумму ЗП'); return }
-    const r: any = await cashWages(orgId, acc, items, date)
-    if (r.ok) { toast(`✓ ЗП оплачена: ${items.length} чел · ${m(r.total)}`); setWsel({}); setWamt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    const r: any = await cashPayZp(orgId, acc, date)
+    if (r.ok) { toast(`✓ Выдано ЗП+40%: ${r.count} чел · ${m(r.total)}`); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Инкассация Нипа → головной СО СПЛИТОМ: нал → ГО Осн.касса, каспи(GOLD) → ГО Банковский счёт.
   async function doRemit() {
@@ -433,38 +433,57 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   ))}
                 </div>
               )}
-              {/* ЗП — просто отметить кто на смене (сумма = оклад), оплатить разом */}
+              {/* ТАБЕЛЬ — отметить кто на смене (НАЧИСЛЕНИЕ: оклад попадает в колонку ЗП; деньги НЕ списываются) */}
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10, marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>👤 ЗП — отметить кто на смене</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>👤 ТАБЕЛЬ — кто на смене</span>
                   {(data.staff || []).length > 0 && (() => {
                     const allOn = (data.staff || []).every((u: any) => wsel[u.id])
-                    return <button onClick={() => setWsel(allOn ? {} : Object.fromEntries((data.staff || []).map((u: any) => [u.id, true])))} style={{ border: 'none', background: COLORS.bg, color: COLORS.textMuted, borderRadius: 6, padding: '3px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{allOn ? 'Снять всех' : 'Все'}</button>
+                    return <button onClick={() => saveMarks(allOn ? {} : Object.fromEntries((data.staff || []).map((u: any) => [u.id, true])))} style={{ border: 'none', background: COLORS.bg, color: COLORS.textMuted, borderRadius: 6, padding: '3px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{allOn ? 'Снять всех' : 'Все'}</button>
                   })()}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: COLORS.textMuted }}>со счёта{orgName ? ` (${orgName})` : ' филиала'}</span>
-                  <select value={wageAcc} onChange={e => setWageAcc(e.target.value)} style={{ padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
-                    {accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}
-                  </select>
+                  <span style={{ marginLeft: 'auto', fontSize: 11.5, color: COLORS.textMuted }}>оклад → колонка ЗП (начисление)</span>
                 </div>
                 {(data.staff || []).length === 0 ? <div style={{ fontSize: 13, color: COLORS.textMuted, padding: '6px 0' }}>Нет сотрудников — добавьте в разделе «👥 Сотрудники»</div>
                   : (data.staff || []).map((u: any) => {
                     const on = !!wsel[u.id]
-                    const wage = Number(u.dailyWage) || 0
-                    const amtVal = wamt[u.id] !== undefined ? wamt[u.id] : (wage > 0 ? String(Math.round(wage)) : '')
-                    const toggle = () => setWsel(w => ({ ...w, [u.id]: !w[u.id] }))
+                    const wage = Math.round(Number(u.dailyWage) || 0)
                     return (
                       <div key={u.id} className="cd-wrap" style={{ padding: '8px 8px', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent' }}>
-                        <button onClick={toggle} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
-                        <span onClick={toggle} style={{ flex: 1, fontSize: 13.5, cursor: 'pointer' }}>{u.name}{u.position ? <span style={{ color: COLORS.textLight, fontSize: 12 }}> · {u.position}</span> : ''}</span>
-                        <input value={amtVal} inputMode="decimal" placeholder="сумма ЗП"
-                          onFocus={() => { if (!on) setWsel(w => ({ ...w, [u.id]: true })) }}
-                          onChange={e => { setWamt(w => ({ ...w, [u.id]: e.target.value })); if (!on && e.target.value) setWsel(w => ({ ...w, [u.id]: true })) }}
-                          style={{ width: 120, textAlign: 'right', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${on ? '#2e8a5e' : COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none' }} />
+                        <button onClick={() => toggleMark(u.id)} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
+                        <span onClick={() => toggleMark(u.id)} style={{ flex: 1, fontSize: 13.5, cursor: 'pointer' }}>{u.name}{u.position ? <span style={{ color: COLORS.textLight, fontSize: 12 }}> · {u.position}</span> : ''}</span>
+                        <span style={{ width: 120, textAlign: 'right', fontSize: 13.5, fontWeight: 700, color: on ? COLORS.text : COLORS.textLight, fontFamily: 'Consolas, monospace' }}>{m(wage)}</span>
                         <span style={{ fontSize: 13, color: COLORS.textMuted }}>₸</span>
                       </div>
                     )
                   })}
-                {(() => { const tot = (data.staff || []).reduce((s: number, u: any) => s + (wsel[u.id] ? wageEff(u) : 0), 0); return <button onClick={payAllWages} disabled={!(tot > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: tot > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: tot > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Оплатить ЗП${tot > 0 ? ' · ' + m(tot) : ''}`}</button> })()}
+                {/* Выдача ЗП+40% — реальная выплата: оклад + 40%·маржа/N по отмеченным */}
+                {(() => {
+                  const marked = (data.staff || []).filter((u: any) => wsel[u.id])
+                  const N = marked.length
+                  const margin = Number(data.report?.margin) || 0
+                  const bonusEach = N > 0 ? Math.round((margin * 0.4) / N) : 0
+                  const rows = marked.map((u: any) => { const oklad = Math.round(Number(u.dailyWage) || 0); return { u, oklad, bonus: bonusEach, total: oklad + bonusEach } })
+                  const payTotal = rows.reduce((s: number, r: any) => s + r.total, 0)
+                  if (N === 0) return null
+                  return (
+                    <div style={{ marginTop: 12, background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.03em' }}>💵 ВЫДАТЬ ЗП+40%</span>
+                        <span style={{ fontSize: 11.5, color: COLORS.textLight }}>оклад + 40%·маржа/{N}</span>
+                        <select value={wageAcc} onChange={e => setWageAcc(e.target.value)} style={{ marginLeft: 'auto', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                          {accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}
+                        </select>
+                      </div>
+                      {rows.map((r: any) => (
+                        <div key={r.u.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 12.5 }}>
+                          <span>👤 {r.u.name}<span style={{ color: COLORS.textLight }}> · оклад {m(r.oklad)} + 40% {m(r.bonus)}</span></span>
+                          <b>{m(r.total)}</b>
+                        </div>
+                      ))}
+                      <button onClick={payZp} disabled={!(payTotal > 0)} style={{ marginTop: 8, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Выдать ЗП+40%${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
+                    </div>
+                  )
+                })()}
               </div>
               {/* Текущий расход — по статье (как в 1С) */}
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>

@@ -173,6 +173,19 @@ export const employees = pgTable('employees', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('employees_org_idx').on(t.orgId) }))
 
+// Табель: отметка «кто на смене» за день (НАЧИСЛЕНИЕ ЗП, деньги не списываются).
+// Отмеченный сотрудник → его дневной оклад попадает в колонку ЗП отчёта. Выплата — отдельно (payShiftZp).
+export const employeeShifts = pgTable('employee_shifts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  date: date('date').notNull(),                               // локальный YMD (как у документов)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({
+  uq: uniqueIndex('employee_shifts_uq').on(t.orgId, t.employeeId, t.date),
+  byOrgDate: index('employee_shifts_org_date_idx').on(t.orgId, t.date),
+}))
+
 // ─── Документы (ядро) ────────────────────────────────────────────────────────
 
 // (reviewed — проверена ли накладная оператором; авто-проведённые = false → жёлтая метка)
