@@ -22,6 +22,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [cur, setCur] = useState({ articleId: '', who: '', accountId: '', amount: '' })   // текущий расход
   const [wageAcc, setWageAcc] = useState('')                    // счёт списания ЗП
   const [wsel, setWsel] = useState<Record<string, boolean>>({})    // Табель: кто отмечен на смене (из employee_shifts)
+  const [wbonus, setWbonus] = useState<Record<string, string>>({})  // Выплата: бонус «+40%» вручную по сотруднику
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
@@ -55,12 +56,16 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     if (r.ok) load(); else toast('⚠ Табель не сохранился')
   }
   const toggleMark = (id: string) => saveMarks({ ...wsel, [id]: !wsel[id] })
-  // Выплата ЗП+40% отмеченным: оклад + 40%·маржа/N.
+  // Бонус «+40%» сотрудника (введён вручную), число.
+  const bonusEff = (id: string): number => Math.max(0, Math.round(Number(String(wbonus[id] ?? '').replace(/\s/g, '').replace(',', '.')) || 0))
+  // Выплата ЗП+40% отмеченным: оклад (табель) + бонус (вручную по каждому).
   async function payZp() {
     const acc = wageAcc || (data?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (data?.accounts || [])[0]?.id
     if (!acc) { toast('Нет счёта'); return }
-    const r: any = await cashPayZp(orgId, acc, date)
-    if (r.ok) { toast(`✓ Выдано ЗП+40%: ${r.count} чел · ${m(r.total)}`); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    const bonuses = (data?.staff || []).filter((u: any) => wsel[u.id]).map((u: any) => ({ employeeId: u.id, amount: bonusEff(u.id) }))
+    if (!bonuses.length) { toast('Отметьте в табеле кто на смене'); return }
+    const r: any = await cashPayZp(orgId, acc, date, bonuses)
+    if (r.ok) { toast(`✓ Выдано ЗП+40%: ${r.count} чел · ${m(r.total)}`); setWbonus({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Инкассация Нипа → головной СО СПЛИТОМ: нал → ГО Осн.касса, каспи(GOLD) → ГО Банковский счёт.
   async function doRemit() {
@@ -456,31 +461,36 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       </div>
                     )
                   })}
-                {/* Выдача ЗП+40% — реальная выплата: оклад + 40%·маржа/N по отмеченным */}
+                {/* Выдача ЗП+40% — реальная выплата: оклад (табель) + бонус, который админ делит ВРУЧНУЮ */}
                 {(() => {
                   const marked = (data.staff || []).filter((u: any) => wsel[u.id])
                   const N = marked.length
-                  const margin = Number(data.report?.margin) || 0
-                  const bonusEach = N > 0 ? Math.round((margin * 0.4) / N) : 0
-                  const rows = marked.map((u: any) => { const oklad = Math.round(Number(u.dailyWage) || 0); return { u, oklad, bonus: bonusEach, total: oklad + bonusEach } })
+                  const pool = Math.round((Number(data.report?.margin) || 0) * 0.4)   // ориентир: доступный пул 40% маржи
+                  const rows = marked.map((u: any) => { const oklad = Math.round(Number(u.dailyWage) || 0); const bonus = bonusEff(u.id); return { u, oklad, bonus, total: oklad + bonus } })
+                  const bonusSum = rows.reduce((s: number, r: any) => s + r.bonus, 0)
                   const payTotal = rows.reduce((s: number, r: any) => s + r.total, 0)
                   if (N === 0) return null
                   return (
                     <div style={{ marginTop: 12, background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.03em' }}>💵 ВЫДАТЬ ЗП+40%</span>
-                        <span style={{ fontSize: 11.5, color: COLORS.textLight }}>оклад + 40%·маржа/{N}</span>
+                        <span style={{ fontSize: 11.5, color: COLORS.textLight }}>пул 40% маржи: <b style={{ color: '#2e8a5e' }}>{m(pool)}</b> · роздано {m(bonusSum)}</span>
                         <select value={wageAcc} onChange={e => setWageAcc(e.target.value)} style={{ marginLeft: 'auto', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
                           {accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}
                         </select>
                       </div>
                       {rows.map((r: any) => (
-                        <div key={r.u.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 12.5 }}>
-                          <span>👤 {r.u.name}<span style={{ color: COLORS.textLight }}> · оклад {m(r.oklad)} + 40% {m(r.bonus)}</span></span>
-                          <b>{m(r.total)}</b>
+                        <div key={r.u.id} className="cd-wrap" style={{ padding: '5px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {r.u.name}</span>
+                          <span style={{ width: 90, textAlign: 'right', fontSize: 12.5, color: COLORS.textLight }}>оклад {m(r.oklad)}</span>
+                          <span style={{ fontSize: 13, color: COLORS.textMuted }}>+</span>
+                          <input value={wbonus[r.u.id] ?? ''} inputMode="decimal" placeholder="40%"
+                            onChange={e => setWbonus(w => ({ ...w, [r.u.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
+                            style={{ width: 90, textAlign: 'right', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none' }} />
+                          <b style={{ width: 90, textAlign: 'right', fontSize: 13.5 }}>{m(r.total)}</b>
                         </div>
                       ))}
-                      <button onClick={payZp} disabled={!(payTotal > 0)} style={{ marginTop: 8, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Выдать ЗП+40%${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
+                      <button onClick={payZp} disabled={!(payTotal > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Выдать ЗП+40%${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
                     </div>
                   )
                 })()}

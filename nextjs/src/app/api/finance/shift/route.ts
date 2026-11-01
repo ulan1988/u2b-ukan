@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   else if (b?.action === 'remit') res = await remitToHQ(orgId, Number(b?.cash), Number(b?.kaspi), date, s)
   else if (b?.action === 'wages') res = await payWages(orgId, b?.accountId, b?.items || [], date, s)
   else if (b?.action === 'tabelSet') res = await setShiftMarks(orgId, date, Array.isArray(b?.ids) ? b.ids.map(String) : [])
-  else if (b?.action === 'payZp') res = await payShiftZp(orgId, date, b?.accountId, s)
+  else if (b?.action === 'payZp') res = await payShiftZp(orgId, date, b?.accountId, Array.isArray(b?.bonuses) ? b.bonuses : [], s)
   else res = await addShiftExpense(orgId, { kind: b?.kind === 'salary' ? 'salary' : 'current', who: b?.who, article: b?.article, expenseArticleId: b?.expenseArticleId, accountId: b?.accountId, amount: Number(b?.amount), date }, s)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   await pushSignal()
