@@ -14,7 +14,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, returnSale, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
+import { branchOrders, sellCheck, editCheck, returnSale, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -88,6 +88,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
   const [checksDay, setChecksDay] = useState(localDay())
   const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
+  // правка пробитого чека: строки, оплата, скидка
+  const [editFor, setEditFor] = useState<any>(null)
+  const [editRows, setEditRows] = useState<{ posId?: string; productId?: string; name1c: string; qty: string; price: string; unit: string; widthCm?: number }[]>([])
+  const [editPay, setEditPay] = useState({ cash: '', kaspi: '', qr: '' })
+  const [editDisc, setEditDisc] = useState('')
+  const [editCat, setEditCat] = useState(false)   // открыт каталог для добавления позиции в чек
   const [rcpt, setRcpt] = useState<any>(null)            // чек-превью для показа/отправки (WhatsApp)
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
@@ -451,7 +457,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const sel = new Set<string>(); const qty: Record<string, number> = {}
     for (const p of (o.positions || [])) { const rem = retRemain(o, p); if (rem > 0) { sel.add(p.id); qty[p.id] = rem } }
     setRetFor(o); setRetSel(sel); setRetQty(qty)
-    setRetAcc(accounts[0]?.id || '')
+    setRetAcc(payAccOf(o))   // счёт по способу оплаты чека (нал → касса, каспи → GOLD, QR → банк)
+  }
+  // Каким счётом платили чек — тем и возвращаем. Смешанная — берём счёт с большей суммой.
+  function payAccOf(o: any) {
+    const find = (re: RegExp) => accounts.find((a: any) => re.test(String(a.name || '').toLowerCase()))?.id || ''
+    const opts = [
+      { sum: Number(o?.paidCash) || 0, id: find(/налич|касса/) },
+      { sum: Number(o?.paidKaspi) || 0, id: find(/kaspi|касп/) },
+      { sum: Number(o?.paidQr) || 0, id: find(/банк/) },
+    ].filter(x => x.sum > 0 && x.id).sort((a, b) => b.sum - a.sum)
+    return opts[0]?.id || ''   // чек в долг — счёт не подставляем (возврат гасит долг)
   }
   // Инкассация: отправить сумму со счёта филиала в QR-счёт головного.
   function openEnc() { setEncAcc(accounts[0]?.id || ''); setEncAmt(''); setEncOpen(true) }
@@ -493,6 +509,31 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setRetFor(null); await load(); loadStock()
     showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
+  }
+
+  // ── ПРАВКА ЧЕКА: кол-во, цена, состав и счета оплаты (без возврата/перепробития) ──
+  function openEdit(o: any) {
+    setEditFor(o)
+    setEditRows((o.positions || []).map((p: any) => ({
+      posId: p.id, productId: p.productId || undefined, name1c: p.name1c || p.oral,
+      qty: String(Number(p.qty)), price: String(Number(p.price) || 0), unit: p.unit || 'шт',
+      widthCm: p.widthCm != null ? Number(p.widthCm) : undefined,
+    })))
+    setEditPay({ cash: String(Number(o.paidCash) || ''), kaspi: String(Number(o.paidKaspi) || ''), qr: String(Number(o.paidQr) || '') })
+    setEditDisc(String(Number(o.discountSum) || ''))
+  }
+  const editTotal = editRows.reduce((s, r) => s + lineAmount({ name: r.name1c, qty: num(r.qty), price: num(r.price), widthCm: r.widthCm }), 0)
+  const editNet = Math.max(0, editTotal - num(editDisc))
+  async function saveEdit() {
+    if (!editFor) return
+    const positions = editRows.filter(r => num(r.qty) > 0).map(r => ({ posId: r.posId, productId: r.productId, name1c: r.name1c, qty: num(r.qty), unit: r.unit, price: num(r.price), widthCm: r.widthCm }))
+    if (!positions.length) { showMsg('⚠ В чеке должна остаться хотя бы одна позиция'); return }
+    setBusy(true)
+    const r = await editCheck({ uid: user.id, cardId: editFor.id, positions, cash: num(editPay.cash), kaspi: num(editPay.kaspi), qr: num(editPay.qr), discountSum: num(editDisc) })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось изменить чек')); return }
+    setEditFor(null); await load(); loadStock()
+    showMsg(`✏️ Чек изменён${r.number ? ' · ' + r.number : ''} · ${money(r.total || editNet)} ₸${r.debt ? ' · долг ' + money(r.debt) : ''}`)
   }
 
   // Открыть погашение долга (шторка со смешанной оплатой): по умолчанию весь остаток на 1-й счёт.
@@ -1060,6 +1101,76 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       </div>
 
       {/* ВОЗВРАТ — шторка: выбрать позиции, КОЛ-ВО к возврату и счёт; сумма считается на лету */}
+      {/* ПРАВКА ЧЕКА — шторка: кол-во, цена, удалить/добавить позицию, счета оплаты, скидка */}
+      {editFor && (
+        <div onClick={() => setEditFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>✏️ Правка чека</div>
+                <div style={{ fontSize: 12, color: '#8a8377', fontFamily: 'monospace' }}>№ {editFor.docNumber || editFor.id}</div>
+              </div>
+              <button onClick={() => setEditFor(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+            </div>
+
+            <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {editRows.map((r, i) => {
+                const perCm = isIzdelie(r.name1c)
+                const sum = lineAmount({ name: r.name1c, qty: num(r.qty), price: num(r.price), widthCm: r.widthCm })
+                return (
+                  <div key={r.posId || `new-${i}`} style={{ border: '1px solid #f1ede8', borderRadius: 10, padding: 9, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: DARK }}>{r.name1c}{r.widthCm ? ` · ${r.widthCm} см` : ''}</div>
+                      <button onClick={() => setEditRows(rs => rs.filter((_, j) => j !== i))} title="Убрать позицию" style={{ border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <label style={{ fontSize: 11, color: '#8a8377' }}>кол-во
+                        <input value={r.qty} inputMode="decimal" onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, qty: v } : x)) }} style={{ ...inp, width: 78, marginTop: 3, textAlign: 'center' }} />
+                      </label>
+                      <label style={{ fontSize: 11, color: '#8a8377' }}>{perCm ? 'цена ₸/см' : 'цена ₸'}
+                        <input value={r.price} inputMode="decimal" onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, price: v } : x)) }} style={{ ...inp, width: 96, marginTop: 3, textAlign: 'right' }} />
+                      </label>
+                      <span style={{ marginLeft: 'auto', fontSize: 14.5, fontWeight: 800 }}>{money(sum)} ₸</span>
+                    </div>
+                  </div>
+                )
+              })}
+              <button onClick={() => setEditCat(true)} style={{ border: '1.5px dashed #d8d3cc', background: '#fff', color: '#5f5952', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>＋ Добавить позицию из каталога</button>
+            </div>
+
+            <div style={{ padding: 12, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Наличка<input value={editPay.cash} inputMode="decimal" onChange={e => setEditPay(p => ({ ...p, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ ...inp, marginTop: 3, textAlign: 'right' }} /></label>
+                <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>Каспи<input value={editPay.kaspi} inputMode="decimal" onChange={e => setEditPay(p => ({ ...p, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ ...inp, marginTop: 3, textAlign: 'right' }} /></label>
+                <label style={{ flex: 1, fontSize: 11, color: '#5f5952' }}>QR<input value={editPay.qr} inputMode="decimal" onChange={e => setEditPay(p => ({ ...p, qr: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ ...inp, marginTop: 3, textAlign: 'right' }} /></label>
+                <label style={{ width: 96, fontSize: 11, color: '#5f5952' }}>Скидка ₸<input value={editDisc} inputMode="decimal" onChange={e => setEditDisc(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="0" style={{ ...inp, marginTop: 3, textAlign: 'right' }} /></label>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
+                <span>Итого к оплате</span>
+                <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: DARK }}>{money(editNet)} ₸</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
+                <span>Оплачено / долг</span>
+                <span style={{ marginLeft: 'auto', fontWeight: 800, color: Math.max(0, editNet - (num(editPay.cash) + num(editPay.kaspi) + num(editPay.qr))) > 0 ? '#c0532a' : GREEN }}>
+                  {money(num(editPay.cash) + num(editPay.kaspi) + num(editPay.qr))} / {money(Math.max(0, editNet - (num(editPay.cash) + num(editPay.kaspi) + num(editPay.qr))))} ₸
+                </span>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#8a8377' }}>Старая накладная сторнируется, чек проводится заново — склад и касса пересчитаются.</div>
+              <button disabled={busy} onClick={saveEdit} style={{ border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `💾 Сохранить чек · ${money(editNet)} ₸`}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* каталог для добавления позиции в правку чека */}
+      {editCat && <StoreCatalog orgId={user.orgId} onPick={items => {
+        setEditRows(rs => [...rs, ...items.map((it: any) => {
+          const prod = products.find((p: any) => norm(p.name) === norm(it.name1c))
+          return { productId: prod?.id, name1c: it.name1c, qty: String(it.qty || 1), price: String(Number(prod?.priceRetail) || 0), unit: it.unit || 'шт', widthCm: it.widthCm }
+        })])
+        setEditCat(false)
+      }} onClose={() => setEditCat(false)} />}
+
       {retFor && (() => {
         const poss = (retFor.positions || [])
         const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: retQty[p.id] || 0, price: p.price, widthCm: p.widthCm }), 0)
@@ -1117,12 +1228,19 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 })}
                 {/* счёт возврата */}
                 <div style={{ marginTop: 4 }}>
-                  <div style={{ fontSize: 12, color: '#5f5952', marginBottom: 6, fontWeight: 700 }}>Счёт возврата</div>
+                  <div style={{ fontSize: 12, color: '#5f5952', marginBottom: 6, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span>Счёт возврата</span>
+                    {/* чем платили — тем и возвращаем: подсказка, чтобы деньги не ушли не с того счёта */}
+                    <span style={{ fontWeight: 600, color: '#8a8377' }}>
+                      чек оплачен: {[Number(retFor.paidCash) > 0 && `нал ${money(Number(retFor.paidCash))}`, Number(retFor.paidKaspi) > 0 && `каспи ${money(Number(retFor.paidKaspi))}`, Number(retFor.paidQr) > 0 && `QR ${money(Number(retFor.paidQr))}`].filter(Boolean).join(' · ') || 'в долг'}
+                    </span>
+                  </div>
                   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     {accounts.length === 0 && <span style={{ fontSize: 12.5, color: '#c0532a' }}>Нет счетов кассы</span>}
                     {accounts.map((a: any) => {
                       const on = retAcc === a.id
-                      return <button key={a.id} onClick={() => setRetAcc(a.id)} style={{ border: on ? 'none' : '1.5px solid #e6e2dc', background: on ? DARK : '#fff', color: on ? '#fff' : '#4a443c', borderRadius: 9, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>{a.name}</button>
+                      const rec = payAccOf(retFor) === a.id   // рекомендованный — тот, которым платили
+                      return <button key={a.id} onClick={() => setRetAcc(a.id)} style={{ border: on ? 'none' : `1.5px solid ${rec ? GREEN : '#e6e2dc'}`, background: on ? DARK : '#fff', color: on ? '#fff' : '#4a443c', borderRadius: 9, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>{a.name}{rec && !on ? ' ✓' : ''}</button>
                     })}
                   </div>
                 </div>
@@ -1189,6 +1307,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 {/* Погасить долг — открывает шторку со смешанной оплатой */}
                 {checkDebt(o) > 0 && (
                   <button onClick={() => { const c = viewChk; setViewChk(null); openRepay(c) }} style={{ marginTop: 6, border: 'none', background: GREEN, color: '#fff', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>💵 Погасить долг · {money(checkDebt(o))} ₸</button>
+                )}
+                {/* Правка чека: кол-во, цена, позиции и счета оплаты — без возврата и перепробития */}
+                {retSum === 0 && (
+                  <button onClick={() => { const c = viewChk; setViewChk(null); openEdit(c) }} style={{ marginTop: 6, border: '1.5px solid #d8d3cc', background: '#fff', color: DARK, borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>✏️ Изменить чек</button>
                 )}
                 <button onClick={() => { const c = viewChk; setViewChk(null); openReturn(c) }} style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>↩ Возврат по чеку</button>
                 <button disabled={busy} onClick={() => doCancelSale(viewChk)} title="Полностью отменить продажу (товар на склад, деньги снять, чек аннулировать)" style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: busy ? 'default' : 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>🗑 Отменить продажу</button>

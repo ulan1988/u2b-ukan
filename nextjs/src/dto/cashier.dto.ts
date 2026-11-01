@@ -51,3 +51,27 @@ export const returnSchema = z.object({
   items: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive() })).optional(), // пусто → весь чек
   accountId: z.string().uuid().optional(),        // счёт возврата (cash_accounts.id); пусто → «в долг» (без денег)
 })
+
+// Правка пробитого чека (касса магазина): новый состав позиций + оплата + скидка/покупатель.
+// Старая накладная сторнируется, чек проводится заново (см. cashier.service.editCheck).
+export const editCheckSchema = z.object({
+  uid: z.string().uuid().optional(),
+  cardId: z.string().min(1),
+  positions: z.array(z.object({
+    posId: z.string().optional(),               // есть → правим строку, нет → добавляем новую
+    productId: z.string().uuid().optional(),
+    name1c: z.string().min(1),
+    qty: z.coerce.number().positive(),
+    unit: z.string().optional(),
+    price: z.coerce.number().nonnegative(),
+    widthCm: z.coerce.number().optional(),
+  })).min(1),
+  cash: z.coerce.number().nonnegative().optional().default(0),
+  kaspi: z.coerce.number().nonnegative().optional().default(0),
+  qr: z.coerce.number().nonnegative().optional().default(0),
+  change: z.coerce.number().nonnegative().optional().default(0),
+  changeFrom: z.string().optional().default(''),
+  discountSum: z.coerce.number().nonnegative().optional(),
+  discountPct: z.coerce.number().nonnegative().optional(),
+  contactId: z.string().uuid().optional(),
+})

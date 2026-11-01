@@ -138,3 +138,14 @@ export async function produceStock(body: { uid?: string; items: { name?: string;
   const r = await post('/api/branch/produce-stock', body)
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, produced: r.data?.produced as number | undefined }
 }
+
+// Касса магазина: правка пробитого чека (кол-во/цена/позиции/счета оплаты).
+export async function editCheck(body: {
+  uid?: string; cardId: string
+  positions: { posId?: string; productId?: string; name1c: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+  cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
+  discountSum?: number; discountPct?: number; contactId?: string
+}) {
+  const r = await post('/api/branch/check', body)
+  return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, total: r.data?.total as number | undefined, debt: r.data?.debt as number | undefined }
+}

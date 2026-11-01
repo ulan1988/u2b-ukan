@@ -493,3 +493,66 @@ export async function syncSellerBankToHq(sellerOrgId: string) {
   }
   return { ok: true as const, done }
 }
+
+// ── РЕДАКТИРОВАНИЕ ПРОБИТОГО ЧЕКА (касса магазина) ───────────────────────────────────────
+// Продавец ошибся в кол-ве/цене/счёте или забыл позицию — вместо «возврат + пробить заново»
+// правим чек на месте: сторно старой расходной и оплат → новый состав позиций → проводим снова
+// (payCard). Номер накладной будет новый, история карточки сохраняет след правки.
+// Чек с возвратом править нельзя — сначала отмените возврат (иначе разъедутся остатки).
+export interface EditCheckInput {
+  positions: { posId?: string; productId?: string; name1c: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+  cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
+  discountSum?: number; discountPct?: number
+  contactId?: string
+}
+export async function editCheck(cardId: string, i: EditCheckInput, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Чек не найден' }
+  if (!i.positions?.length) return { ok: false as const, error: 'В чеке должна остаться хотя бы одна позиция' }
+  const { db, sqlClient } = await import('../lib/db')
+  const { documents, payments } = await import('../db/schema')
+  const { eq, and, ne } = await import('drizzle-orm')
+
+  // возврат по чеку уже делали — правка запрещена (иначе остатки и деньги разъедутся)
+  const [ret] = await sqlClient`
+    select count(*)::int c from documents
+    where type='return_in' and status<>'cancelled' and source_order_id=${cardId}
+  ` as unknown as Array<any>
+  if (Number(ret?.c) > 0) return { ok: false as const, error: 'По чеку был возврат — правка запрещена, отмените возврат' }
+
+  // 1) сторно: документы чека + все оплаты по ним
+  const docs = await db.select({ id: documents.id }).from(documents)
+    .where(and(eq(documents.sourceOrderId, cardId), ne(documents.status, 'cancelled')))
+  for (const d of docs) { await db.delete(payments).where(eq(payments.documentId, d.id)); await cancelDocument(d.id) }
+  await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, paidCash: '0', paidKaspi: '0', paidQr: '0', changeSum: '0', changeFrom: '', payment: '' })
+
+  // 2) новый состав позиций: что убрали — удаляем, что изменилось — правим, новое — добавляем
+  const { ensureProduct } = await import('./producer.service')
+  const old = await repo.positionsByCard(cardId)
+  const keep = new Set((i.positions.map(p => p.posId).filter(Boolean)) as string[])
+  for (const p of old) if (!keep.has(p.id)) await repo.deletePosition(p.id)
+  let idx = old.length
+  for (const p of i.positions) {
+    const name = (p.name1c || '').trim()
+    const productId = p.productId || (await ensureProduct(name))
+    const patch: any = {
+      productId, name1c: name, oral: name, qty: String(Number(p.qty)), unit: p.unit || 'шт',
+      price: String(Number(p.price) || 0), widthCm: p.widthCm != null ? String(Number(p.widthCm)) : null,
+    }
+    if (p.posId && old.some(o => o.id === p.posId)) await repo.updatePosition(p.posId, patch)
+    else await repo.insertPosition({ id: `${cardId}-P${++idx}`, cardId, leg: 2, status: 'Доставлено', ...patch } as any)
+  }
+
+  // 3) скидка/покупатель и повторное проведение чека
+  const patchCard: any = {}
+  if (i.discountSum !== undefined) patchCard.discountSum = String(Math.max(0, Number(i.discountSum) || 0))
+  if (i.discountPct !== undefined) patchCard.discountPct = String(Math.max(0, Number(i.discountPct) || 0))
+  if (i.contactId) patchCard.contactId = i.contactId
+  if (Object.keys(patchCard).length) await repo.updateOrder(cardId, patchCard)
+
+  const res = await payCard(cardId, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
+  if (!res.ok) return res
+  await repo.updateOrder(cardId, { status: 'Доставлено' })
+  await repo.insertHistory({ cardId, action: 'edit', detail: `Чек изменён: ${i.positions.length} поз., нал ${i.cash || 0}, каспи ${i.kaspi || 0}, QR ${i.qr || 0}`, userName: actor?.name || 'Система' })
+  return { ...res, id: cardId }
+}
