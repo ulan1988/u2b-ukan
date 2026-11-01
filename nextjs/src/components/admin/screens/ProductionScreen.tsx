@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { fetchRefs, stockOverview } from '@/lib/api/refs'
-import { listProduction, createProduction, getDocument } from '@/lib/api/docs'
+import { listProduction, createProduction, getDocument, cancelDocument } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
 
 const TABS = [
@@ -107,6 +107,14 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
   const load = useCallback(() => { listProduction(orgId).then((d: any) => setDocs(d || [])) }, [orgId])
   useEffect(() => { load() }, [load])
 
+  // Отмена производства: сторно документа — изделия снимаются со склада, сырьё возвращается.
+  async function cancelProd(d: any) {
+    if (!confirm(`Отменить производство ${d.number}?\n\nИзделия будут сняты со склада, списанное сырьё вернётся.`)) return
+    const r: any = await cancelDocument(d.id)
+    if (r.ok === false) { onMsg('⚠ ' + (r.error || 'Не удалось отменить')); return }
+    onMsg(`↩ Производство ${d.number} отменено`); load()
+  }
+
   const pById = (id: string) => products.find(p => p.id === id)
   const setIn = (i: number, patch: any) => setIns(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
   const setOut = (i: number, patch: any) => setOuts(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
@@ -127,7 +135,7 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>проведено: <b style={{ color: COLORS.text }}>{docs.length}</b></span>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>проведено: <b style={{ color: COLORS.text }}>{docs.filter((d: any) => d.status !== 'cancelled').length}</b>{docs.some((d: any) => d.status === 'cancelled') && <> · отменено: <b style={{ color: '#b03020' }}>{docs.filter((d: any) => d.status === 'cancelled').length}</b></>}</span>
         <button onClick={() => setOpen(o => !o)} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{open ? '× Свернуть' : '+ Новое производство'}</button>
       </div>
 
@@ -175,27 +183,32 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
       {docs.length === 0 ? <div style={{ padding: 30, color: COLORS.textMuted, background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', textAlign: 'center' }}>Производств пока нет.</div>
         : <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr style={{ background: '#f8f6f3' }}>{['НОМЕР', 'ДАТА', 'ИЗДЕЛИЯ', 'СУММА'].map(h => <th key={h} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: h === 'СУММА' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ background: '#f8f6f3' }}>{['НОМЕР', 'ДАТА', 'ИЗДЕЛИЯ', 'СУММА', ''].map(h => <th key={h} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: h === 'СУММА' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
               <tbody>
-                {docs.map((d, i) => (
-                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: i > 0 ? '1px solid #f1efec' : 'none', cursor: 'pointer' }}>
-                    <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: COLORS.primary, fontSize: 13 }}>{d.number}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13, color: '#5f5952' }}>{fmtDate(d.date)}</td>
+                {docs.map((d, i) => {
+                  const off = d.status === 'cancelled'
+                  return (
+                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: i > 0 ? '1px solid #f1efec' : 'none', cursor: 'pointer', opacity: off ? .55 : 1 }}>
+                    <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: off ? '#8a837a' : COLORS.primary, fontSize: 13, textDecoration: off ? 'line-through' : 'none' }}>{d.number}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 13, color: '#5f5952' }}>{fmtDate(d.date)}{off && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#b03020', background: '#faeaea', padding: '2px 7px', borderRadius: 6 }}>отменено</span>}</td>
                     <td style={{ padding: '10px 14px', fontSize: 13, color: '#5f5952' }}>{d.items || '—'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700 }}>{fmtMoney(Number(d.total))} ₸</td>
+                    <td style={{ padding: '6px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {!off && <button onClick={e => { e.stopPropagation(); cancelProd(d) }} title="Отменить производство (сторно)" style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>}
+                    </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>}
 
-      {openDocId && <ProdDocDrawer id={openDocId} onClose={() => setOpenDocId(null)} />}
+      {openDocId && <ProdDocDrawer id={openDocId} onClose={() => setOpenDocId(null)} onCancelDoc={async (d: any) => { await cancelProd(d); setOpenDocId(null) }} />}
     </div>
   )
 }
 
 // ─── Просмотр документа производства (шторка справа) ────────────────────────────
-function ProdDocDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+function ProdDocDrawer({ id, onClose, onCancelDoc }: { id: string; onClose: () => void; onCancelDoc?: (d: any) => void }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => { setLoading(true); getDocument(id).then((d: any) => setData(d)).finally(() => setLoading(false)) }, [id])
@@ -247,6 +260,10 @@ function ProdDocDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               <span style={{ fontWeight: 700, fontSize: 15 }}>Итого выпуск</span>
               <span style={{ marginLeft: 'auto', fontWeight: 800, fontSize: 17, color: COLORS.primary }}>{fmtMoney(Number(doc.total))} ₸</span>
             </div>
+            {/* Сторно: изделия снимаются со склада, списанное сырьё возвращается */}
+            {doc.status === 'cancelled'
+              ? <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 10, background: '#faeaea', color: '#b03020', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>Производство отменено</div>
+              : onCancelDoc && <button onClick={() => onCancelDoc(doc)} style={{ marginTop: 16, width: '100%', padding: '13px', borderRadius: 10, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', cursor: 'pointer', fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить производство</button>}
           </>
         )}
       </div>
