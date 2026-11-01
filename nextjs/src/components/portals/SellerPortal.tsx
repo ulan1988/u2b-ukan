@@ -663,7 +663,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             {folders.map(f => {
               const on = folder === f.key
               return (
-                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
+                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter(''); setColor('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
               )
             })}
             <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ flexShrink: 0, width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
@@ -675,7 +675,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               {row.vals.map(v => {
                 const on = path[row.level] === v
                 return (
-                  <button key={v} onClick={() => { setThick(''); setPath(prev => { const next = prev.slice(0, row.level); if (prev[row.level] !== v) next[row.level] = v; return next }) }}
+                  <button key={v} onClick={() => { setThick(''); setColor(''); setPath(prev => { const next = prev.slice(0, row.level); if (prev[row.level] !== v) next[row.level] = v; return next }) }}
                     style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #e2ddd5', background: on ? PRIMARY : '#fff', color: on ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{v}</button>
                 )
               })}
