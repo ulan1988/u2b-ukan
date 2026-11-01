@@ -25,6 +25,15 @@ const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e', 
 type Tab = 'cash' | 'checks' | 'debts' | 'order'
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
+
+// Остаток склада прямо в строке каталога: сколько есть / нет / в минусе.
+function StockTag({ qty, unit }: { qty: number | undefined; unit: string }) {
+  const q = Number(qty) || 0
+  const st = q > 0 ? { bg: '#e8f5ee', c: '#2e8a5e' } : q < 0 ? { bg: '#faeaea', c: '#b03020' } : { bg: '#f1efec', c: '#8a8377' }
+  return <span style={{ background: st.bg, color: st.c, fontWeight: 800, fontSize: 11.5, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+    {q === 0 ? 'нет' : `${q.toLocaleString('ru-RU')} ${unit}`}
+  </span>
+}
 const qfmt = (n: number) => Number((n || 0).toFixed(3)).toLocaleString('ru-RU')   // кол-во (до 3 знаков, лист по частям)
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
@@ -63,6 +72,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [tab, setTab] = useState<Tab>('cash')
   const [toast, setToast] = useState('')
   const [cags, setCags] = useState<any[]>([]); const [products, setProducts] = useState<any[]>([])
+  const [stock, setStock] = useState<Record<string, number>>({})   // остаток склада магазина: productId → кол-во
   const [rows, setRows] = useState<Row[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
   const [checkExpanded, setCheckExpanded] = useState(false)   // чек-шторка: свёрнута (видно каталог) / раскрыта
@@ -129,6 +139,16 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       setHqBridge(hq ? ((r.contragents || []).find((c: any) => c.orgId === user.orgId && c.orgRefId === hq.id && !c.archived) || null) : null)
     })
   }, [user.orgId])
+
+  // Остаток склада магазина — показываем прямо в каталоге, чтобы продавец сразу видел, сколько есть.
+  const loadStock = useCallback(() => {
+    fetch(`/api/stock?orgId=${user.orgId}&overview=1`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
+      const m: Record<string, number> = {}
+      for (const s of (Array.isArray(d) ? d : [])) m[s.id] = Number(s.qty) || 0
+      setStock(m)
+    }).catch(() => {})
+  }, [user.orgId])
+  useEffect(() => { loadStock() }, [loadStock])
 
   const SELLER_KEY = `u2b_seller_${user.orgId}`
   useEffect(() => {
@@ -401,7 +421,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось пробить чек')); return }
     setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
-    await load()
+    await load(); loadStock()
     showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
   }
 
@@ -420,7 +440,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
-    await load()
+    await load(); loadStock()
     showMsg(`🏢 Долг на Адал Строй · ${money(net)} ₸ — долг магазина уменьшен`)
   }
 
@@ -454,7 +474,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const r = await cancelStoreSale({ uid: user.id, cardId: o.id })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setViewChk(null); await load(); showMsg('✓ Продажа отменена')
+    setViewChk(null); await load(); loadStock(); showMsg('✓ Продажа отменена')
   }
   function toggleRetPos(id: string) {
     setRetSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -471,7 +491,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const r = await returnSale({ uid: user.id, cardId: retFor.id, items, accountId: retAcc })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setRetFor(null); await load()
+    setRetFor(null); await load(); loadStock()
     showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
   }
 
@@ -751,7 +771,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Показываем 1С-название (алиасы отключены). */}
                     <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                    <div style={{ fontSize: 11.5, color: '#a09889' }}>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</div>
+                    <div style={{ fontSize: 11.5, color: '#a09889', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                      <span>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</span>
+                      <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />
+                    </div>
                   </div>
                   {izd ? (
                     // Изделие: см задаётся в карточке (per-cm) — кнопка открывает выбор см+кол-во.

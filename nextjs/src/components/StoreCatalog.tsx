@@ -24,8 +24,18 @@ const FOLDERS = [
 const inp: CSSProperties = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, fontFamily: 'inherit', boxSizing: 'border-box', width: '100%', outline: 'none' }
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 
+// Остаток на складе прямо в строке каталога: есть / нет / в минусе.
+function StockTag({ qty, unit }: { qty: number | undefined; unit: string }) {
+  const q = Number(qty) || 0
+  const st = q > 0 ? { bg: '#e8f5ee', c: '#2e8a5e' } : q < 0 ? { bg: '#faeaea', c: '#b03020' } : { bg: '#f1efec', c: '#8a8377' }
+  return <span style={{ background: st.bg, color: st.c, fontWeight: 800, fontSize: 11.5, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+    {q === 0 ? 'нет' : `${q.toLocaleString('ru-RU')} ${unit}`}
+  </span>
+}
+
 export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (items: PickedPos[]) => void; onClose: () => void; orgId?: string }) {
   const [products, setProducts] = useState<any[]>([])
+  const [stock, setStock] = useState<Record<string, number>>({})   // остаток склада: productId → кол-во
   const [folder, setFolder] = useState(FOLDERS[0].key)
   const [path, setPath] = useState<string[]>([])
   const [thick, setThick] = useState('')
@@ -41,6 +51,16 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
   useEffect(() => {
     const u = orgId ? `/api/products?orgId=${orgId}` : '/api/products'
     fetch(u).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [orgId])
+
+  // Остаток по складу своей орг — продавец сразу видит, сколько есть (без перехода в «Склад»).
+  useEffect(() => {
+    if (!orgId) return
+    fetch(`/api/stock?orgId=${orgId}&overview=1`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
+      const m: Record<string, number> = {}
+      for (const s of (Array.isArray(d) ? d : [])) m[s.id] = Number(s.qty) || 0
+      setStock(m)
+    }).catch(() => {})
   }, [orgId])
 
   const byName = useMemo(() => { const m: Record<string, any> = {}; for (const p of products) m[norm(p.name)] = p; return m }, [products])
@@ -221,7 +241,10 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
               <div key={p.id} onClick={() => { if (izd && !build && color) setBuild({ base: p, cm: '', qty: '1' }) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default', opacity: (activeFolder.build && !color) ? 0.5 : 1 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                  <div style={{ fontSize: 11.5, color: '#a09889' }}>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : p.unit || 'шт'}</div>
+                  <div style={{ fontSize: 11.5, color: '#a09889', display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</span>
+                    {!izd && orgId && <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />}
+                  </div>
                 </div>
                 {izd ? (
                   <span style={{ width: 40, height: 40, borderRadius: 11, background: PRIMARY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 700, flexShrink: 0 }}>+</span>
