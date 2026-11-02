@@ -242,9 +242,18 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const ids = items.map(r => r.productId).filter(Boolean) as string[]
     if (ids.length) p.set('productIds', ids.join(','))
     const map: Record<string, number> = await fetch(`/api/pricing?${p}`).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    // Изделие без своей цены за штуку: берём цену за см (по цвету → общую «Изделие») и умножаем на см из имени — это цена ШТУКИ.
+    const cmOf = (n: string) => { const m = isIzdelie(n) ? n.match(/(\d+(?:[.,]\d+)?)\s*см\s*$/i) : null; return m ? Number(m[1].replace(',', '.')) : 0 }
+    const need = items.filter(r => !((r.productId && map[r.productId]) || map[r.name1c]) && cmOf(r.name1c) > 0)
+    let perCm: Record<string, number> = {}
+    if (need.length) {
+      const q = new URLSearchParams({ names: need.map(r => r.name1c).join('|'), orgId: user.orgId })
+      if (client) q.set('contragentId', client)
+      perCm = await fetch(`/api/pricing?${q}`).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    }
     return items.map(r => {
-      const v = (r.productId && map[r.productId]) || map[r.name1c] || 0
-      return v > 0 && !r.price ? { ...r, price: v } : r
+      const v = (r.productId && map[r.productId]) || map[r.name1c] || ((perCm[r.name1c] || 0) * cmOf(r.name1c)) || 0
+      return v > 0 && !r.price ? { ...r, price: Math.round(v * 100) / 100 } : r
     })
   }, [user.orgId])
 
