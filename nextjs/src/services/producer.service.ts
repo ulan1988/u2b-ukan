@@ -96,6 +96,14 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   const positions = await repo.positionsByCard(cardId)
   let targets = positions.filter((p: any) => (p.name1c || p.oral) && Number(p.qty) > 0)
+  // Чужие позиции карточки НЕ производим: в карточке головного рядом могут стоять позиции
+  // стороннего поставщика (их везёт логист). Производим только своё — без поставщика
+  // (прямой заказ мастера) или с поставщиком-филиалом (leg=1).
+  {
+    const { legForSuppliers } = await import('../lib/legDetect')
+    const legMap = await legForSuppliers(targets.map((p: any) => p.supplierId))
+    targets = targets.filter((p: any) => !p.supplierId || legMap[p.supplierId] === 1)
+  }
   // Карточку уже проводили (авто-производство на «Готов к доставке»)? Тогда выпускаем только
   // дописанные после этого позиции — у них ещё нет product_id. Иначе выпустили бы всё повторно.
   if (await alreadyProduced(cardId)) targets = targets.filter((p: any) => !p.productId)

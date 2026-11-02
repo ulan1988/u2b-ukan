@@ -252,8 +252,19 @@ export async function listForBranch(target: { name: string; orgId: string; contr
   const { organizations } = await import('../db/schema')
   const { eq } = await import('drizzle-orm')
   const [org] = await db.select({ kind: organizations.kind }).from(organizations).where(eq(organizations.id, target.orgId)).limit(1)
-  if (org && org.kind !== 'hq') for (const o of await repo.listByOrg(target.orgId)) ids.add(o.id)
-  return withPositions(await repo.ordersByIds(Array.from(ids)))
+  // Карточки СВОЕЙ орг (прямые заказы мастера, продажи магазина) — видны целиком.
+  const own = new Set<string>()
+  if (org && org.kind !== 'hq') for (const o of await repo.listByOrg(target.orgId)) { own.add(o.id); ids.add(o.id) }
+  const rows = await withPositions(await repo.ordersByIds(Array.from(ids)))
+
+  // В ЧУЖОЙ карточке (книга головного) филиал видит ТОЛЬКО СВОИ позиции — те, где он поставщик.
+  // Позиции с другим поставщиком везёт логист; на стол мастера они попадать не должны, иначе
+  // карточка «от стола заказа» целиком уезжает в кабинет филиала.
+  const nrm = (x?: string | null) => (x || '').trim().toLowerCase().replace(/ё/g, 'е')
+  const mine = new Set<string>(target.contragentId ? [target.contragentId] : [])
+  for (const c of (await refsRepo.listContragents()) as any[]) if (nrm(c.name) === nrm(target.name)) mine.add(c.id)
+  const isMine = (p: any) => (p.supplierId ? mine.has(p.supplierId) : Number(p.leg) === 1)
+  return rows.map((o: any) => own.has(o.id) ? o : { ...o, positions: (o.positions || []).filter(isMine) })
 }
 
 // Заявки клиента (кабинет): созданные им (fromId).
