@@ -30,13 +30,16 @@ export async function POST(req: NextRequest) {
 }
 
 // Автоцены: цена под тип клиента (retail|opt|spec). Для изделий это цена ЗА СМ.
-// GET ?productIds=a,b,c&names=Изделие 7024 15 см|…&contragentId=… → { [id|name]: price }
+// GET ?productIds=a,b,c&names=Изделие 7024 15 см|…&contragentId=…&exact=1 → { [id|name]: price }
+// exact=1 — БЕЗ отката изделия на «Изделие {цвет}»/«Изделие» (те цены за см). Нужен магазину:
+// там изделие — обычный штучный товар со своей ценой за штуку, цену листогиба подставлять нельзя.
 // Возвращаем и по id (товар из 1С), и по имени (изделие ещё без товара — матчим по имени).
 export async function GET(req: NextRequest) {
   const p = new URL(req.url).searchParams
   const ids = (p.get('productIds') || '').split(',').filter(Boolean)
   const names = (p.get('names') || '').split('|').map(s => s.trim()).filter(Boolean)
   const contragentId = p.get('contragentId')
+  const exact = p.get('exact') === '1'
   if (!ids.length && !names.length) return NextResponse.json({})
 
   const s = await sessionFromRequest(req)
@@ -58,7 +61,7 @@ export async function GET(req: NextRequest) {
     const baseOf = (n: string) => n.replace(/\s*\d+([.,]\d+)?\s*см\s*$/i, '').trim()
     const keysFor = (n: string) => {
       const ks = [n.toLowerCase()]                                       // 1. точное
-      if (isIzdelie(n)) { ks.push(baseOf(n).toLowerCase()); ks.push('изделие') }  // 2. по цвету  3. общий
+      if (isIzdelie(n) && !exact) { ks.push(baseOf(n).toLowerCase()); ks.push('изделие') }  // 2. по цвету  3. общий
       return Array.from(new Set(ks))
     }
     const allKeys = new Set<string>(); for (const n of names) for (const k of keysFor(n)) allKeys.add(k)

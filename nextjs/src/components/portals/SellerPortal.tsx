@@ -6,6 +6,9 @@
 // оплата в один тап (Нал / Каспи / В долг), развёрнутая оплата (QR, сдача, смешанная) — по «⋯».
 // Чек = карточка-продажа в книге филиала + расходная (склад филиала −) + оплаты, всё это
 // делает `cashier.service.sellDirect`.
+// ВАЖНО: магазин — НЕ листогиб. Изделие здесь обычный ШТУЧНЫЙ товар: цена в чеке — за штуку,
+// сумма = кол-во × цена (см уже внутри имени «Изделие 9003 19 см»). Поэтому чек не ставит
+// widthCm в строки и не подставляет цену за см (прайс запрашивается с exact=1).
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fmtTime, fmtDateTime } from '@/lib/adminFmt'
 import StoreCatalog from '@/components/StoreCatalog'
@@ -234,6 +237,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!names.length) return items
     const p = new URLSearchParams({ names: names.join('|') })
     if (client) p.set('contragentId', client)
+    p.set('exact', '1')   // цена ТОЧНО этого товара (за штуку); откат на цену/см листогиба не берём
     p.set('orgId', user.orgId)   // розничные цены СВОЕЙ орг (не сессии зрителя)
     const ids = items.map(r => r.productId).filter(Boolean) as string[]
     if (ids.length) p.set('productIds', ids.join(','))
@@ -372,14 +376,14 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const name = itemName({ name: b.base.name, color, cm: b.cm })
     const prod = byName[norm(name)]
     const qty = Math.max(1, num(b.qty) || 1)
-    const widthCm = num(b.cm) || undefined
     setBuild(null)
-    addRow({ key: `${Date.now()}-b`, name1c: name, oral: name, qty, unit: b.base.unit || 'шт', price: 0, widthCm, productId: prod?.id })
+    // см уже в имени — в строку чека его НЕ кладём, иначе сумма пойдёт за см (это режим листогиба)
+    addRow({ key: `${Date.now()}-b`, name1c: name, oral: name, qty, unit: b.base.unit || 'шт', price: 0, productId: prod?.id })
   }
 
   async function addFromCatalog(picked: PickedPos[]) {
     setShowCatalog(false)
-    const fresh: Row[] = picked.map((p, i) => ({ ...p, key: `${Date.now()}-${i}`, price: 0, productId: byName[norm(p.name1c)]?.id }))
+    const fresh: Row[] = picked.map((p, i) => ({ ...p, key: `${Date.now()}-${i}`, price: 0, widthCm: undefined, productId: byName[norm(p.name1c)]?.id }))
     const priced = await pullPrices(fresh, contactId)
     setRows(rs => [...rs, ...priced])
   }
@@ -1008,7 +1012,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             {/* строки чека */}
             <div style={{ maxHeight: payOpen ? 96 : 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {rows.map(r => {
-                const perCm = isIzdelie(r.name1c)
+                const perCm = isIzdelie(r.name1c) && Number(r.widthCm) > 0
                 const sum = lineAmount({ name: r.name1c, qty: r.qty, price: r.price, widthCm: r.widthCm })
                 return (
                   <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -1115,7 +1119,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
             <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {editRows.map((r, i) => {
-                const perCm = isIzdelie(r.name1c)
+                const perCm = isIzdelie(r.name1c) && Number(r.widthCm) > 0
                 const sum = lineAmount({ name: r.name1c, qty: num(r.qty), price: num(r.price), widthCm: r.widthCm })
                 return (
                   <div key={r.posId || `new-${i}`} style={{ border: '1px solid #f1ede8', borderRadius: 10, padding: 9, display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -1166,7 +1170,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       {editCat && <StoreCatalog orgId={user.orgId} onPick={items => {
         setEditRows(rs => [...rs, ...items.map((it: any) => {
           const prod = products.find((p: any) => norm(p.name) === norm(it.name1c))
-          return { productId: prod?.id, name1c: it.name1c, qty: String(it.qty || 1), price: String(Number(prod?.priceRetail) || 0), unit: it.unit || 'шт', widthCm: it.widthCm }
+          return { productId: prod?.id, name1c: it.name1c, qty: String(it.qty || 1), price: String(Number(prod?.priceRetail) || 0), unit: it.unit || 'шт' }
         })])
         setEditCat(false)
       }} onClose={() => setEditCat(false)} />}
@@ -1199,7 +1203,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   const back = rem <= 0.0000001
                   const on = retSel.has(p.id)
                   const q = retQty[p.id] || 0
-                  const perCm = isIzdelie(p.name1c || p.oral)
+                  const perCm = isIzdelie(p.name1c || p.oral) && Number(p.widthCm) > 0
                   const sum = lineAmount({ name: p.name1c || p.oral, qty: q, price: p.price, widthCm: p.widthCm })
                   return (
                     <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${on ? PRIMARY : '#eee9e2'}`, background: back ? '#f7f5f2' : on ? '#fdf6f2' : '#fff', opacity: back ? 0.6 : 1 }}>
