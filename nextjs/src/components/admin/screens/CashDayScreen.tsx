@@ -6,7 +6,7 @@ import { useState, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
-import { cashDay, cashExpense, cashRemit, cashTabelSet, cashPayZp, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -73,6 +73,12 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     if (cash + kaspi <= 0) { toast('Укажите сумму (нал и/или каспи)'); return }
     const r: any = await cashRemit(orgId, cash, kaspi, date)
     if (r.ok) { toast(`🏢 Сдано головному: нал ${m(cash)} · каспи ${m(kaspi)}`); setIncas({ cash: '', kaspi: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  // Отмена сдачи за день: убирает обе проводки пары (у филиала и у головного).
+  async function undoRemit() {
+    if (!confirm('Отменить сдачу головному за этот день? Деньги вернутся на счета филиала.')) return
+    const r: any = await cashRemitUndo(orgId, date)
+    if (r.ok) { toast(`↩ Сдача отменена: ${m(r.total)}`); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   async function close() {
     if (!confirm('Закрыть смену? Расходы будут проведены.')) return
@@ -391,6 +397,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     <label style={{ flex: 1, fontSize: 10.5, color: COLORS.textLight }}>каспи GOLD → ГО Банк<input value={incas.kaspi} inputMode="decimal" onChange={e => setIncas(x => ({ ...x, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ display: 'block', width: '100%', marginTop: 3, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} /></label>
                   </div>
                   <button onClick={doRemit} style={{ marginTop: 8, width: '100%', border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Сдать головному ↓ (нал → касса · каспи → банк)</button>
+                  <button onClick={undoRemit} style={{ marginTop: 6, width: '100%', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: '#b03020', borderRadius: 7, padding: '8px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить сдачу за этот день</button>
                 </div>
                 {/* Уровень 3: у головного + долг */}
                 <div style={{ background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>

@@ -441,6 +441,21 @@ export async function remitToHQ(orgId: string, cash: number, kaspi: number, date
   return { ok: true as const, cash: c, kaspi: k }
 }
 
+// Отмена инкассации «филиал → головной» за день: удаляем ОБЕ проводки пары (расход филиала
+// на мост + приход головного от обратного моста). Авто-инкассацию магазина (другие комментарии)
+// не трогаем. Нужна, когда сдали не ту сумму / не тот счёт — иначе деньги не вернуть из кабинета.
+export async function remitUndo(orgId: string, date: string, _actor?: Session | null) {
+  const bridge = (await sqlClient`select o.id::text hq from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
+  if (!bridge) return { ok: false as const, error: 'Не найден контрагент-головной' }
+  const del = await sqlClient`delete from payments where date = ${date}
+    and ((org_id = ${orgId} and direction = 'out' and comment like 'Инкассация головному%')
+      or (org_id = ${bridge.hq} and direction = 'in' and comment like ${'Инкассация от «' + orgId + '»%'}))
+    returning amount::numeric amount` as unknown as Array<any>
+  if (!del.length) return { ok: false as const, error: 'За этот день инкассации головному нет' }
+  const total = del.reduce((x: number, r: any) => x + Number(r.amount), 0) / 2
+  return { ok: true as const, removed: del.length, total }
+}
+
 export async function closeMasterShift(orgId: string, date: string, actor?: Session | null) {
   return postFinDay(orgId, date, actor?.id)
 }

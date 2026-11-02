@@ -25,6 +25,7 @@ export const cashDay = (orgId: string, date: string) => getObj<any>(`/api/financ
 export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }) => post('/api/finance/shift', { orgId, ...body })
 export const cashIncassate = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'incassate', cash, kaspi, date })
 export const cashRemit = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'remit', cash, kaspi, date })
+export const cashRemitUndo = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'remitUndo', date })
 export const cashWages = (orgId: string, accountId: string, items: Array<{ who: string; amount: number }>, date: string) => post('/api/finance/shift', { orgId, action: 'wages', accountId, items, date })
 // Табель: сохранить отметки «кто на смене» за день (начисление, деньги не трогаются).
 export const cashTabelSet = (orgId: string, ids: string[], date: string) => post('/api/finance/shift', { orgId, action: 'tabelSet', ids, date })

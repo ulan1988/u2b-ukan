@@ -737,7 +737,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {g.next && <button onClick={() => act(o.id, g.next!.action, `✓ ${g.next!.label.replace(/^[▶✓]\s*/, '')}`)} style={{ marginLeft: 'auto', border: `1.5px solid ${g.color}55`, background: `${g.color}14`, color: g.color, borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>{g.next.label}</button>}
                       {/* «Отправить» логисту — ТОЛЬКО если карточка идёт к головному (Долг к головному).
                           Внутренняя продажа (оплачено касса) и долг самой Нипы логисту не отправляются. */}
-                      {o.pendingDebtHead && <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить логисту</button>}
+                      {o.pendingDebtHead && (isProd(o)
+                        ? <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить логисту</button>
+                        : <span title="Все позиции уже переданы логисту" style={{ alignSelf: 'center', fontSize: 12.5, fontWeight: 700, color: '#2e8a5e', background: '#e8f5ee', borderRadius: 8, padding: '7px 11px' }}>✓ У логиста</span>)}
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 7 }}>
                       <button onClick={() => { setEditOrder(o); setShowDirect(false); setShowStock(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }} title="Открыть карточку в моделе: поменять позиции, кол-во, цены, заказчика" style={{ border: '1.5px solid #d8c4ec', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>✎ Изменить</button>
