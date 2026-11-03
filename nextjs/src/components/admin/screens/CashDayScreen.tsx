@@ -6,7 +6,7 @@ import { useState, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
-import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -24,6 +24,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [wsel, setWsel] = useState<Record<string, boolean>>({})    // Табель: кто отмечен на смене (из employee_shifts)
   const [wbonus, setWbonus] = useState<Record<string, string>>({})  // Выплата: бонус «+40%» вручную по сотруднику
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
+  const [retm, setRetm] = useState({ accountId: '', amount: '' })  // возврат денег ОТ головного на счёт филиала
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
   const [month, setMonth] = useState<any>(null)
@@ -79,6 +80,19 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     if (!confirm('Отменить сдачу головному за этот день? Деньги вернутся на счета филиала.')) return
     const r: any = await cashRemitUndo(orgId, date)
     if (r.ok) { toast(`↩ Сдача отменена: ${m(r.total)}`); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  // Возврат от головного: выручка уже сдана, а на ЗП денег нет — ГО возвращает на выбранный счёт.
+  async function doReturn() {
+    const acc = retm.accountId || (data?.accounts || []).find((a: any) => /банков/i.test(a.name))?.id || (data?.accounts || [])[0]?.id
+    const amount = Number((retm.amount || '').replace(',', '.')) || 0
+    if (!acc || amount <= 0) { toast('Выберите счёт и сумму'); return }
+    const r: any = await cashReturnHQ(orgId, acc, amount, date)
+    if (r.ok) { toast(`↩ Головной вернул ${m(r.amount)} → ${r.to}`); setRetm({ accountId: acc, amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function undoReturn() {
+    if (!confirm('Отменить возврат от головного за этот день?')) return
+    const r: any = await cashReturnUndo(orgId, date)
+    if (r.ok) { toast(`↩ Возврат отменён: ${m(r.total)}`); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   async function close() {
     if (!confirm('Закрыть смену? Расходы будут проведены.')) return
@@ -398,6 +412,18 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   </div>
                   <button onClick={doRemit} style={{ marginTop: 8, width: '100%', border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Сдать головному ↓ (нал → касса · каспи → банк)</button>
                   <button onClick={undoRemit} style={{ marginTop: 6, width: '100%', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: '#b03020', borderRadius: 7, padding: '8px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить сдачу за этот день</button>
+                </div>
+                {/* Возврат ОТ головного: денег на ЗП не хватает — ГО возвращает на счёт филиала (1 действие) */}
+                <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2a5aaa', marginBottom: 7 }}>↩ Вернуть деньги от головного</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select value={retm.accountId || (data.accounts || []).find((a: any) => /банков/i.test(a.name))?.id || ''} onChange={e => setRetm(x => ({ ...x, accountId: e.target.value }))} style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                      {(data.accounts || []).map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <input value={retm.amount} inputMode="decimal" onChange={e => setRetm(x => ({ ...x, amount: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="сумма" style={{ width: 110, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
+                  </div>
+                  <button onClick={doReturn} style={{ marginTop: 8, width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Получить от головного (деньги на счёт → можно платить ЗП)</button>
+                  <button onClick={undoReturn} style={{ marginTop: 6, width: '100%', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: '#b03020', borderRadius: 7, padding: '8px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить возврат за этот день</button>
                 </div>
                 {/* Уровень 3: у головного + долг */}
                 <div style={{ background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>

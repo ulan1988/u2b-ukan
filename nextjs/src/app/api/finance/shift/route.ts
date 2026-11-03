@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { masterShift, cashReport, addShiftExpense, closeMasterShift, incassate, remitToHQ, remitUndo, payWages, setShiftMarks, payShiftZp } from '@/services/shift.service'
+import { masterShift, cashReport, addShiftExpense, closeMasterShift, incassate, remitToHQ, remitUndo, returnFromHQ, returnUndo, payWages, setShiftMarks, payShiftZp } from '@/services/shift.service'
 import { sessionFromRequest } from '@/lib/auth'
 import { today } from '@/lib/num'
 import { pushSignal } from '@/lib/pusherServer'
@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
   else if (b?.action === 'incassate') res = await incassate(orgId, Number(b?.cash), Number(b?.kaspi), date, s)
   else if (b?.action === 'remit') res = await remitToHQ(orgId, Number(b?.cash), Number(b?.kaspi), date, s)
   else if (b?.action === 'remitUndo') res = await remitUndo(orgId, date, s)
+  else if (b?.action === 'returnHQ') res = await returnFromHQ(orgId, b?.accountId, Number(b?.amount), date, s)
+  else if (b?.action === 'returnUndo') res = await returnUndo(orgId, date, s)
   else if (b?.action === 'wages') res = await payWages(orgId, b?.accountId, b?.items || [], date, s)
   else if (b?.action === 'tabelSet') res = await setShiftMarks(orgId, date, Array.isArray(b?.ids) ? b.ids.map(String) : [])
   else if (b?.action === 'payZp') res = await payShiftZp(orgId, date, b?.accountId, Array.isArray(b?.bonuses) ? b.bonuses : [], s)

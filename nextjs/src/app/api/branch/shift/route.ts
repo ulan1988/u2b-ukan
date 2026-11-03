@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { masterShift, addShiftExpense, closeMasterShift, incassate, remitToHQ, remitUndo } from '@/services/shift.service'
+import { masterShift, addShiftExpense, closeMasterShift, incassate, remitToHQ, remitUndo, returnFromHQ, returnUndo } from '@/services/shift.service'
 import { resolveTarget } from '@/services/auth.service'
 import { sessionFromRequest } from '@/lib/auth'
 import { today } from '@/lib/num'
@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
   else if (b?.action === 'incassate') res = await incassate(t.orgId, Number(b?.cash), Number(b?.kaspi), date, s)
   else if (b?.action === 'remit') res = await remitToHQ(t.orgId, Number(b?.cash), Number(b?.kaspi), date, s)
   else if (b?.action === 'remitUndo') res = await remitUndo(t.orgId, date, s)
+  else if (b?.action === 'returnHQ') res = await returnFromHQ(t.orgId, b?.accountId, Number(b?.amount), date, s)
+  else if (b?.action === 'returnUndo') res = await returnUndo(t.orgId, date, s)
   else res = await addShiftExpense(t.orgId, { kind: b?.kind === 'salary' ? 'salary' : 'current', who: b?.who, article: b?.article, accountId: b?.accountId, amount: Number(b?.amount), date }, s)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   return NextResponse.json(res)

@@ -457,6 +457,49 @@ export async function remitUndo(orgId: string, date: string, _actor?: Session | 
   return { ok: true as const, removed: del.length, total }
 }
 
+// «↩ Вернуть деньги от головного»: выручка уже сдана (инкассация), а на ЗП/расход денег нет.
+// Одно действие филиала: выбрать СВОЙ счёт + сумму. Пишем пару проводок — у головного расход
+// с его счёта на обратный мост (долг филиала перед ГО растёт), у филиала приход на выбранный
+// счёт от моста-головного. Обе строки сами появляются в листе «Деньги» своей орг (операция
+// возврата у головного + движение по счёту), поэтому отдельный документ не создаём.
+export async function returnFromHQ(orgId: string, accountId: string, amount: number, date: string, actor?: Session | null) {
+  const a = Math.round(num(amount))
+  if (!(a > 0)) return { ok: false as const, error: 'Укажите сумму возврата' }
+  const [acc] = await sqlClient`select id::text id, name from cash_accounts where id=${accountId} and org_id=${orgId} and archived=false limit 1` as unknown as Array<any>
+  if (!acc) return { ok: false as const, error: 'Счёт филиала не найден' }
+  const bridge = (await sqlClient`select c.id::text id, o.id::text hq from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
+  if (!bridge) return { ok: false as const, error: 'Не найден контрагент-головной' }
+  const hqId = bridge.hq as string
+  const back = (await sqlClient`select id::text id from contragents where org_id=${hqId} and org_ref_id=${orgId} and archived=false limit 1` as unknown as Array<any>)[0]
+  if (!back) return { ok: false as const, error: 'У головного нет контрагента этого филиала' }
+  const orgName = (await sqlClient`select name from organizations where id=${orgId} limit 1` as unknown as Array<any>)[0]?.name || 'филиал'
+  // Счёт-источник у головного: одноимённый, иначе банковский (каспи/QR филиала — это деньги ГО на банке).
+  const hqAcc = await sqlClient`select id::text id, name from cash_accounts where org_id=${hqId} and archived=false` as unknown as Array<any>
+  const src = findAcc(hqAcc, acc.name) || findAcc(hqAcc, 'Банковский счет') || hqAcc[0]
+  const { randomUUID } = await import('crypto')
+  const payRepo = await import('../repositories/payment.repo')
+  const mk = (oid: string, cid: string, dir: string, accId: string | null, comment: string) =>
+    payRepo.insertPayment({ id: randomUUID(), orgId: oid, contragentId: cid, direction: dir, amount: String(a), date, cashAccountId: accId || null, comment } as any)
+  const who = actor?.name ? ' · ' + actor.name : ''
+  await mk(hqId, back.id, 'out', src?.id || null, `Возврат филиалу «${orgName}» · ${acc.name}${who}`)
+  await mk(orgId, bridge.id, 'in', acc.id, `Возврат от головного · ${acc.name}${who}`)
+  return { ok: true as const, amount: a, to: acc.name, from: src?.name || '' }
+}
+
+// Отмена возврата за день: снимаем ОБЕ проводки пары (приход филиала + расход головного).
+export async function returnUndo(orgId: string, date: string, _actor?: Session | null) {
+  const bridge = (await sqlClient`select o.id::text hq from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
+  if (!bridge) return { ok: false as const, error: 'Не найден контрагент-головной' }
+  const orgName = (await sqlClient`select name from organizations where id=${orgId} limit 1` as unknown as Array<any>)[0]?.name || ''
+  const del = await sqlClient`delete from payments where date = ${date}
+    and ((org_id = ${orgId} and direction = 'in' and comment like 'Возврат от головного%')
+      or (org_id = ${bridge.hq} and direction = 'out' and comment like ${'Возврат филиалу «' + orgName + '»%'}))
+    returning amount::numeric amount` as unknown as Array<any>
+  if (!del.length) return { ok: false as const, error: 'За этот день возвратов от головного нет' }
+  const total = del.reduce((x: number, r: any) => x + Number(r.amount), 0) / 2
+  return { ok: true as const, removed: del.length, total }
+}
+
 export async function closeMasterShift(orgId: string, date: string, actor?: Session | null) {
   return postFinDay(orgId, date, actor?.id)
 }
