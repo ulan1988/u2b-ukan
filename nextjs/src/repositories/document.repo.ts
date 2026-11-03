@@ -43,7 +43,17 @@ export async function linkedSaleCustomers(docId: string): Promise<string> {
     from doc_links dl join documents sd on sd.id = dl.sale_doc_id
     join contragents c on c.id = sd.contragent_id
     where dl.purchase_doc_id = ${docId}` as unknown as Array<{ names: string | null }>
-  return r[0]?.names || ''
+  if (r[0]?.names) return r[0].names
+  // Продажа ещё не проведена → doc_links нет. Заказчик известен из автозакупа:
+  // карточка-основание прихода (ЗП) связана с карточками-продажами (procurement_links).
+  const p = await sqlClient`
+    select string_agg(distinct c.name, ', ') as names
+    from documents d
+    join procurement_links pl on pl.purchase_card_id = d.source_order_id
+    join orders so on so.id = pl.sale_card_id
+    join contragents c on c.id = so.contact_id
+    where d.id = ${docId}` as unknown as Array<{ names: string | null }>
+  return p[0]?.names || ''
 }
 
 // Себестоимость продажи (как в рентабельности): связанные приходные + непокрытое × price_in.
@@ -123,9 +133,14 @@ export function listInvoices(orgId: string, type: string | string[]) {
       )`,
       // Заказчик: для ПРОДАЖИ — конечный клиент из карточки-основания; для ПРИХОДА (автозакуп/зеркало)
       // — клиент(ы) продаж, под которые закуплено (через doc_links). «Для кого / на кого долг».
+      // Пока продажа не проведена, doc_links пуст — откатываемся на связи автозакупа
+      // (procurement_links от карточки-основания ЗП), иначе заказчик в списке терялся.
       customer: sql<string>`(case when ${documents.type} = 'sale'
         then (select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})
-        else (select string_agg(distinct c3.name, ', ') from doc_links dl join documents sd on sd.id = dl.sale_doc_id join contragents c3 on c3.id = sd.contragent_id where dl.purchase_doc_id = ${documents.id})
+        else coalesce(
+          (select string_agg(distinct c3.name, ', ') from doc_links dl join documents sd on sd.id = dl.sale_doc_id join contragents c3 on c3.id = sd.contragent_id where dl.purchase_doc_id = ${documents.id}),
+          (select string_agg(distinct c4.name, ', ') from procurement_links pl join ${orders} o4 on o4.id = pl.sale_card_id join ${contragents} c4 on c4.id = o4.contact_id where pl.purchase_card_id = ${documents.sourceOrderId})
+        )
       end)`,
     })
     .from(documents).leftJoin(contragents, eq(documents.contragentId, contragents.id))
