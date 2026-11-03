@@ -3,12 +3,23 @@ import * as finRepo from '../repositories/finance.repo'
 // Финансовая сводка: дебиторка/кредиторка, касса, стоимость склада + по контрагентам.
 export async function summary(orgId: string) {
   const [t, rows] = await Promise.all([finRepo.totals(orgId), finRepo.contragentBalances(orgId)])
+  // СВОЙ склад, заведённый контрагентом (напр. «Центр-Склад» = сама Адал Строй 2), нужен только
+  // чтобы провести движение — сам себе должен он быть не может. Из долгов такие исключаем
+  // (и из итогов, иначе список и сумма разойдутся). Определяем по совпадению имени со СВОИМ складом.
+  const { sqlClient } = await import('../lib/db')
+  const whs = await sqlClient`select name from warehouses where org_id = ${orgId}` as unknown as Array<{ name: string }>
+  const nrm = (x?: string | null) => (x || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/[s-]+/g, ' ')
+  const ownNames = new Set(whs.map(w => nrm(w.name)))
+  const isOwn = (c: any) => ownNames.has(nrm(c.name))
 
   // Нач. остатки из актов сверки (импорт из 1С): + нам должны, − мы должны.
   const openIn = rows.reduce((s, c) => s + Math.max(0, c.opening || 0), 0)
   const openOut = rows.reduce((s, c) => s + Math.max(0, -(c.opening || 0)), 0)
-  const receivable = openIn + t.sales - t.ret_in - t.pay_in       // дебиторка: нач.остаток + продажи − возвраты покупателя − оплаты от них
-  const payable = openOut + t.purchases - t.ret_out - t.pay_out    // кредиторка: нач.остаток + закупы − возвраты поставщику − оплаты им
+  // Свои «склады-контрагенты» вычитаем из итогов — их строки в списке не показываем.
+  const ownTheyOwe = rows.filter(isOwn).reduce((s2, c) => s2 + ((c.opening || 0) > 0 ? (c.opening || 0) : 0) + c.sales - c.ret_in - c.pay_in, 0)
+  const ownWeOwe = rows.filter(isOwn).reduce((s2, c) => s2 + ((c.opening || 0) < 0 ? -(c.opening || 0) : 0) + c.purchases - c.ret_out - c.pay_out, 0)
+  const receivable = openIn + t.sales - t.ret_in - t.pay_in - ownTheyOwe       // дебиторка: нач.остаток + продажи − возвраты покупателя − оплаты от них
+  const payable = openOut + t.purchases - t.ret_out - t.pay_out - ownWeOwe     // кредиторка: нач.остаток + закупы − возвраты поставщику − оплаты им
   const cash = t.pay_in - t.pay_out                       // движение денег через кассу/банк
 
   const contragents = rows.map(c => {
@@ -18,7 +29,7 @@ export async function summary(orgId: string) {
       theyOwe: (op > 0 ? op : 0) + c.sales - c.ret_in - c.pay_in,     // нам должны (+ нач.остаток)
       weOwe: (op < 0 ? -op : 0) + c.purchases - c.ret_out - c.pay_out, // мы должны (+ нач.остаток)
     }
-  }).filter(c => Math.abs(c.theyOwe) > 0.001 || Math.abs(c.weOwe) > 0.001)
+  }).filter(c => !isOwn(c) && (Math.abs(c.theyOwe) > 0.001 || Math.abs(c.weOwe) > 0.001))
 
   return { receivable, payable, cash, stockValue: t.stock_value, contragents }
 }

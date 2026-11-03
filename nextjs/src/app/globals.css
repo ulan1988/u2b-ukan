@@ -40,6 +40,9 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   }
   .sidebar-open { transform: translateX(0) !important; }
   .mobile-overlay { display: block !important; z-index: 199; }
+  /* Экраны без общей шапки (Финанс, У-Канбан): свой бургер, иначе с телефона
+     не открыть сайдбар и не выйти из аккаунта. */
+  .adm-burger { display: flex !important; }
 }
 
 @layer utilities {
