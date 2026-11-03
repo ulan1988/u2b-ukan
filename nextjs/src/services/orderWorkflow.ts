@@ -232,6 +232,11 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   if (action === 'sendAcc' || action === 'cancel') {
     try { const { releaseCard } = await import('./reserve.service'); await releaseCard(id) } catch {}
   }
+  // Отмена ЗАКУПА: товар не куплен — связанные продажи возвращаем в потребность автозакупа
+  // (иначе они висят у логиста и в «Заказ на закуп» больше не попадают).
+  if (action === 'cancel' && order.kind === 'purchase') {
+    try { const { releaseSalesOfCancelledPurchase } = await import('./procurement.service'); await releaseSalesOfCancelledPurchase(id, actor) } catch (e) { console.error('cancelPurchase', id, e) }
+  }
   // Массовая доставка: все позиции → «Доставлено», резерв снят, документ проводится сразу (1С).
   if (action === 'markAll') {
     await repo.updatePositionsByCard(id, { status: 'Доставлено' })

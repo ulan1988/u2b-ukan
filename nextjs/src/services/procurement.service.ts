@@ -215,3 +215,30 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
 
   return { ok: true as const, draftId: draft.id, added: posValues.length }
 }
+
+// Закуп ОТМЕНЁН → товар не куплен, значит связанные продажи должны снова попасть
+// в «Заказ на закуп». Автозакуп собирает потребность только с Входящих/Приёмки, поэтому
+// продажу, которую закуп уже увёл к логисту (Исходящие), возвращаем в Приёмку —
+// иначе она зависает: и у логиста доставить нечем, и в закуп больше не попадает.
+// Продажи, у которых есть ДРУГОЙ (не отменённый) закуп, не трогаем.
+export async function releaseSalesOfCancelledPurchase(purchaseCardId: string, actor?: Session | null) {
+  const links = await repo.linksByPurchases([purchaseCardId])
+  const saleIds = Array.from(new Set(links.map((l: any) => l.saleCardId).filter(Boolean))) as string[]
+  if (!saleIds.length) return { returned: 0 }
+  const active = new Set((await repo.activeLinksForSales(saleIds)).map((r: any) => r.saleCardId))
+  let returned = 0
+  for (const sid of saleIds) {
+    if (active.has(sid)) continue                       // закуплено другим закупом
+    const [sale] = await orderRepo.getOrder(sid)
+    if (!sale || sale.isCancelled || sale.linkedDocId) continue   // отменена или уже проведена
+    if (!['incoming', 'reception', 'outgoing'].includes(sale.screen || '')) continue
+    if (sale.screen !== 'outgoing') { returned++; continue }       // уже в потребности
+    await orderRepo.updateOrder(sid, { screen: 'reception', block: '', status: 'В ожидании' })
+    await orderRepo.resetPositionsForReturn(sid)
+    try { const { releaseCard } = await import('./reserve.service'); await releaseCard(sid) } catch {}
+    await orderRepo.insertHistory({ cardId: sid, action: 'returnToReception', detail: `↩ Закуп ${purchaseCardId} отменён — возвращена в заказ на закуп`, userName: actor?.name || 'Система' })
+    returned++
+  }
+  if (returned) { try { const { pushSignal } = await import('../lib/pusherServer'); await pushSignal('orders') } catch {} }
+  return { returned }
+}

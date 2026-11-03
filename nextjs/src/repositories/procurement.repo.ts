@@ -56,6 +56,15 @@ export async function purchaseCards(orgId: string) {
 export const linksByPurchases = (ids: string[]) =>
   ids.length ? db.select().from(procurementLinks).where(inArray(procurementLinks.purchaseCardId, ids)) : Promise.resolve([] as any[])
 
+// Действующие (НЕ отменённые) связи закупа по этим продажам — чтобы при отмене одного закупа
+// не вернуть в потребность продажу, которая закуплена другим.
+export const activeLinksForSales = (saleIds: string[]) =>
+  saleIds.length
+    ? db.select({ saleCardId: procurementLinks.saleCardId }).from(procurementLinks)
+        .innerJoin(orders, eq(procurementLinks.purchaseCardId, orders.id))
+        .where(and(inArray(procurementLinks.saleCardId, saleIds), eq(orders.isCancelled, false)))
+    : Promise.resolve([] as { saleCardId: string }[])
+
 // Продажи, у которых связанный закуп ещё НЕ проведён (нет приходной = товар не пришёл).
 // Такие продажи логист не должен видеть в «Продаже» — сначала закуп.
 export async function salesWaitingProcure(saleIds: string[]): Promise<Set<string>> {
