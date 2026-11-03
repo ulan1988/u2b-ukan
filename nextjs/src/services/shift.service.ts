@@ -372,8 +372,11 @@ export async function setShiftMarks(orgId: string, date: string, ids: string[]) 
 // который АДМИН вписывает ВРУЧНУЮ (40% маржи он делит сам, как захочет). Пишет fin_rows
 // article='ЗП' (posted, деньги out со счёта, who=имя). Идемпотентно: по сотрудникам, у кого за
 // этот день уже есть строка ЗП, выплата не повторяется.
-export async function payShiftZp(orgId: string, date: string, accountId: string, bonuses: Array<{ employeeId: string; amount: number }>, _actor?: Session | null) {
-  if (!accountId) return { ok: false as const, error: 'Выберите счёт списания' }
+export async function payShiftZp(orgId: string, date: string, accountId: string, bonuses: Array<{ employeeId: string; amount: number }>, _actor?: Session | null, splits?: Array<{ accountId: string; amount: number }>) {
+  // splits — отмеченные счета и сколько снять с каждого (на одном счёте может не хватать).
+  // Пусто → старое поведение: всё с одного accountId.
+  const pool = (splits || []).filter(x => x?.accountId && num(x.amount) > 0).map(x => ({ accountId: String(x.accountId), left: Math.round(num(x.amount)) }))
+  if (!pool.length && !accountId) return { ok: false as const, error: 'Выберите счёт списания' }
   const marks = await attendance.listMarks(orgId, date)
   const attSet = new Set(marks.map((r: any) => r.employeeId))
   if (!attSet.size) return { ok: false as const, error: 'Отметьте в табеле кто на смене' }
@@ -387,9 +390,21 @@ export async function payShiftZp(orgId: string, date: string, accountId: string,
   const toPay = items.filter((i: any) => i.total > 0 && !paidSet.has((i.who || '').trim().toLowerCase()))
   if (!toPay.length) return { ok: false as const, error: 'ЗП+40% за этот день уже выдана' }
   const fin = await import('../repositories/fin.repo')
+  const need = toPay.reduce((s: number, i: any) => s + i.total, 0)
+  const have = pool.reduce((s, p) => s + p.left, 0)
+  if (pool.length && have + 0.5 < need) return { ok: false as const, error: `Распределено ${have} из ${need} — не хватает ${need - have}` }
+  // Списание по отмеченным счетам по порядку: закончился один — добираем со следующего.
+  const take = (sum: number) => {
+    const out: Array<{ accountId: string; amount: number }> = []
+    let rest = sum
+    for (const p of pool) { if (rest <= 0) break; const t = Math.min(p.left, rest); if (t <= 0) continue; p.left -= t; rest -= t; out.push({ accountId: p.accountId, amount: -t }) }
+    if (rest > 0) out.push({ accountId: pool[pool.length - 1]?.accountId || accountId, amount: -rest })
+    return out
+  }
   let total = 0
   for (const i of toPay) {
-    const r: any = await saveFinRow(orgId, { date, type: 'etc', article: 'ЗП', who: i.who, amounts: [{ accountId, amount: -Math.abs(i.total) }] })
+    const amounts = pool.length ? take(Math.abs(i.total)) : [{ accountId, amount: -Math.abs(i.total) }]
+    const r: any = await saveFinRow(orgId, { date, type: 'etc', article: 'ЗП', who: i.who, amounts })
     if (r?.id) await fin.setPosted([r.id])
     total += i.total
   }

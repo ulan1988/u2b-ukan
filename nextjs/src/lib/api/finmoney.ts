@@ -33,6 +33,7 @@ export const cashWages = (orgId: string, accountId: string, items: Array<{ who: 
 // Табель: сохранить отметки «кто на смене» за день (начисление, деньги не трогаются).
 export const cashTabelSet = (orgId: string, ids: string[], date: string) => post('/api/finance/shift', { orgId, action: 'tabelSet', ids, date })
 // Выплата ЗП+40% отмеченным: оклад (табель) + бонус (админ делит 40% вручную), пишет fin_rows posted.
-export const cashPayZp = (orgId: string, accountId: string, date: string, bonuses: Array<{ employeeId: string; amount: number }>) => post('/api/finance/shift', { orgId, action: 'payZp', accountId, date, bonuses })
+// splits — с каких счетов и сколько снять (отмеченные птичкой); пусто → всё с accountId.
+export const cashPayZp = (orgId: string, accountId: string, date: string, bonuses: Array<{ employeeId: string; amount: number }>, splits?: Array<{ accountId: string; amount: number }>) => post('/api/finance/shift', { orgId, action: 'payZp', accountId, date, bonuses, splits })
 export const cashCloseShift = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'close', date })
 export const cashMonth = (orgId: string, from: string, to: string) => getObj<any>(`/api/finance/shift?mode=month&orgId=${orgId}&from=${from}&to=${to}`, null as any)

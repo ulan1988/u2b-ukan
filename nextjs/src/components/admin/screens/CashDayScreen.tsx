@@ -20,7 +20,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState('')
   const [cur, setCur] = useState({ articleId: '', who: '', accountId: '', amount: '' })   // текущий расход
-  const [wageAcc, setWageAcc] = useState('')                    // счёт списания ЗП
+  const [wageAcc, setWageAcc] = useState('')                    // счёт списания ЗП (дефолт/запасной)
+  const [wpick, setWpick] = useState<Record<string, boolean>>({})  // ЗП: отмеченные счета списания (птички)
+  const [wamt, setWamt] = useState<Record<string, string>>({})     // ЗП: сколько снять с каждого (пусто = остаток)
   const [wsel, setWsel] = useState<Record<string, boolean>>({})    // Табель: кто отмечен на смене (из employee_shifts)
   const [wbonus, setWbonus] = useState<Record<string, string>>({})  // Выплата: бонус «+40%» вручную по сотруднику
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
@@ -31,7 +33,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
 
   const loadedKey = useRef('')
-  const load = useCallback(async () => { const k = orgId + date; if (loadedKey.current !== k) setLoading(true); const d = await cashDay(orgId, date); loadedKey.current = k; setData(d); setWsel(Object.fromEntries(((d?.attendance || []) as string[]).map(id => [id, true]))); setWageAcc(prev => prev || (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''); setLoading(false) }, [orgId, date])
+  const load = useCallback(async () => { const k = orgId + date; if (loadedKey.current !== k) setLoading(true); const d = await cashDay(orgId, date); loadedKey.current = k; setData(d); setWsel(Object.fromEntries(((d?.attendance || []) as string[]).map(id => [id, true]))); const defAcc = (d?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (d?.accounts || [])[0]?.id || ''; setWageAcc(prev => prev || defAcc); setWpick(prev => Object.values(prev).some(Boolean) ? prev : (defAcc ? { [defAcc]: true } : {})); setLoading(false) }, [orgId, date])
   const monthKey = useRef('')
   const loadMonth = useCallback(async () => {
     if (monthKey.current !== orgId + ym) setLoading(true)
@@ -60,13 +62,27 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   // Бонус «+40%» сотрудника (введён вручную), число.
   const bonusEff = (id: string): number => Math.max(0, Math.round(Number(String(wbonus[id] ?? '').replace(/\s/g, '').replace(',', '.')) || 0))
   // Выплата ЗП+40% отмеченным: оклад (табель) + бонус (вручную по каждому).
-  async function payZp() {
-    const acc = wageAcc || (data?.accounts || []).find((a: any) => a.name === 'Основная касса')?.id || (data?.accounts || [])[0]?.id
-    if (!acc) { toast('Нет счёта'); return }
+  // Сумма со счёта при выдаче ЗП: вписанная руками, иначе «остаток» поровну между пустыми птичками.
+  function zpSplits(payTotal: number) {
+    const picked = (data?.accounts || []).filter((a: any) => wpick[a.id])
+    const val = (id: string) => String(wamt[id] ?? '').trim()
+    const typed = picked.filter((a: any) => val(a.id)), blanks = picked.filter((a: any) => !val(a.id))
+    const typedSum = typed.reduce((s: number, a: any) => s + (Number(val(a.id).replace(',', '.')) || 0), 0)
+    const rest = Math.max(0, Math.round(payTotal - typedSum))
+    const each = blanks.length ? Math.floor(rest / blanks.length) : 0
+    return picked.map((a: any, i: number) => {
+      if (val(a.id)) return { accountId: a.id, amount: Math.round(Number(val(a.id).replace(',', '.')) || 0) }
+      const isLast = blanks[blanks.length - 1]?.id === a.id
+      return { accountId: a.id, amount: isLast ? rest - each * (blanks.length - 1) : each }
+    }).filter((x: any) => x.amount > 0)
+  }
+  async function payZp(payTotal: number) {
     const bonuses = (data?.staff || []).filter((u: any) => wsel[u.id]).map((u: any) => ({ employeeId: u.id, amount: bonusEff(u.id) }))
     if (!bonuses.length) { toast('Отметьте в табеле кто на смене'); return }
-    const r: any = await cashPayZp(orgId, acc, date, bonuses)
-    if (r.ok) { toast(`✓ Выдано ЗП+40%: ${r.count} чел · ${m(r.total)}`); setWbonus({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    const splits = zpSplits(payTotal)
+    if (!splits.length) { toast('Отметьте счёт списания и сумму'); return }
+    const r: any = await cashPayZp(orgId, splits[0].accountId, date, bonuses, splits)
+    if (r.ok) { toast(`✓ Выдано ЗП+40%: ${r.count} чел · ${m(r.total)}`); setWbonus({}); setWamt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Инкассация Нипа → головной СО СПЛИТОМ: нал → ГО Осн.касса, каспи(GOLD) → ГО Банковский счёт.
   async function doRemit() {
@@ -508,9 +524,24 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.03em' }}>💵 ВЫДАТЬ ЗП+40%</span>
                         <span style={{ fontSize: 11.5, color: COLORS.textLight }}>пул 40% маржи: <b style={{ color: '#2e8a5e' }}>{m(pool)}</b> · роздано {m(bonusSum)}</span>
-                        <select value={wageAcc} onChange={e => setWageAcc(e.target.value)} style={{ marginLeft: 'auto', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
-                          {accts.map((a: any) => <option key={a.id} value={a.id}>{orgName ? `${orgName} · ` : ''}{a.name}</option>)}
-                        </select>
+                      </div>
+                      {/* Счета списания: птичка + сумма с каждого (пусто = остаток). Если на одном
+                          счёте денег не хватает — отмечаем второй и делим сумму между ними. */}
+                      <div style={{ background: '#fff', borderRadius: 8, padding: '6px 9px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
+                        <div style={{ fontSize: 11.5, color: COLORS.textLight, marginBottom: 4 }}>Снять со счетов (пусто = остаток):</div>
+                        {accts.map((a: any) => {
+                          const on = !!wpick[a.id]
+                          const auto = (zpSplits(payTotal).find((x: any) => x.accountId === a.id) || { amount: 0 }).amount
+                          return (
+                            <div key={a.id} className="cd-wrap" style={{ padding: '4px 0', gap: 8 }}>
+                              <button onClick={() => setWpick(p => ({ ...p, [a.id]: !p[a.id] }))} style={{ width: 19, height: 19, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
+                              <span onClick={() => setWpick(p => ({ ...p, [a.id]: !p[a.id] }))} style={{ flex: 1, minWidth: 0, fontSize: 13, cursor: 'pointer', color: on ? COLORS.text : COLORS.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                              <input value={wamt[a.id] ?? ''} inputMode="decimal" disabled={!on} placeholder={on ? m(auto) : ''}
+                                onChange={e => setWamt(w => ({ ...w, [a.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
+                                style={{ width: 100, textAlign: 'right', padding: '5px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13.5, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none', background: on ? '#fff' : COLORS.bg }} />
+                            </div>
+                          )
+                        })}
                       </div>
                       {rows.map((r: any) => (
                         <div key={r.u.id} className="cd-wrap" style={{ padding: '5px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
@@ -523,7 +554,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                           <b style={{ width: 90, textAlign: 'right', fontSize: 13.5 }}>{m(r.total)}</b>
                         </div>
                       ))}
-                      <button onClick={payZp} disabled={!(payTotal > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Выдать ЗП+40%${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
+                      <button onClick={() => payZp(payTotal)} disabled={!(payTotal > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Выдать ЗП+40%${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
                     </div>
                   )
                 })()}
