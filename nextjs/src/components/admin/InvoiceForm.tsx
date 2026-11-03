@@ -5,6 +5,7 @@ import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument, deleteInvoiceLine } from '@/lib/api/docs'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
+import { fetchRefs } from '@/lib/api/refs'
 
 // «20.000 см» → «20 см» для показа (лишние нули из имени товара)
 const cleanNm = (s: string) => String(s || '').replace(/(\d+)\.0+(\s*см)/gi, '$1$2')
@@ -32,11 +33,12 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState('')
   const [returning, setReturning] = useState(false)
+  const [cags, setCags] = useState<any[]>([])   // контрагенты орг накладной — чтобы править ошибочного
 
   function reload() { return getDocument(id).then((d: any) => {
     if (!d) return
     setData(d)
-    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
+    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), contragentId: d.doc.contragentId || '', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
     const mapped = (d.lines || []).map((l: any, i: number) => ({ ...l, price: Number(l.price), qty: Number(l.qty), block: l.block || '', sortOrder: l.sortOrder != null ? Number(l.sortOrder) : i }))
     setLines(mapped)
     setBlocks(Array.from(new Set(mapped.map((l: any) => l.block).filter(Boolean))) as string[])
@@ -44,6 +46,11 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setPriceCm(izd ? String(Number(izd.price)) : '')
   }) }
   useEffect(() => { reload() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Контрагенты орг этой накладной — для выбора/правки покупателя-поставщика.
+  useEffect(() => {
+    const org = data?.doc?.orgId; if (!org) return
+    fetchRefs(org).then((r: any) => setCags(((r.contragents || []) as any[]).filter(c => !c.archived).sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'))))
+  }, [data?.doc?.orgId])
   // Удалить ошибочную позицию из проведённой накладной (склад/итог пересчитаются).
   async function delLine(l: any) {
     if (!confirm(`Убрать позицию «${cleanNm(l.name)}» из накладной? Товар вернётся на склад, итог пересчитается.`)) return
@@ -85,6 +92,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setBusy(true)
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
+      contragentId: f.contragentId || undefined,
       lines: lines.map((l, i) => ({ id: l.id, price: Number(l.price) || 0, unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
@@ -121,7 +129,14 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
             <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <div><label style={lbl}>НОМЕР (авто, можно менять)</label><input style={inp} value={f.number} onChange={e => setF({ ...f, number: e.target.value })} /></div>
               <div><label style={lbl}>{isSale ? 'ДАТА (день отгрузки)' : 'ДАТА (день приёмки)'}</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
-              <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.contragent?.name || '—'} disabled /></div>
+              {/* Контрагент можно переназначить — иногда при проведении выбирают не того. */}
+              <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label>
+                <select style={inp} value={f.contragentId || ''} onChange={e => setF({ ...f, contragentId: e.target.value })} title="Можно изменить, если выбрали не того — долг перейдёт на нового">
+                  {!f.contragentId && <option value="">— не выбран —</option>}
+                  {!cags.some((c: any) => c.id === f.contragentId) && f.contragentId && <option value={f.contragentId}>{data.contragent?.name || '—'}</option>}
+                  {cags.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
               {!isSale && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
               <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
               {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}
