@@ -38,19 +38,19 @@ export async function insertDocumentPosting(doc: NewDoc, lines: NewLine[], moves
 
 // Заказчик(и) приходной = клиенты продаж, под которые закуплено (doc_links → продажи → контрагент).
 export async function linkedSaleCustomers(docId: string): Promise<string> {
+  // Зеркальная приходная (основание — карточка-продажа): заказчик = получатель продажи.
+  const mir = await sqlClient`
+    select c.name from documents d
+    join orders o on o.id = d.source_order_id and o.kind = 'sale'
+    join contragents c on c.id = o.contact_id
+    where d.id = ${docId}` as unknown as Array<{ name: string | null }>
+  if (mir[0]?.name) return mir[0].name
   const r = await sqlClient`
     select string_agg(distinct c.name, ', ') as names
     from doc_links dl join documents sd on sd.id = dl.sale_doc_id
     join contragents c on c.id = sd.contragent_id
     where dl.purchase_doc_id = ${docId}` as unknown as Array<{ names: string | null }>
   if (r[0]?.names) return r[0].names
-  // Зеркальная приходная (основание — карточка-продажа): заказчик = контрагент продажи.
-  const m = await sqlClient`
-    select c.name from documents d
-    join orders o on o.id = d.source_order_id and o.kind = 'sale'
-    join contragents c on c.id = o.contact_id
-    where d.id = ${docId}` as unknown as Array<{ name: string | null }>
-  if (m[0]?.name) return m[0].name
   // Продажа ещё не проведена → doc_links нет. Заказчик известен из автозакупа:
   // карточка-основание прихода (ЗП) связана с карточками-продажами (procurement_links).
   const p = await sqlClient`
@@ -140,16 +140,17 @@ export function listInvoices(orgId: string, type: string | string[]) {
       )`,
       // Заказчик: для ПРОДАЖИ — конечный клиент из карточки-основания; для ПРИХОДА (автозакуп/зеркало)
       // — клиент(ы) продаж, под которые закуплено (через doc_links). «Для кого / на кого долг».
-      // Пока продажа не проведена, doc_links пуст — откатываемся на связи автозакупа
-      // (procurement_links от карточки-основания ЗП), иначе заказчик в списке терялся.
-      // Последний откат — ЗЕРКАЛЬНАЯ приходная: её основание не закуп, а карточка-ПРОДАЖА
-      // (головной продал филиалу), заказчик = контрагент этой продажи.
+      // Порядок: ЗЕРКАЛЬНАЯ приходная (основание — карточка-ПРОДАЖА, головной продал филиалу)
+      // → заказчик = получатель этой продажи, иначе в колонке всплывал тот, КОМУ филиал потом
+      // перепродал товар (через doc_links), и накладная выглядела чужой.
+      // Дальше — doc_links (под какие продажи закуплено) и связи автозакупа (procurement_links),
+      // которые нужны, пока продажа ещё не проведена.
       customer: sql<string>`(case when ${documents.type} = 'sale'
         then (select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})
         else coalesce(
+          (select c5.name from ${orders} o5 join ${contragents} c5 on c5.id = o5.contact_id where o5.id = ${documents.sourceOrderId} and o5.kind = 'sale'),
           (select string_agg(distinct c3.name, ', ') from doc_links dl join documents sd on sd.id = dl.sale_doc_id join contragents c3 on c3.id = sd.contragent_id where dl.purchase_doc_id = ${documents.id}),
-          (select string_agg(distinct c4.name, ', ') from procurement_links pl join ${orders} o4 on o4.id = pl.sale_card_id join ${contragents} c4 on c4.id = o4.contact_id where pl.purchase_card_id = ${documents.sourceOrderId}),
-          (select c5.name from ${orders} o5 join ${contragents} c5 on c5.id = o5.contact_id where o5.id = ${documents.sourceOrderId} and o5.kind = 'sale')
+          (select string_agg(distinct c4.name, ', ') from procurement_links pl join ${orders} o4 on o4.id = pl.sale_card_id join ${contragents} c4 on c4.id = o4.contact_id where pl.purchase_card_id = ${documents.sourceOrderId})
         )
       end)`,
     })
