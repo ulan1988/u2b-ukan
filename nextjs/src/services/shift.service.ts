@@ -281,9 +281,10 @@ export async function cashReport(orgId: string, from: string, to: string) {
     // Колонка ЗП = табель дня (Σ окладов отмеченных), иначе fin_rows ЗП (r.salary) для старых дней.
     const zpTabel = tabelByDay[r.day]
     const salary = zpTabel !== undefined ? zpTabel : r.salary
-    // Колонка ЗП+40 = ФАКТИЧЕСКИ выданная ЗП за день (Σ fin_rows ЗП = оклад+бонус, r.salary);
-    // если ещё не выдавали — fallback на табель-оклад (начисление).
-    const zpPlus40 = r.salary > 0 ? r.salary : salary
+    // Колонка ЗП+40 = НАЧИСЛЕНИЕ по формуле отчёта: оклад (ЗП) + 40% маржи дня.
+    // Это сумма к выдаче, а не факт выплаты (факт виден в «Расход»/движениях счетов).
+    // При минусовой марже бонуса нет (оклад не срезаем).
+    const zpPlus40 = salary + Math.max(0, split40)
     // Остаток каждого счёта на конец дня = стартовый + все движения по датам ≤ этот день.
     const bal: Record<string, number> = { ...opening }
     for (const md of movDays) { if (md <= r.day) { const mm = movByDay[md]; for (const acc in mm) bal[acc] = (bal[acc] || 0) + mm[acc] } }
