@@ -75,3 +75,13 @@ export const editCheckSchema = z.object({
   discountPct: z.coerce.number().nonnegative().optional(),
   contactId: z.string().uuid().optional(),
 })
+
+// Погашение долга по чеку: смешанная оплата по счетам + день проведения
+// (можно задним числом — деньги попадут в кассу того дня).
+export const payDebtSchema = z.object({
+  uid: z.string().uuid().optional(),
+  cardId: z.string().min(1),
+  splits: z.array(z.object({ accountId: z.string().uuid(), amount: z.coerce.number().positive() })).min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+})
+export type PayDebtInput = z.infer<typeof payDebtSchema>

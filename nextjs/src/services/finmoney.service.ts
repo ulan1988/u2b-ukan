@@ -278,12 +278,10 @@ export async function applyFavorites(orgId: string, date: string) {
 // не было, удаляем его (деньги уходят со счёта, долг клиента возвращается). Удаляем только
 // неподтверждённый платёж без строки «Денег» — обычные платежи этим путём не трогаем.
 export async function reviewClientPayment(orgId: string, paymentId: string, accept: boolean) {
-  const { sqlClient } = await import('../lib/db')
-  const rows = await sqlClient`select id::text id, amount::float amount, accepted from payments
-    where id = ${paymentId} and org_id = ${orgId} and fin_row_id is null limit 1` as unknown as Array<any>
-  if (!rows.length) return { ok: false as const, error: 'Платёж не найден' }
-  if (rows[0].accepted) return { ok: false as const, error: 'Платёж уже принят' }
-  if (accept) await sqlClient`update payments set accepted = true where id = ${paymentId}`
-  else await sqlClient`delete from payments where id = ${paymentId} and accepted = false`
-  return { ok: true as const, amount: Number(rows[0].amount) || 0, accepted: accept }
+  const p = await fin.pendingPayment(orgId, paymentId)
+  if (!p) return { ok: false as const, error: 'Платёж не найден' }
+  if (p.accepted) return { ok: false as const, error: 'Платёж уже принят' }
+  if (accept) await fin.acceptPayment(paymentId)
+  else await fin.deletePendingPayment(paymentId)
+  return { ok: true as const, amount: p.amount, accepted: accept }
 }

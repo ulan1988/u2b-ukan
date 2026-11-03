@@ -1,7 +1,7 @@
 // Справочники для форм (только запросы Drizzle).
 import { db } from '../lib/db'
 import { organizations, contragents, warehouses, products, cashAccounts, specTypes, productPrices } from '../db/schema'
-import { and, eq, ne, or, isNull, isNotNull, getTableColumns, asc } from 'drizzle-orm'
+import { and, eq, ne, or, isNull, isNotNull, inArray, getTableColumns, asc } from 'drizzle-orm'
 
 export const listOrganizations = () =>
   db.select().from(organizations).where(eq(organizations.archived, false))
@@ -77,4 +77,13 @@ export const listCashAccounts = () =>
 export const orgById = async (id: string) => {
   const [o] = await db.select().from(organizations).where(eq(organizations.id, id)).limit(1)
   return o || null
+}
+
+// Имена контрагентов по id (списки карточек: заказчик в шапке у логиста).
+export async function contragentNamesByIds(ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  if (!ids.length) return out
+  const rows = await db.select({ id: contragents.id, name: contragents.name }).from(contragents).where(inArray(contragents.id, ids))
+  for (const r of rows) out[r.id] = r.name
+  return out
 }

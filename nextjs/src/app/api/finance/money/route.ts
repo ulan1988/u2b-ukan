@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import * as svc from '@/services/finmoney.service'
+import { reviewPaymentSchema } from '@/dto/payment.dto'
 import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,11 @@ export async function POST(req: NextRequest) {
   switch (b.action) {
     case 'save': res = await svc.saveFinRow(org, b.row); break
     // Оплата из кабинета клиента: принять (снять метку) / отказать (удалить платёж).
-    case 'payReview': res = await svc.reviewClientPayment(org, String(b.paymentId || ''), !!b.accept); break
+    case 'payReview': {
+      const p = reviewPaymentSchema.safeParse(b)
+      if (!p.success) { res = { ok: false, error: 'Неверные данные платежа' }; break }
+      res = await svc.reviewClientPayment(org, p.data.paymentId, p.data.accept); break
+    }
     case 'delete': res = await svc.deleteFinRow(b.id); break
     case 'reorder': res = await svc.reorderDay(b.ids || []); break
     case 'post':

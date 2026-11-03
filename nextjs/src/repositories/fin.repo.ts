@@ -1,7 +1,7 @@
 // Финанс «Деньги»: дневной кассовый лист. Чтение — sqlClient, запись — drizzle.
 import { db, sqlClient } from '../lib/db'
 import { finRows, finRowAmounts, finRowAlloc, finFavorites, finExpenseArticles, payments, documents } from '../db/schema'
-import { eq, inArray, sql as dsql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql as dsql } from 'drizzle-orm'
 
 // Неоплаченные накладные контрагента (для погашения платежом).
 // Оплата поставщику гасит приходные (наши закупы у него); от клиента — расходные.
@@ -182,3 +182,15 @@ export const docSearch = (orgId: string, q: string) =>
       and (${q} = '' or d.number ilike ${'%' + q + '%'} or c.name ilike ${'%' + q + '%'})
     order by d.created_at desc limit 30` as unknown as Promise<any[]>
 
+
+// ── Оплата из кабинета клиента, ждущая подтверждения (accepted=false) ──────────
+// Берём только «свободный» платёж (без строки «Денег»), чтобы не задеть обычные.
+export async function pendingPayment(orgId: string, id: string) {
+  const [r] = await db.select({ id: payments.id, amount: payments.amount, accepted: payments.accepted })
+    .from(payments).where(and(eq(payments.id, id), eq(payments.orgId, orgId), isNull(payments.finRowId))).limit(1)
+  return r ? { id: r.id, amount: Number(r.amount) || 0, accepted: !!r.accepted } : null
+}
+export const acceptPayment = (id: string) =>
+  db.update(payments).set({ accepted: true }).where(eq(payments.id, id))
+export const deletePendingPayment = (id: string) =>
+  db.delete(payments).where(and(eq(payments.id, id), eq(payments.accepted, false)))
