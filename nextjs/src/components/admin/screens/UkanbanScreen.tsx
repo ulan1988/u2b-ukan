@@ -435,7 +435,7 @@ function StockMode({ orgId, links = false }: { orgId: string; links?: boolean })
   const totalIn = rows.filter(m => m.signed > 0).reduce((s, m) => s + m.signed, 0)
   const totalOut = rows.filter(m => m.signed < 0).reduce((s, m) => s + Math.abs(m.signed), 0)
   const unit = moves[0]?.unit || ''
-  const badge = (t: string) => t === 'purchase' ? { txt: 'Приход', c: '#7a3aaa' } : t === 'sale' ? { txt: 'Расход', c: '#2e8a5e' } : t === 'return_in' ? { txt: '↩ от клиента', c: '#b4574c' } : t === 'return_out' ? { txt: '↩ поставщику', c: '#b4574c' } : { txt: t, c: '#837c72' }
+  const badge = (t: string, role?: string) => t === 'production' ? (role === 'output' ? { txt: '🛠 Выпуск из производства', c: '#c0532a' } : { txt: '🛠 Сырьё в производство', c: '#c0532a' }) : t === 'purchase' ? { txt: 'Приход', c: '#7a3aaa' } : t === 'sale' ? { txt: 'Расход', c: '#2e8a5e' } : t === 'return_in' ? { txt: '↩ от клиента', c: '#b4574c' } : t === 'return_out' ? { txt: '↩ поставщику', c: '#b4574c' } : { txt: t, c: '#837c72' }
 
   return (
     <div>
@@ -472,11 +472,11 @@ function StockMode({ orgId, links = false }: { orgId: string; links?: boolean })
                   </thead>
                   <tbody>
                     {rows.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#9a938a' }}>Движений в периоде нет</td></tr>
-                      : rows.map((m: any, i: number) => { const b = badge(m.type); return (
+                      : rows.map((m: any, i: number) => { const b = badge(m.type, m.role); return (
                         <tr key={i} onClick={() => links && m.docId && setRouteDoc(m.docId)} title={links ? 'Показать путь документа' : ''} style={{ borderTop: '1px solid #f1efec', cursor: links && m.docId ? 'pointer' : 'default' }}>
                           <td style={tdL}>{fmtDate(m.date)}</td>
                           <td style={tdL}><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: b.c }}>{m.number}</span> <span style={{ fontSize: 11, color: b.c }}>{b.txt}</span></td>
-                          <td style={tdL}>{m.contragent || '—'}</td>
+                          <td style={tdL}>{m.contragent || (m.type === 'production' ? (m.note || 'Производство') : '—')}</td>
                           <td style={{ ...tdR, color: m.signed > 0 ? '#2e8a5e' : '#ccc', fontWeight: m.signed > 0 ? 700 : 400 }}>{m.signed > 0 ? `+${qf(m.signed)}` : '—'}</td>
                           <td style={{ ...tdR, color: m.signed < 0 ? '#b4574c' : '#ccc', fontWeight: m.signed < 0 ? 700 : 400 }}>{m.signed < 0 ? `−${qf(Math.abs(m.signed))}` : '—'}</td>
                           <td style={{ ...tdR, fontWeight: 700 }}>{qf(m.balance)} {m.unit}</td>
