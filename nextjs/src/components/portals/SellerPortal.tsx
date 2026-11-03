@@ -98,6 +98,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [editDisc, setEditDisc] = useState('')
   const [editCat, setEditCat] = useState(false)   // открыт каталог для добавления позиции в чек
   const [rcpt, setRcpt] = useState<any>(null)            // чек-превью для показа/отправки (WhatsApp)
+  const [repayDate, setRepayDate] = useState(localDay())  // день погашения долга (можно задним числом)
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
@@ -552,6 +553,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Открыть погашение долга (шторка со смешанной оплатой): по умолчанию весь остаток на 1-й счёт.
   function openRepay(o: any) {
     setRepayFor(o)
+    setRepayDate(localDay())
     setRepaySplit(accounts[0] ? { [accounts[0].id]: String(Math.round(checkDebt(o))) } : {})
   }
   async function doRepaySubmit() {
@@ -559,11 +561,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const splits = accounts.map((a: any) => ({ accountId: a.id, amount: num(repaySplit[a.id] || '') })).filter(s => s.amount > 0)
     if (!splits.length) { showMsg('⚠ Впишите сумму хотя бы на один счёт'); return }
     setBusy(true)
-    const r = await payDebt({ uid: user.id, cardId: repayFor.id, splits })
+    const r = await payDebt({ uid: user.id, cardId: repayFor.id, splits, date: repayDate })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setRepayFor(null); await load()
-    showMsg(`✓ Погашено ${money(r.paid || 0)} ₸${r.debtLeft ? ` · остаток долга ${money(r.debtLeft)}` : ''}`)
+    showMsg(`✓ Погашено ${money(r.paid || 0)} ₸${repayDate !== localDay() ? ' (' + repayDate + ')' : ''}${r.debtLeft ? ` · остаток долга ${money(r.debtLeft)}` : ''}`)
   }
 
   const sold = checks.filter((o: any) => o.prodPhase === 'sold' || o.linkedDocId)
@@ -1349,6 +1351,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <button onClick={() => setRepayFor(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
               </div>
               <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: '#5f5952', fontWeight: 700 }}>📅 День погашения</span>
+                  <input type="date" value={repayDate} onChange={e => setRepayDate(e.target.value || localDay())} style={{ ...inp, marginLeft: 'auto', width: 160 }} />
+                </div>
+                {repayDate !== localDay() && <div style={{ fontSize: 11.5, color: '#b4791a' }}>задним числом — деньги попадут в кассу за {repayDate}</div>}
                 <div style={{ fontSize: 12, color: '#5f5952', fontWeight: 700 }}>Сумма по счетам (можно смешанно):</div>
                 {accounts.map((a: any) => (
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1521,6 +1528,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 </div>
                 <div style={{ textAlign: 'center', fontSize: 12.5, color: PRIMARY, fontWeight: 700, padding: '11px' }}>Спасибо за покупку! 🙌</div>
               </div>
+              {checkDebt(o) > 0.5 && (
+                <button onClick={() => { setRcpt(null); openRepay(o) }} style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 11, padding: '14px', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>💵 Погасить долг · {money(checkDebt(o))} ₸</button>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => sendWhatsApp(o)} style={{ flex: 1, border: 'none', background: '#25D366', color: '#fff', borderRadius: 11, padding: '13px', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📲 WhatsApp</button>
                 <button onClick={() => printCheck(o)} title="Печать (если есть принтер)" style={{ border: '1.5px solid #c9c3b8', background: '#fff', color: '#3a362f', borderRadius: 11, padding: '13px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>🖨 Печать</button>

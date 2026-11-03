@@ -292,7 +292,10 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
 // привязка к документу чека — так остаток долга (net − Σ payments in) уменьшается.
 // splits — разбивка погашения по счетам (смешанная оплата): [{accountId, amount}]. Итог клампится
 // к остатку долга (лишнее по порядку не пишется). Каждый счёт — отдельный приход (payments in).
-export async function payDebt(cardId: string, splits: { accountId: string; amount: number }[], actor?: Session | null) {
+export async function payDebt(cardId: string, splits: { accountId: string; amount: number }[], actor?: Session | null, date?: string) {
+  // date — рабочий день погашения: пусто → сегодня; прошедшая дата проводит деньги тем днём
+  // (попадают в «Кассу дня» и остатки счетов за тот день).
+  const day = /^d{4}-d{2}-d{2}$/.test(String(date || '')) ? String(date) : today()
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Чек не найден' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
@@ -314,7 +317,7 @@ export async function payDebt(cardId: string, splits: { accountId: string; amoun
     const amt = Math.min(Math.max(0, Number(s.amount) || 0), remaining)
     if (amt <= 0) continue
     const pid = randomUUID(); myIds.push(pid)
-    await payRepo.insertPayment({ id: pid, orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: today(), cashAccountId: s.accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
+    await payRepo.insertPayment({ id: pid, orgId: order.orgId, contragentId: order.contactId, direction: 'in', amount: String(amt), date: day, cashAccountId: s.accountId, documentId: order.linkedDocId as string, projectId: (order as any).specProjectId || null, comment: `Погашение долга ${cardId}` })
     remaining -= amt; paidNow += amt
   }
   // Двойной тап/параллельный запрос: если после записи оплат стало больше чека — откатываем свои
@@ -323,9 +326,9 @@ export async function payDebt(cardId: string, splits: { accountId: string; amoun
     await sqlClient`delete from payments where id = any(${myIds})`
     return { ok: false as const, error: 'Долг уже погашен (повторное нажатие)' }
   }
-  await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(paidNow)} ₸ (остаток ${Math.round(debt - paidNow)})`, userName: actor?.name || 'Система' })
+  await repo.insertHistory({ cardId, action: 'debtpay', detail: `Погашение долга: ${Math.round(paidNow)} ₸ (остаток ${Math.round(debt - paidNow)})${day !== today() ? ' · датой ' + day : ''}`, userName: actor?.name || 'Система' })
   try { await syncSellerBankToHq(order.orgId) } catch { /* noop */ }
-  return { ok: true as const, paid: paidNow, debtLeft: Math.max(0, debt - paidNow) }
+  return { ok: true as const, paid: paidNow, debtLeft: Math.max(0, debt - paidNow), date: day }
 }
 
 // ── Касса продавца (филиал-магазин, напр. «Магазин Кристалл») ────────────────────────────

@@ -34,7 +34,7 @@ export async function unpostSale(cardId: string) {
   return { ok: r.ok, error: r.error as string | undefined }
 }
 // Погашение долга по чеку (касса магазина): смешанная оплата — splits [{accountId, amount}].
-export async function payDebt(body: { uid?: string; cardId: string; splits: { accountId: string; amount: number }[] }) {
+export async function payDebt(body: { uid?: string; cardId: string; splits: { accountId: string; amount: number }[]; date?: string }) {
   const r = await post('/api/branch/debt', body)
   return { ok: r.ok, error: r.error as string | undefined, paid: r.data?.paid as number | undefined, debtLeft: r.data?.debtLeft as number | undefined }
 }

@@ -6,7 +6,8 @@ import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
-// Погашение долга по чеку (касса магазина): { cardId, amount, accountId, uid }.
+// Погашение долга по чеку (касса магазина): { cardId, amount|splits, accountId, uid, date }.
+// date — день, которым провести приход (можно задним числом).
 export async function POST(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     : (b?.accountId && Number(b?.amount) > 0 ? [{ accountId: b.accountId, amount: Number(b.amount) }] : [])
   if (!cardId || !splits.length) return NextResponse.json({ error: 'Нужны чек, счёт и сумма' }, { status: 400 })
   await resolveTarget(s, uid)
-  const res: any = await payDebt(cardId, splits, s)
+  const res: any = await payDebt(cardId, splits, s, b?.date)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })
   await pushSignal()
   return NextResponse.json(res)
