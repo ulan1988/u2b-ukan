@@ -71,7 +71,13 @@ export async function getDocument(id: string) {
   }
   // Себестоимость продажи (связанные приходные + непокрытое×price_in) — верная, как в рентабельности.
   const cost = doc.type === 'sale' ? await docRepo.docCost(id) : 0
-  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, cost }
+  // Поставщик расходной: явный (документ) → иначе тот же вывод, что в списке накладных.
+  let supplier: string | null = null
+  if (doc.type === 'sale') {
+    if ((doc as any).supplierId) { const [sp] = await docRepo.contragentById((doc as any).supplierId); supplier = sp?.name || null }
+    else supplier = (await docRepo.saleSupplierFallback(id)) || null
+  }
+  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, supplier, cost }
 }
 
 // Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
@@ -107,6 +113,8 @@ export async function updateDocument(id: string, patch: any) {
   // Контрагент накладной (покупатель у расходной, поставщик у приходной) — правка ошибки
   // выбора. Долг идёт за контрагентом документа, поэтому смена переносит и долг.
   if (patch.contragentId) head.contragentId = String(patch.contragentId)
+  // Поставщик расходной (у кого взят товар). Пусто → очищаем, снова выводится из связей.
+  if (patch.supplierId !== undefined) head.supplierId = patch.supplierId ? String(patch.supplierId) : null
   if (patch.reviewed !== undefined) head.reviewed = !!patch.reviewed
   if (patch.comment !== undefined) head.comment = patch.comment
   if (patch.paidSum !== undefined) head.paidSum = String(Number(patch.paidSum) || 0)

@@ -195,6 +195,10 @@ export const documents = pgTable('documents', {
   type: text('type').notNull(),                           // purchase|sale|production|transfer|act|opening
   number: text('number').notNull(),                       // ЗП-0001-DDMMYY / ПР-0001-DDMMYY
   contragentId: uuid('contragent_id').references(() => contragents.id),
+  // Поставщик РАСХОДНОЙ: у кого взят проданный товар. Центр-Склад бывает и поставщиком,
+  // и просто складом-транзитом, поэтому поставщик хранится отдельно от склада и правится
+  // в форме накладной. Пусто → выводим из связей закупа, иначе из склада отгрузки.
+  supplierId: uuid('supplier_id').references(() => contragents.id),
   warehouseId: uuid('warehouse_id').references(() => warehouses.id),
   date: date('date').notNull(),
   status: text('status').notNull().default('draft'),      // draft|posted|paid|cancelled

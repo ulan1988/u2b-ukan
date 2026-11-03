@@ -38,7 +38,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   function reload() { return getDocument(id).then((d: any) => {
     if (!d) return
     setData(d)
-    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), contragentId: d.doc.contragentId || '', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
+    setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), contragentId: d.doc.contragentId || '', supplierId: d.doc.supplierId || '', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
     const mapped = (d.lines || []).map((l: any, i: number) => ({ ...l, price: Number(l.price), qty: Number(l.qty), block: l.block || '', sortOrder: l.sortOrder != null ? Number(l.sortOrder) : i }))
     setLines(mapped)
     setBlocks(Array.from(new Set(mapped.map((l: any) => l.block).filter(Boolean))) as string[])
@@ -92,7 +92,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setBusy(true)
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
-      contragentId: f.contragentId || undefined,
+      contragentId: f.contragentId || undefined, supplierId: f.supplierId ?? null,
       lines: lines.map((l, i) => ({ id: l.id, price: Number(l.price) || 0, unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
@@ -138,6 +138,14 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                 </select>
               </div>
               {!isSale && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
+              {isSale && (
+                <div><label style={lbl}>ПОСТАВЩИК (у кого взят товар)</label>
+                  <select style={inp} value={f.supplierId || ''} onChange={e => setF({ ...f, supplierId: e.target.value })} title="Центр-Склад бывает и поставщиком, и просто транзитным складом — выберите вручную; пусто = определить по закупу">
+                    <option value="">— по закупу{data.supplier ? `: ${data.supplier}` : ''} —</option>
+                    {cags.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
               {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}
               {!isSale && <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>}

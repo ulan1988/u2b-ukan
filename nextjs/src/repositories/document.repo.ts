@@ -150,6 +150,7 @@ export function listInvoices(orgId: string, type: string | string[]) {
       // На расходной «Заказчик» = сам покупатель, поэтому вместо него показываем поставщика.
       // Закупа не было (товар со своего склада) — показываем склад отгрузки («Центр-Склад»).
       supplier: sql<string>`(case when ${documents.type} = 'sale' then coalesce(
+        (select sc0.name from ${contragents} sc0 where sc0.id = ${documents.supplierId}),
         (select string_agg(distinct pc.name, ', ') from doc_links dl2 join documents pd on pd.id = dl2.purchase_doc_id join contragents pc on pc.id = pd.contragent_id where dl2.sale_doc_id = ${documents.id}),
         (select string_agg(distinct sc.name, ', ') from procurement_links pl2
            join order_positions pp2 on pp2.card_id = pl2.purchase_card_id and lower(trim(coalesce(pp2.name1c, pp2.oral, ''))) = lower(trim(pl2.product))
@@ -243,4 +244,22 @@ export function stockByWarehouse(orgId: string, warehouseId: string) {
     .from(stockMovements)
     .where(and(eq(stockMovements.orgId, orgId), eq(stockMovements.warehouseId, warehouseId)))
     .groupBy(stockMovements.productId)
+}
+
+// Поставщик расходной, когда он не задан явно: связанные приходные (doc_links) → поставщики
+// строк закупа, собранного под эту продажу → склад отгрузки (Центр-Склад как транзит).
+export async function saleSupplierFallback(docId: string): Promise<string> {
+  const r = await sqlClient`
+    select coalesce(
+      (select string_agg(distinct pc.name, ', ') from doc_links dl join documents pd on pd.id = dl.purchase_doc_id
+         join contragents pc on pc.id = pd.contragent_id where dl.sale_doc_id = d.id),
+      (select string_agg(distinct sc.name, ', ') from procurement_links pl
+         join order_positions pp on pp.card_id = pl.purchase_card_id
+           and lower(trim(coalesce(pp.name1c, pp.oral, ''))) = lower(trim(pl.product))
+         join contragents sc on sc.id = pp.supplier_id
+        where pl.sale_card_id = d.source_order_id),
+      (select w.name from warehouses w where w.id = d.warehouse_id)
+    ) as name
+    from documents d where d.id = ${docId}` as unknown as Array<{ name: string | null }>
+  return r[0]?.name || ''
 }
