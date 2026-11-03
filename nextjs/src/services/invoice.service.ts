@@ -44,15 +44,25 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   const transitPos = withProd.filter(p => isTransit(p))
   const numbers: string[] = []
   let mainDoc: any = null   // документ-основание карточки (linkedDocId)
+  // Группы «контрагент → его строки»: по ним же потом строится зеркальная накладная.
+  const docGroups: Array<{ cid: string; pos: any[] }> = []
 
   if (isPurchase) {
-    // ЗАКУП: нормальные строки → приходная со складом; сквозные → приходная без склада (агент).
-    if (normalPos.length) {
-      const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: normalPos.map(p => mkLine(p, Number(p.price) || 0, false)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false }
-      mainDoc = await docSvc.createPurchase(input); numbers.push(mainDoc.number)
+    // ЗАКУП: строки АТОМАРНЫ — закуп бывает смешанный (разные поставщики в одной карточке),
+    // поэтому приходная выписывается на КАЖДОГО поставщика отдельно. Раньше весь закуп уходил
+    // на контрагента первой строки — товар Меллиуса попадал в накладную Нипы.
+    const groupBy = (ps: any[]) => {
+      const m = new Map<string, any[]>()
+      for (const p of ps) { const sid = (p.supplierId as string) || contragentId; const a = m.get(sid) || []; a.push(p); m.set(sid, a) }
+      return Array.from(m.entries())
     }
-    if (transitPos.length) {
-      const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: transitPos.map(p => mkLine(p, Number(p.price) || 0, true)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · закуп мимо склада · ${o.id}`, noStock: true, transit: true, transitAgent }
+    for (const [sid, ps] of groupBy(normalPos)) {
+      const input: any = { orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines: ps.map(p => mkLine(p, Number(p.price) || 0, false)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false }
+      const d = await docSvc.createPurchase(input); numbers.push(d.number); mainDoc = mainDoc || d
+      docGroups.push({ cid: sid, pos: ps })
+    }
+    for (const [sid, ps] of groupBy(transitPos)) {
+      const input: any = { orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines: ps.map(p => mkLine(p, Number(p.price) || 0, true)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · закуп мимо склада · ${o.id}`, noStock: true, transit: true, transitAgent }
       const d = await docSvc.createPurchase(input); numbers.push(d.number); mainDoc = mainDoc || d
     }
   } else {
@@ -61,6 +71,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     const clientLines = withProd.map(p => mkLine(p, Number(p.price) || 0, isTransit(p)))
     const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: clientLines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false, discountSum: Number((o as any).discountSum) || 0 }
     mainDoc = await docSvc.createSale(input); numbers.push(mainDoc.number)
+    if (normalPos.length) docGroups.push({ cid: contragentId, pos: normalPos })
 
     // Сквозные строки → приходная(ые) поставщику по costPrice (долг сквозного агента, не наш финанс).
     const bySupplier = new Map<string, any[]>()
@@ -82,21 +93,20 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   // ПРОТИВОПОЛОЖНУЮ накладную. Только по ОБЫЧНЫМ (не сквозным) строкам — сквозной товар мимо
   // склада, зеркалить его как движение нельзя. Логист довёз материал К производителю (продажа
   // HQ) → у него ПРИХОД; забрал изделие ОТ производителя (закуп HQ) → у него РАСХОД.
+  // Зеркалим ПО ГРУППАМ (у каждого поставщика своя накладная — значит и своё зеркало).
   try {
-    const mirrorPos = isPurchase ? normalPos : normalPos   // зеркалим только складские строки
-    if (mirrorPos.length) {
-      const [cp] = await docRepo.contragentById(contragentId)
+    for (const g of docGroups) {
+      if (!g.pos.length) continue
+      const [cp] = await docRepo.contragentById(g.cid)
       const refOrg = (cp as any)?.orgRefId as string | undefined
-      if (refOrg && refOrg !== o.orgId) {
-        const mwh = await refsRepo.centralWarehouse(refOrg)
-        const [back] = await docRepo.contragentByOrgRef(refOrg, o.orgId)   // в книге refOrg — контрагент «наша орг»
-        if (mwh && back) {
-          const mlines = mirrorPos.map(p => mkLine(p, Number(p.price) || 0, false))
-          const minput: any = { orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `${isPurchase ? 'Продажа головному' : 'Приход материала'} · заявка ${o.id}` }
-          const mdoc = isPurchase ? await docSvc.createSale(minput) : await docSvc.createPurchase(minput)   // HQ закуп→у него расход; HQ продажа→у него приход
-          await orderRepo.insertHistory({ cardId, action: 'invoiceMirror', detail: `Зеркальная ${isPurchase ? 'расходная' : 'приходная'} у «${cp.name}»: ${mdoc.number}`, userName: actor?.name || 'Система' })
-        }
-      }
+      if (!refOrg || refOrg === o.orgId) continue
+      const mwh = await refsRepo.centralWarehouse(refOrg)
+      const [back] = await docRepo.contragentByOrgRef(refOrg, o.orgId)   // в книге refOrg — контрагент «наша орг»
+      if (!mwh || !back) continue
+      const mlines = g.pos.map(p => mkLine(p, Number(p.price) || 0, false))
+      const minput: any = { orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `${isPurchase ? 'Продажа головному' : 'Приход материала'} · заявка ${o.id}` }
+      const mdoc = isPurchase ? await docSvc.createSale(minput) : await docSvc.createPurchase(minput)   // HQ закуп→у него расход; HQ продажа→у него приход
+      await orderRepo.insertHistory({ cardId, action: 'invoiceMirror', detail: `Зеркальная ${isPurchase ? 'расходная' : 'приходная'} у «${cp.name}»: ${mdoc.number}`, userName: actor?.name || 'Система' })
     }
   } catch { /* зеркало не должно ронять основную накладную */ }
 

@@ -162,10 +162,18 @@ export async function listForLogist(orgId: string, userId: string) {
     byCard.get(r.o.id).positions.push(r.p)
   }
   const cards = Array.from(byCard.values())
-  // Продажа не видна логисту, пока связанный закуп не проведён (товар не пришёл).
+// Строка не видна логисту, пока её закуп не проведён (товар не пришёл). Ждёт ПОЗИЦИЯ,
+  // а не карточка: в одной заявке изделие филиала может быть готово, а покупной товар —
+  // ещё в пути. Карточка считается ждущей, только если ждут ВСЕ её строки.
   const procRepo = await import('../repositories/procurement.repo')
-  const waiting = await procRepo.salesWaitingProcure(cards.filter(c => c.kind === 'sale').map(c => c.id))
-  for (const c of cards) c.waitingProcure = waiting.has(c.id)
+  const saleIds = cards.filter(c => c.kind === 'sale').map(c => c.id)
+  const waitPos = await procRepo.positionsWaitingProcure(saleIds)
+  const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
+  for (const c of cards) {
+    if (c.kind !== 'sale') { c.waitingProcure = false; continue }
+    for (const p of c.positions) p.waitingProcure = waitPos.has(key(c.id, p))
+    c.waitingProcure = c.positions.length > 0 && c.positions.every((p: any) => p.waitingProcure)
+  }
   return cards
 }
 

@@ -74,9 +74,11 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
 
   const visOrders = orders.filter(o => inPeriod(o.createdAt, period, day))
   const posInAll = visOrders.flatMap(o => (o.positions || []).filter((p: any) => p.leg === 2 && p.status !== 'Доставлено').map((p: any) => ({ pos: p, order: o })))
-  // Продажа видна логисту ТОЛЬКО после закупа: карточки с непроведённым закупом (waitingProcure) скрыты.
-  const posIn = posInAll.filter(x => !isPurchase(x.order) && !x.order.waitingProcure)
-  const posWaiting = posInAll.filter(x => !isPurchase(x.order) && x.order.waitingProcure)   // серые: ждут прихода закупа
+// Ждём закуп ПОСТРОЧНО: готовую строку (изделие филиала) везём сразу, а покупную —
+  // только после прихода закупа. Флаг приходит на позиции (pos.waitingProcure).
+  const isWaiting = (x: any) => !!(x.pos.waitingProcure ?? x.order.waitingProcure)
+  const posIn = posInAll.filter(x => !isPurchase(x.order) && !isWaiting(x))
+  const posWaiting = posInAll.filter(x => !isPurchase(x.order) && isWaiting(x))   // серые: ждут прихода закупа
   const waitingCount = new Set(posWaiting.map(x => x.order.id)).size
   const posBuy = posInAll.filter(x => isPurchase(x.order))
   const posOut = visOrders.flatMap(o => (o.positions || []).filter((p: any) => p.status === 'Доставлено').map((p: any) => ({ pos: p, order: o })))

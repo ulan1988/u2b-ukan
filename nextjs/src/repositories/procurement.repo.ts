@@ -75,6 +75,26 @@ export async function salesWaitingProcure(saleIds: string[]): Promise<Set<string
   return new Set(rows.map(r => r.id))
 }
 
+// Ждущие закупа ПОЗИЦИИ продаж: ключ «cardId::товар» (имя в нижнем регистре).
+// Строка ждёт, если по ней есть связь с закупом, который не отменён и ещё не проведён
+// (нет приходной). Строки закупа ПЛЕЧА ФИЛИАЛА (leg=1) не считаем: их привозит филиал
+// своей отгрузкой, а не закуп — иначе готовое изделие зря висело бы серым у логиста.
+export async function positionsWaitingProcure(saleIds: string[]): Promise<Set<string>> {
+  if (!saleIds.length) return new Set()
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`
+    select pl.sale_card_id sid, lower(trim(pl.product)) prod
+    from procurement_links pl
+    join orders o on o.id = pl.purchase_card_id and o.is_cancelled = false and o.linked_doc_id is null
+    left join order_positions pp on pp.card_id = pl.purchase_card_id
+      and lower(trim(coalesce(pp.name1c, pp.oral, ''))) = lower(trim(pl.product))
+    where pl.sale_card_id = any(${saleIds as any})
+    group by 1, 2
+    having coalesce(bool_or(coalesce(pp.leg, 2) <> 1), true)
+  ` as unknown as Array<any>
+  return new Set(rows.map((r: any) => `${r.sid}::${r.prod}`))
+}
+
 export const ordersByIds = (ids: string[]) =>
   ids.length ? db.select({ id: orders.id, fromName: orders.fromName, comment: orders.comment }).from(orders).where(inArray(orders.id, ids)) : Promise.resolve([] as any[])
 
