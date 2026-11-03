@@ -211,17 +211,17 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
   return { ok: true as const, number: doc.number, produced: outputs.length, created, skipped, consumed }
 }
 
-// Орг, чей склад производит: если у позиций есть поставщик-филиал (контрагент привязан к
-// пользователю role=branch), берём орг этого филиала. Иначе — орг-владелец карточки.
+// Орг, чей склад производит: если у позиций есть поставщик-филиал, берём орг этого филиала.
+// Иначе — орг-владелец карточки. Идентичность филиала — через legDetect (мост org_ref_id /
+// кабинет / имя): раньше искали только users.role='branch', а кабинеты филиалов заведены
+// как role='admin' — из-за этого выпуск Нипы падал на Центр-Склад головного.
 async function producingOrg(positions: any[], fallbackOrgId: string): Promise<string> {
   const supIds = Array.from(new Set(positions.map((p: any) => p.supplierId).filter(Boolean))) as string[]
   if (!supIds.length) return fallbackOrgId
-  const { db } = await import('../lib/db')
-  const { users } = await import('../db/schema')
-  const { eq, and, inArray } = await import('drizzle-orm')
-  const rows = await db.select({ orgId: users.orgId }).from(users)
-    .where(and(eq(users.role, 'branch'), inArray(users.contragentId, supIds))).limit(1)
-  return rows[0]?.orgId || fallbackOrgId
+  const { branchOrgForSuppliers } = await import('../lib/legDetect')
+  const map = await branchOrgForSuppliers(supIds)
+  for (const id of supIds) if (map[id]) return map[id]
+  return fallbackOrgId
 }
 
 // Производство уже проводилось по этой карточке? Признак — запись истории action='produce'.

@@ -28,6 +28,33 @@ export async function branchSuppliers(): Promise<{ ids: Set<string>; names: Set<
   return { ids, names }
 }
 
+// Орг филиала-ПОСТАВЩИКА по контрагенту — нужна производству (на чей склад выпускать).
+// Та же идентичность, что в branchSuppliers: сначала мост (contragents.org_ref_id — контрагент
+// И ЕСТЬ эта орг), затем кабинет по привязанному контрагенту, затем по имени. Проверка только
+// по role='branch' здесь не годится: кабинеты филиалов заведены как role='admin'.
+export async function branchOrgForSuppliers(supplierIds: (string | null | undefined)[]): Promise<Record<string, string>> {
+  const ids = Array.from(new Set(supplierIds.filter(Boolean))) as string[]
+  const out: Record<string, string> = {}
+  if (!ids.length) return out
+  const [cags, us] = await Promise.all([
+    db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId }).from(contragents).where(inArray(contragents.id, ids)),
+    db.select({ orgId: users.orgId, name: users.name, contragentId: users.contragentId, role: users.role })
+      .from(users).leftJoin(organizations, eq(users.orgId, organizations.id))
+      .where(or(eq(users.role, 'branch'), inArray(organizations.kind, ['producer_seller', 'seller']))),
+  ])
+  const byCag = new Map<string, string>(), byName = new Map<string, string>()
+  for (const u of us) {
+    if (u.role !== 'branch' && !u.contragentId) continue
+    if (u.contragentId) byCag.set(u.contragentId, u.orgId)
+    byName.set(norm(u.name), u.orgId)
+  }
+  for (const c of cags) {
+    const org = c.orgRefId || byCag.get(c.id) || byName.get(norm(c.name))
+    if (org) out[c.id] = org
+  }
+  return out
+}
+
 // Набор имён филиалов — совместимость (используется как запасной матч).
 export async function branchNameSet(): Promise<Set<string>> {
   return (await branchSuppliers()).names
