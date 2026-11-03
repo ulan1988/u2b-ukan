@@ -82,9 +82,11 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   }
 
   // Заказ мастера производства → продолжающийся код ЗК-NN-DDMMYY; иначе ЗП-/ПР-0001-DDMMYY.
-  const id = i.prodOrder
-    ? prodOrderNumber(await repo.nextProdSeq())
-    : await repo.nextFreeOrderId(orgId, i.kind)   // глобально уникальный (меж орг не коллизит)
+  // Прямой заказ админа → ЗКП-0001-DDMMYY (закуп к логисту), заказ мастера → ЗК-NN,
+  // остальное — ЗП-/ПР-0001-DDMMYY. Все id глобально уникальны (меж орг не коллизят).
+  const id = i.directOrder ? await repo.nextFreeByKind('direct')
+    : i.prodOrder ? prodOrderNumber(await repo.nextProdSeq())
+    : await repo.nextFreeOrderId(orgId, i.kind)
 
   // «От имени заказчика»: продажа на контрагента, у которого есть кабинет → привязываем fromId
   // к его кабинет-юзеру, чтобы карточка появилась в его «Кабинете заказчика» как будто он сам создал.
@@ -96,7 +98,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const screen = i.screen || 'incoming'
   // Заявки кабинета/филиала падают во «Входящие» (Новые) головного — голова видит их сразу.
   const order = {
-    id, orgId, kind: i.kind,
+    id, orgId, kind: i.kind, directOrder: !!i.directOrder,
     screen, block: i.block || '', toacc: false,
     status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
     source: i.source, isDraft: i.isDraft ?? false,
@@ -759,4 +761,17 @@ export async function getCard(id: string) {
   if (!order) return null
   const [positions, history] = await Promise.all([repo.positionsByCard(id), repo.historyByCard(id)])
   return { order, positions, history }
+}
+
+// Удалить карточку целиком (ошибочно заведённая). Позиции, история, сообщения и связи
+// автозакупа уходят каскадом по FK. Защита: карточку с ПРОВЕДЁННЫМИ накладными не удаляем —
+// иначе документы осиротеют; сначала сторно, потом удаление.
+export async function deleteOrder(cardId: string, actor?: Session | null) {
+  const [o] = await repo.getOrder(cardId)
+  if (!o) return { ok: false as const, error: 'Заявка не найдена' }
+  const docRepo = await import('../repositories/document.repo')
+  const docs = await docRepo.postedBySourceOrder(cardId)
+  if (o.linkedDocId || docs.length) return { ok: false as const, error: 'По карточке есть проведённые накладные — сначала сторнируйте их' }
+  await repo.deleteOrder(cardId)
+  return { ok: true as const, id: cardId, by: actor?.name || 'Система' }
 }

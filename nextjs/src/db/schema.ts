@@ -352,6 +352,9 @@ export const orders = pgTable('orders', {
   cold: boolean('cold').notNull().default(false),
   cutConfirmed: boolean('cut_confirmed').notNull().default(false), // (устар.) раскрой подтверждён мастером — раскрой убран из потока
   prodPhase: text('prod_phase').notNull().default(''),    // этап мастера: '' → accepted (Принял) → working (В работе) → ready (Готов к доставке) → sent (Отправлено)
+  // Прямой заказ админа: карточка живёт закупом ЗКП (логист закупает и везёт на Центр-Склад),
+  // после прихода переименовывается в продажу ПРД и едет к клиенту.
+  directOrder: boolean('direct_order').notNull().default(false),
   payment: text('payment').notNull().default(''),         // способ оплаты карточки: '' | Наличка | Каспи | Долг | Смешанная | Частично (ярлык)
   paidCash: money('paid_cash').notNull().default('0'),    // касса мастера: получено наличкой (→ Основная касса)
   paidKaspi: money('paid_kaspi').notNull().default('0'),  // получено каспи (→ KASPI GOLD, личный мастера)

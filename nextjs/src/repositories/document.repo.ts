@@ -263,3 +263,8 @@ export async function saleSupplierFallback(docId: string): Promise<string> {
     from documents d where d.id = ${docId}` as unknown as Array<{ name: string | null }>
   return r[0]?.name || ''
 }
+
+// Проведённые документы карточки-основания (защита от удаления карточки с накладными).
+export const postedBySourceOrder = (cardId: string) =>
+  db.select({ id: documents.id, number: documents.number }).from(documents)
+    .where(and(eq(documents.sourceOrderId, cardId), ne(documents.status, 'cancelled')))

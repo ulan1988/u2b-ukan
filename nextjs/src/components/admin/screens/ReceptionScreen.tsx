@@ -11,6 +11,7 @@ import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { COLORS } from '@/lib/colors'
+import DirectOrderWizard from '@/components/admin/DirectOrderWizard'
 import { fmtDate, fmtTime, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
 import { autoPrices, settings as fetchSettings, createSpecProject } from '@/lib/api/refs'
@@ -59,6 +60,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     loadSettings()
   }, [orgId]) // eslint-disable-line
 
+  const [wizard, setWizard] = useState(false)   // «Прямой заказ»: клиент → каталог → поставщик → логисту
   function openForm(k: 'sale' | 'purchase') { setKind(k); setOpen(true); setRows([emptyPos()]) }
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
@@ -164,6 +166,11 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               </button>
             )
           })}
+          {/* Прямой заказ — короткий путь: 4 шага и сразу логисту (ЗКП), без стола приёмки. */}
+          <button onClick={() => setWizard(true)} title="Клиент → каталог → кол-во → поставщик → сразу логисту"
+            style={{ padding: '9px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, background: '#f6f3f0', color: '#0f7b3d', boxShadow: 'inset 0 0 0 1.5px #cfe8d8' }}>
+            ⚡ Прямой заказ
+          </button>
           {open && kind === 'purchase' && !transit && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
           {open && (
             <label title="Товар идёт мимо склада (drop-ship) — только деньги/долги, приход/расход склада НЕ трогается" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: kind === 'purchase' && !transit ? 0 : 'auto', fontSize: 13, fontWeight: 700, color: transit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: transit ? '#f3eeff' : 'transparent', border: `1.5px solid ${transit ? '#d8c4ec' : '#e6e2dc'}`, borderRadius: 8, padding: '6px 12px' }}>
@@ -245,6 +252,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               <button onClick={pullPrices} style={{ border: '1.5px solid #e6c9b8', borderRadius: 7, padding: '6px 16px', background: '#fff8f5', color: '#c0532a', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>💰 Подтянуть цены</button>
             </div>
             {showCatalog && <NomPicker onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
+            {wizard && <DirectOrderWizard orgId={orgId} onClose={() => setWizard(false)} onCreated={id => { setWizard(false); onReload(); toast(`⚡ Прямой заказ ${id} — у логиста`) }} />}
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec' }}>
               <Btn onClick={() => submit(true)} disabled={busy}>Сохранить черновик</Btn>

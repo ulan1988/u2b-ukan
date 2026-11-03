@@ -81,6 +81,22 @@ export async function nextFreeOrderId(orgId: string, kind: string): Promise<stri
   throw new Error('Не удалось сгенерировать номер документа')
 }
 
+// Свободный номер по виду документа из lib/num (ЗКП — прямой заказ, ПРД — он же после
+// прихода на склад). Счётчик — по уже выданным номерам этого префикса, id проверяем на занятость.
+export async function nextFreeByKind(kind: string): Promise<string> {
+  const { docNumber } = await import('../lib/num')
+  const prefix = docNumber(kind, 0).split('-')[0]
+  const rows = await db.select({ id: orders.id }).from(orders).where(sql`${orders.id} LIKE ${prefix + '-%'}`)
+  let count = rows.length
+  for (let i = 0; i < 20000; i++) {
+    const id = docNumber(kind, count)
+    const [ex] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, id)).limit(1)
+    if (!ex) return id
+    count++
+  }
+  throw new Error('Не удалось сгенерировать номер документа')
+}
+
 // Продолжающийся номер заказа мастера: max NN из ВСЕХ ЗК-NN-… + 1. Глобально (не по орг):
 // id заказа — глобальный первичный ключ, поэтому номер должен быть уникален меж орг.
 export async function nextProdSeq() {
@@ -201,3 +217,6 @@ export const countPositions = async (cardId: string) => {
   const r = await db.select({ id: orderPositions.id }).from(orderPositions).where(eq(orderPositions.cardId, cardId))
   return r.length
 }
+
+// Удалить карточку (позиции/история/сообщения/связи — каскадом по FK).
+export const deleteOrder = (id: string) => db.delete(orders).where(eq(orders.id, id))

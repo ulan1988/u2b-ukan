@@ -42,6 +42,7 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
           {pct >= 100 && <span style={{ fontSize: 12, background: '#e8f5ee', color: '#2e8a5e', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>✓ Готово</span>}
           {pct < 100 && !overdue && <span style={{ fontSize: 12, background: '#fff0ea', color: '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>В работе</span>}
           {order.isChanged && <span style={{ fontSize: 12, background: '#fdf8e1', color: '#8a6f00', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>⚡ Изменено клиентом</span>}
+          {order.directOrder && <span title="Собран админом и сразу отправлен логисту" style={{ fontSize: 12, background: '#e8f5ee', color: '#0f7b3d', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>⚡ Прямой заказ</span>}
           <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: barColor(pct) }}>{pct}%</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -80,7 +81,10 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
           <Btn onClick={() => { navigator.clipboard.writeText(order.trackingLink); toast('Ссылка скопирована!') }}>📎 Ссылка клиенту</Btn>
           <Btn onClick={() => onAction(order.id, 'returnOut')}>← Вернуть</Btn>
           <Btn onClick={() => onAction(order.id, 'returnToReception')}>← На стол приёмки</Btn>
-          <Btn variant="primary" onClick={() => onAction(order.id, 'markAll')}>✓ Всё выполнено</Btn>
+          {/* Доставку отмечает ЛОГИСТ — у админа этой кнопки нет (иначе ломается порядок
+              статусов и накладные проводятся раньше времени). Админу — отмена и удаление. */}
+          <Btn onClick={() => onAction(order.id, 'cancel')}>✕ Отменить</Btn>
+          <Btn onClick={() => { if (confirm(`Удалить заявку ${order.id}? Позиции и история удалятся.`) && confirm('Точно удалить? Это действие нельзя отменить.')) onAction(order.id, 'deleteCard') }}>🗑 Удалить</Btn>
           {order.toacc && <Btn variant="primary" onClick={() => onAction(order.id, 'sendAcc')}>Отправить в К Учёту →</Btn>}
         </div>
       </div>

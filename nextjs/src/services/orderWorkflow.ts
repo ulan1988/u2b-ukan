@@ -209,6 +209,8 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   }
   // Правка после доставки: открыть карточку (сторно цепочки) / подтвердить правку (переподнять цепочку).
   if (action === 'reopenEdit') { const { reopenForEdit } = await import('./order.service'); return await reopenForEdit(id, actor) }
+  // Удаление карточки — не переход статуса, а снятие записи целиком (ошибочно заведённая).
+  if (action === 'deleteCard') { const { deleteOrder } = await import('./order.service'); return await deleteOrder(id, actor) }
   if (action === 'confirmChange') { const { confirmChange } = await import('./order.service'); return await confirmChange(id, actor) }
   const def = TRANSITIONS[action]
   if (!def) return { ok: false as const, error: 'Неизвестное действие' }
