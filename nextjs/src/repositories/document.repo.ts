@@ -148,12 +148,14 @@ export function listInvoices(orgId: string, type: string | string[]) {
       // Поставщик РАСХОДНОЙ: у кого куплен проданный товар. Сначала связанные приходные
       // (doc_links), иначе поставщики строк закупа, собранного под эту продажу (автозакуп).
       // На расходной «Заказчик» = сам покупатель, поэтому вместо него показываем поставщика.
+      // Закупа не было (товар со своего склада) — показываем склад отгрузки («Центр-Склад»).
       supplier: sql<string>`(case when ${documents.type} = 'sale' then coalesce(
         (select string_agg(distinct pc.name, ', ') from doc_links dl2 join documents pd on pd.id = dl2.purchase_doc_id join contragents pc on pc.id = pd.contragent_id where dl2.sale_doc_id = ${documents.id}),
         (select string_agg(distinct sc.name, ', ') from procurement_links pl2
            join order_positions pp2 on pp2.card_id = pl2.purchase_card_id and lower(trim(coalesce(pp2.name1c, pp2.oral, ''))) = lower(trim(pl2.product))
            join contragents sc on sc.id = pp2.supplier_id
-          where pl2.sale_card_id = ${documents.sourceOrderId})
+          where pl2.sale_card_id = ${documents.sourceOrderId}),
+        (select w2.name from ${warehouses} w2 where w2.id = ${documents.warehouseId})
       ) end)`,
       customer: sql<string>`(case when ${documents.type} = 'sale'
         then (select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})
