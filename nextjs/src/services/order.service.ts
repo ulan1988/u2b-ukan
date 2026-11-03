@@ -165,6 +165,15 @@ export async function listForLogist(orgId: string, userId: string) {
 // Строка не видна логисту, пока её закуп не проведён (товар не пришёл). Ждёт ПОЗИЦИЯ,
   // а не карточка: в одной заявке изделие филиала может быть готово, а покупной товар —
   // ещё в пути. Карточка считается ждущей, только если ждут ВСЕ её строки.
+  // Имя ЗАКАЗЧИКА (контрагент карточки): логист группирует список по нему. Заявку часто
+  // заводит мастер филиала, и в шапке «ЗАКАЗЧИК» стоял он (fromName), а не покупатель.
+  const cIds = Array.from(new Set(cards.map((c: any) => c.contactId).filter(Boolean))) as string[]
+  if (cIds.length) {
+    const { sqlClient } = await import('../lib/db')
+    const cs = await sqlClient`select id::text id, name from contragents where id = any(${cIds as any})` as unknown as Array<any>
+    const byId: Record<string, string> = {}; for (const c of cs) byId[c.id] = c.name
+    for (const c of cards) c.clientName = byId[c.contactId as string] || ''
+  }
   const procRepo = await import('../repositories/procurement.repo')
   const saleIds = cards.filter(c => c.kind === 'sale').map(c => c.id)
   const waitPos = await procRepo.positionsWaitingProcure(saleIds)

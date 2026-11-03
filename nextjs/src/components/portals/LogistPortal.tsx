@@ -45,6 +45,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const [notifications, setNotifications] = useState<any[]>([])
   const [period, setPeriod] = useState<Period>('today'); const [day, setDay] = useState('')   // по умолчанию — сегодня
   const showMsg = useCallback((m: string) => setToast(m), [])
+  // Заказчик карточки = контрагент (clientName с сервера); fromName — лишь кто завёл заявку.
+  const clientOf = (o: any) => (o?.clientName || o?.fromName || '—')
   const supName = (id?: string) => suppliers.find(s => s.id === id)?.name || ''
 
   // Новый заказ
@@ -182,7 +184,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
               ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 12, color: '#b03020', fontWeight: 700 }}>Убрать?</span><button onClick={() => removePos(order.id, pos.id)} style={{ border: 'none', background: '#c1121c', color: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Да</button><button onClick={() => setConfDelPos(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Нет</button></span>
               : <button onClick={() => setConfDelPos(pos.id)} title="Убрать позицию" style={{ width: 34, height: 34, border: '1.5px solid #f0e6e0', background: '#fff', color: '#b8b1a6', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit', borderRadius: 9, lineHeight: 1, flexShrink: 0 }}>🗑</button>)}</span>
         </div>
-        <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>{order.fromName || '—'}</div>
+        <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>{order.clientName || order.fromName || '—'}</div>
         {editable && (supEditPos === pos.id ? (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
             <select autoFocus value={pos.supplierId || ''} onChange={e => saveSupplier(order.id, pos.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
@@ -255,7 +257,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
             <span style={{ color: '#9a938a', fontSize: 16, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▸</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 7 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#26231f', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {order.fromName || '—'}</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#26231f', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {order.clientName || order.fromName || '—'}</span>
             <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{poss.length} поз.</span>
           </div>
         </div>
@@ -306,7 +308,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", color: PRIMARY }}>{g.order.id}</span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#8a6f00', background: '#fdf3d8', padding: '1px 7px', borderRadius: 20 }}>ждёт закупа</span>
                       </div>
-                      <div style={{ fontSize: 12, color: '#6b655b', marginTop: 3 }}>{(g.order.fromName || '—')} · {g.poss.length} поз.</div>
+                      <div style={{ fontSize: 12, color: '#6b655b', marginTop: 3 }}>{clientOf(g.order)} · {g.poss.length} поз.</div>
                     </div>
                   ))}
                 </div>}
@@ -320,7 +322,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
               : posIn.length === 0 ? empty('✅', 'Нет позиций к доставке')
               : (() => {
                 const groups: Record<string, typeof posIn> = {}
-                for (const it of posIn) { const k = ((it.order.fromName || '—').trim()) || '—'; (groups[k] = groups[k] || []).push(it) }
+                for (const it of posIn) { const k = (clientOf(it.order).trim()) || '—'; (groups[k] = groups[k] || []).push(it) }
                 const cols = Object.entries(groups).sort((a, b) => b[1].length - a[1].length)
                 // Одна колонка: заказчики идут секциями сверху вниз — листать пальцем вверх/вниз,
                 // без горизонтального скролла (колонки на телефоне/планшете резались).
