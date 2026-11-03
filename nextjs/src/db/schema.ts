@@ -273,6 +273,9 @@ export const payments = pgTable('payments', {
   documentId: uuid('document_id').references(() => documents.id), // что гасит (или null = общий баланс)
   projectId: uuid('project_id'),                          // проект контрагента (для акта сверки по проектам)
   finRowId: uuid('fin_row_id'),                           // строка «Финанс», породившая платёж (для правки/сторно) — без FK-объявления, чтобы не циклить с finRows
+  // Оплата из кабинета клиента ждёт подтверждения: деньги считаются сразу, но строка
+  // в «Деньгах» помечена и ждёт «Принять»/«Отказать» (отказ = удаление платежа).
+  accepted: boolean('accepted').notNull().default(true),
   comment: text('comment'),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),

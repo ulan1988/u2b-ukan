@@ -55,6 +55,7 @@ export async function financeDay(orgId: string, date: string) {
     const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))
     const others = new Map<string, any>()
     for (const p of todayPays) {
+      if (p.accepted === false) continue          // ждёт подтверждения — своей строкой ниже
       const s = slotOf(p.contragent)
       if (s >= 0) {
         slotAmt[s][p.col] = (slotAmt[s][p.col] || 0) + p.signed
@@ -68,15 +69,23 @@ export async function financeDay(orgId: string, date: string) {
         if (p.docNumber && !g.doc) g.doc = p.docNumber
       }
     }
+    // Оплаты клиентов, ждущие подтверждения, показываем ОТДЕЛЬНЫМИ строками с кнопками —
+    // иначе они растворятся в фикс-слоте и принять/отказать будет нечего.
+    const pendingRows = todayPays.filter(p => p.accepted === false).map(p => ({
+      id: `pend-${p.id}`, auto: true, payId: p.id, accepted: false, status: 'posted',
+      type: p.direction === 'in' ? 'in' : 'out', code: opArt.code, article: opArt.article, who: '',
+      contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null,
+      comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed }],
+    }))
     const fixedRows = SLOTS.map((label, i) => ({ id: `auto-slot-${i}`, auto: true, status: 'posted', type: 'in', code: opArt.code, article: opArt.article, who: '', contragent: label, contragentId: slotCag[i].id, docId: null, docNumber: slotCag[i].doc, comment: '', alloc: [], amounts: Object.entries(slotAmt[i]).map(([accountId, amount]) => ({ accountId, amount })) }))
     const otherRows = Array.from(others.values()).sort((a, b) => low(a.contragent).localeCompare(low(b.contragent)))
       .map(g => { const a = g.direction === 'in' ? opArt : spArt
         return { id: `auto-${g.contragentId || 'x'}-${g.direction}`, auto: true, status: 'posted', type: g.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: g.contragent || '', contragentId: g.contragentId, docId: null, docNumber: g.doc, comment: '', alloc: [], amounts: Object.entries(g.amt).map(([accountId, amount]) => ({ accountId, amount })) } })
-    autoRows = [...fixedRows, ...otherRows]
+    autoRows = [...pendingRows, ...fixedRows, ...otherRows]
   } else {
     // ФИЛИАЛ/МАГАЗИН: строка на КАЖДЫЙ платёж (кассовый ордер) с привязкой к накладной (docNumber).
     autoRows = todayPays.map(p => { const a = artOf(p)
-      return { id: `auto-${p.id}`, auto: true, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null, comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed }] } })
+      return { id: `auto-${p.id}`, auto: true, payId: p.id, accepted: p.accepted !== false, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null, comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed }] } })
   }
   const allRows = [...autoRows, ...rows]   // авто-строки сверху, ручные — в конце
 
@@ -263,4 +272,18 @@ export async function applyFavorites(orgId: string, date: string) {
     added++
   }
   return { ok: true, added }
+}
+
+// Оплата из кабинета клиента: «Принять» — снимаем метку ожидания; «Отказать» — платежа
+// не было, удаляем его (деньги уходят со счёта, долг клиента возвращается). Удаляем только
+// неподтверждённый платёж без строки «Денег» — обычные платежи этим путём не трогаем.
+export async function reviewClientPayment(orgId: string, paymentId: string, accept: boolean) {
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`select id::text id, amount::float amount, accepted from payments
+    where id = ${paymentId} and org_id = ${orgId} and fin_row_id is null limit 1` as unknown as Array<any>
+  if (!rows.length) return { ok: false as const, error: 'Платёж не найден' }
+  if (rows[0].accepted) return { ok: false as const, error: 'Платёж уже принят' }
+  if (accept) await sqlClient`update payments set accepted = true where id = ${paymentId}`
+  else await sqlClient`delete from payments where id = ${paymentId} and accepted = false`
+  return { ok: true as const, amount: Number(rows[0].amount) || 0, accepted: accept }
 }

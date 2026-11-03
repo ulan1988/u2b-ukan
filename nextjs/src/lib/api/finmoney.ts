@@ -26,6 +26,8 @@ export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; w
 export const cashIncassate = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'incassate', cash, kaspi, date })
 export const cashRemit = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'remit', cash, kaspi, date })
 export const cashRemitUndo = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'remitUndo', date })
+// Оплата из кабинета клиента: принять / отказать (отказ удаляет платёж).
+export const reviewClientPayment = (paymentId: string, accept: boolean) => post('/api/finance/money', { action: 'payReview', paymentId, accept })
 // Возврат денег от головного на счёт филиала (одно действие: счёт + сумма) и его отмена за день.
 export const cashReturnHQ = (orgId: string, accountId: string, amount: number, date: string) => post('/api/finance/shift', { orgId, action: 'returnHQ', accountId, amount, date })
 export const cashReturnUndo = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'returnUndo', date })

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts } from '@/lib/api/finmoney'
+import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
@@ -34,7 +34,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, auto: !!r.auto, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
+  return { id: r.id, auto: !!r.auto, payId: r.payId || null, accepted: r.accepted !== false, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -97,6 +97,18 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const ids = nr.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); if (ids.length) await finReorder(ids)
   }
   async function revertRow(r: any) { r.status = 'draft'; setRows(p => [...p]); await persist(r); await load() }
+  // Оплата из кабинета клиента: принять или отказать. Отказ = платежа не было — переспрашиваем
+  // (защита от случайного нажатия), деньги уходят со счёта и долг клиента возвращается.
+  async function reviewPay(r: any, accept: boolean) {
+    const sum = (Object.values(r.amt || {}) as any[]).reduce((x: number, v: any) => x + (Number(v) || 0), 0)
+    if (!accept && !confirm(`Отказать в оплате «${r.contragent || 'клиент'}» на ${fmt(Math.abs(sum))} ₸?
+
+Платёж будет удалён: деньги уйдут со счёта, долг клиента вернётся.`)) return
+    if (!accept && !confirm('Точно отказать? Это действие нельзя отменить.')) return
+    const res: any = await reviewClientPayment(r.payId, accept)
+    if (res?.ok === false || res?.data?.ok === false) { show('⚠ ' + (res?.error || res?.data?.error || 'Не удалось')); return }
+    show(accept ? '✓ Оплата принята' : '✕ В оплате отказано'); await load()
+  }
   async function postAll() {
     Object.values(timers.current).forEach((t: any) => clearTimeout(t)); timers.current = {}
     // Отправляем строки прямо в запрос проведения — сервер сохранит и проведёт в одном запросе (без гонки).
@@ -244,7 +256,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                       : <input value={r.comment || ''} onChange={e => { r.comment = e.target.value; setRows(p => [...p]); scheduleSave(r) }} placeholder="…" style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 6px', fontSize: 12.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />}
                     </td>}
                     <td style={td}>{r.auto
-                      ? <div style={{ textAlign: 'center' }}><span title="Авто-строка: инкассация/оплата из кабинета (не редактируется)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span></div>
+                      ? (r.payId && !r.accepted
+                        /* Оплата из кабинета клиента: принять или отказать (отказ — с переспросом). */
+                        ? <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                            <button onClick={() => reviewPay(r, true)} title="Принять оплату" style={{ border: 'none', background: '#0f7b3d', color: '#fff', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>✓ Принять</button>
+                            <button onClick={() => reviewPay(r, false)} title="Отказать — платёж будет удалён" style={{ border: '1.5px solid #e6c7c3', background: '#fff', color: '#b3261e', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>✕ Отказать</button>
+                          </div>
+                        : <div style={{ textAlign: 'center' }}><span title="Авто-строка: инкассация/оплата из кабинета (не редактируется)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span></div>)
                       : <div style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
                         <button onClick={() => moveRow(i, -1)} title="Вверх" style={arrowBtn}>▲</button>

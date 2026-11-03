@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
   let res: any = { ok: false }
   switch (b.action) {
     case 'save': res = await svc.saveFinRow(org, b.row); break
+    // Оплата из кабинета клиента: принять (снять метку) / отказать (удалить платёж).
+    case 'payReview': res = await svc.reviewClientPayment(org, String(b.paymentId || ''), !!b.accept); break
     case 'delete': res = await svc.deleteFinRow(b.id); break
     case 'reorder': res = await svc.reorderDay(b.ids || []); break
     case 'post':

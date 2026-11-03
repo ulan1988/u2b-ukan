@@ -428,7 +428,13 @@ export async function clientPay(orgId: string, contragentId: string, accountId: 
   const { eq, and } = await import('drizzle-orm')
   const [acc] = await db.select().from(cashAccounts).where(and(eq(cashAccounts.id, accountId), eq(cashAccounts.orgId, orgId), eq(cashAccounts.clientPay, true))).limit(1)
   if (!acc) return { ok: false as const, error: 'Счёт недоступен для оплаты из кабинета' }
-  await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId, direction: 'in', amount: String(amount), date: today(), cashAccountId: accountId, documentId: null, comment: `Оплата из кабинета (${acc.name})${actor?.name ? ' · ' + actor.name : ''}` })
+  // accepted=false — деньги уже считаются, но строка в «Деньгах» ждёт «Принять»/«Отказать».
+  await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId, direction: 'in', amount: String(amount), date: today(), cashAccountId: accountId, documentId: null, accepted: false, comment: `Оплата из кабинета (${acc.name})${actor?.name ? ' · ' + actor.name : ''}` } as any)
+  try {
+    const { notifyOrgAdmins } = await import('./notifyHelpers')
+    const [c] = await (await import('../repositories/document.repo')).contragentById(contragentId)
+    await notifyOrgAdmins(orgId, `💰 Оплата от «${c?.name || 'клиента'}» — ${Math.round(amount).toLocaleString('ru-RU')} ₸ (${acc.name}). Подтвердите в «Деньгах».`)
+  } catch { /* уведомление не должно ронять оплату */ }
   return { ok: true as const, account: acc.name }
 }
 

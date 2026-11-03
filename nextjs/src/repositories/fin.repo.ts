@@ -29,13 +29,13 @@ export const cashdayAccounts = (orgId: string) =>
 // Каждый платёж = кассовый ордер (приход/расход) с привязкой к накладной (как в 1С «Деньги и документы»).
 export const autoFinPayments = (orgId: string) =>
   sqlClient`select p.id::text, p.date::text, p.direction, p.amount::float amount, p.cash_account_id::text "cashAccountId",
-      p.contragent_id::text "contragentId", c.name "contragent", p.comment,
+      p.contragent_id::text "contragentId", c.name "contragent", p.comment, p.accepted,
       p.document_id::text "docId", d.number "docNumber"
     from payments p
     left join contragents c on c.id=p.contragent_id
     left join documents d on d.id=p.document_id
     where p.org_id=${orgId} and p.fin_row_id is null
-    order by p.date` as unknown as Promise<Array<{ id: string; date: string; direction: string; amount: number; cashAccountId: string | null; contragentId: string | null; contragent: string | null; comment: string | null; docId: string | null; docNumber: string | null }>>
+    order by p.date` as unknown as Promise<Array<{ id: string; date: string; direction: string; amount: number; cashAccountId: string | null; contragentId: string | null; contragent: string | null; comment: string | null; accepted: boolean; docId: string | null; docNumber: string | null }>>
 
 // Вид орг (hq/producer_seller/seller) — фикс-строки «Операций» нужны только головному.
 export const orgKind = (orgId: string) =>

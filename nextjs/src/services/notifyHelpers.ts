@@ -29,3 +29,11 @@ export async function notifyAdmins(orgId: string, text: string, cardId?: string,
 export async function notifyUser(userId: string, text: string, cardId?: string) {
   await notify([userId], text, cardId)
 }
+
+// Деньги: уведомление ТОЛЬКО админам/бухгалтеру своей орг (логистов не трогаем —
+// оплата клиента их не касается, иначе шумит у всех).
+export async function notifyOrgAdmins(orgId: string, text: string) {
+  const rows = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.active, true), eq(users.orgId, orgId), inArray(users.role, ADMIN_ROLES)))
+  await notify(Array.from(new Set(rows.map(r => r.id))), text)
+}
