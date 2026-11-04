@@ -7,10 +7,11 @@ import { useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
 
-export default function ContragentPicker({ contragents, value, onPick, defaultId, placeholder = '— выберите контрагента —', style }: {
+export default function ContragentPicker({ contragents, value, onPick, defaultId, placeholder = '— выберите контрагента —', style, autoOpen }: {
   contragents: any[]; value?: string; onPick: (c: any) => void; defaultId?: string; placeholder?: string; style?: React.CSSProperties
+  autoOpen?: boolean   // раскрыть список сразу (шаг «заказчик» при создании заказа)
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(!!autoOpen)
   const [q, setQ] = useState('')
   const btnRef = useRef<HTMLButtonElement>(null)
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxH: number } | null>(null)

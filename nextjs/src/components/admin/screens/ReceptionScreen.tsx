@@ -8,7 +8,6 @@ import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
 import { type PickedPos } from '@/components/NomPicker'
 import StoreCatalog from '@/components/StoreCatalog'
-import ClientPickModal from '@/components/admin/ClientPickModal'
 import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
@@ -192,7 +191,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
         </div>
 
         {open && step === 'client' && (
-          <ClientPickModal contragents={allCags} defaultId={defaultCagId} onPick={pickClientStep} onClose={() => setOpen(false)} />
+          <div style={{ padding: 20 }}>
+            <label style={LBL}>ЗАКАЗЧИК · шаг 1 из 4 — дальше откроется каталог</label>
+            <div style={{ maxWidth: 420 }}>
+              <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={pickClientStep} placeholder="— выберите заказчика —" autoOpen />
+            </div>
+          </div>
         )}
 
         {open && step === 'items' && (
