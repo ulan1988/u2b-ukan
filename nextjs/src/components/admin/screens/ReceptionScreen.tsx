@@ -8,6 +8,7 @@ import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
 import { type PickedPos } from '@/components/NomPicker'
 import StoreCatalog from '@/components/StoreCatalog'
+import ClientPickModal from '@/components/admin/ClientPickModal'
 import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
@@ -191,14 +192,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
         </div>
 
         {open && step === 'client' && (
-          <div style={{ padding: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em', marginBottom: 6 }}>ШАГ 1 — ЗАКАЗЧИК</div>
-            <div style={{ maxWidth: 520 }}>
-              <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={pickClientStep} placeholder="— найдите заказчика —" />
-            </div>
-            <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 8 }}>Выберите заказчика — каталог откроется сам.</div>
-            <div style={{ marginTop: 14 }}><Btn variant="ghost" onClick={() => setOpen(false)} style={{ color: '#5f5952' }}>Отмена</Btn></div>
-          </div>
+          <ClientPickModal contragents={allCags} defaultId={defaultCagId} onPick={pickClientStep} onClose={() => setOpen(false)} />
         )}
 
         {open && step === 'items' && (
