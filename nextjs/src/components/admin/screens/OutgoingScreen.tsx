@@ -43,6 +43,7 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
           {pct < 100 && !overdue && <span style={{ fontSize: 12, background: '#fff0ea', color: '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>В работе</span>}
           {order.isChanged && <span style={{ fontSize: 12, background: '#fdf8e1', color: '#8a6f00', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>⚡ Изменено клиентом</span>}
           {order.directOrder && <span title="Собран админом и сразу отправлен логисту" style={{ fontSize: 12, background: '#e8f5ee', color: '#0f7b3d', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>⚡ Прямой заказ</span>}
+          {order.parentCardId && <span title="Продажа родилась из этого закупа — дерево ЗКП → ПРД" style={{ fontSize: 12, background: '#eef2ff', color: '#4f46e5', padding: '2px 8px', borderRadius: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>↳ из {order.parentCardId}</span>}
           <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: barColor(pct) }}>{pct}%</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

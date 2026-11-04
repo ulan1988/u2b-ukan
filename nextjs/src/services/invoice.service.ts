@@ -111,6 +111,12 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   } catch { /* зеркало не должно ронять основную накладную */ }
 
   await orderRepo.updateOrder(cardId, { linkedDocId: mainDoc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
+  // Прямой заказ: приходная проведена — товар на Центр-Складе, значит рождается ДОЧЕРНЯЯ
+  // карточка-продажа ПРД (мать ЗКП остаётся с закупом и приходной, связь — parentCardId).
+  if (isPurchase && (o as any).directOrder) {
+    try { const { createSaleFromPurchase } = await import('./directOrder.service'); await createSaleFromPurchase(cardId, actor) }
+    catch (e) { console.error('directSale', cardId, e) }
+  }
   // Реальное движение проведено — снимаем резерв карточки (иначе товар остаётся «в резерве»
   // навсегда поверх фактического расхода, и «доступно» уходит в минус).
   try { const { deleteReservesByCard } = await import('../repositories/reserve.repo'); await deleteReservesByCard(cardId) } catch { /* резерв мог не создаваться */ }

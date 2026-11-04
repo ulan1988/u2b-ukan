@@ -220,3 +220,7 @@ export const countPositions = async (cardId: string) => {
 
 // Удалить карточку (позиции/история/сообщения/связи — каскадом по FK).
 export const deleteOrder = (id: string) => db.delete(orders).where(eq(orders.id, id))
+
+// Дочерние карточки (дерево прямого заказа: ЗКП → ПРД).
+export const childrenOf = (cardId: string) =>
+  db.select().from(orders).where(eq(orders.parentCardId, cardId)).orderBy(orders.createdAt)

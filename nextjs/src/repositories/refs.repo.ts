@@ -87,3 +87,16 @@ export async function contragentNamesByIds(ids: string[]): Promise<Record<string
   for (const r of rows) out[r.id] = r.name
   return out
 }
+
+// Контрагенты по id (нужен тип цены клиента при рождении продажи из закупа).
+export const contragentsByIds = (ids: string[]) =>
+  ids.length ? db.select().from(contragents).where(inArray(contragents.id, ids)) : Promise.resolve([] as any[])
+
+// Товары с ценами продажи ВЫБРАННОЙ орг (product_prices поверх шаблона products).
+export async function productsWithOrgPrices(orgId: string, ids: string[]) {
+  if (!ids.length) return [] as any[]
+  const rows = await db.select().from(products).where(inArray(products.id, ids))
+  const pp = await db.select().from(productPrices).where(inArray(productPrices.productId, ids))
+  const mine = new Map(pp.filter(x => x.orgId === orgId).map(x => [x.productId, x]))
+  return rows.map(r => { const o = mine.get(r.id); return { ...r, priceRetail: o?.priceRetail ?? '0', priceOpt: o?.priceOpt ?? '0', priceSpec: o?.priceSpec ?? '0' } })
+}
