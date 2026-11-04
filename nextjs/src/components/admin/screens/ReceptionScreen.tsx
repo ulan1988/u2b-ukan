@@ -6,12 +6,12 @@
 import { useEffect, useState, useRef } from 'react'
 import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
-import NomPicker, { type PickedPos } from '@/components/NomPicker'
+import { type PickedPos } from '@/components/NomPicker'
+import StoreCatalog from '@/components/StoreCatalog'
 import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { COLORS } from '@/lib/colors'
-import DirectOrderWizard from '@/components/admin/DirectOrderWizard'
 import { fmtDate, fmtTime, isPurchase, sourceStyle, sourceLabel, statusStyle } from '@/lib/adminFmt'
 import { fetchRefs, fetchUsers, createOrder } from '@/lib/adminApi'
 import { autoPrices, settings as fetchSettings, createSpecProject } from '@/lib/api/refs'
@@ -60,7 +60,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     loadSettings()
   }, [orgId]) // eslint-disable-line
 
-  const [wizard, setWizard] = useState(false)   // «Прямой заказ»: клиент → каталог → поставщик → логисту
   function openForm(k: 'sale' | 'purchase') { setKind(k); setOpen(true); setRows([emptyPos()]) }
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
@@ -91,7 +90,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
   async function newSpec() { const name = window.prompt('Название спецпроекта'); if (!name) return; const r: any = await createSpecProject({ orgId, name, clientId: contactId || undefined }); if (r.ok || r.data?.id) { loadSettings(); if (r.data?.id) setSpecId(r.data.id); toast('Спецпроект создан') } }
 
-  async function submit(asDraft: boolean) {
+  async function submit(asDraft: boolean, direct = false) {
     setBusy(true)
     const client = allCags.find(c => c.id === contactId)
     // Сквозная СТРОКА: чекбокс на позиции (r.transit) ИЛИ карточка целиком сквозная (transit).
@@ -121,6 +120,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       specProjectId: specId || undefined, transit: allTransit, transitAgent: transitAgent || undefined,
       screen: dest.screen, block: dest.block, isDraft: asDraft,
     }
+    // Прямой заказ: та же собранная заявка, но живёт ЗАКУПОМ ЗКП и сразу уходит логисту
+    // (стол приёмки и автозакуп не нужны — поставщик уже выбран в строках).
+    if (direct) { body.kind = 'purchase'; body.directOrder = true; body.screen = 'outgoing'; body.block = ''; body.isDraft = false }
     if (kind === 'sale') { body.contactId = contactId || undefined; body.fromName = client?.name || '' }
     else body.fromName = 'Центр-Склад'
     const r: any = await createOrder(body)
@@ -166,11 +168,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               </button>
             )
           })}
-          {/* Прямой заказ — короткий путь: 4 шага и сразу логисту (ЗКП), без стола приёмки. */}
-          <button onClick={() => setWizard(true)} title="Клиент → каталог → кол-во → поставщик → сразу логисту"
-            style={{ padding: '9px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, background: '#f6f3f0', color: '#0f7b3d', boxShadow: 'inset 0 0 0 1.5px #cfe8d8' }}>
-            ⚡ Прямой заказ
-          </button>
           {open && kind === 'purchase' && !transit && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
           {open && (
             <label title="Товар идёт мимо склада (drop-ship) — только деньги/долги, приход/расход склада НЕ трогается" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: kind === 'purchase' && !transit ? 0 : 'auto', fontSize: 13, fontWeight: 700, color: transit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: transit ? '#f3eeff' : 'transparent', border: `1.5px solid ${transit ? '#d8c4ec' : '#e6e2dc'}`, borderRadius: 8, padding: '6px 12px' }}>
@@ -251,12 +248,14 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               <button onClick={() => setShowCatalog(true)} style={{ border: 'none', borderRadius: 7, padding: '6px 16px', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>📖 Каталог</button>
               <button onClick={pullPrices} style={{ border: '1.5px solid #e6c9b8', borderRadius: 7, padding: '6px 16px', background: '#fff8f5', color: '#c0532a', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>💰 Подтянуть цены</button>
             </div>
-            {showCatalog && <NomPicker onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
-            {wizard && <DirectOrderWizard orgId={orgId} onClose={() => setWizard(false)} onCreated={id => { setWizard(false); onReload(); toast(`⚡ Прямой заказ ${id} — у логиста`) }} />}
+            {showCatalog && <StoreCatalog orgId={orgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec' }}>
               <Btn onClick={() => submit(true)} disabled={busy}>Сохранить черновик</Btn>
               <Btn variant="primary" onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
+              {kind === 'sale' && (
+                <Btn onClick={() => submit(false, true)} disabled={busy || !contactId}>⚡ Сразу логисту (ЗКП)</Btn>
+              )}
               <Btn variant="ghost" onClick={() => setOpen(false)} style={{ marginLeft: 'auto', color: '#5f5952' }}>Отмена</Btn>
             </div>
           </div>
