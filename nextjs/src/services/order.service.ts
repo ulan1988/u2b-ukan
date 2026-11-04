@@ -178,9 +178,22 @@ export async function listForLogist(orgId: string, userId: string) {
   const saleIds = cards.filter(c => c.kind === 'sale').map(c => c.id)
   const waitPos = await procRepo.positionsWaitingProcure(saleIds)
   const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
+  // Серая (информационная) строка у логиста: видеть можно, работать — ещё нет.
+  // Причины, в порядке важности:
+  //   'admin'    — карточка ещё у админа (заявка во Входящих / закуп-черновик на Приёмке);
+  //   'supplier' — позиция закупа без поставщика (админ не определил, у кого брать);
+  //   'procure'  — закуп оформлен, приход не проведён (товар в пути).
+  // Серая заявка лежит во вкладке «Закуп» (решение владельца): логист заранее видит,
+  // что предстоит закупить. Админ утвердил и дал поставщиков → строка оживает;
+  // приход проведён → карточка уходит во вкладку «Продажа».
   for (const c of cards) {
-    if (c.kind !== 'sale') { c.waitingProcure = false; continue }
-    for (const p of c.positions) p.waitingProcure = waitPos.has(key(c.id, p))
+    const atAdmin = c.screen === 'incoming' || (c.kind === 'purchase' && c.screen === 'reception')
+    for (const p of c.positions) {
+      const waitBuy = c.kind === 'sale' && waitPos.has(key(c.id, p))
+      const noSupplier = c.kind === 'purchase' && !p.supplierId
+      p.waitReason = p.status === 'Доставлено' ? '' : atAdmin ? 'admin' : noSupplier ? 'supplier' : waitBuy ? 'procure' : ''
+      p.waitingProcure = !!p.waitReason
+    }
     c.waitingProcure = c.positions.length > 0 && c.positions.every((p: any) => p.waitingProcure)
   }
   return cards
