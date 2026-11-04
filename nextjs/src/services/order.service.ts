@@ -445,7 +445,25 @@ export async function updatePositionDetail(cardId: string, posId: string, patch:
   if (patch.payment !== undefined) set.payment = patch.payment
   if (patch.deadline !== undefined) set.deadline = patch.deadline ? new Date(patch.deadline) : null
   if (Object.keys(set).length) await repo.updatePosition(posId, set)
-  await repo.insertHistory({ cardId, action: 'updatePosDetail', detail: 'Позиция изменена', userName: actor?.name || 'Система' })
+
+  // ── СМЕНА ТОВАРА В ПОЗИЦИИ ────────────────────────────────────────────────────
+  // Позиция — якорь (на её id висят строки накладных и возвраты), товар — атрибут сверху.
+  // Но связь автозакупа (procurement_links) держится на ИМЕНИ товара: после подмены старая
+  // запись зависает и продажа считается закупленной по прежнему товару. Снимаем её —
+  // потребность пересчитается на новый товар. Проведённый документ НЕ трогаем: в нём
+  // остаётся то, что реально отгрузили (и возврат берёт состав именно оттуда).
+  const nrmNm = (x?: string | null) => (x || '').trim().toLowerCase().replace(/ё/g, 'е')
+  const oldName = (old as any)?.name1c || ''
+  const newName = set.name1c !== undefined ? set.name1c : oldName
+  const swapped = !!old && (nrmNm(newName) !== nrmNm(oldName) || (set.productId !== undefined && (set.productId || null) !== ((old as any).productId || null)))
+  let detail = 'Позиция изменена'
+  if (swapped) {
+    try { const procRepo = await import('../repositories/procurement.repo'); await procRepo.deleteLinksBySaleProduct(cardId, oldName) } catch { /* связи могло не быть */ }
+    const [card] = await repo.getOrder(cardId)
+    const posted = !!card?.linkedDocId
+    detail = `Товар: «${oldName}» → «${newName}»${posted ? ' · ⚠ накладная уже проведена — в ней остался прежний товар' : ''}`
+  }
+  await repo.insertHistory({ cardId, action: 'updatePosDetail', detail, userName: actor?.name || 'Система' })
   // Оповещение об изменении: кол-во / цена / наименование (в чат + логисту).
   const nm = old?.name1c || old?.oral || 'позиция'
   const ch: string[] = []

@@ -1,7 +1,7 @@
 // Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
 import { db } from '../lib/db'
 import { orders, orderPositions, procurementLinks, products } from '../db/schema'
-import { and, eq, inArray, desc, isNull } from 'drizzle-orm'
+import { and, eq, inArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
 
 // Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
 export async function saleDemand(orgId: string) {
@@ -103,3 +103,11 @@ export const productsByNames = (names: string[]) =>
 
 export const productsByIds = (ids: string[]) =>
   ids.length ? db.select({ id: products.id, name: products.name, unit: products.unit, priceRetail: products.priceRetail, priceOpt: products.priceOpt, priceSpec: products.priceSpec }).from(products).where(inArray(products.id, ids)) : Promise.resolve([] as any[])
+
+// Снять связь автозакупа по продаже и ИМЕНИ товара: связь матчится по имени, поэтому после
+// смены товара в позиции старая запись «висит» и продажа считается закупленной по прежнему.
+export const deleteLinksBySaleProduct = (saleCardId: string, product: string) =>
+  db.delete(procurementLinks).where(and(
+    eq(procurementLinks.saleCardId, saleCardId),
+    sqlOp`lower(trim(${procurementLinks.product})) = ${String(product || '').trim().toLowerCase()}`,
+  ))
