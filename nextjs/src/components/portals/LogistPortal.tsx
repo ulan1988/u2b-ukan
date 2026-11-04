@@ -22,17 +22,6 @@ const PRIMARY = '#d4613a', DARK = '#211f1c', DARK2 = '#322f2b'
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 type Tab = 'req' | 'in' | 'buy' | 'out' | 'changes' | 'new' | 'shift'
 
-// Почему строка серая (работать нельзя, видеть нужно) — текст и цвет бейджа.
-const WAIT_LABEL: Record<string, { text: string; bg: string; color: string }> = {
-  admin: { text: 'у админа · ждёт обработки', bg: '#eceaf7', color: '#5a4fa3' },
-  supplier: { text: 'ждёт поставщика', bg: '#fdf3d8', color: '#8a6f00' },
-  procure: { text: 'ждёт закупа', bg: '#fdf3d8', color: '#8a6f00' },
-}
-const waitOf = (poss: any[]) => {
-  const r = poss.find((p: any) => p.waitReason)?.waitReason || ''
-  return poss.length > 0 && poss.every((p: any) => p.waitingProcure) ? (WAIT_LABEL[r] || null) : null
-}
-
 function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 2300); return () => clearTimeout(t) }, [onClose])
   return <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: DARK, color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{msg}</div>
@@ -213,11 +202,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>ПРОСРОЧ.</span>}
           <span style={{ fontSize: 12, background: pos.status === 'Доставлено' ? '#e8f5ee' : '#fff0ea', color: pos.status === 'Доставлено' ? '#2e8a5e' : '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{pos.status}</span>
         </div>
-        {pos.waitingProcure
-          ? <div style={{ marginTop: compact ? 8 : 12, padding: compact ? '8px' : '11px', borderRadius: 9, background: '#f4f2ef', color: '#7a736a', fontSize: compact ? 12 : 13, fontWeight: 600, textAlign: 'center' }}>
-              🔒 {(WAIT_LABEL[pos.waitReason] || { text: 'ждёт' }).text} — доставка откроется позже
-            </div>
-          : order.screen === 'reception' && !isPurchase(order)
+        {order.screen === 'reception' && !isPurchase(order)
           ? <button onClick={() => handleAccept(order.id)} disabled={updating === order.id} style={{ marginTop: compact ? 8 : 12, width: '100%', padding: compact ? '9px' : '12px', borderRadius: compact ? 8 : 10, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: compact ? 12.5 : 14, cursor: 'pointer', fontFamily: 'inherit', opacity: updating === order.id ? 0.6 : 1 }}>✅ Принять продажу → в работу</button>
           : <StatusBtns cardId={order.id} posId={pos.id} posStatus={pos.status} compact={compact} />}
         <button onClick={openChat} style={{ marginTop: compact ? 7 : 10, width: '100%', padding: compact ? '6px' : '8px', border: 'none', borderRadius: 8, background: chatOpenPos === pos.id ? PRIMARY : '#f1efec', color: chatOpenPos === pos.id ? '#fff' : '#5f5952', cursor: 'pointer', fontSize: compact ? 12.5 : 14, fontFamily: 'inherit', fontWeight: 600 }}>💬 Чат</button>
@@ -260,14 +245,12 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
     const inway = poss.filter((p: any) => p.status === 'В пути').length
     const changed = !!order.isChanged
     const allDone = done === poss.length && poss.length > 0
-    const wait = waitOf(poss)   // вся карточка ещё не в работе — показываем причину, кнопки прячем
     return (
-      <div style={{ marginBottom: 8, background: changed ? '#fffceb' : wait ? '#f7f6f4' : '#fff', borderRadius: 10, boxShadow: changed ? '0 0 0 2px #e4b73a' : '0 0 0 1px #e6e2dc', overflow: 'hidden', opacity: wait ? .85 : 1 }}>
+      <div style={{ marginBottom: 8, background: changed ? '#fffceb' : '#fff', borderRadius: 10, boxShadow: changed ? '0 0 0 2px #e4b73a' : '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
         {changed && <div style={{ background: '#fdf3d8', color: '#8a6f00', fontSize: 12, fontWeight: 700, padding: '6px 11px' }}>⚠ Есть изменение — проверьте и подтвердите</div>}
         <div onClick={() => setOpenCardId(open ? null : order.id)} style={{ padding: '13px 12px', cursor: 'pointer' }} className="lg-cardhead">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: wait ? '#9a938a' : buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
-            {wait && <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: wait.bg, color: wait.color, whiteSpace: 'nowrap' }}>{wait.text}</span>}
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: buy ? '#7a3aaa' : PRIMARY }}>{order.id}</span>
             {inway > 0 && <span style={{ fontSize: 12, color: '#c0532a', fontWeight: 700 }}>🚚{inway}</span>}
             {done > 0 && <span style={{ fontSize: 12, color: '#2e8a5e', fontWeight: 700 }}>✓{done}</span>}
             <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>🕒 {fmtCreated(order.createdAt)}</span>
@@ -279,7 +262,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           </div>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
-        {!allDone && !changed && !wait && poss.length > 0 && (
+        {!allDone && !changed && poss.length > 0 && (
           <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec', display: 'flex', gap: 8 }}>
             {confAllId === order.id
               ? <><button disabled={updating === order.id} onClick={() => deliverAll(order, poss)} className="lg-big" style={{ flex: 1, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Да, доставлено ({poss.length - done})</button><button onClick={() => setConfAllId(null)} className="lg-big" style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 12, fontWeight: 700, padding: '0 16px', cursor: 'pointer', fontFamily: 'inherit' }}>Нет</button></>
@@ -316,30 +299,18 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         {tab === 'req' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>📥 ЗАКАЗЫ · ждут закупа</div>
-            <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 12 }}>План: что готовится. Пока админ не определил поставщиков и не оформил закуп — строки серые, доставки нет. Закуп проведён → карточка сама уходит в «Продажа».</div>
+            <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 12 }}>Заявки собраны, ждут закуп (приход на склад). Как закуп проведён — карточка уходит в «Продажа».</div>
             {posWaiting.length === 0 ? empty('✅', 'Нет заказов, ждущих закупа')
               : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {groupByCard(posWaiting).map(g => {
-                    const wait = waitOf(g.poss) || WAIT_LABEL.admin
-                    return (
-                    <div key={`w-${g.order.id}`} style={{ background: '#f7f6f4', border: '1.5px solid #e6e2dc', borderRadius: 10, padding: '10px 12px', minWidth: 240, flex: '1 1 260px' }}>
+                  {groupByCard(posWaiting).map(g => (
+                    <div key={`w-${g.order.id}`} style={{ background: '#fff', border: '1.5px solid #f0d9cc', borderRadius: 10, padding: '10px 12px', minWidth: 220 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#6b655b' }}>
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", color: '#8a8377' }}>{g.order.id}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: wait.color, background: wait.bg, padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>{wait.text}</span>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", color: PRIMARY }}>{g.order.id}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#8a6f00', background: '#fdf3d8', padding: '1px 7px', borderRadius: 20 }}>ждёт закупа</span>
                       </div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#26231f', marginTop: 4 }}>👤 {clientOf(g.order)}</div>
-                      {/* состав заявки: логист заранее видит, что и сколько поедет */}
-                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {g.poss.slice(0, 6).map((p: any) => (
-                          <div key={p.id} style={{ display: 'flex', gap: 8, fontSize: 12, color: '#6b655b' }}>
-                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</span>
-                            <span style={{ fontWeight: 700, color: '#5f5952', whiteSpace: 'nowrap' }}>{Number(p.qty) || 0} {p.unit || 'шт'}</span>
-                          </div>
-                        ))}
-                        {g.poss.length > 6 && <div style={{ fontSize: 11.5, color: '#9a938a' }}>…и ещё {g.poss.length - 6} поз.</div>}
-                      </div>
+                      <div style={{ fontSize: 12, color: '#6b655b', marginTop: 3 }}>{clientOf(g.order)} · {g.poss.length} поз.</div>
                     </div>
-                  )})}
+                  ))}
                 </div>}
           </div>
         )}

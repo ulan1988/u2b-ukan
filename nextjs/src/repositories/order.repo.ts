@@ -178,10 +178,8 @@ export const positionsForLogist = (orgIds: string[], userId: string) =>
       inArray(orders.orgId, orgIds), eq(orders.isCancelled, false),
       ne(orders.source, 'cashier'),   // прямые продажи кассы (магазин/мастер) логиста не касаются
       or(
-        // Свои позиции на всех экранах. Заявки, которые ещё у админа (Входящие/Приёмка),
-        // логист ВИДИТ — но серыми, без кнопок доставки: это план, чтобы он понимал, что
-        // готовится. Кнопки открываются, когда админ определил поставщиков и оформил закуп
-        // (серость считает listForLogist → waitingProcure/waitReason).
+        // Свои позиции: активные экраны + проведённые/архив — чтобы «Выполнено · доставлено мной»
+        // показывало доставленное и после проводки накладной (иначе история пропадала).
         and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming', 'bookkeeping', 'archive'])),
         and(isNull(orderPositions.respUserId), eq(orders.screen, 'outgoing')),
       ),
