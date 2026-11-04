@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const s = await sessionFromRequest(req)
   if (!s || !['admin', 'super_admin', 'bookkeeper'].includes(s.role)) return NextResponse.json({ error: 'Нет доступа' }, { status: 403 })
   const b = await req.json().catch(() => ({}))
-  const res = await updateDocument(params.id, b || {})
+  const res = await updateDocument(params.id, b || {}, s)
   await pushSignal()
   return NextResponse.json(res)
 }

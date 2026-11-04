@@ -173,6 +173,18 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
               <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>КОММЕНТАРИЙ</label><input style={inp} value={f.comment} onChange={e => setF({ ...f, comment: e.target.value })} /></div>
             </div>
 
+            {/* Журнал правок — кто и что менял (в т.ч. централизованная рассылка). */}
+            {(data?.history || []).length > 0 && (
+              <div style={{ margin: '0 20px 10px', background: '#faf8f6', borderRadius: 10, padding: '8px 12px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#5f5952', marginBottom: 4, letterSpacing: '.03em' }}>ИСТОРИЯ ПРАВОК</div>
+                {(data.history as any[]).slice(0, 6).map((h: any) => (
+                  <div key={h.id} style={{ fontSize: 12, color: COLORS.textMuted, padding: '2px 0' }}>
+                    <span style={{ fontFamily: 'Consolas, monospace' }}>{fmtDate(h.createdAt)}</span> · {h.userName} — {h.detail}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Вкладки */}
             <div style={{ display: 'flex', gap: 6, padding: '0 20px' }}>
               {([['goods', `Товары · ${lines.length}`], ['pay', 'Оплата']] as const).map(([k, l]) => (

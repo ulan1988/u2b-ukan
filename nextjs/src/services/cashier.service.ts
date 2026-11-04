@@ -79,7 +79,11 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   })
   if (!lines.length) return null
   const docSvc = await import('./document.service')
-  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: date || today(), sourceOrderId: cardId, projectId: projectId || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
+  // Мать третьего звена — ПРИХОДНАЯ головного по этой же карточке (её родила расходная
+  // производителя). Так дерево идёт сплошняком: Нипа расходная → ГО приходная → ГО расходная.
+  const docRepo = await import('../repositories/document.repo')
+  const hqIn = await docRepo.docBySourceOrg(cardId, hq, 'purchase')
+  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: date || today(), sourceOrderId: cardId, projectId: projectId || null, parentDocId: hqIn?.id || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
 }
 
 // date — рабочая дата (проведение задним числом): расходная + платежи лягут на этот день.

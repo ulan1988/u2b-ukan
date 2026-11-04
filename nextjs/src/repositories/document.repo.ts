@@ -1,6 +1,6 @@
 // Запросы по документам (только Drizzle). Логика проводки — в service.
 import { db, sqlClient } from '../lib/db'
-import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses, orders, organizations } from '../db/schema'
+import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses, orders, organizations, documentHistory } from '../db/schema'
 import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm'
 
 type NewDoc = typeof documents.$inferInsert
@@ -300,3 +300,16 @@ export const childDocsWithOrg = (docId: string) =>
   db.select({ id: documents.id, number: documents.number, orgId: documents.orgId, org: organizations.name, total: documents.total, reviewed: documents.reviewed })
     .from(documents).leftJoin(organizations, eq(documents.orgId, organizations.id))
     .where(and(eq(documents.parentDocId, docId), ne(documents.status, 'cancelled')))
+
+// ── Журнал правок накладной ────────────────────────────────────────────────────
+export const insertDocHistory = (v: typeof documentHistory.$inferInsert) => db.insert(documentHistory).values(v)
+export const listDocHistory = (docId: string) =>
+  db.select().from(documentHistory).where(eq(documentHistory.documentId, docId)).orderBy(desc(documentHistory.createdAt)).limit(50)
+
+// Документ карточки в конкретной орг (нужен, чтобы связать третье звено цепочки с матерью).
+export const docBySourceOrg = async (cardId: string, orgId: string, type: string) => {
+  const [r] = await db.select({ id: documents.id, number: documents.number }).from(documents)
+    .where(and(eq(documents.sourceOrderId, cardId), eq(documents.orgId, orgId), eq(documents.type, type), ne(documents.status, 'cancelled')))
+    .orderBy(desc(documents.createdAt)).limit(1)
+  return r || null
+}

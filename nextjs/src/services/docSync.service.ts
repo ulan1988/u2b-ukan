@@ -70,11 +70,13 @@ export async function applyToChildren(docId: string, actor?: Session | null) {
     await docRepo.updateDoc(child.id, { total: String(total), reviewed: false, contragentAccepted: false } as any)
     synced++
 
+    await docRepo.insertDocHistory({ documentId: child.id, action: 'applied', detail: `Состав и цены получены от ${mother.number} · итог ${Math.round(total)} ₸`, userName: actor?.name || 'Система' } as any)
     try {
       const { notifyOrgAdmins } = await import('./notifyHelpers')
       await notifyOrgAdmins(child.orgId, `✏️ Накладная ${child.number} изменена головным (${Math.round(total).toLocaleString('ru-RU')} ₸) — проверьте состав и цены.`)
     } catch { /* уведомление не должно ронять синхронизацию */ }
   }
 
+  await docRepo.insertDocHistory({ documentId: docId, action: 'applyAll', detail: `Разослано дочерним: ${children.map(c => c.number).join(', ')}${warnings.length ? ` · предупреждений: ${warnings.length}` : ''}`, userName: actor?.name || 'Система' } as any)
   return { ok: true as const, synced, warnings }
 }

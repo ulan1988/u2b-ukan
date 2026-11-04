@@ -252,6 +252,17 @@ export const documentLines = pgTable('document_lines', {
   sortOrder: integer('sort_order').notNull().default(0),  // порядок строки (перетаскивание внутри/между блоками)
 }, t => ({ byDoc: index('document_lines_doc_idx').on(t.documentId) }))
 
+// Журнал правок накладной: кто и что поменял («было → стало»). Нужен при централизованной
+// рассылке правок филиалам — чтобы потом не спорить, кто изменил цену или количество.
+export const documentHistory = pgTable('document_history', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+  action: text('action').notNull(),                       // edit | applyAll | applied
+  detail: text('detail').notNull().default(''),
+  userName: text('user_name').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({ byDoc: index('document_history_doc_idx').on(t.documentId) }))
+
 // Цепочка приход↔расход (рентабельность / «блокчейн»)
 export const docLinks = pgTable('doc_links', {
   id: uuid('id').defaultRandom().primaryKey(),

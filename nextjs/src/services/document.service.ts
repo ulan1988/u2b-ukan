@@ -96,12 +96,16 @@ export async function getDocument(id: string) {
   }
   // Дочерние накладные филиалов (дерево parent_doc_id) — для кнопки «Применить всем».
   const children = await docRepo.childDocsWithOrg(id)
-  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, supplier, cost, children }
+  const history = await docRepo.listDocHistory(id)
+  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, supplier, cost, children, history }
 }
 
 // Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
 // Пересчитывает суммы строк, подытог, скидку (по % или сумме) и итог.
-export async function updateDocument(id: string, patch: any) {
+export async function updateDocument(id: string, patch: any, actor?: { name?: string } | null) {
+  // «Было» для журнала правок — снимаем ДО изменений (строки и шапка).
+  const before = await docRepo.linesWithProduct(id)
+  const [headBefore] = await docRepo.getDoc(id)
   if (Array.isArray(patch.lines)) {
     for (const l of patch.lines) {
       if (!l.id) continue
@@ -150,6 +154,23 @@ export async function updateDocument(id: string, patch: any) {
   }
   head.total = String(Math.max(0, subtotal - discountSum))
   await docRepo.updateDoc(id, head)
+  // Журнал: что реально изменилось (кол-во/цена строк и ключевые поля шапки).
+  const after = await docRepo.linesWithProduct(id)
+  const changes: string[] = []
+  const was = new Map(before.map(l => [l.id, l]))
+  for (const l of after) {
+    const b = was.get(l.id); if (!b) { changes.push(`+ ${(l as any).name}`); continue }
+    if (String(b.qty) !== String(l.qty)) changes.push(`${(l as any).name}: кол-во ${Number(b.qty)} → ${Number(l.qty)}`)
+    if (String(b.price) !== String(l.price)) changes.push(`${(l as any).name}: цена ${Number(b.price)} → ${Number(l.price)}`)
+  }
+  for (const b of before) if (!after.some(l => l.id === b.id)) changes.push(`− ${(b as any).name}`)
+  if (headBefore) {
+    if (patch.contragentId && patch.contragentId !== headBefore.contragentId) changes.push('сменён контрагент')
+    if (patch.supplierId !== undefined && (patch.supplierId || null) !== ((headBefore as any).supplierId || null)) changes.push('сменён поставщик')
+    if (head.number && head.number !== headBefore.number) changes.push(`номер ${headBefore.number} → ${head.number}`)
+    if (String(headBefore.total) !== head.total) changes.push(`итог ${Number(headBefore.total)} → ${Number(head.total)}`)
+  }
+  if (changes.length) await docRepo.insertDocHistory({ documentId: id, action: 'edit', detail: changes.join(' · '), userName: actor?.name || 'Система' } as any)
   return { ok: true, subtotal, discountSum, total: subtotal - discountSum }
 }
 
