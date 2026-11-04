@@ -207,12 +207,12 @@ export const documents = pgTable('documents', {
   status: text('status').notNull().default('draft'),      // draft|posted|paid|cancelled
   total: money('total').notNull().default('0'),
   comment: text('comment'),
-  projectId: uuid('project_id'),                          // проект контрагента (для акта сверки по проектам) — без FK, чтобы не циклить
+  projectId: uuid('project_id').references((): any => specProjects.id, { onDelete: 'set null' }),   // проект контрагента (акт сверки по проектам)
   // Приходная накладная (1С УНФ): вх. документ поставщика, тип операции, скидка, оплата.
   inNumber: text('in_number'),                            // № накладной поставщика
   inDate: date('in_date'),                                // дата накладной поставщика
   operation: text('operation').notNull().default('receipt'), // receipt | return
-  sourceOrderId: text('source_order_id'),                 // id карточки-основания (ЗП-0001-060826) — чтобы связь не терялась
+  sourceOrderId: text('source_order_id').references((): any => orders.id, { onDelete: 'set null' }),   // карточка-основание (ЗП-0001-060826)
   discountPct: money('discount_pct').notNull().default('0'),  // скидка руч., %
   discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
   paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
@@ -236,7 +236,7 @@ export const documentLines = pgTable('document_lines', {
   productId: uuid('product_id').notNull().references(() => products.id),
   // Атомарный ID исходной позиции карточки ({cardId}-P{n}). Тянется карточка→накладная→возврат,
   // не меняется при дроблении — по нему фильтруется вся цепочка позиции в базе.
-  sourcePosId: text('source_pos_id'),
+  sourcePosId: text('source_pos_id').references((): any => orderPositions.id, { onDelete: 'set null' }),   // строка карточки, из которой выросла строка документа
   role: text('role').notNull().default('main'),           // main | input | output (производство)
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),             // ед. изм. строки (снимок)
@@ -290,8 +290,8 @@ export const payments = pgTable('payments', {
   date: date('date').notNull(),
   cashAccountId: uuid('cash_account_id').references(() => cashAccounts.id),
   documentId: uuid('document_id').references(() => documents.id), // что гасит (или null = общий баланс)
-  projectId: uuid('project_id'),                          // проект контрагента (для акта сверки по проектам)
-  finRowId: uuid('fin_row_id'),                           // строка «Финанс», породившая платёж (для правки/сторно) — без FK-объявления, чтобы не циклить с finRows
+  projectId: uuid('project_id').references((): any => specProjects.id, { onDelete: 'set null' }),   // проект контрагента (акт сверки по проектам)
+  finRowId: uuid('fin_row_id').references((): any => finRows.id, { onDelete: 'set null' }),        // строка «Финанс», породившая платёж (правка/сторно)
   // Оплата из кабинета клиента ждёт подтверждения: деньги считаются сразу, но строка
   // в «Деньгах» помечена и ждёт «Принять»/«Отказать» (отказ = удаление платежа).
   accepted: boolean('accepted').notNull().default(true),
@@ -419,7 +419,7 @@ export const orderPositions = pgTable('order_positions', {
   specItemId: uuid('spec_item_id').references(() => specProjectItems.id), // вынесена из позиции проекта (учёт остатка)
   // Исходная позиция, из которой эта «переехала» (сплит карточки, рождение продажи ПРД):
   // по цепочке видно разделение на части и обратное объединение, id не теряется.
-  originPosId: text('origin_pos_id'),
+  originPosId: text('origin_pos_id').references((): any => orderPositions.id, { onDelete: 'set null' }),
   leg: integer('leg').notNull().default(2),
   late: boolean('late').notNull().default(false),
   payment: text('payment').notNull().default(''),
