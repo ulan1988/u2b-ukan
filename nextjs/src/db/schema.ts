@@ -357,7 +357,7 @@ export const orders = pgTable('orders', {
   directOrder: boolean('direct_order').notNull().default(false),
   // Дерево карточек: у продажи ПРД здесь id материнского закупа ЗКП. Мать не переименовываем —
   // у неё остаются закуп, приходная и история; дочь везёт товар клиенту со своей расходной.
-  parentCardId: text('parent_card_id'),
+  parentCardId: text('parent_card_id').references((): any => orders.id, { onDelete: 'set null' }),
   payment: text('payment').notNull().default(''),         // способ оплаты карточки: '' | Наличка | Каспи | Долг | Смешанная | Частично (ярлык)
   paidCash: money('paid_cash').notNull().default('0'),    // касса мастера: получено наличкой (→ Основная касса)
   paidKaspi: money('paid_kaspi').notNull().default('0'),  // получено каспи (→ KASPI GOLD, личный мастера)
@@ -378,6 +378,7 @@ export const orders = pgTable('orders', {
   byOrgScreen: index('orders_org_screen_idx').on(t.orgId, t.screen),
   byContact: index('orders_contact_idx').on(t.contactId),
   byLinkedDoc: index('orders_linked_doc_idx').on(t.linkedDocId),
+  byParent: index('orders_parent_idx').on(t.parentCardId),   // дерево ЗКП → ПРД
 }))
 
 export const orderPositions = pgTable('order_positions', {

@@ -108,6 +108,8 @@ function InvoicesMode({ orgId, links }: { orgId: string; links: boolean }) {
     await updateDocument(d.id, { reviewed: checked })
   }
 
+  // Дерево карточек приходит с сервера (cardTree/treeRoot) и участвует в общем поиске —
+  // поэтому запрос «ЗКП-0001-041126» достаёт и приходную закупа, и расходную продажи ПРД.
   const filtered = useMemo(() => {
     let base = docs
     if (kind === 'purchase') base = base.filter(d => d.type === 'purchase')
@@ -202,6 +204,13 @@ function InvoicesMode({ orgId, links }: { orgId: string; links: boolean }) {
                         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#837c72' }}>{fmtDate(d.date)}</span>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{d.contragent || '—'}</div>
+                      {/* Ветка прямого заказа: мать ЗКП → дочь ПРД. Поиск по любому из номеров
+                          достаёт всю ветку — cardTree приходит с сервера и входит в общий поиск. */}
+                      {d.treeRoot && (
+                        <div title="Дерево карточек: закуп → продажа" style={{ fontSize: 11, color: '#4f46e5', background: '#eef2ff', borderRadius: 6, padding: '2px 6px', marginBottom: 4, fontFamily: "'JetBrains Mono', monospace", display: 'inline-block' }}>
+                          🌳 {String(d.cardTree || '').split(' ').join(' → ')}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {d.status !== 'cancelled' && (
                           <label onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: d.reviewed ? '#2e8a5e' : '#8a6f00', cursor: 'pointer', fontWeight: 600 }}>

@@ -122,7 +122,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   // Новые карточки (как «Входящие» в дашборде) → бейдж на иконке PWA.
   const newCount = orders.filter(o => o.screen === 'incoming' && !o.toacc && !o.isDraft && !o.isCancelled).length
   const q = search.trim().toLowerCase()
-  const visible = q ? orders.filter(o => `${o.id} ${o.fromName} ${o.comment}`.toLowerCase().includes(q)) : orders
+  // В строку поиска карточки входит и id МАТЕРИ (parentCardId) — ищешь ЗКП, находишь и ПРД.
+  const visible = q ? orders.filter(o => `${o.id} ${o.parentCardId || ''} ${o.fromName} ${o.comment}`.toLowerCase().includes(q)) : orders
   const title = NAV.find(n => n.key === screen)?.label || ''
 
   // Меню под выбранную орг: у ФИЛИАЛА (листогиб/магазин, kind ≠ hq) свои кабинеты (касса/стол

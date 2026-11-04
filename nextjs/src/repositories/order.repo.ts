@@ -1,5 +1,5 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
-import { db } from '../lib/db'
+import { db, sqlClient } from '../lib/db'
 import { orders, orderPositions, orderHistory, products, contragents, users, organizations } from '../db/schema'
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
 
@@ -224,3 +224,28 @@ export const deleteOrder = (id: string) => db.delete(orders).where(eq(orders.id,
 // Дочерние карточки (дерево прямого заказа: ЗКП → ПРД).
 export const childrenOf = (cardId: string) =>
   db.select().from(orders).where(eq(orders.parentCardId, cardId)).orderBy(orders.createdAt)
+
+// Дерево карточек целиком (мать + все потомки) от любого узла — для канбана и фильтров.
+// Рекурсия идёт вверх до корня, затем вниз по parent_card_id.
+export async function cardTrees(ids: string[]): Promise<Record<string, { root: string; ids: string[] }>> {
+  const out: Record<string, { root: string; ids: string[] }> = {}
+  if (!ids.length) return out
+  const rows = await sqlClient`
+    with recursive up as (
+      select o.id, o.parent_card_id from orders o where o.id = any(${ids as any})
+      union
+      select p.id, p.parent_card_id from orders p join up on up.parent_card_id = p.id
+    ), roots as (select id from up where parent_card_id is null)
+    , down as (
+      select r.id as root, r.id from roots r
+      union
+      select d.root, c.id from orders c join down d on c.parent_card_id = d.id
+    )
+    select root, id from down` as unknown as Array<{ root: string; id: string }>
+  const byRoot: Record<string, string[]> = {}
+  for (const r of rows) (byRoot[r.root] ||= []).push(r.id)
+  // Каждому узлу — корень его дерева и все id ветки (мать + потомки).
+  for (const [root, members] of Object.entries(byRoot)) for (const m of members) out[m] = { root, ids: members }
+  for (const id of ids) if (!out[id]) out[id] = { root: id, ids: [id] }
+  return out
+}

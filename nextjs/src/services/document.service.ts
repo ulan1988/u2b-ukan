@@ -49,7 +49,23 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   return { id: docId, number: doc.number, total }
 }
 
-export const listPurchases = (orgId: string) => docRepo.listInvoices(orgId, 'purchase')
+// Накладные + ДЕРЕВО карточек: к каждой строке добавляем корень дерева (мать ЗКП) и все id
+// ветки. Благодаря этому фильтры и поиск канбана «в курсе» связи: ищешь по ЗКП — находятся
+// и приходная закупа, и расходная дочерней продажи ПРД, и наоборот.
+async function withCardTree(rows: any[]) {
+  const ids = Array.from(new Set(rows.map(r => r.sourceOrderId).filter(Boolean))) as string[]
+  if (!ids.length) return rows
+  const orderRepo = await import('../repositories/order.repo')
+  const trees = await orderRepo.cardTrees(ids)
+  return rows.map(r => {
+    const t = r.sourceOrderId ? trees[r.sourceOrderId] : null
+    if (!t) return r
+    // treeRoot показываем, только когда ветка реально из нескольких карточек (ЗКП + ПРД).
+    return { ...r, cardTree: t.ids.join(' '), treeRoot: t.ids.length > 1 ? t.root : null }
+  })
+}
+
+export const listPurchases = async (orgId: string) => withCardTree(await docRepo.listInvoices(orgId, 'purchase'))
 
 // Полный документ для формы накладной: шапка + строки (с именем товара) + контрагент/склад.
 export async function getDocument(id: string) {
@@ -197,7 +213,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   return { id: docId, number: doc.number, total: netTotal }
 }
 
-export const listSales = (orgId: string) => docRepo.listInvoices(orgId, 'sale')
+export const listSales = async (orgId: string) => withCardTree(await docRepo.listInvoices(orgId, 'sale'))
 
 // Удалить ОШИБОЧНУЮ позицию из проведённой накладной: убрать строку + вернуть движение склада
 // (пересчитать остаток по товару) + удалить позицию карточки (для сверки отчётов) + пересчитать итог.
@@ -288,7 +304,7 @@ export async function createReturn(input: CreateSaleInput & { sourceOrderId?: st
 }
 const fmtSum = (n: number) => new Intl.NumberFormat('ru-RU').format(Math.round(n))
 
-export const listReturns = (orgId: string) => docRepo.listInvoices(orgId, ['return_in', 'return_out'])
+export const listReturns = async (orgId: string) => withCardTree(await docRepo.listInvoices(orgId, ['return_in', 'return_out']))
 
 // Кабинет контрагента: его накладные, разбитые по разделам Покупки / Продажа / Возврат.
 // Покупки  = он купил у нас (расходные, type=sale).
