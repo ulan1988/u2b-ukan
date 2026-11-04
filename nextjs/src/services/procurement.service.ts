@@ -172,7 +172,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
 
   // Под-id позиций как в системе Улкана: {cardId}-P{n}, сквозной (продолжаем нумерацию
   // от уже накопленных в черновике позиций — черновик закупа накапливается).
-  const base = await countPositions(draft!.id)
+  const base = (await orderRepo.nextPosSeq(draft!.id)) - 1   // максимум занятых номеров, не количество (дубль PK после удаления строки)
   // Поставщики из правил категорий → plечо позиции (филиал-поставщик = leg 1, падает в кабинет).
   const ruleSuppliers = items.map(it => {
     const prod = byName.get(it.name.trim().toLowerCase())

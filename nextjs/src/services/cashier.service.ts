@@ -269,7 +269,26 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
 
   // Возвратная накладная: товар обратно на склад филиала, кредит контрагенту (−долг).
   const { createReturn } = await import('./document.service')
-  const lines = sel.map(x => ({ productId: x.pos.productId, name: x.pos.name1c || x.pos.oral, qty: x.qty, unit: x.pos.unit || 'шт', price: Number(x.pos.price) || 0, widthCm: x.pos.widthCm != null ? Number(x.pos.widthCm) : undefined, sourcePosId: x.pos.id }))
+  // ЧТО возвращаем на склад — берём из строки ПРОДАЖНОЙ накладной по этой позиции: именно
+  // этот товар и по этой цене физически отгрузили. Если товар в позиции потом обменяли,
+  // по текущей позиции вернулся бы ДРУГОЙ товар (старый навсегда остался бы «проданным»).
+  const soldRows = await sqlClient`
+    select dl.source_pos_id pid, dl.product_id::text "productId", dl.price::float price, dl.unit, dl.width_cm::float "widthCm", p.name
+    from document_lines dl join products p on p.id = dl.product_id
+    where dl.document_id = ${order.linkedDocId} and dl.source_pos_id is not null
+  ` as unknown as Array<any>
+  const sold: Record<string, any> = {}; for (const r of soldRows) sold[r.pid] = r
+  const lines = sel.map(x => {
+    const s = sold[x.pos.id]
+    return {
+      productId: s?.productId || x.pos.productId,
+      name: s?.name || x.pos.name1c || x.pos.oral,
+      qty: x.qty, unit: s?.unit || x.pos.unit || 'шт',
+      price: s ? Number(s.price) || 0 : Number(x.pos.price) || 0,
+      widthCm: s?.widthCm != null ? Number(s.widthCm) : (x.pos.widthCm != null ? Number(x.pos.widthCm) : undefined),
+      sourcePosId: x.pos.id,
+    }
+  })
   const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Возврат по чеку ${cardId}`, projectId: (order as any).specProjectId || null } as any, 'return_in')
 
   // Деньги: остаток после гашения долга — со счёта возврата (payment out). Без счёта («в долг») —
@@ -544,7 +563,7 @@ export async function editCheck(cardId: string, i: EditCheckInput, actor?: Sessi
   const old = await repo.positionsByCard(cardId)
   const keep = new Set((i.positions.map(p => p.posId).filter(Boolean)) as string[])
   for (const p of old) if (!keep.has(p.id)) await repo.deletePosition(p.id)
-  let idx = old.length
+  let idx = (await repo.nextPosSeq(cardId)) - 1   // максимум занятых номеров: после удаления строки count коллизит
   for (const p of i.positions) {
     const name = (p.name1c || '').trim()
     const productId = p.productId || (await ensureProduct(name))
