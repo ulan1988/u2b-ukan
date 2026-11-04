@@ -178,9 +178,16 @@ export const positionsForLogist = (orgIds: string[], userId: string) =>
       inArray(orders.orgId, orgIds), eq(orders.isCancelled, false),
       ne(orders.source, 'cashier'),   // прямые продажи кассы (магазин/мастер) логиста не касаются
       or(
-        // Свои позиции: активные экраны + проведённые/архив — чтобы «Выполнено · доставлено мной»
-        // показывало доставленное и после проводки накладной (иначе история пропадала).
-        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming', 'bookkeeping', 'archive'])),
+        // 1. В работе у логиста — Исходящие.
+        and(eq(orderPositions.respUserId, userId), eq(orders.screen, 'outgoing')),
+        // 2. Продажа на столе Приёмки — её логист принимает сам («Принять продажу → в работу»).
+        //    Экран «Входящие» СЮДА НЕ ВХОДИТ: новая заявка ещё не обработана приёмкой и не
+        //    прошла автозакуп — везти нечего (иначе логист «продаёт» то, чего нет).
+        and(eq(orderPositions.respUserId, userId), eq(orders.screen, 'reception'), eq(orders.kind, 'sale')),
+        // 3. Уже доставленные — вкладка «Выполнено»: после проводки карточка уезжает во
+        //    Входящие/Бухгалтерию/Архив, но доставка логиста должна остаться видна.
+        and(eq(orderPositions.respUserId, userId), eq(orderPositions.status, 'Доставлено'),
+          inArray(orders.screen, ['incoming', 'bookkeeping', 'archive'])),
         and(isNull(orderPositions.respUserId), eq(orders.screen, 'outgoing')),
       ),
     )).orderBy(desc(orders.createdAt))

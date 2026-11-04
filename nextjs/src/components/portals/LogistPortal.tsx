@@ -299,18 +299,21 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         {tab === 'req' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>📥 ЗАКАЗЫ · ждут закупа</div>
-            <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 12 }}>Заявки собраны, ждут закуп (приход на склад). Как закуп проведён — карточка уходит в «Продажа».</div>
+            <div style={{ fontSize: 12.5, color: '#8a6f00', marginBottom: 12 }}>Заявки собраны, но везти нечего: товара нет на складе или ещё не пришёл закуп. Как товар появится (проведён приход) — карточка сама уйдёт в «Продажа».</div>
             {posWaiting.length === 0 ? empty('✅', 'Нет заказов, ждущих закупа')
               : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {groupByCard(posWaiting).map(g => (
+                  {groupByCard(posWaiting).map(g => {
+                    // Причина простоя: закуп в пути (есть связь автозакупа) или товара просто нет на складе.
+                    const noStock = g.poss.every((p: any) => p.waitReason === 'stock')
+                    return (
                     <div key={`w-${g.order.id}`} style={{ background: '#fff', border: '1.5px solid #f0d9cc', borderRadius: 10, padding: '10px 12px', minWidth: 220 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#6b655b' }}>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", color: PRIMARY }}>{g.order.id}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#8a6f00', background: '#fdf3d8', padding: '1px 7px', borderRadius: 20 }}>ждёт закупа</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: noStock ? '#b03020' : '#8a6f00', background: noStock ? '#faeaea' : '#fdf3d8', padding: '1px 7px', borderRadius: 20 }}>{noStock ? 'нет на складе' : 'ждёт закупа'}</span>
                       </div>
                       <div style={{ fontSize: 12, color: '#6b655b', marginTop: 3 }}>{clientOf(g.order)} · {g.poss.length} поз.</div>
                     </div>
-                  ))}
+                  )})}
                 </div>}
           </div>
         )}
