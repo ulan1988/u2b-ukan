@@ -104,7 +104,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   async function deliverAll(order: any, poss: any[]) {
     setConfAllId(null); setUpdating(order.id)
     for (const p of poss) { if (p.status !== 'Доставлено') await setPosStatus(order.id, 'Доставлено', p.id) }
-    showMsg(`✓ Доставлено: ${poss.filter((p: any) => p.status !== 'Доставлено').length} поз`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null)
+    showMsg(`✓ ${isPurchase(order) ? 'Закуплено' : 'Доставлено'}: ${poss.filter((p: any) => p.status !== 'Доставлено').length} поз`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null)
   }
   async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
   // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
@@ -154,8 +154,10 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const inp: React.CSSProperties = { width: '100%', padding: '10px 13px', borderRadius: 8, fontSize: 14, border: '1.5px solid #e6e2dc', background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
 
-  function StatusBtns({ cardId, posId, posStatus, compact }: { cardId: string; posId: string; posStatus: string; compact?: boolean }) {
-    const btns = [{ label: 'ПРИНЯЛ', status: 'В работе' }, { label: 'В РАБОТЕ', status: 'В пути' }, { label: 'ДОСТАВЛЕНО', status: 'Доставлено' }]
+  // buy = карточка закупа: последний шаг у логиста называется «ЗАКУПЛЕНО» (товар куплен и
+  // привезён на Центр-Склад), а «ДОСТАВЛЕНО» остаётся за продажей — доставкой заказчику.
+  function StatusBtns({ cardId, posId, posStatus, compact, buy }: { cardId: string; posId: string; posStatus: string; compact?: boolean; buy?: boolean }) {
+    const btns = [{ label: 'ПРИНЯЛ', status: 'В работе' }, { label: 'В РАБОТЕ', status: 'В пути' }, { label: buy ? 'ЗАКУПЛЕНО' : 'ДОСТАВЛЕНО', status: 'Доставлено' }]
     const activeIdx = posStatus === 'В работе' ? 0 : posStatus === 'В пути' ? 1 : posStatus === 'Доставлено' ? 2 : -1
     // Кнопки под большой палец (планшет): крупные, почти квадратные; «ДОСТАВЛЕНО» — шире всех.
     return (
@@ -204,7 +206,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         </div>
         {order.screen === 'reception' && !isPurchase(order)
           ? <button onClick={() => handleAccept(order.id)} disabled={updating === order.id} style={{ marginTop: compact ? 8 : 12, width: '100%', padding: compact ? '9px' : '12px', borderRadius: compact ? 8 : 10, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: compact ? 12.5 : 14, cursor: 'pointer', fontFamily: 'inherit', opacity: updating === order.id ? 0.6 : 1 }}>✅ Принять продажу → в работу</button>
-          : <StatusBtns cardId={order.id} posId={pos.id} posStatus={pos.status} compact={compact} />}
+          : <StatusBtns cardId={order.id} posId={pos.id} posStatus={pos.status} compact={compact} buy={isPurchase(order)} />}
         <button onClick={openChat} style={{ marginTop: compact ? 7 : 10, width: '100%', padding: compact ? '6px' : '8px', border: 'none', borderRadius: 8, background: chatOpenPos === pos.id ? PRIMARY : '#f1efec', color: chatOpenPos === pos.id ? '#fff' : '#5f5952', cursor: 'pointer', fontSize: compact ? 12.5 : 14, fontFamily: 'inherit', fontWeight: 600 }}>💬 Чат</button>
         {chatOpenPos === pos.id && (
           <div style={{ marginTop: 10, paddingTop: 4, borderTop: '1px solid #f1efec' }}>
@@ -265,8 +267,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         {!allDone && !changed && poss.length > 0 && (
           <div style={{ padding: '8px 10px', borderTop: '1px solid #f1efec', display: 'flex', gap: 8 }}>
             {confAllId === order.id
-              ? <><button disabled={updating === order.id} onClick={() => deliverAll(order, poss)} className="lg-big" style={{ flex: 1, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Да, доставлено ({poss.length - done})</button><button onClick={() => setConfAllId(null)} className="lg-big" style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 12, fontWeight: 700, padding: '0 16px', cursor: 'pointer', fontFamily: 'inherit' }}>Нет</button></>
-              : <button disabled={updating === order.id} onClick={() => setConfAllId(order.id)} className="lg-big" style={{ flex: 1, border: '2px solid #2e8a5e', background: '#fff', color: '#2e8a5e', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>✓ Доставить всё ({poss.length - done})</button>}
+              ? <><button disabled={updating === order.id} onClick={() => deliverAll(order, poss)} className="lg-big" style={{ flex: 1, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>{buy ? 'Да, закуплено' : 'Да, доставлено'} ({poss.length - done})</button><button onClick={() => setConfAllId(null)} className="lg-big" style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 12, fontWeight: 700, padding: '0 16px', cursor: 'pointer', fontFamily: 'inherit' }}>Нет</button></>
+              : <button disabled={updating === order.id} onClick={() => setConfAllId(order.id)} className="lg-big" style={{ flex: 1, border: '2px solid #2e8a5e', background: '#fff', color: '#2e8a5e', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>✓ {buy ? 'Всё закуплено' : 'Доставить всё'} ({poss.length - done})</button>}
           </div>
         )}
         {!buy && (changed
@@ -344,8 +346,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         )}
         {tab === 'buy' && (
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, color: '#7a3aaa' }}>🛒 Закупки · на Центр-Склад</div>
-            <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 14 }}>Закупи товар и отметь позиции доставленными.</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, color: '#7a3aaa' }}>🛒 Закуп · на Центр-Склад</div>
+            <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 14 }}>Закупи товар и отметь позиции закупленными — карточка уйдёт в «Продажа».</div>
             <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
             {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : posBuy.length === 0 ? empty('✅', 'Нет активных закупов') : groupByCard(posBuy).map(g => <CardBox key={`buy-${g.order.id}`} order={g.order} poss={g.poss} buy />)}
           </div>
@@ -430,7 +432,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
       )}
 
       <div className="lg-bar">
-        {[{ key: 'req' as Tab, icon: '📥', label: 'Заказы', badge: waitingCount, blink: false }, { key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'buy' as Tab, icon: '🛒', label: 'Закупки', badge: posBuy.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Готово', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Правки', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
+        {[{ key: 'req' as Tab, icon: '📥', label: 'Заказы', badge: waitingCount, blink: false }, { key: 'in' as Tab, icon: '💰', label: 'Продажа', badge: posIn.length, blink: false }, { key: 'buy' as Tab, icon: '🛒', label: 'Закуп', badge: posBuy.length, blink: false }, { key: 'out' as Tab, icon: '✅', label: 'Готово', badge: posOut.length, blink: false }, { key: 'changes' as Tab, icon: '⚡', label: 'Правки', badge: changedCount, blink: changedCount > 0 }, { key: 'new' as Tab, icon: '➕', label: 'Новый', badge: 0, blink: false }, { key: 'shift' as Tab, icon: '📊', label: 'Смена', badge: shiftValid.length, blink: false }].map(({ key, icon, label, badge, blink }) => {
           const active = tab === key
           return (
             <button key={key} onClick={() => setTab(key)} title={label} aria-label={label} className={'lg-tab' + (active ? ' on' : '') + (blink ? ' uk-blink' : '')}>
