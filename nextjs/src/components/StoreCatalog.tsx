@@ -19,6 +19,7 @@ const FOLDERS = [
   { key: 'vodostok', label: 'Водосток', match: (p: any) => norm(p.group) === 'водосток', levels: ['cat', 'subgroup'] },
   { key: 'evrobrus', label: 'Евро брус', match: (p: any) => norm(p.cat) === 'евро брус', levels: ['subgroup'], thickness: true },
   { key: 'kompl', label: 'Комплект.', match: (p: any) => norm(p.cat).includes('комплект'), build: true, levels: ['subgroup'] },
+  { key: 'material', label: 'Материалы', match: (p: any) => norm(p.group) === 'материалы', levels: [] },
   { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица', levels: ['subgroup'] },
 ]
 const inp: CSSProperties = { padding: '9px 10px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontWeight: 700, fontFamily: 'inherit', boxSizing: 'border-box', width: '100%', outline: 'none' }
