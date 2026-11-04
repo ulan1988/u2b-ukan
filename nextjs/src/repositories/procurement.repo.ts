@@ -1,6 +1,6 @@
 // Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
 import { db } from '../lib/db'
-import { orders, orderPositions, procurementLinks, products, stockMovements } from '../db/schema'
+import { orders, orderPositions, procurementLinks, products } from '../db/schema'
 import { and, eq, inArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
 
 // Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
@@ -111,28 +111,3 @@ export const deleteLinksBySaleProduct = (saleCardId: string, product: string) =>
     eq(procurementLinks.saleCardId, saleCardId),
     sqlOp`lower(trim(${procurementLinks.product})) = ${String(product || '').trim().toLowerCase()}`,
   ))
-
-// Товар по ИМЕНИ (без учёта регистра/пробелов) — заявки из кабинета часто приходят строкой,
-// без product_id: чтобы понять, есть ли товар на складе, сперва находим его в номенклатуре.
-export async function productIdsByNames(names: string[]): Promise<Record<string, string>> {
-  const keys = Array.from(new Set(names.map(n => String(n || '').trim().toLowerCase()).filter(Boolean)))
-  if (!keys.length) return {}
-  const rows = await db.select({ id: products.id, name: products.name }).from(products)
-    .where(inArray(sqlOp`lower(trim(${products.name}))`, keys))
-  const out: Record<string, string> = {}
-  for (const r of rows) out[String(r.name || '').trim().toLowerCase()] = r.id
-  return out
-}
-
-// Физический остаток по орг (все склады орг, только kind='move' — резервы не вычитаем,
-// иначе карточка «съест» сама себя). Ключ — `orgId::productId`.
-export async function onHandByOrg(orgIds: string[], productIds: string[]): Promise<Record<string, number>> {
-  if (!orgIds.length || !productIds.length) return {}
-  const rows = await db.select({ orgId: stockMovements.orgId, productId: stockMovements.productId, qty: sqlOp<string>`sum(${stockMovements.qty})` })
-    .from(stockMovements)
-    .where(and(inArray(stockMovements.orgId, orgIds), inArray(stockMovements.productId, productIds), eq(stockMovements.kind, 'move')))
-    .groupBy(stockMovements.orgId, stockMovements.productId)
-  const out: Record<string, number> = {}
-  for (const r of rows) out[`${r.orgId}::${r.productId}`] = Number(r.qty) || 0
-  return out
-}

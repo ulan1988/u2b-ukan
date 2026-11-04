@@ -178,25 +178,22 @@ export async function listForLogist(orgId: string, userId: string) {
   const saleCards = cards.filter(c => c.kind === 'sale')
   const waitPos = await procRepo.positionsWaitingProcure(saleCards.map(c => c.id))
   const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
-  const nameKey = (p: any) => (p.name1c || p.oral || '').trim().toLowerCase()
-  // ВТОРОЙ фильтр: «закупа нет» ещё не значит «можно везти» — товара может просто не быть
-  // на складе. Позиция готова к доставке, только если остаток по товару > 0 (kind='move').
-  // Товар — по product_id, иначе ищем по имени (заявка из кабинета приходит строкой);
-  // нет в номенклатуре → возить нечего, строка ждёт закупа.
-  const noIdNames = saleCards.flatMap(c => c.positions.filter((p: any) => !p.productId).map(nameKey))
-  const idByName = await procRepo.productIdsByNames(noIdNames)
-  const prodOf = (p: any) => p.productId || idByName[nameKey(p)] || ''
-  const pids = Array.from(new Set(saleCards.flatMap(c => c.positions.map(prodOf).filter(Boolean)))) as string[]
-  const onHand = await procRepo.onHandByOrg(orgIds, pids)
+  // Серая (информационная) строка у логиста — работать с ней ещё нельзя, но видеть нужно,
+  // чтобы понимать, что готовится. Три причины, в порядке важности:
+  //   'admin'    — карточка ещё у админа: заявка во Входящих / закуп-черновик не оформлен;
+  //   'supplier' — позиция закупа без поставщика (админ ещё не определил, у кого брать);
+  //   'procure'  — закуп оформлен, но приход не проведён (товар в пути).
+  // Как админ определил поставщика и оформил закуп — строка «оживает»; как закуп проведён —
+  // связанная продажа сама уходит во вкладку «Продажа».
   for (const c of cards) {
-    if (c.kind !== 'sale') { c.waitingProcure = false; continue }
+    // «Ещё у админа» = заявка во Входящих или закуп-черновик на Приёмке. Проведённые
+    // (Бухгалтерия/Архив) сюда не попадают — там уже не план, а история.
+    const atAdmin = c.screen === 'incoming' || (c.kind === 'purchase' && c.screen === 'reception')
     for (const p of c.positions) {
-      const pid = prodOf(p)
-      p.stockQty = pid ? (onHand[`${c.orgId}::${pid}`] || 0) : 0
-      const waitBuy = waitPos.has(key(c.id, p))
-      const noStock = p.status !== 'Доставлено' && p.stockQty <= 0
-      p.waitingProcure = waitBuy || noStock
-      p.waitReason = waitBuy ? 'procure' : noStock ? 'stock' : ''
+      const waitBuy = c.kind === 'sale' && waitPos.has(key(c.id, p))
+      const noSupplier = c.kind === 'purchase' && !p.supplierId
+      p.waitReason = p.status === 'Доставлено' ? '' : atAdmin ? 'admin' : noSupplier ? 'supplier' : waitBuy ? 'procure' : ''
+      p.waitingProcure = !!p.waitReason
     }
     c.waitingProcure = c.positions.length > 0 && c.positions.every((p: any) => p.waitingProcure)
   }

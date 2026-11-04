@@ -178,16 +178,11 @@ export const positionsForLogist = (orgIds: string[], userId: string) =>
       inArray(orders.orgId, orgIds), eq(orders.isCancelled, false),
       ne(orders.source, 'cashier'),   // прямые продажи кассы (магазин/мастер) логиста не касаются
       or(
-        // 1. В работе у логиста — Исходящие.
-        and(eq(orderPositions.respUserId, userId), eq(orders.screen, 'outgoing')),
-        // 2. Продажа на столе Приёмки — её логист принимает сам («Принять продажу → в работу»).
-        //    Экран «Входящие» СЮДА НЕ ВХОДИТ: новая заявка ещё не обработана приёмкой и не
-        //    прошла автозакуп — везти нечего (иначе логист «продаёт» то, чего нет).
-        and(eq(orderPositions.respUserId, userId), eq(orders.screen, 'reception'), eq(orders.kind, 'sale')),
-        // 3. Уже доставленные — вкладка «Выполнено»: после проводки карточка уезжает во
-        //    Входящие/Бухгалтерию/Архив, но доставка логиста должна остаться видна.
-        and(eq(orderPositions.respUserId, userId), eq(orderPositions.status, 'Доставлено'),
-          inArray(orders.screen, ['incoming', 'bookkeeping', 'archive'])),
+        // Свои позиции на всех экранах. Заявки, которые ещё у админа (Входящие/Приёмка),
+        // логист ВИДИТ — но серыми, без кнопок доставки: это план, чтобы он понимал, что
+        // готовится. Кнопки открываются, когда админ определил поставщиков и оформил закуп
+        // (серость считает listForLogist → waitingProcure/waitReason).
+        and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming', 'bookkeeping', 'archive'])),
         and(isNull(orderPositions.respUserId), eq(orders.screen, 'outgoing')),
       ),
     )).orderBy(desc(orders.createdAt))
