@@ -182,7 +182,16 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   const { legForSuppliers } = await import('../lib/legDetect')
   const legMap = await legForSuppliers(ruleSuppliers)
   const defLogist = await settingsRepo.orgDefaultLogist(orgId)   // закупщик по умолчанию (Бауыржан)
-  const posValues = items.map((it, idx) => {
+  // Повторное нажатие «В закуп» не должно плодить дубли: строка с таким же товаром
+  // в черновике уже есть — обновляем её количество, новую не добавляем.
+  const existing = await orderRepo.positionsByCard(draft!.id)
+  const existingByName = new Map(existing.map((p: any) => [String(p.name1c || p.oral || '').trim().toLowerCase(), p]))
+  const fresh = items.filter(it => !existingByName.has(it.name.trim().toLowerCase()))
+  for (const it of items) {
+    const ex = existingByName.get(it.name.trim().toLowerCase())
+    if (ex && Number(ex.qty) !== Number(it.total)) await orderRepo.updatePosition(ex.id, { qty: String(it.total) })
+  }
+  const posValues = fresh.map((it, idx) => {
     const prod = byName.get(it.name.trim().toLowerCase())
     let supplierId: string | null = null, respUserId: string | null = null
     if (prod) {
@@ -206,11 +215,16 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   })
   await repo.insertPositions(posValues)
 
-  // связи закуп→продажи
+  // связи закуп→продажи (без дублей: та же тройка закуп+продажа+товар уже записана)
+  const had = new Set((await repo.linksByPurchases([draft!.id])).map((l: any) => `${l.saleCardId}::${String(l.product || '').trim().toLowerCase()}`))
   const links = items.flatMap(it => (it.rows || []).filter(r => r.cardId).map(r => {
     const prod = byName.get(it.name.trim().toLowerCase())
     return { purchaseCardId: draft!.id, saleCardId: r.cardId, productId: prod?.id ?? null, product: it.name, qty: String(r.qty) }
-  }))
+  })).filter(l => {
+    const k = `${l.saleCardId}::${String(l.product || '').trim().toLowerCase()}`
+    if (had.has(k)) return false
+    had.add(k); return true
+  })
   if (links.length) await repo.insertLinks(links)
 
   return { ok: true as const, draftId: draft.id, added: posValues.length }

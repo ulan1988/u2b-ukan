@@ -87,8 +87,18 @@ export async function positionsWaitingProcure(saleIds: string[]): Promise<Set<st
     from procurement_links pl
     join orders o on o.id = pl.purchase_card_id and o.is_cancelled = false and o.linked_doc_id is null
     left join order_positions pp on pp.card_id = pl.purchase_card_id
-      and lower(trim(coalesce(pp.name1c, pp.oral, ''))) = lower(trim(pl.product))
+      and lower(trim(coalesce(pp.name1c, pp.oral, '')) ) = lower(trim(pl.product))
     where pl.sale_card_id = any(${saleIds as any})
+      -- Товар УЖЕ куплен: по этой паре (продажа + товар) есть закуп с проведённой приходной.
+      -- Без этого зависший черновик-дубль держал продажу в ожидании навсегда, хотя
+      -- настоящий закуп проведён и товар на складе.
+      and not exists (
+        select 1 from procurement_links dl
+        join orders d2 on d2.id = dl.purchase_card_id
+        where dl.sale_card_id = pl.sale_card_id
+          and lower(trim(dl.product)) = lower(trim(pl.product))
+          and d2.is_cancelled = false and d2.linked_doc_id is not null
+      )
     group by 1, 2
     having coalesce(bool_or(coalesce(pp.leg, 2) <> 1), true)
   ` as unknown as Array<any>
