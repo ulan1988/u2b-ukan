@@ -44,6 +44,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [comment, setComment] = useState('')
   const [rows, setRows] = useState<any[]>([emptyPos()])
   const [showCatalog, setShowCatalog] = useState(false)
+  const [step, setStep] = useState<'client' | 'items'>('items')   // продажа собирается по шагам
   const [transit, setTransit] = useState(false)   // сквозная продажа (drop-ship): товар мимо склада
   const [transitAgent, setTransitAgent] = useState('')   // имя сквозного агента (напр. Берик) — инфо
   const [busy, setBusy] = useState(false)
@@ -60,7 +61,18 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     loadSettings()
   }, [orgId]) // eslint-disable-line
 
-  function openForm(k: 'sale' | 'purchase') { setKind(k); setOpen(true); setRows([emptyPos()]) }
+  function openForm(k: 'sale' | 'purchase') {
+    setKind(k); setOpen(true); setRows([emptyPos()])
+    // Заказ собираем по шагам: сперва заказчик, каталог откроется сам после выбора.
+    setStep(k === 'sale' ? 'client' : 'items'); setContactId('')
+  }
+  // Шаг 1 → 2: выбрали заказчика — сразу каталог, без лишних кликов.
+  function pickClientStep(c: any) {
+    if (!c?.id) return
+    setContactId(c.id); setSpecId(''); setStep('items'); setShowCatalog(true)
+  }
+  // Логист по умолчанию (владелец: Бауыржан, пока не поменяет) — проставляем новым строкам.
+  const defaultLogistId = () => (logists.find(l => (l.name || '').toLowerCase().includes('бауыржан')) || logists[0])?.id || ''
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
   const clientPT = () => (allCags.find((c: any) => c.id === contactId)?.priceType) || 'retail'
@@ -84,7 +96,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     toast('Цены подтянуты')
   }
   function addFromCatalog(items: PickedPos[]) {
-    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => { const cm = it.widthCm != null ? String(it.widthCm) : ''; const raw = it.name1c || it.oral; const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm }) : raw; return { ...emptyPos(), productId: (it as any).productId || undefined, name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit } })])
+    const log = defaultLogistId()
+    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => { const cm = it.widthCm != null ? String(it.widthCm) : ''; const raw = it.name1c || it.oral; const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm }) : raw; return { ...emptyPos(), productId: (it as any).productId || undefined, name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit, respUserId: log } })])
     setShowCatalog(false)
   }
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
@@ -177,7 +190,18 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
           {open && transit && <input value={transitAgent} onChange={e => setTransitAgent(e.target.value)} placeholder="Сквозной агент (напр. Берик)" title="Кому реально записан долг перед поставщиком — инфо" style={{ ...INP, maxWidth: 220, borderColor: '#d8c4ec' }} />}
         </div>
 
-        {open && (
+        {open && step === 'client' && (
+          <div style={{ padding: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em', marginBottom: 6 }}>ШАГ 1 — ЗАКАЗЧИК</div>
+            <div style={{ maxWidth: 520 }}>
+              <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={pickClientStep} placeholder="— найдите заказчика —" />
+            </div>
+            <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 8 }}>Выберите заказчика — каталог откроется сам.</div>
+            <div style={{ marginTop: 14 }}><Btn variant="ghost" onClick={() => setOpen(false)} style={{ color: '#5f5952' }}>Отмена</Btn></div>
+          </div>
+        )}
+
+        {open && step === 'items' && (
           <div style={{ padding: 20 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
               <div>
@@ -199,7 +223,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em' }}>ПОЗИЦИИ</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em' }}>{kind === 'sale' ? 'ШАГ 2–3 — ТОВАРЫ И КОЛ-ВО · ШАГ 4 — ПОСТАВЩИК' : 'ПОЗИЦИИ'}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', background: '#f8f6f3', borderRadius: 8, padding: '5px 8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КО ВСЕМ:</span>
                 <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllLogist(e.target.value)}><option value="">Логист →</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
@@ -252,9 +276,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec' }}>
               <Btn onClick={() => submit(true)} disabled={busy}>Сохранить черновик</Btn>
-              <Btn variant="primary" onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
+              <Btn variant={kind === 'purchase' ? 'primary' : undefined} onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
               {kind === 'sale' && (
-                <Btn onClick={() => submit(false, true)} disabled={busy || !contactId}>⚡ Сразу логисту (ЗКП)</Btn>
+                <Btn variant="primary" onClick={() => submit(false, true)} disabled={busy || !contactId}>📦 Сделать закуп → логисту</Btn>
               )}
               <Btn variant="ghost" onClick={() => setOpen(false)} style={{ marginLeft: 'auto', color: '#5f5952' }}>Отмена</Btn>
             </div>
