@@ -104,7 +104,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
       const [back] = await docRepo.contragentByOrgRef(refOrg, o.orgId)   // в книге refOrg — контрагент «наша орг»
       if (!mwh || !back) continue
       const mlines = g.pos.map(p => mkLine(p, Number(p.price) || 0, false))
-      const minput: any = { orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `${isPurchase ? 'Продажа головному' : 'Приход материала'} · заявка ${o.id}` }
+      const minput: any = { orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines, date: acceptDate, sourceOrderId: o.id, projectId, parentDocId: mainDoc.id, comment: `${isPurchase ? 'Продажа головному' : 'Приход материала'} · заявка ${o.id}` }
       const mdoc = isPurchase ? await docSvc.createSale(minput) : await docSvc.createPurchase(minput)   // HQ закуп→у него расход; HQ продажа→у него приход
       await orderRepo.insertHistory({ cardId, action: 'invoiceMirror', detail: `Зеркальная ${isPurchase ? 'расходная' : 'приходная'} у «${cp.name}»: ${mdoc.number}`, userName: actor?.name || 'Система' })
     }

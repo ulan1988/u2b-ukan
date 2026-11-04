@@ -39,6 +39,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,    // id карточки-основания (ЗП-…), чтобы связь не терялась
+    parentDocId: (input as any).parentDocId || null,        // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
   }
@@ -93,7 +94,9 @@ export async function getDocument(id: string) {
     if ((doc as any).supplierId) { const [sp] = await docRepo.contragentById((doc as any).supplierId); supplier = sp?.name || null }
     else supplier = (await docRepo.saleSupplierFallback(id)) || null
   }
-  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, supplier, cost }
+  // Дочерние накладные филиалов (дерево parent_doc_id) — для кнопки «Применить всем».
+  const children = await docRepo.childDocsWithOrg(id)
+  return { doc, lines, contragent: contragent || null, warehouse: warehouse || null, customer, supplier, cost, children }
 }
 
 // Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
@@ -203,6 +206,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     id: docId, orgId: input.orgId, type: 'sale', operation: 'shipment',
     number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
+    parentDocId: (input as any).parentDocId || null,       // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(netTotal),
     discountSum: String(disc), discountPct: String(disc > 0 && total > 0 ? Math.round(disc / total * 10000) / 100 : 0),

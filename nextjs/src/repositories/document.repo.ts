@@ -1,6 +1,6 @@
 // Запросы по документам (только Drizzle). Логика проводки — в service.
 import { db, sqlClient } from '../lib/db'
-import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses, orders } from '../db/schema'
+import { documents, documentLines, stockMovements, docLinks, products, contragents, warehouses, orders, organizations } from '../db/schema'
 import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm'
 
 type NewDoc = typeof documents.$inferInsert
@@ -269,3 +269,34 @@ export async function saleSupplierFallback(docId: string): Promise<string> {
 export const postedBySourceOrder = (cardId: string) =>
   db.select({ id: documents.id, number: documents.number }).from(documents)
     .where(and(eq(documents.sourceOrderId, cardId), ne(documents.status, 'cancelled')))
+
+// ── Дерево накладных: наша расходная (мать) → зеркальные приходные филиалов (дочери) ──
+export const childDocs = (docId: string) =>
+  db.select().from(documents).where(and(eq(documents.parentDocId, docId), ne(documents.status, 'cancelled')))
+
+export const insertLines = (vals: NewLine[]) => (vals.length ? db.insert(documentLines).values(vals) : Promise.resolve())
+export const deleteLine = (lineId: string) => db.delete(documentLines).where(eq(documentLines.id, lineId))
+
+// Переписать движения склада документа (кол-во в строках изменилось центральной правкой).
+export async function replaceMovements(docId: string, moves: NewMove[]) {
+  await db.delete(stockMovements).where(eq(stockMovements.documentId, docId))
+  if (moves.length) await db.insert(stockMovements).values(moves)
+}
+
+// Остаток товара на складе (для предупреждения «уйдёт в минус» при правке дочерней).
+export async function stockByProducts(orgId: string, warehouseId: string, productIds: string[]) {
+  const out: Record<string, number> = {}
+  if (!productIds.length) return out
+  const rows = await db.select({ productId: stockMovements.productId, qty: sql<string>`sum(${stockMovements.qty})` })
+    .from(stockMovements)
+    .where(and(eq(stockMovements.orgId, orgId), eq(stockMovements.warehouseId, warehouseId), inArray(stockMovements.productId, productIds)))
+    .groupBy(stockMovements.productId)
+  for (const r of rows) out[r.productId] = Number(r.qty) || 0
+  return out
+}
+
+// Дочерние накладные с названием орг-владельца (показываем, кому применится правка).
+export const childDocsWithOrg = (docId: string) =>
+  db.select({ id: documents.id, number: documents.number, orgId: documents.orgId, org: organizations.name, total: documents.total, reviewed: documents.reviewed })
+    .from(documents).leftJoin(organizations, eq(documents.orgId, organizations.id))
+    .where(and(eq(documents.parentDocId, docId), ne(documents.status, 'cancelled')))

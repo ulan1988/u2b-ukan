@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
-import { getDocument, updateDocument, deleteInvoiceLine } from '@/lib/api/docs'
+import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren } from '@/lib/api/docs'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
 import { fetchRefs } from '@/lib/api/refs'
@@ -87,6 +87,26 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const discountSum = discMode === 'pct' ? Math.round(subtotal * (Number(f.discountPct) || 0)) / 100 : (Number(f.discountSum) || 0)
   const total = Math.max(0, subtotal - discountSum)
   const remain = total - (Number(f.paidSum) || 0)
+
+  // Централизованная правка: сохранить мать и разослать состав/кол-во/цены всем дочерним
+  // накладным филиалов. Филиалы получат уведомление, их документ снова станет «не проверено».
+  async function applyAll() {
+    const kids = (data?.children || []) as any[]
+    if (!kids.length) return
+    const who = kids.map(k => `• ${k.org || '—'} · ${k.number}`).join('\n')
+    if (!confirm('Применить этот состав и цены всем дочерним накладным?\n\n' + who)) return
+    setBusy(true)
+    await save()                                  // сперва сохраняем саму мать
+    const r: any = await applyToChildren(id)
+    setBusy(false)
+    const res = r?.data || r
+    if (res?.ok === false) { setFlash('⚠ ' + (res.error || 'Не удалось')); return }
+    const w = (res?.warnings || []) as any[]
+    setFlash(w.length
+      ? `✓ Применено: ${res.synced}. ⚠ минус на складе: ${w.map((x: any) => `${x.doc} · ${x.product} (${x.left})`).join('; ')}`
+      : `✓ Применено всем: ${res.synced}`)
+    setTimeout(() => setFlash(''), 6000); await reload(); onSaved?.()
+  }
 
   async function save(markReviewed?: boolean) {
     setBusy(true)
@@ -257,6 +277,12 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
               {o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
               <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
               <button onClick={() => save()} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? '…' : 'Сохранить'}</button>
+              {(data?.children || []).length > 0 && o.status !== 'cancelled' && (
+                <button onClick={applyAll} disabled={busy} title="Разослать состав и цены дочерним накладным филиалов"
+                  style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
+                  🌳 Применить всем ({(data.children || []).length})
+                </button>
+              )}
               {o.status !== 'cancelled' && !f.reviewed && <button onClick={() => save(true)} disabled={busy} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>✓ Проверено</button>}
             </div>
           </>

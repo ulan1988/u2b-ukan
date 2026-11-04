@@ -199,6 +199,9 @@ export const documents = pgTable('documents', {
   // и просто складом-транзитом, поэтому поставщик хранится отдельно от склада и правится
   // в форме накладной. Пусто → выводим из связей закупа, иначе из склада отгрузки.
   supplierId: uuid('supplier_id').references(() => contragents.id),
+  // Дерево накладных: у зеркальной приходной филиала здесь id НАШЕЙ расходной (мать).
+  // По нему работает централизованная правка: меняем мать → применяем всем дочерним.
+  parentDocId: uuid('parent_doc_id').references((): any => documents.id, { onDelete: 'set null' }),
   warehouseId: uuid('warehouse_id').references(() => warehouses.id),
   date: date('date').notNull(),
   status: text('status').notNull().default('draft'),      // draft|posted|paid|cancelled
@@ -222,6 +225,7 @@ export const documents = pgTable('documents', {
 }, t => ({
   byOrg: index('documents_org_idx').on(t.orgId),
   byContragent: index('documents_contragent_idx').on(t.contragentId),
+  byParentDoc: index('documents_parent_doc_idx').on(t.parentDocId),
   byTypeDate: index('documents_type_date_idx').on(t.type, t.date),
   bySourceOrder: index('documents_source_order_idx').on(t.sourceOrderId),
 }))

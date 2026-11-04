@@ -8,6 +8,8 @@ export const deleteInvoiceLine = (docId: string, lineId: string) => send(`/api/d
 export const getDocument = (id: string) => getObj(`/api/documents/${id}`, null as any)
 export const docChain = (id: string) => getObj(`/api/documents/${id}/chain`, null as any)
 export const updateDocument = (id: string, b: any) => patch(`/api/documents/${id}`, b)
+// Централизованная правка: разослать состав/кол-во/цены матери по дочерним накладным филиалов.
+export const applyToChildren = (id: string) => post(`/api/documents/${id}/apply`)
 
 export const listSales = (orgId: string) => getArray(`/api/sales?orgId=${orgId}`)
 export const createSale = (b: any) => post('/api/sales', b)
