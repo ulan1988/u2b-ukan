@@ -519,7 +519,7 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
     trackingLink: encodeURIComponent(newId),
   }
   const newPositions = move.map((p: any, idx: number) => ({
-    id: `${newId}-P${idx + 1}`, cardId: newId, productId: p.productId ?? null,
+    id: `${newId}-P${idx + 1}`, cardId: newId, originPosId: p.id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     costPrice: String((p as any).costPrice ?? 0),
     transit: !!(p as any).transit,
@@ -569,7 +569,7 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
 // Добавить позицию к карточке (логист/филиал).
 export async function addPosition(cardId: string, i: any, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }
-  const n = await repo.countPositions(cardId)
+  const n = await repo.nextPosSeq(cardId) - 1   // максимум занятых номеров, не количество: после удаления строки count даёт дубль PK
   // Плечо новой позиции: по поставщику. Без поставщика — как у соседей по карточке: в заказе
   // мастера они производственные (leg=1), и новая позиция должна уехать логисту вместе с ними.
   let leg = await legForSupplier(i.supplierId ?? null)

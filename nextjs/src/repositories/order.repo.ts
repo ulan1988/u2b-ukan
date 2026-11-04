@@ -249,3 +249,12 @@ export async function cardTrees(ids: string[]): Promise<Record<string, { root: s
   for (const id of ids) if (!out[id]) out[id] = { root: id, ids: [id] }
   return out
 }
+
+// Следующий свободный номер позиции в карточке. Берём МАКСИМУМ из существующих, а не
+// количество: после удаления позиции count даёт занятый номер → PK-коллизия при добавлении.
+export async function nextPosSeq(cardId: string) {
+  const rows = await db.select({ id: orderPositions.id }).from(orderPositions).where(eq(orderPositions.cardId, cardId))
+  let max = 0
+  for (const r of rows) { const m = String(r.id).match(/-P(\d+)$/); if (m) max = Math.max(max, Number(m[1])) }
+  return max + 1
+}

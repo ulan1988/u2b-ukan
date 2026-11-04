@@ -48,7 +48,7 @@ export async function createSaleFromPurchase(cardId: string, actor?: Session | n
     deadline: mother.deadline ?? null, specProjectId: (mother as any).specProjectId ?? null,
   } as any
   const childPositions = positions.map((p: any, i: number) => ({
-    id: `${id}-P${i + 1}`, cardId: id, productId: p.productId ?? null,
+    id: `${id}-P${i + 1}`, cardId: id, originPosId: p.id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral || p.name1c, qty: p.qty, unit: p.unit || 'шт',
     widthCm: p.widthCm ?? null, leg: 2, status: 'В работе',
     respUserId: p.respUserId ?? null, supplierId: null,

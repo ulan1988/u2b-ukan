@@ -250,7 +250,11 @@ export const documentLines = pgTable('document_lines', {
   comment: text('comment'),
   block: text('block').notNull().default(''),             // блок внутри накладной (= накладная поставщика), группировка/раскладка
   sortOrder: integer('sort_order').notNull().default(0),  // порядок строки (перетаскивание внутри/между блоками)
-}, t => ({ byDoc: index('document_lines_doc_idx').on(t.documentId) }))
+}, t => ({
+  byDoc: index('document_lines_doc_idx').on(t.documentId),
+  bySourcePos: index('document_lines_source_pos_idx').on(t.sourcePosId),   // возвраты/правка чека считают по позиции
+  byProduct: index('document_lines_product_idx').on(t.productId),          // себестоимость, рентабельность, остатки
+}))
 
 // Журнал правок накладной: кто и что поменял («было → стало»). Нужен при централизованной
 // рассылке правок филиалам — чтобы потом не спорить, кто изменил цену или количество.
@@ -413,13 +417,21 @@ export const orderPositions = pgTable('order_positions', {
   status: text('status').notNull().default('В работе'),   // В работе|Готово|В пути|Доставлено
   prodStage: text('prod_stage').notNull().default(''),    // производство: '' = на распиле | cut = распилено (на листогибе) | bent = согнуто (готово)
   specItemId: uuid('spec_item_id').references(() => specProjectItems.id), // вынесена из позиции проекта (учёт остатка)
+  // Исходная позиция, из которой эта «переехала» (сплит карточки, рождение продажи ПРД):
+  // по цепочке видно разделение на части и обратное объединение, id не теряется.
+  originPosId: text('origin_pos_id'),
   leg: integer('leg').notNull().default(2),
   late: boolean('late').notNull().default(false),
   payment: text('payment').notNull().default(''),
   deadline: timestamp('deadline'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, t => ({ byCard: index('order_positions_card_idx').on(t.cardId) }))
+}, t => ({
+  byCard: index('order_positions_card_idx').on(t.cardId),
+  byProduct: index('order_positions_product_idx').on(t.productId),        // отчёты, автозакуп, рентабельность
+  byResp: index('order_positions_resp_idx').on(t.respUserId, t.status),   // кабинет логиста: свои позиции
+  byOrigin: index('order_positions_origin_idx').on(t.originPosId),        // дерево переездов позиции
+}))
 
 // Аудит действий по карточке
 export const orderHistory = pgTable('order_history', {
