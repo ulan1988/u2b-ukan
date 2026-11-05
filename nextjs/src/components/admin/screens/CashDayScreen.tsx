@@ -82,7 +82,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     const splits = zpSplits(payTotal)
     if (!splits.length) { toast('Отметьте счёт списания и сумму'); return }
     const r: any = await cashPayZp(orgId, splits[0].accountId, date, bonuses, splits)
-    if (r.ok) { toast(`✓ Выдано ЗП+40%: ${r.count} чел · ${m(r.total)}`); setWbonus({}); setWamt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    if (r.ok) { toast(`✓ Выдано ${data?.kind === 'producer_seller' ? 'ЗП' : 'ЗП+40%'}: ${r.count} чел · ${m(r.total)}`); setWbonus({}); setWamt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Инкассация Нипа → головной СО СПЛИТОМ: нал → ГО Осн.касса, каспи(GOLD) → ГО Банковский счёт.
   async function doRemit() {
@@ -211,7 +211,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 {accts.length > 0 && <td style={{ ...cell, fontWeight: 800 }}>{m(month.endBalTotal || 0)}</td>}
               </tr></tfoot>
             </table>
-            {accts.length > 0 && <div style={{ padding: '8px 14px', fontSize: 12, color: COLORS.textLight, borderTop: `1px solid ${COLORS.borderLight}` }}>Старт остатков на 1-е число (из истории): {accts.map((a: any) => `${a.name} ${m((month.opening || {})[a.id] || 0)}`).join(' · ')} · Себест. = Σ(кол-во × приходная цена) · Отпуск = себест+долг−возврат · Маржа = КАССА−себест, делится 60/40 · ЗП+40 = 40%маржи+ЗП.</div>}
+            {accts.length > 0 && <div style={{ padding: '8px 14px', fontSize: 12, color: COLORS.textLight, borderTop: `1px solid ${COLORS.borderLight}` }}>Старт остатков на 1-е число (из истории): {accts.map((a: any) => `${a.name} ${m((month.opening || {})[a.id] || 0)}`).join(' · ')} · Себест. = Σ(кол-во × приходная цена) · Отпуск = себест+долг−возврат · Маржа = КАССА−себест · ЗП = оклад по табелю.</div>}
           </div>
         }
         return <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
@@ -294,7 +294,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <div>
                   <div style={sub}>РАСХОД</div>
                   {(r.sellers || []).map((s: any, i: number) => (
-                    <div key={i} style={{ ...line, fontSize: 12.5 }}><span>👤 {s.name}<span style={{ color: COLORS.textLight }}> · оклад {m(s.oklad)} + 40% {m(s.bonus)}</span></span><b>{m(s.zp)}</b></div>
+                    <div key={i} style={{ ...line, fontSize: 12.5 }}><span>👤 {s.name}<span style={{ color: COLORS.textLight }}> · оклад {m(s.oklad)}{data?.kind === 'producer_seller' ? '' : ` + 40% ${m(s.bonus)}`}</span></span><b>{m(s.zp)}</b></div>
                   ))}
                   <div style={{ ...line, fontWeight: 800, borderTop: `1px solid ${COLORS.borderLight}`, marginTop: 2, paddingTop: 6 }}><span>ЗП всего</span><b>{m(r.zpTotal)} ₸</b></div>
                   <div style={line}><span>Расходы магазина</span><b style={{ color: COLORS.primaryDark }}>{m(r.shopExp)} ₸</b></div>
@@ -512,6 +512,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 {(() => {
                   const marked = (data.staff || []).filter((u: any) => wsel[u.id])
                   const N = marked.length
+                  const noPct = data?.kind === 'producer_seller'   // листогиб: процентов нет, только оклад
                   const pool = Math.round((Number(data.report?.margin) || 0) * 0.4)   // ориентир: доступный пул 40% маржи
                   const rows = marked.map((u: any) => { const oklad = Math.round(Number(u.dailyWage) || 0); const bonus = bonusEff(u.id); return { u, oklad, bonus, total: oklad + bonus } })
                   const bonusSum = rows.reduce((s: number, r: any) => s + r.bonus, 0)
@@ -520,8 +521,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   return (
                     <div style={{ marginTop: 12, background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.03em' }}>💵 ВЫДАТЬ ЗП+40%</span>
-                        <span style={{ fontSize: 11.5, color: COLORS.textLight }}>пул 40% маржи: <b style={{ color: '#2e8a5e' }}>{m(pool)}</b> · роздано {m(bonusSum)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.03em' }}>{noPct ? '💵 ВЫДАТЬ ЗП' : '💵 ВЫДАТЬ ЗП+40%'}</span>
+                        {!noPct && <span style={{ fontSize: 11.5, color: COLORS.textLight }}>пул 40% маржи: <b style={{ color: '#2e8a5e' }}>{m(pool)}</b> · роздано {m(bonusSum)}</span>}
                       </div>
                       {/* Счета списания: птичка + сумма с каждого (пусто = остаток). Если на одном
                           счёте денег не хватает — отмечаем второй и делим сумму между ними. */}
@@ -546,13 +547,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                           <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {r.u.name}</span>
                           <span style={{ width: 90, textAlign: 'right', fontSize: 12.5, color: COLORS.textLight }}>оклад {m(r.oklad)}</span>
                           <span style={{ fontSize: 13, color: COLORS.textMuted }}>+</span>
-                          <input value={wbonus[r.u.id] ?? ''} inputMode="decimal" placeholder="40%"
+                          <input value={wbonus[r.u.id] ?? ''} inputMode="decimal" placeholder={noPct ? 'бонус' : '40%'}
                             onChange={e => setWbonus(w => ({ ...w, [r.u.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
                             style={{ width: 90, textAlign: 'right', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none' }} />
                           <b style={{ width: 90, textAlign: 'right', fontSize: 13.5 }}>{m(r.total)}</b>
                         </div>
                       ))}
-                      <button onClick={() => payZp(payTotal)} disabled={!(payTotal > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`💵 Выдать ЗП+40%${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
+                      <button onClick={() => payZp(payTotal)} disabled={!(payTotal > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`${noPct ? '💵 Выдать ЗП' : '💵 Выдать ЗП+40%'}${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
                     </div>
                   )
                 })()}

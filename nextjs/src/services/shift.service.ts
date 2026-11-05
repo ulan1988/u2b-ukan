@@ -10,6 +10,8 @@ const num = (n: any) => Number(n) || 0
 const findAcc = (accts: any[], nm: string) => accts.find((a: any) => (a.name || '').trim().toLowerCase() === nm.toLowerCase())
 
 export async function masterShift(orgId: string, date: string) {
+  // Вид орг: у листогиба (producer_seller) процентов от маржи нет — экран прячет пул 40%.
+  const orgKind = ((await sqlClient`select kind from organizations where id=${orgId} limit 1` as unknown as Array<any>)[0]?.kind) || ''
   // Доходы: проданные карточки за день (по дате расходной накладной).
   const incRow = (await sqlClient`
     select coalesce(sum(o.paid_cash),0)::float cash, coalesce(sum(o.paid_kaspi),0)::float kaspi,
@@ -165,7 +167,7 @@ export async function masterShift(orgId: string, date: string) {
   const debtTotal = debts.reduce((a: number, x: any) => a + num(x.debt), 0)
 
   return {
-    date, income, check, cards, staff, attendance: attIds, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, attendance: attIds, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
