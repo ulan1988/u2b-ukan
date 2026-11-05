@@ -277,14 +277,17 @@ export async function cashReport(orgId: string, from: string, to: string) {
     const cost = costByDay[r.day] || 0, ret = retByDay[r.day] || 0
     const otpusk = cost + debt - ret                     // отпуск = себестоимость + долг − возврат
     const margin = paid - cost                           // маржа (100%) = КАССА − себестоимость (по образцу отчёта)
-    const split60 = margin * 0.6, split40 = margin * 0.4 // 60%/40% — справка по марже (не ЗП)
+    // Проценты от маржи (60/40 и бонус к ЗП) — только там, где они приняты. У листогиба
+    // (producer_seller) процентов НЕТ: в отчёте остаются маржа, ЗП (оклад) и расходы.
+    const pct = orgKind !== 'producer_seller'
+    const split60 = pct ? margin * 0.6 : 0, split40 = pct ? margin * 0.4 : 0
     // Колонка ЗП = табель дня (Σ окладов отмеченных), иначе fin_rows ЗП (r.salary) для старых дней.
     const zpTabel = tabelByDay[r.day]
     const salary = zpTabel !== undefined ? zpTabel : r.salary
     // Колонка ЗП+40 = НАЧИСЛЕНИЕ по формуле отчёта: оклад (ЗП) + 40% маржи дня.
     // Это сумма к выдаче, а не факт выплаты (факт виден в «Расход»/движениях счетов).
     // При минусовой марже бонуса нет (оклад не срезаем).
-    const zpPlus40 = salary + Math.max(0, split40)
+    const zpPlus40 = pct ? salary + Math.max(0, split40) : 0
     // Остаток каждого счёта на конец дня = стартовый + все движения по датам ≤ этот день.
     const bal: Record<string, number> = { ...opening }
     for (const md of movDays) { if (md <= r.day) { const mm = movByDay[md]; for (const acc in mm) bal[acc] = (bal[acc] || 0) + mm[acc] } }
