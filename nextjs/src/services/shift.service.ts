@@ -256,16 +256,18 @@ export async function cashReport(orgId: string, from: string, to: string) {
   const finMoves = await sqlClient`
     select a.account_id::text acc, r.date::text as "day", coalesce(sum(a.amount),0)::float net
     from fin_rows r join fin_row_amounts a on a.row_id=r.id
-    where r.org_id=${orgId} and r.date between ${from} and ${to} group by a.account_id, r.date
+    where r.org_id=${orgId} and r.status='posted' and r.date between ${from} and ${to} group by a.account_id, r.date
   ` as unknown as Array<any>
   // Стартовый остаток на начало периода = все движения по счёту ДО from (авто из истории).
+  // ТОЛЬКО проведённые строки листа: черновик — это ещё не деньги (из-за этого в старт
+  // остатков попадал неподтверждённый черновик и счёт показывал ложный минус).
   const payOpen = await sqlClient`
     select cash_account_id::text acc, coalesce(sum(case when direction='in' then amount else -amount end),0)::float net
     from payments where org_id=${orgId} and cash_account_id is not null and date < ${from} group by cash_account_id
   ` as unknown as Array<any>
   const finOpen = await sqlClient`
     select a.account_id::text acc, coalesce(sum(a.amount),0)::float net
-    from fin_rows r join fin_row_amounts a on a.row_id=r.id where r.org_id=${orgId} and r.date < ${from} group by a.account_id
+    from fin_rows r join fin_row_amounts a on a.row_id=r.id where r.org_id=${orgId} and r.status='posted' and r.date < ${from} group by a.account_id
   ` as unknown as Array<any>
   const opening: Record<string, number> = {}; for (const a of accounts) opening[a.id] = 0
   for (const r of [...payOpen, ...finOpen]) opening[r.acc] = (opening[r.acc] || 0) + num(r.net)
