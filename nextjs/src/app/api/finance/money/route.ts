@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import * as svc from '@/services/finmoney.service'
 import { reviewPaymentSchema } from '@/dto/payment.dto'
+import { finUnpostSchema, finCancelPaySchema } from '@/dto/fin.dto'
 import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,18 @@ export async function POST(req: NextRequest) {
       res = await svc.reviewClientPayment(org, p.data.paymentId, p.data.accept); break
     }
     case 'delete': res = await svc.deleteFinRow(b.id); break
+    // Отмена проведения: ручная строка листа (сторно платежа + в черновик)…
+    case 'unpost': {
+      const p2 = finUnpostSchema.safeParse(b)
+      if (!p2.success) { res = { ok: false, error: 'Не указана строка' }; break }
+      res = await svc.unpostFinRow(org, p2.data.id); break
+    }
+    // …и авто-строка (платёж кассы/инкассация) — удаляем платёж вместе с парным у головного.
+    case 'cancelPay': {
+      const p3 = finCancelPaySchema.safeParse(b)
+      if (!p3.success) { res = { ok: false, error: 'Не указан платёж' }; break }
+      res = await svc.cancelAutoPayment(org, p3.data.paymentId); break
+    }
     case 'reorder': res = await svc.reorderDay(b.ids || []); break
     case 'post':
       // Сохраняем присланные строки и сразу проводим — в одном запросе, без гонки «сохранение↔чтение».

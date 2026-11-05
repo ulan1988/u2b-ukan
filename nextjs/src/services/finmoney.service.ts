@@ -132,10 +132,62 @@ export async function reorderDay(orderedIds: string[]) {
 export async function postFinDay(orgId: string, date: string, actorId?: string) {
   const rows = await fin.rowsForDay(orgId, date)
   const drafts = rows.filter(r => r.status !== 'posted' && sumAmounts(r.amounts) !== 0)
+
+  // Касса не уходит в минус: по каждому счёту остаток (проведённое + платежи ≤ дата) плюс
+  // то, что собираемся провести, должен быть ≥ 0. Минус хотя бы на одном счёте — не проводим
+  // НИЧЕГО (иначе половина строк пройдёт, и день придётся разбирать вручную).
+  const [accts, bal] = await Promise.all([fin.accounts(orgId), fin.balanceByAccount(orgId, date)])
+  const left: Record<string, number> = {}
+  for (const b of bal) left[b.id] = b.amt
+  const spend: Record<string, number> = {}
+  for (const r of drafts) for (const a of (r.amounts || [])) {
+    if (!a.accountId) continue
+    spend[a.accountId] = (spend[a.accountId] || 0) + num(a.amount)
+  }
+  const short = Object.keys(spend)
+    .map(id => ({ id, after: (left[id] || 0) + spend[id] }))
+    .filter(x => x.after < -0.005)
+  if (short.length) {
+    const name = (id: string) => accts.find(a => a.id === id)?.name || 'счёт'
+    const text = short.map(x => `${name(x.id)}: на счёте ${Math.round(left[x.id] || 0).toLocaleString('ru-RU')} ₸, списывается ${Math.round(Math.abs(spend[x.id])).toLocaleString('ru-RU')} ₸ — не хватает ${Math.round(Math.abs(x.after)).toLocaleString('ru-RU')} ₸`).join('; ')
+    return { ok: false as const, error: `Нельзя провести: касса уйдёт в минус. ${text}`, posted: 0, payments: 0 }
+  }
+
   let paid = 0
   for (const r of drafts) paid += await applyRowPayments(orgId, r, date, actorId)
   await fin.setPosted(drafts.map(r => r.id))
   return { ok: true, posted: drafts.length, payments: paid }
+}
+
+// ── Отмена проведения строки листа (сторно) ──────────────────────────────────
+// Ручная строка: удаляем созданные ею платежи, откатываем оплату по накладной,
+// строка возвращается в черновик (суммы остаются — можно поправить и провести заново).
+export async function unpostFinRow(orgId: string, rowId: string) {
+  const [row] = await fin.rowById(rowId)
+  if (!row) return { ok: false as const, error: 'Строка не найдена' }
+  const pays = await fin.paymentsOfFinRow(rowId)
+  for (const p of pays) if (p.docId) await fin.bumpPaidSum(p.docId, -Math.abs(num(p.amount)))
+  await fin.deletePaymentsOfFinRow(rowId)
+  await fin.setDraft([rowId])
+  return { ok: true as const, removed: pays.length }
+}
+
+// Авто-строка (платёж кассы/инкассация): отменяем сам платёж. Инкассация головному —
+// вместе с парным приходом у головного, иначе деньги зависнут у ГО. Чек продажи так не
+// отменяем: там возврат в кассе, иначе деньги уйдут, а товар останется проданным.
+export async function cancelAutoPayment(orgId: string, paymentId: string) {
+  const [pay] = await fin.paymentById(orgId, paymentId)
+  if (!pay) return { ok: false as const, error: 'Платёж не найден' }
+  const cm = String(pay.comment || '')
+  if (/^Касса /i.test(cm)) return { ok: false as const, error: 'Это оплата по чеку — отменяйте возвратом в кассе' }
+  let pair = 0
+  if (/^Инкассация головному/i.test(cm)) {
+    const [hqPay] = await fin.remitPairAtHq(orgId, pay.date, Math.abs(num(pay.amount)))
+    if (hqPay) { await fin.deletePaymentById(hqPay.id); pair = 1 }
+  }
+  if (pay.docId) await fin.bumpPaidSum(pay.docId, -Math.abs(num(pay.amount)))
+  await fin.deletePaymentById(pay.id)
+  return { ok: true as const, amount: Math.abs(num(pay.amount)), pair }
 }
 
 export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q || '')

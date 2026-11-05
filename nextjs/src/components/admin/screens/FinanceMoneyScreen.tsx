@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
+import { finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
@@ -49,6 +49,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [favOpen, setFavOpen] = useState(false)
   const [view, setView] = useState<'sheet' | 'dds' | 'journal' | 'accounts' | 'balance'>('sheet')
   const [showComment, setShowComment] = useState(false)   // колонка «Комментарий» со шторкой
+  const [confirmUndo, setConfirmUndo] = useState<string | null>(null)   // строка, ждущая подтверждения отмены
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
 
@@ -109,11 +110,25 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     if (res?.ok === false || res?.data?.ok === false) { show('⚠ ' + (res?.error || res?.data?.error || 'Не удалось')); return }
     show(accept ? '✓ Оплата принята' : '✕ В оплате отказано'); await load()
   }
+  // Отмена проведения (второе нажатие = подтверждение). Ручная строка — сторно её платежей
+  // и возврат в черновик; авто-строка — удаление платежа (инкассация снимается и у головного).
+  async function undoRow(r: any) {
+    const key = r.payId || r.id
+    if (confirmUndo !== key) { setConfirmUndo(key); setTimeout(() => setConfirmUndo(c => c === key ? null : c), 6000); return }
+    setConfirmUndo(null)
+    const res: any = r.auto ? await finCancelPayment(r.payId) : await finUnpostRow(r.id)
+    const err = res?.error || res?.data?.error
+    if (err || res?.ok === false || res?.data?.ok === false) { show('⚠ ' + (err || 'Не удалось отменить')); return }
+    show(r.auto ? `↩ Операция отменена${res?.data?.pair ? ' (и у головного)' : ''}` : '↩ Проведение отменено — строка в черновике')
+    await load()
+  }
   async function postAll() {
     Object.values(timers.current).forEach((t: any) => clearTimeout(t)); timers.current = {}
     // Отправляем строки прямо в запрос проведения — сервер сохранит и проведёт в одном запросе (без гонки).
     const draftRows = rows.filter(r => r.status !== 'posted' && hasAmt(r))
     const res: any = await finPost(date, draftRows.map(r => payload(r)))
+    const err = res?.error || res?.data?.error
+    if (err) { show('⚠ ' + err); await load(); return }   // касса ушла бы в минус — не провели ничего
     show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load()
   }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
@@ -262,13 +277,22 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                             <button onClick={() => reviewPay(r, true)} title="Принять оплату" style={{ border: 'none', background: '#0f7b3d', color: '#fff', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>✓ Принять</button>
                             <button onClick={() => reviewPay(r, false)} title="Отказать — платёж будет удалён" style={{ border: '1.5px solid #e6c7c3', background: '#fff', color: '#b3261e', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>✕ Отказать</button>
                           </div>
-                        : <div style={{ textAlign: 'center' }}><span title="Авто-строка: инкассация/оплата из кабинета (не редактируется)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span></div>)
+                        : <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                            <span title="Авто-строка: инкассация/оплата из кабинета (не редактируется)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span>
+                            {r.payId && !/^Касса /i.test(String(r.comment || '')) && (
+                              confirmUndo === r.payId
+                                ? <button onClick={() => undoRow(r)} title="Подтвердить отмену" style={{ border: 'none', background: '#b3261e', color: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Точно отменить?</button>
+                                : <button onClick={() => undoRow(r)} title="Отменить операцию: платёж удалится (инкассация — и у головного)" style={{ ...actBtn, color: '#b3261e' }}>↩</button>
+                            )}
+                          </div>)
                       : <div style={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
                         <button onClick={() => moveRow(i, -1)} title="Вверх" style={arrowBtn}>▲</button>
                         <button onClick={() => moveRow(i, 1)} title="Вниз" style={arrowBtn}>▼</button>
                       </div>
-                      {isPosted ? <button onClick={() => revertRow(r)} title="Вернуть в черновик" style={actBtn}>✎</button>
+                      {isPosted ? (confirmUndo === r.id
+                          ? <button onClick={() => undoRow(r)} title="Подтвердить отмену" style={{ border: 'none', background: '#b3261e', color: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Точно отменить?</button>
+                          : <button onClick={() => undoRow(r)} title="Отменить проведение: платёж сторнируется, строка вернётся в черновик" style={{ ...actBtn, color: '#b3261e' }}>↩</button>)
                         : <>
                           <button onClick={() => cloneRow(i)} title="Клонировать" style={actBtn}>⧉</button>
                           <button onClick={() => insertRow(i)} title="Вставить под этой" style={actBtn}>＋</button>
@@ -288,7 +312,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             <button onClick={addRow} style={{ padding: '6px 12px', border: '1px solid #8f99a6', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>+ Добавить строку</button>
           </div>
-          <p style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 6 }}>Калькулятор в ячейке (4500+5500 → Enter). ⧉ клон · ＋ вставить · ✕ убрать · ✎ вернуть в черновик.</p>
+          <p style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 6 }}>Калькулятор в ячейке (4500+5500 → Enter). ⧉ клон · ＋ вставить · ✕ убрать · ↩ отменить проведение (платёж сторнируется). Касса в минус не проводится.</p>
         </div>
       )}
 

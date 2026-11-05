@@ -194,3 +194,43 @@ export const acceptPayment = (id: string) =>
   db.update(payments).set({ accepted: true }).where(eq(payments.id, id))
 export const deletePendingPayment = (id: string) =>
   db.delete(payments).where(and(eq(payments.id, id), eq(payments.accepted, false)))
+
+// ── Отмена проведения ────────────────────────────────────────────────────────
+// Платежи, созданные строкой листа «Деньги» (fin_row_id) — их сторнируем при отмене.
+export const paymentsOfFinRow = (rowId: string) =>
+  sqlClient`select id::text, amount::float amount, document_id::text "docId" from payments where fin_row_id=${rowId}` as unknown as Promise<Array<{ id: string; amount: number; docId: string | null }>>
+
+export const deletePaymentsOfFinRow = (rowId: string) =>
+  sqlClient`delete from payments where fin_row_id=${rowId}`
+
+export const setDraft = (ids: string[]) =>
+  ids.length ? db.update(finRows).set({ status: 'draft' }).where(inArray(finRows.id, ids)) : Promise.resolve()
+
+// Один платёж (для отмены авто-строки листа).
+export const paymentById = (orgId: string, id: string) =>
+  sqlClient`select p.id::text, p.org_id::text "orgId", p.direction, p.amount::float amount, p.date::text date,
+      p.comment, p.document_id::text "docId", p.fin_row_id::text "finRowId", p.cash_account_id::text "accountId",
+      c.name contragent
+    from payments p left join contragents c on c.id=p.contragent_id
+    where p.id=${id} and p.org_id=${orgId} limit 1` as unknown as Promise<Array<any>>
+
+export const deletePaymentById = (id: string) => sqlClient`delete from payments where id=${id}`
+
+// Парный приход головного по инкассации филиала (та же дата и сумма) — отменяем обе стороны.
+export const remitPairAtHq = (branchOrgId: string, date: string, amount: number) =>
+  sqlClient`select p.id::text from payments p
+    join organizations o on o.id=p.org_id and o.kind='hq'
+    where p.date=${date} and p.direction='in' and p.amount=${String(amount)}
+      and p.comment like ${'Инкассация от «' + branchOrgId + '»%'}
+    limit 1` as unknown as Promise<Array<{ id: string }>>
+
+// Остаток по счетам на конец дня: проведённые строки листа (≤ дата) + все платежи (≤ дата).
+export const balanceByAccount = (orgId: string, date: string) =>
+  sqlClient`select acc id, coalesce(sum(amt),0)::float amt from (
+      select a.account_id::text acc, a.amount::float amt
+        from fin_row_amounts a join fin_rows r on r.id=a.row_id
+        where r.org_id=${orgId} and r.status='posted' and r.date <= ${date}
+      union all
+      select p.cash_account_id::text acc, (case when p.direction='in' then p.amount else -p.amount end)::float amt
+        from payments p where p.org_id=${orgId} and p.date <= ${date} and p.cash_account_id is not null and p.fin_row_id is null
+    ) t where acc is not null group by acc` as unknown as Promise<Array<{ id: string; amt: number }>>

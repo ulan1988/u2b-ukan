@@ -39,3 +39,6 @@ export const cashTabelSet = (orgId: string, ids: string[], date: string) => post
 export const cashPayZp = (orgId: string, accountId: string, date: string, bonuses: Array<{ employeeId: string; amount: number }>, splits?: Array<{ accountId: string; amount: number }>) => post('/api/finance/shift', { orgId, action: 'payZp', accountId, date, bonuses, splits })
 export const cashCloseShift = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'close', date })
 export const cashMonth = (orgId: string, from: string, to: string) => getObj<any>(`/api/finance/shift?mode=month&orgId=${orgId}&from=${from}&to=${to}`, null as any)
+// Отмена проведения: ручная строка (сторно платежа → черновик) и авто-строка (удаление платежа).
+export const finUnpostRow = (id: string) => post('/api/finance/money', { action: 'unpost', id })
+export const finCancelPayment = (paymentId: string) => post('/api/finance/money', { action: 'cancelPay', paymentId })
