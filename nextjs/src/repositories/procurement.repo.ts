@@ -1,7 +1,7 @@
 // Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
 import { db } from '../lib/db'
 import { orders, orderPositions, procurementLinks, products } from '../db/schema'
-import { and, eq, inArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
+import { and, eq, ne, inArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
 
 // Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
 export async function saleDemand(orgId: string) {
@@ -10,6 +10,9 @@ export async function saleDemand(orgId: string) {
     inArray(orders.screen, ['incoming', 'reception']),
     eq(orders.isDraft, false), eq(orders.isCancelled, false),
     eq(orders.transit, false),   // сквозные (drop-ship) в автозакуп НЕ попадают — товар мимо склада
+    // «Выполнено филиалом» — карточка-ознакомление: филиал сам изготовил и отгрузил, накладные
+    // уже проведены. Закупать по ней нечего, в потребность она попадать не должна.
+    ne(orders.source, 'branch_done'),
   ))
   if (!cards.length) return { cards: [], positions: [] as any[] }
   // Сквозные ПОЗИЦИИ (мимо склада) в автозакуп не идут — карточка может быть смешанной (часть строк сквозные).
