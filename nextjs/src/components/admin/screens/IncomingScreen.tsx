@@ -6,7 +6,7 @@ import { RalDot, extractRal } from '@/lib/ral'
 
 // Вкладка «К учёту» (toacc) вынесена в отдельный экран /admin/accounting (по решению
 // владельца — единый экран учёта без дубля). Остальное — 1:1 с Улканом.
-type Tab = 'new' | 'changed' | 'drafts' | 'cancelled'
+type Tab = 'new' | 'done' | 'changed' | 'drafts' | 'cancelled'
 
 function KindBadge({ o }: { o: any }) {
   const p = isPurchase(o)
@@ -30,14 +30,18 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
   const toggle = (id: string) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const inc = orders.filter(o => o.screen === 'incoming')
+  // «Выполнено филиалом» (branch_done) — карточка-ознакомление: филиал сам отгрузил и
+  // провёл накладные, принимать/двигать её нельзя. Держим отдельной вкладкой.
+  const isDone = (o: any) => o.source === 'branch_done'
   const groups: Record<Tab, any[]> = {
-    new: inc.filter(o => !o.isDraft && !o.isCancelled && !o.toacc),
+    new: inc.filter(o => !o.isDraft && !o.isCancelled && !o.toacc && !isDone(o)),
+    done: inc.filter(o => isDone(o) && !o.isCancelled),
     changed: inc.filter(o => o.isChanged && !o.isCancelled),
     drafts: inc.filter(o => o.isDraft && !isPurchase(o)),   // черновики продаж (закуп-черновики — в приёмке)
     cancelled: inc.filter(o => o.isCancelled),
   }
   const TABS: { k: Tab; l: string }[] = [
-    { k: 'new', l: 'Новые' }, { k: 'changed', l: 'Изменения' },
+    { k: 'new', l: 'Новые' }, { k: 'done', l: 'Выполнено филиалом' }, { k: 'changed', l: 'Изменения' },
     { k: 'drafts', l: 'Черновики' }, { k: 'cancelled', l: 'Отменённые' },
   ]
   const list = groups[tab]
@@ -103,7 +107,8 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
         )}
         {/* Кнопки по вкладке */}
         <div style={{ display: 'flex', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
-          {tab === 'new' && <>
+          {isDone(o) && <span style={{ fontSize: 13, color: '#2e8a5e', fontWeight: 700 }}>✅ Филиал отгрузил и провёл накладные — только для ознакомления</span>}
+          {!isDone(o) && tab === 'new' && <>
             <Btn onClick={() => onAction(o.id, 'postpone')}>{o.postponed ? 'Снять откл.' : 'Отложить'}</Btn>
             <Btn variant="danger" onClick={() => onAction(o.id, 'cancel')}>Отменить</Btn>
             <Btn variant="primary" onClick={() => onAction(o.id, 'accept')}>ПРИНЯТЬ →</Btn>

@@ -149,3 +149,5 @@ export async function editCheck(body: {
   const r = await post('/api/branch/check', body)
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, total: r.data?.total as number | undefined, debt: r.data?.debt as number | undefined }
 }
+// Кабинет мастера: отправить выполненный заказ сразу головному (цепочка накладных, без логиста).
+export const sendToHq = (cardId: string, date?: string) => post(`/api/orders/${cardId}/tohq`, date ? { date } : {})

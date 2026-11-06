@@ -65,4 +65,4 @@ export function sourceStyle(source: string): CSSProperties {
   return { fontSize: 10, padding: '1px 8px', borderRadius: 20, fontWeight: 600, background: s.bg, color: s.color }
 }
 export const sourceLabel = (s: string) =>
-  ({ cabinet: 'Кабинет', external: 'Внешняя', webhook: 'Вебхук', admin_manual: 'Админ', responsible_portal: 'Портал', portal: 'Портал' } as Record<string, string>)[s] || s
+  ({ cabinet: 'Кабинет', external: 'Внешняя', webhook: 'Вебхук', admin_manual: 'Админ', responsible_portal: 'Портал', portal: 'Портал', branch_done: 'Выполнено филиалом' } as Record<string, string>)[s] || s

@@ -17,7 +17,7 @@ import DocsView from '@/components/portals/DocsView'
 import ChatWidget from '@/components/ChatWidget'
 import AppBadge from '@/components/AppBadge'
 import PushSetup from '@/components/PushSetup'
-import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, deletePosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase } from '@/lib/api/orders'
+import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, addPosition, deletePosition, listMessages, sendMessage, sendOrder, splitCard, updateCard, payCard, unpostSale, produceToBase, sendToHq } from '@/lib/api/orders'
 import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet, listProjectsByClient } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
@@ -233,6 +233,21 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
       const r = await sendOrder(id, posIds, pickup); if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
       const done = pickup ? '✓ Забрано (самовывоз)' : '✓ Отправлено логисту'
       setSel({}); if (r.remaining && r.remaining > 0) { showMsg(`${pickup ? '✓ Забрано' : '✓ Отправлено'} · осталось ${r.remaining}`); await refreshDetail(id) } else { setDrawerId(null); showMsg(done) }
+      await load()
+    } catch { showMsg('⚠ Ошибка сети') }
+  }
+  // Отправить СРАЗУ головному (без логиста): цепочка трёх накладных проводится здесь же,
+  // у головного появляется карточка-ознакомление «Выполнено · филиал».
+  async function sendHq(id: string) {
+    const ord = orders.find((x: any) => x.id === id)
+    if (ord?.linkedDocId) { showMsg('По карточке уже проведена накладная'); return }
+    if (!confirm('Отправить к Адал Строй 2? Сразу проведутся накладные: расходная Нипы → приходная головного → расходная головного заказчику. Логист не участвует.')) return
+    try {
+      const r: any = await sendToHq(id, wd())
+      const err = r?.error || r?.data?.error
+      if (err || r?.ok === false) { showMsg('⚠ ' + (err || 'Не удалось отправить')); return }
+      setDrawerId(null); setSel({})
+      showMsg(`🏢 Отправлено в Адал Строй 2${r?.data?.docOut ? ' · ' + r.data.docOut : ''}`)
       await load()
     } catch { showMsg('⚠ Ошибка сети') }
   }
@@ -574,6 +589,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     ? (() => { const partial = selIds.length > 0 && selIds.length < leg1.length; const ids = partial ? selIds : undefined; return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <button onClick={() => sendCard(o.id, ids)} style={{ width: '100%', border: 'none', background: PRIMARY, color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{partial ? `🚚 Отправить головному: выбранные (${selIds.length}) →` : `🚚 Отправить головному (${leg1.length}) →`}</button>
+                        <button onClick={() => sendHq(o.id)} title="Без логиста: сразу проводятся расходная Нипы, приходная головного и расходная головного заказчику" style={{ width: '100%', border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Отправить к Адал Строй 2 →</button>
                         <button onClick={() => sendCard(o.id, ids, true)} title="Покупатель забрал сам — уходит в отчёт логиста со статусом «Забрано (Самовывоз)»" style={{ width: '100%', border: '1.5px solid #2a5aaa55', background: '#eef3fb', color: '#2a5aaa', borderRadius: 9, padding: '11px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🙋 Забрано (самовывоз){partial ? ` — ${selIds.length}` : ''}</button>
                       </div>
                     ) })()
@@ -738,7 +754,10 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                       {/* «Отправить» логисту — ТОЛЬКО если карточка идёт к головному (Долг к головному).
                           Внутренняя продажа (оплачено касса) и долг самой Нипы логисту не отправляются. */}
                       {o.pendingDebtHead && (isProd(o)
-                        ? <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить логисту</button>
+                        ? <>
+                            <button onClick={() => sendHq(o.id)} title="Без логиста: цепочка накладных проводится сразу" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🏢 К Адал Строй 2</button>
+                            <button onClick={() => sendCard(o.id)} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Логисту</button>
+                          </>
                         : <span title="Все позиции уже переданы логисту" style={{ alignSelf: 'center', fontSize: 12.5, fontWeight: 700, color: '#2e8a5e', background: '#e8f5ee', borderRadius: 8, padding: '7px 11px' }}>✓ У логиста</span>)}
                     </div>
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 7 }}>
