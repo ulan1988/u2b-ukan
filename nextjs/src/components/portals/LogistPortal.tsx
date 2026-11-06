@@ -85,8 +85,11 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   const loadPast = useCallback(async () => { setPastDrafts(await apiPast() as any) }, [])
   useEffect(() => { loadDraft(null); loadPast() }, [loadDraft, loadPast])
 
+  // Фильтр по дате — только для «Выполнено» и «Смены» (там день закрывается).
+  // Рабочие вкладки «Продажа»/«Закуп» показывают ВСЮ незакрытую работу: заказ от 4 ноября
+  // никуда не девается 6-го, а при фильтре «Сегодня» логист его просто не видел.
   const visOrders = orders.filter(o => inPeriod(o.createdAt, period, day))
-  const posInAll = visOrders.flatMap(o => (o.positions || []).filter((p: any) => p.leg === 2 && p.status !== 'Доставлено').map((p: any) => ({ pos: p, order: o })))
+  const posInAll = orders.flatMap(o => (o.positions || []).filter((p: any) => p.leg === 2 && p.status !== 'Доставлено').map((p: any) => ({ pos: p, order: o })))
 // Ждём закуп ПОСТРОЧНО: готовую строку (изделие филиала) везём сразу, а покупную —
   // только после прихода закупа. Флаг приходит на позиции (pos.waitingProcure).
   const isWaiting = (x: any) => !!(x.pos.waitingProcure ?? x.order.waitingProcure)
@@ -339,7 +342,6 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
         {tab === 'in' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>💰 Продажа · по заказчикам</div>
-            <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
             {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div>
               : posIn.length === 0 ? empty('✅', 'Нет позиций к доставке')
               : (() => {
@@ -368,7 +370,6 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, color: '#7a3aaa' }}>🛒 Закуп · на Центр-Склад</div>
             <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 14 }}>Серые карточки ждут админа (нет поставщиков). Закупил — жми «ЗАКУПЛЕНО», карточка уйдёт в «Продажа».</div>
-            <DateFilter period={period} day={day} onChange={(p, d) => { setPeriod(p); setDay(d) }} />
             {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#5f5952' }}>Загрузка...</div> : posBuy.length === 0 ? empty('✅', 'Нет активных закупов') : groupByCard(posBuy).map(g => <CardBox key={`buy-${g.order.id}`} order={g.order} poss={g.poss} buy />)}
           </div>
         )}
