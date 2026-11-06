@@ -6,7 +6,7 @@ import { useState, useCallback, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
-import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -28,6 +28,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
   const [retm, setRetm] = useState({ accountId: '', amount: '' })  // возврат денег ОТ головного на счёт филиала
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
+  const [profit, setProfit] = useState<any>(null)             // прибыль дня: деление денег (себест / наценка)
+  const [profitBusy, setProfitBusy] = useState(false)
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
   const [month, setMonth] = useState<any>(null)
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
@@ -42,6 +44,17 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   }, [orgId, ym])
   // Живое обновление: перезагрузка активного вида при realtime-сигнале (продажа/оплата в кабинете).
   useLiveData(() => { view === 'month' ? loadMonth() : load() }, [view, load, loadMonth])
+
+  // Прибыль дня: посчитать (деньги дня делятся на себестоимость и наценку), провести, отменить.
+  const calcProfit = useCallback(async () => { setProfitBusy(true); setProfit(await profitDay(orgId, date)); setProfitBusy(false) }, [orgId, date])
+  async function doProfitPost() {
+    setProfitBusy(true); const r: any = await profitPost(orgId, date); setProfitBusy(false)
+    if (r.ok) { toast(`✓ Прибыль проведена · ${m(r.data?.profit ?? 0)} ₸`); await calcProfit(); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function doProfitUnpost() {
+    setProfitBusy(true); const r: any = await profitUnpost(orgId, date); setProfitBusy(false)
+    if (r.ok) { toast('↩ Проводка прибыли отменена'); await calcProfit(); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
 
   async function addCurrent() {
     const amount = Number((cur.amount || '').replace(',', '.')) || 0
@@ -401,6 +414,60 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 </div>
               )
             })}
+        </div>
+
+        {/* 💰 ПРИБЫЛЬ ДНЯ — чек делится на две части ДЕНЕГ: себестоимость («Оплата от покупателей»)
+            и наценка («Прочие доходы»). Накладная не трогается. Счёт прибыли — куда пришли деньги. */}
+        <div style={{ ...card, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: profit ? 12 : 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>💰 ПРИБЫЛЬ ДНЯ</span>
+            {profit && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, fontWeight: 700, background: profit.posted ? '#e8f5ee' : '#fef3c7', color: profit.posted ? '#2e8a5e' : '#92700a' }}>{profit.posted ? 'проведена' : 'не проведена'}</span>}
+            <button onClick={calcProfit} disabled={profitBusy} style={{ marginLeft: 'auto', border: `1.5px solid ${COLORS.border}`, background: COLORS.white, color: COLORS.text, borderRadius: 9, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>🧮 Сформировать прибыль</button>
+          </div>
+          {profit && (
+            <>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                {[['поступило денег', profit.totals.paid, COLORS.text], ['себестоимость', profit.totals.cost, COLORS.text], ['прибыль', profit.totals.profit, '#2e8a5e']].map(([l, v, c]: any) => (
+                  <div key={l} style={{ background: COLORS.bgCard, borderRadius: 10, padding: '9px 14px', minWidth: 150 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textLight }}>{l}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: c }}>{m(v)} ₸</div>
+                  </div>
+                ))}
+              </div>
+              {profit.lines.length === 0
+                ? <div style={{ fontSize: 13, color: COLORS.textMuted }}>За этот день денег по чекам не было</div>
+                : profit.byAccount.map((a: any) => (
+                  <div key={a.accountId || 'none'} style={{ background: COLORS.bgCard, borderRadius: 10, padding: '9px 12px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13.5, fontWeight: 700, marginBottom: 4 }}>
+                      <span>{a.accountName}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: COLORS.textLight }}>оплата от покупателей {m(a.cost)}</span>
+                      <b style={{ marginLeft: 'auto', color: '#2e8a5e' }}>прочие доходы {m(a.profit)} ₸</b>
+                    </div>
+                    {profit.lines.filter((l: any) => (l.accountId || 'none') === (a.accountId || 'none')).map((l: any) => (
+                      <div key={l.paymentId} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '2px 0' }}>
+                        <span style={{ fontFamily: 'monospace' }}>{l.docNumber || l.cardId}</span>
+                        {l.kind === 'return' && <span style={{ color: COLORS.primaryDark }}>возврат</span>}
+                        {l.nocost > 0 && <span style={{ color: COLORS.primaryDark }}>⚠ без цены</span>}
+                        <span style={{ marginLeft: 'auto' }}>{m(l.paid)}</span>
+                        <span style={{ width: 92, textAlign: 'right' }}>себест {m(l.cost)}</span>
+                        <span style={{ width: 92, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>{m(l.profit)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              {profit.warn.count > 0 && (
+                <div style={{ background: '#fffaf0', border: '1px solid #f3e0b8', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, color: '#8a6f00', marginBottom: 10 }}>
+                  ⚠ {profit.warn.count} накл. без закупочной цены ({profit.warn.docs.join(', ')}) — их прибыль {m(profit.warn.profit)} ₸ завышена. Головной впишет цену в приходной → нажмите «Сформировать» и проведите заново.
+                </div>
+              )}
+              {profit.lines.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button onClick={doProfitPost} disabled={profitBusy} style={{ flex: 1, minWidth: 220, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 10, padding: '11px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' }}>✓ {profit.posted ? 'Провести заново' : 'Провести прибыль'} · {m(profit.totals.profit)} ₸</button>
+                  {profit.posted && <button onClick={doProfitUnpost} disabled={profitBusy} style={{ border: `1.5px solid ${COLORS.border}`, background: COLORS.white, color: COLORS.primaryDark, borderRadius: 10, padding: '11px 14px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить проводку</button>}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="cd-cols">

@@ -698,3 +698,23 @@ export const accOrgSettings = pgTable('acc_org_settings', {
   kpTemplateB64: text('kp_template_b64'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+// Прибыль дня магазина (Кристалл): чек делится на две части ДЕНЕГ — себестоимость
+// («Оплата от покупателей») и наценка («Прочие доходы»). Накладная не трогается.
+// Строка = прибыль одной накладной на одном счёте оплаты; возврат пишется минусом.
+// Проводится кнопкой «Провести прибыль» в «Кассе дня» (status='posted').
+export const profitRows = pgTable('profit_rows', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  date: date('date').notNull(),
+  docId: uuid('doc_id').references(() => documents.id, { onDelete: 'cascade' }),      // накладная (продажа или возврат)
+  cardId: text('card_id'),                                                             // карточка-чек (для журнала)
+  paymentId: uuid('payment_id').references(() => payments.id, { onDelete: 'set null' }),
+  accountId: uuid('account_id').references(() => cashAccounts.id),                     // счёт, куда легла прибыль
+  amount: money('amount').notNull().default('0'),
+  noCost: boolean('no_cost').notNull().default(false),                                 // в чеке есть позиции без закупа
+  status: text('status').notNull().default('posted'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({
+  byDay: index('profit_rows_day_idx').on(t.orgId, t.date),
+}))

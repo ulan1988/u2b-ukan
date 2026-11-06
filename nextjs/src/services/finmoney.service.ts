@@ -84,8 +84,24 @@ export async function financeDay(orgId: string, date: string) {
     autoRows = [...pendingRows, ...fixedRows, ...otherRows]
   } else {
     // ФИЛИАЛ/МАГАЗИН: строка на КАЖДЫЙ платёж (кассовый ордер) с привязкой к накладной (docNumber).
+    // Если по дню ПРОВЕДЕНА прибыль, деньги чека делятся: в строке платежа остаётся
+    // себестоимость («Оплата от покупателей»), а наценка собирается ОДНОЙ строкой
+    // «Прочие доходы» (как в 1С). Сумма денег не меняется — это только разнесение по статьям.
+    const profitRepo = await import('../repositories/profit.repo')
+    const profitRows = await profitRepo.postedByPayment(orgId, date)
+    const profitByPay: Record<string, number> = {}
+    for (const r of profitRows) profitByPay[r.paymentId] = num(r.amount)
+    const profitByCol: Record<string, number> = {}
     autoRows = todayPays.map(p => { const a = artOf(p)
-      return { id: `auto-${p.id}`, auto: true, payId: p.id, accepted: p.accepted !== false, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null, comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed }] } })
+      const pr = num(profitByPay[p.id])
+      if (pr) profitByCol[p.col] = (profitByCol[p.col] || 0) + pr
+      return { id: `auto-${p.id}`, auto: true, payId: p.id, accepted: p.accepted !== false, status: 'posted', type: p.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null, comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed - pr }] } })
+    const profitAmounts = Object.entries(profitByCol).filter(([, v]) => Math.abs(v) >= 0.01).map(([accountId, amount]) => ({ accountId, amount }))
+    if (profitAmounts.length) autoRows.push({
+      id: 'auto-profit', auto: true, status: 'posted', type: 'in', code: null, article: 'Прочие доходы',
+      who: '', contragent: 'Наценка по чекам дня', contragentId: null, docId: null, docNumber: null,
+      comment: 'прибыль дня (деление чеков)', alloc: [], amounts: profitAmounts,
+    } as any)
   }
   const allRows = [...autoRows, ...rows]   // авто-строки сверху, ручные — в конце
 
