@@ -1,6 +1,6 @@
 // Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
 import { db } from '../lib/db'
-import { orders, orderPositions, procurementLinks, products } from '../db/schema'
+import { orders, orderPositions, procurementLinks, products, contragents } from '../db/schema'
 import { and, eq, ne, inArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
 
 // Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
@@ -124,3 +124,27 @@ export const deleteLinksBySaleProduct = (saleCardId: string, product: string) =>
     eq(procurementLinks.saleCardId, saleCardId),
     sqlOp`lower(trim(${procurementLinks.product})) = ${String(product || '').trim().toLowerCase()}`,
   ))
+
+// Под чьи заявки оформлен закуп: закуп-карточка → имена ЗАКАЗЧИКОВ связанных продаж.
+// Нужно логисту: у закупа нет своего контрагента, и в шапке стояло имя админа,
+// который нажал «оформить закуп», а везти товар надо заказчику заявки.
+export const clientsByPurchase = async (purchaseIds: string[]) => {
+  const map = new Map<string, string[]>()
+  if (!purchaseIds.length) return map
+  const rows = await db.select({
+    pid: procurementLinks.purchaseCardId,
+    client: contragents.name,
+    from: orders.fromName,
+  }).from(procurementLinks)
+    .innerJoin(orders, eq(orders.id, procurementLinks.saleCardId))
+    .leftJoin(contragents, eq(contragents.id, orders.contactId))
+    .where(inArray(procurementLinks.purchaseCardId, purchaseIds))
+  for (const r of rows) {
+    const name = (r.client || r.from || '').trim()
+    if (!name) continue
+    const list = map.get(r.pid) || []
+    if (!list.includes(name)) list.push(name)
+    map.set(r.pid, list)
+  }
+  return map
+}

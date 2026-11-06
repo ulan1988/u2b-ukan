@@ -175,6 +175,17 @@ export async function listForLogist(orgId: string, userId: string) {
     for (const c of cards) c.clientName = byId[c.contactId as string] || ''
   }
   const procRepo = await import('../repositories/procurement.repo')
+  // Закуп: своего заказчика у карточки нет — берём заказчиков заявок, под которые он оформлен
+  // (иначе в шапке стояло имя админа, оформившего закуп). Без связей закуп идёт на склад.
+  const purchaseIds = cards.filter(c => c.kind === 'purchase').map(c => c.id)
+  if (purchaseIds.length) {
+    const byPurchase = await procRepo.clientsByPurchase(purchaseIds)
+    for (const c of cards) {
+      if (c.kind !== 'purchase') continue
+      const names = byPurchase.get(c.id) || []
+      c.clientName = names.length ? `${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ''}` : 'Центр-Склад'
+    }
+  }
   const saleIds = cards.filter(c => c.kind === 'sale').map(c => c.id)
   const waitPos = await procRepo.positionsWaitingProcure(saleIds)
   const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
