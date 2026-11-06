@@ -206,7 +206,12 @@ async function withPositions(rows: any[]) {
   const pos = await repo.positionsByCards(rows.map(r => r.id))
   // Имена только тех, кто реально встречается в позициях (раньше грузили ВСЕХ пользователей и контрагентов на каждый список)
   const uIds = Array.from(new Set(pos.map((p: any) => p.respUserId).filter(Boolean))) as string[]
-  const cIds = Array.from(new Set(pos.map((p: any) => p.supplierId).filter(Boolean))) as string[]
+  // + получатели карточек (contactId): без них «→ кому» пусто у карточек, где поставщик в позициях
+  // не проставлен (например «Выполнено филиалом» — там виден только филиал-отправитель).
+  const cIds = Array.from(new Set([
+    ...pos.map((p: any) => p.supplierId),
+    ...rows.map((r: any) => r.contactId),
+  ].filter(Boolean))) as string[]
   const { sqlClient: sqlNames } = await import('../lib/db')
   const [users, cags] = await Promise.all([
     uIds.length ? sqlNames`select id, name from users where id = any(${uIds})` as unknown as Promise<Array<any>> : Promise.resolve([] as any[]),

@@ -107,7 +107,10 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
         )}
         {/* Кнопки по вкладке */}
         <div style={{ display: 'flex', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
-          {isDone(o) && <span style={{ fontSize: 13, color: '#2e8a5e', fontWeight: 700 }}>✅ Филиал отгрузил и провёл накладные — только для ознакомления</span>}
+          {isDone(o) && <span style={{ fontSize: 13, color: '#2e8a5e', fontWeight: 700 }}>
+            ✅ Филиал отгрузил и провёл накладные — только для ознакомления
+            {o.toName ? <span style={{ color: '#5f5952', fontWeight: 600 }}> · долг на «{o.toName}»</span> : null}
+          </span>}
           {!isDone(o) && tab === 'new' && <>
             <Btn onClick={() => onAction(o.id, 'postpone')}>{o.postponed ? 'Снять откл.' : 'Отложить'}</Btn>
             <Btn variant="danger" onClick={() => onAction(o.id, 'cancel')}>Отменить</Btn>
