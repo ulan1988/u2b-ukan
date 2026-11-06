@@ -187,7 +187,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const kassaDone = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && !o.pendingDebtHead && (phase(o) === 'sold' || (!!o.linkedDocId && notClosed(o))) && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const kassaPaid = kassaDone.filter(o => cardDebt(o) <= 0)   // Оплатили
   const kassaTaken = kassaDone.filter(o => cardDebt(o) > 0)    // Забрано (в долг)
-  const sold = kassaDone   // совместимость: пустой экран показывается, когда нет ни работы, ни продаж
+  // 🏢 Отправлено — карточка ушла к головному (кнопка «К Адал Строй 2») или уже у логиста:
+  // этап 'sent', экран — бухгалтерия. Без этой секции карточка пропадала из кабинета совсем,
+  // и мастер не видел, что именно он сегодня отгрузил.
+  const sentOut = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && phase(o) === 'sent' && inDate(o))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  const sold = [...kassaDone, ...sentOut]   // совместимость: пустой экран — когда нет ни работы, ни продаж
   const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
   const prodQueue = [...production, ...incoming].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
@@ -774,6 +779,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
           {([
             { key: 'paid', title: '💵 КАССА НИПЫ · ОПЛАТИЛИ', color: '#2e8a5e', ring: '#cfeadd', bg: '#fff', items: kassaPaid },
             { key: 'taken', title: '🟠 КАССА НИПЫ · ЗАБРАНО (В ДОЛГ)', color: '#c0532a', ring: '#e0894a', bg: '#fff8f2', items: kassaTaken },
+            { key: 'sent', title: '🏢 ОТПРАВЛЕНО (АДАЛ СТРОЙ 2 / ЛОГИСТ)', color: '#2f6fed', ring: '#cfe0ff', bg: '#f6f9ff', items: sentOut },
           ] as const).map(sec => sec.items.length === 0 ? null : (
             <div key={sec.key} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: sec.color, letterSpacing: '.04em', marginBottom: 8 }}>{sec.title} · {sec.items.length}</div>
@@ -798,7 +804,11 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                     <div className="bp-actions" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#5f5952' }}>{Number(o.paidCash) > 0 ? `нал ${Math.round(Number(o.paidCash)).toLocaleString('ru-RU')}` : ''}{Number(o.paidKaspi) > 0 ? ` · каспи ${Math.round(Number(o.paidKaspi)).toLocaleString('ru-RU')}` : ''}{Number(o.paidQr) > 0 ? ` · QR ${Math.round(Number(o.paidQr)).toLocaleString('ru-RU')}` : ''}</span>
                       <button onClick={() => setDrawerId(o.id)} style={{ marginLeft: 'auto', border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>📋 Состав</button>
-                      <button onClick={() => doUnpay(o.id)} title="Отменить продажу (сторно)" style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
+                      {/* Отправленную карточку сторнировать отсюда нельзя: у головного уже есть
+                          зеркальные накладные и карточка-ознакомление — отмена делается у него. */}
+                      {sec.key !== 'sent'
+                        ? <button onClick={() => doUnpay(o.id)} title="Отменить продажу (сторно)" style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить</button>
+                        : <span title="Накладные уже проведены у головного" style={{ fontSize: 12, fontWeight: 700, color: '#2f6fed', background: '#eaf1ff', borderRadius: 8, padding: '6px 10px' }}>🏢 у головного</span>}
                     </div>
                   </div>
                 )
