@@ -2,7 +2,9 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { getCard } from '@/lib/adminApi'
-import { updatePosition, deletePosition } from '@/lib/api/orders'
+import { updatePosition, deletePosition, addPosition } from '@/lib/api/orders'
+import StoreCatalog from '@/components/StoreCatalog'
+import type { PickedPos } from '@/components/NomPicker'
 import CardChat from '@/components/CardChat'
 import { isPurchase, statusStyle, fmtMoney, cardSum, fmtDate, fmtTime, fmtDateTime } from '@/lib/adminFmt'
 
@@ -18,6 +20,7 @@ export default function CardModal({ id, myId = '', onClose, onAction, onReload }
   const [delSet, setDelSet] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [editMsg, setEditMsg] = useState('')
+  const [showCat, setShowCat] = useState(false)   // каталог товаров для добавления позиции
 
   const reload = () => getCard(id).then(setCard)
   useEffect(() => { reload() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -34,6 +37,22 @@ export default function CardModal({ id, myId = '', onClose, onAction, onReload }
   function cancelEdit() { setEditing(false); setEdits({}); setDelSet(new Set()); setEditMsg('') }
   const setEdit = (pid: string, f: 'qty' | 'price', v: string) => setEdits(e => ({ ...e, [pid]: { ...e[pid], [f]: v.replace(/[^0-9.,]/g, '') } }))
   const toggleDel = (pid: string) => setDelSet(s => { const n = new Set(s); n.has(pid) ? n.delete(pid) : n.add(pid); return n })
+  // Добавить позиции из общего каталога (тот же, что в кассе и заказе): имя «вид+цвет+см»,
+  // см → widthCm. Цена остаётся 0 — её проставят при закупе/накладной.
+  async function addFromCatalog(items: PickedPos[]) {
+    setShowCat(false)
+    if (!items.length) return
+    setSaving(true); setEditMsg('')
+    try {
+      for (const it of items) {
+        const nm = (it.name1c || it.oral || '').trim(); if (!nm) continue
+        await addPosition(id, { name1c: nm, oral: nm, qty: Number(it.qty) || 0, unit: it.unit || 'шт', widthCm: it.widthCm })
+      }
+      await reload(); onReload?.()
+      setEditMsg(`✓ Добавлено: ${items.length} поз.`); setTimeout(() => setEditMsg(''), 1800)
+    } catch (err: any) { setEditMsg('⚠ ' + (err?.message || 'Не удалось добавить')) }
+    setSaving(false)
+  }
   async function saveEdits() {
     setSaving(true); setEditMsg('')
     try {
@@ -54,7 +73,9 @@ export default function CardModal({ id, myId = '', onClose, onAction, onReload }
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+    // Закрываем ТОЛЬКО по клику в сам фон: каталог рисуется порталом, но его события
+    // всплывают по React-дереву сюда и иначе захлопывают карточку.
+    <div onClick={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
       <div className="anim-pop" onClick={e => e.stopPropagation()} style={{ width: 720, maxWidth: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)', overflow: 'hidden' }}>
         {!card ? <div style={{ padding: 48, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
           <>
@@ -127,6 +148,10 @@ export default function CardModal({ id, myId = '', onClose, onAction, onReload }
                   </div>
                 )
               )}
+              {/* Добавить позицию из общего каталога (как в кассе/заказе) — пока карточка не проведена */}
+              {tab === 'positions' && canEdit && (
+                <button onClick={() => setShowCat(true)} disabled={saving} style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, border: '1.5px dashed #d8d3cc', background: '#fff', color: COLORS.text, cursor: saving ? 'default' : 'pointer', fontSize: 13.5, fontWeight: 600, fontFamily: 'inherit' }}>＋ Добавить позицию из каталога</button>
+              )}
             </div>
             )}
 
@@ -153,6 +178,7 @@ export default function CardModal({ id, myId = '', onClose, onAction, onReload }
           </>
         )}
       </div>
+      {showCat && o && <StoreCatalog orgId={o.orgId} onPick={addFromCatalog} onClose={() => setShowCat(false)} />}
     </div>
   )
 }
