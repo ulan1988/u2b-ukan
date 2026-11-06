@@ -86,10 +86,44 @@ export async function sendToHq(cardId: string, actor?: Session | null, date?: st
     userName: actor?.name || 'Система',
   })
 
+  // 5. Отчёт логиста головного: заказ закрыт без него, но в суточной схеме отчёта это
+  // должно быть видно — откуда, кому, чем оформлено и кто выполнил.
+  try { await writeHandoverToLogistReport(hq.id, order, mirrorPositions, (org as any)?.name || 'Филиал', hqOut?.number || '', actor, date) }
+  catch (e) { console.error('handover report', cardId, e) }
+
   try {
     const { notifyOrgAdmins } = await import('./notifyHelpers')
     await notifyOrgAdmins(hq.id, `📦 ${(org as any)?.name || 'Филиал'} выполнил заказ ${cardId} — карточка ${mirrorId} во Входящих (${mirrorPositions.length} поз.)`)
   } catch { /* уведомление не должно ронять передачу */ }
 
   return { ok: true as const, mirrorId, docIn: hqIn?.number || null, docOut: hqOut?.number || null, date: date || today() }
+}
+
+// Строки в суточный отчёт логиста головного: «откуда (филиал) → кому (заказчик)»,
+// количество, номер расходной и пометка, что выполнил филиал сам, без доставки.
+// Пишем в черновик дня логиста по умолчанию орг (к кому обычно падают доставки).
+async function writeHandoverToLogistReport(
+  hqId: string, order: any, positions: any[], branchName: string, invoiceNum: string,
+  actor?: Session | null, date?: string,
+) {
+  const settingsRepo = await import('../repositories/settings.repo')
+  const logistId = await settingsRepo.orgDefaultLogist(hqId)
+  if (!logistId) return
+  const reportRepo = await import('../repositories/report.repo')
+  const day = date || today()
+  let [draft] = await reportRepo.draftForDay(hqId, logistId, day)
+  if (!draft) [draft] = await reportRepo.createReport({ orgId: hqId, logistId, date: day, status: 'draft' } as any)
+  const client = order.contactId ? (await refsRepo.contragentNamesByIds([order.contactId]))[order.contactId] || '' : ''
+  const rows = await reportRepo.rowsByReport(draft.id)
+  for (const p of positions) {
+    const data = {
+      posId: p.id, name: p.name1c || p.oral || '',
+      fromWho: branchName, qtyIn: String(num(p.qty)), commentIn: 'выполнил филиал, без логиста',
+      toWho: client, qtyOut: String(num(p.qty)), commentOut: actor?.name ? `мастер: ${actor.name}` : '',
+      invoiceNum: invoiceNum || '',
+    }
+    const ex = rows.find((r: any) => r.posId === p.id)
+    if (ex) await reportRepo.updateRow(ex.id, data as any)
+    else await reportRepo.addRow({ ...data, reportId: draft.id } as any)
+  }
 }
