@@ -176,6 +176,18 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     try { s ? localStorage.setItem(SELLER_KEY, JSON.stringify(s)) : localStorage.removeItem(SELLER_KEY) } catch {}
   }
 
+  // Высота экранной клавиатуры телефона. Панель чека прибита position:fixed к низу экрана,
+  // а клавиатура ужимает только видимую область — панель оставалась под клавиатурой и
+  // «прыгала» при вводе сумм в смешанной оплате. Поднимаем её ровно на высоту клавиатуры.
+  const [kb, setKb] = useState(0)
+  useEffect(() => {
+    const vv: any = typeof window !== 'undefined' ? (window as any).visualViewport : null
+    if (!vv) return
+    const sync = () => setKb(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)))
+    vv.addEventListener('resize', sync); vv.addEventListener('scroll', sync); sync()
+    return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync) }
+  }, [])
+
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   useEffect(() => { load() }, [load])
   useLiveData(() => { if (!showCatalog && !busy) load() }, [])
@@ -1001,7 +1013,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
       {/* ЧЕК — шторка снизу: строки, итог, оплата в один тап */}
       {tab === 'cash' && rows.length > 0 && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 62, background: '#fff', borderRadius: '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(38,35,31,.16)', zIndex: 90, maxWidth: 760, margin: '0 auto' }}>
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: kb > 0 ? kb : 62, background: '#fff', borderRadius: '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(38,35,31,.16)', zIndex: 90, maxWidth: 760, margin: '0 auto' }}>
           {/* ручка-тумблер: тап сворачивает/раскрывает чек */}
           <div onClick={() => setCheckExpanded(v => !v)} style={{ padding: '8px 14px 6px', cursor: 'pointer' }}>
             <div style={{ width: 40, height: 4, borderRadius: 3, background: '#e0dbd3', margin: '0 auto' }} />
@@ -1103,7 +1115,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       )}
 
       {/* нижняя навигация */}
-      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #e6e2dc', display: 'flex', zIndex: 100 }}>
+      {/* пока открыта клавиатура, нижние вкладки прячем — иначе они лезут поверх полей ввода */}
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #e6e2dc', display: kb > 0 ? 'none' : 'flex', zIndex: 100 }}>
         {([
           { key: 'cash' as Tab, icon: '💵', label: 'Касса' },
           { key: 'checks' as Tab, icon: '🧾', label: 'Чеки' },
