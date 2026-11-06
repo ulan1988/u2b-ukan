@@ -349,6 +349,10 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🧾 ЧЕКИ ДНЯ</span>
             <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{(data.cards || []).length} шт</span>
             <b style={{ marginLeft: 'auto', fontSize: 15 }}>{m(inc.total)} ₸</b>
+            <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 108, textAlign: 'right' }}>
+              себест {m((data.cards || []).reduce((s: number, c: any) => s + Number(c.cost || 0), 0))}
+            </span>
+            <span style={{ width: 14 }} />
           </div>
           {(data.cards || []).length === 0
             ? <div style={{ padding: '18px 16px 22px', textAlign: 'center', color: COLORS.textMuted, fontSize: 13.5 }}>За этот день чеков нет</div>
@@ -369,6 +373,11 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       {c.payment || '—'}{debt > 0 ? ` · долг ${m(debt)}` : ''}
                     </span>
                     <b style={{ fontSize: 14.5, width: 110, textAlign: 'right' }}>{m(c.total)} ₸</b>
+                    {/* себестоимость чека рядом с суммой: сколько из этих денег — закуп товара */}
+                    <span title={c.nocost ? `${c.nocost} поз. без закупочной цены — себестоимость неполная` : 'себестоимость товара в чеке'}
+                      style={{ fontSize: 13, width: 108, textAlign: 'right', color: c.nocost ? COLORS.primaryDark : COLORS.textLight }}>
+                      {m(c.cost)}{c.nocost ? ' ⚠' : ''}
+                    </span>
                     <span style={{ color: COLORS.textLight, fontSize: 12, width: 14 }}>{open ? '▾' : '▸'}</span>
                   </div>
                   {open && (

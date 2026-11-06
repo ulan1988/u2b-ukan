@@ -39,6 +39,24 @@ export async function masterShift(orgId: string, date: string) {
     from order_positions where card_id = any(${ids}) order by id
   ` as unknown as Array<any> : []
   for (const c of cards) (c as any).lines = lines.filter((l: any) => l.cardId === c.id)
+  // Себестоимость чека: по строке (cost_price — доля листа у изделий), иначе закуп товара.
+  // nocost — сколько строк без закупочной цены: по ним себестоимость не посчитана (прибыль
+  // будет завышена), экран помечает такой чек.
+  const costRows = ids.length ? await sqlClient`
+    select p.card_id "cardId",
+      coalesce(sum(p.qty * coalesce(nullif(p.cost_price,0), pr.price_in, 0)),0)::float cost,
+      count(*) filter (where coalesce(nullif(p.cost_price,0), pr.price_in, 0) = 0)::int nocost
+    from order_positions p left join products pr on pr.id = p.product_id
+    where p.card_id = any(${ids}) group by p.card_id
+  ` as unknown as Array<any> : []
+  const costByCard: Record<string, any> = {}
+  for (const r of costRows) costByCard[r.cardId] = r
+  for (const c of cards) {
+    const r = costByCard[(c as any).id]
+    ;(c as any).cost = num(r?.cost)
+    ;(c as any).nocost = Number(r?.nocost) || 0
+    ;(c as any).profit = num((c as any).total) - num(r?.cost)
+  }
 
   const cash = num(incRow.cash), kaspi = num(incRow.kaspi), qr = num(incRow.qr), total = num(incRow.total)
   const paid = cash + kaspi + qr
