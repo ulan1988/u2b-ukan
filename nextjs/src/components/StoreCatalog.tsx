@@ -104,14 +104,18 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
     const sQ = norm(q)
     if (sQ) return products.filter(p => `${norm(p.name)} ${norm(p.alias || '')}`.includes(sQ)).slice(0, 150)
     let base = products.filter(activeFolder.match)
-    for (let i = 0; i < levels.length; i++) if (path[i]) base = base.filter((p: any) => (p[levels[i]] || '').trim() === path[i])
+    // Подпапка: товар с ПУСТЫМ значением уровня (напр. «Воронка выпускная 76х102 (ЦВ)»
+    // с подгруппой '') общий для всей ветки — показываем в каждой подпапке категории.
+    for (let i = 0; i < levels.length; i++) if (path[i]) base = base.filter((p: any) => { const v = (p[levels[i]] || '').trim(); return v === path[i] || v === '' })
     if (thick) base = base.filter((p: any) => thickOf(p.name) === thick)
     if (activeFolder.build) {
       base = base.filter(p => !extractRal(p.name))
       if (kfilter) base = base.filter(p => norm(p.name) === norm(kfilter))
       base = [...base].sort((a, b) => (isIzdelie(b.name) ? 1 : 0) - (isIzdelie(a.name) ? 1 : 0))
     } else if (color) {
-      base = base.filter(p => extractRal(p.name) === color)
+      // Цвет: кроме товаров этого RAL показываем БЕЗЦВЕТНЫЕ (без RAL в имени, «(ЦВ)») —
+      // они выпускаются во всех цветах, значит нужны в любой цветной подпапке.
+      base = base.filter(p => { const r = extractRal(p.name); return r === color || !r })
     }
     return base.slice(0, 150)
   }, [products, activeFolder, levels, path, thick, kfilter, color, q])
