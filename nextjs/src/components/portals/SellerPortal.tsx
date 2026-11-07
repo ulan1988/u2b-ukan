@@ -1220,6 +1220,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <div style={{ fontSize: 15, fontWeight: 800 }}>↩ Возврат по чеку</div>
                   <div style={{ fontSize: 12, color: '#8a8377', fontFamily: 'monospace' }}>№ {retFor.docNumber || retFor.id}</div>
                 </div>
+                {/* Ошиблись товаром — не возврат, а правка чека: меняем позицию прямо отсюда
+                    (пока по чеку нет возврата — после возврата править нельзя). */}
+                {Number(retFor.returnedSum || 0) === 0 && (
+                  <button onClick={() => { const c = retFor; setRetFor(null); openEdit(c) }} title="Поменять позицию, кол-во или цену в чеке"
+                    style={{ border: '1.5px solid #d8d3cc', background: '#fff', color: DARK, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 800, whiteSpace: 'nowrap' }}>✏️ Изменить чек</button>
+                )}
                 <button onClick={() => setRetFor(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
               </div>
               <div style={{ padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
