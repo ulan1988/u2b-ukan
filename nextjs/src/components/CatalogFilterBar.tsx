@@ -4,14 +4,16 @@
 // отдаёт выбор наверх, экран решает, что с ним делать. В «Расчёте» этот фильтр задаёт
 // область, внутри которой ищет строка-поиск.
 import { useMemo, type CSSProperties } from 'react'
+import type React from 'react'
 import { FOLDERS, KOMPLEKT_CHIPS, extraFolders, subRowsOf, thicksOf, emptySel, type CatalogSel, type Folder } from '@/lib/catalogNav'
 import { ralOrdered } from '@/lib/ral'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 
-export default function CatalogFilterBar({ products, sel, onChange, allColors, onAllColors }: {
+export default function CatalogFilterBar({ products, sel, onChange, allColors, onAllColors, extra }: {
   products: any[]; sel: CatalogSel; onChange: (s: CatalogSel) => void
   allColors?: boolean; onAllColors?: (v: boolean) => void
+  extra?: React.ReactNode     // кнопка экрана (напр. «вставить комплект») — в строку с цветами
 }) {
   const folders = useMemo<Folder[]>(() => [...FOLDERS, ...extraFolders(products)], [products])
   const folder = folders.find(f => f.key === sel.folder) || folders[0]
@@ -51,6 +53,7 @@ export default function CatalogFilterBar({ products, sel, onChange, allColors, o
           </button>
         )})}
         {onAllColors && <button onClick={() => onAllColors(!allColors)} style={{ flexShrink: 0, border: '1px solid #e2ddd5', background: '#fff', color: '#8a8377', borderRadius: 16, padding: '3px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600 }}>{allColors ? 'меньше' : 'ещё цвета'}</button>}
+        {extra ? <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', flexShrink: 0 }}>{extra}</span> : null}
       </div>
     </div>
   )

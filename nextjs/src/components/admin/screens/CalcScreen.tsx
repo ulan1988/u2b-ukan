@@ -135,6 +135,26 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     else if (e.key === 'ArrowRight' && atEnd) { e.preventDefault(); focusCell(r, c + 1) }
     else if (e.key === 'Delete') { e.preventDefault(); clear() }
   }
+  // «Вставить комплект»: всё, что отобрано фильтром сверху (например «Модерн бюджет 8017»),
+  // разом ложится в строки — менеджеру остаётся проставить количества. Сначала заполняем
+  // пустые строки, не хватает — добавляем новые. Цена тянется так же, как при выборе товара.
+  function insertKit() {
+    const list = activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []
+    if (!list.length) return
+    const own = brands.find((b: any) => b.own)
+    const mk = (r: any, p: any) => {
+      const prices = { ...(r?.prices || {}) }
+      const retail = Number(p.priceRetail) || 0
+      if (retail > 0) { if (own) prices[own.id] = retail; else for (const b of brands) if (!(Number(prices[b.id]) > 0)) prices[b.id] = retail }
+      return { id: r?.id || uid(), name: (p.alias || '').trim() || p.name, name1c: p.name, productId: p.id, unit: p.unit || 'шт', qty: 0, prices }
+    }
+    const next = [...rows]
+    let k = 0
+    for (let i = 0; i < next.length && k < list.length; i++) if (!String(next[i].name || '').trim()) next[i] = mk(next[i], list[k++])
+    while (k < list.length) next.push(mk(null, list[k++]))
+    commit(brands, next)
+  }
+
   // Очистить колонку наименований: пропадает товар — пропадают и цены, иначе в листе
   // остаются «висячие» суммы без позиции. Количества тоже обнуляем.
   const clearNames = () => { if (!confirm('Очистить все наименования? Цены по позициям тоже уйдут.')) return; commit(brands, rows.map(r => ({ ...r, name: '', name1c: '', productId: null, qty: 0, prices: {} }))) }
@@ -178,7 +198,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       </div>
 
       {/* Фильтр каталога (как в кассе): задаёт область, внутри которой ищет каждая строка. */}
-      <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors} />
+      <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors}
+        extra={(() => {
+          const n = (activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []).length
+          return n ? <button onClick={insertKit} title="Вставить все позиции выбранного набора в строки — останется проставить количества" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>📦 вставить комплект · {n}</button> : null
+        })()} />
 
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
         {/* Ширины колонок заданы явно: всё лишнее место достаётся «Наименованию»,
@@ -287,12 +311,12 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                     ), document.body)
                   })()}
                 </td>
-                <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} value={r.qty ?? ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} style={numInp} /></td>
+                <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} value={Number(r.qty) ? String(Number(r.qty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} placeholder="0" style={numInp} /></td>
                 {brands.map(b => b.hidden
                   ? <td key={b.id} style={{ ...td, background: tint(b.color, '10') }} />
                   : (
                   <Fragment key={b.id}>
-                    <td style={{ ...td, background: tint(b.color, '10') }}><input id={cellId(i, 2 + visBrands.findIndex((x: any) => x.id === b.id))} value={r.prices?.[b.id] ?? ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2 + visBrands.findIndex((x: any) => x.id === b.id), () => setPrice(i, b.id, ''))} onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
+                    <td style={{ ...td, background: tint(b.color, '10') }}><input id={cellId(i, 2 + visBrands.findIndex((x: any) => x.id === b.id))} value={Number(r.prices?.[b.id]) ? String(Number(r.prices[b.id])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2 + visBrands.findIndex((x: any) => x.id === b.id), () => setPrice(i, b.id, ''))} onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
                     <td style={{ ...td, background: tint(b.color, '1f'), textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{sumOf(r, b) ? fmt(sumOf(r, b)) : ''}</td>
                   </Fragment>
                 ))}
