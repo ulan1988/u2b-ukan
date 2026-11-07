@@ -36,9 +36,22 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const suggest = (q: string) => (activeFolder ? filterProducts(products, activeFolder, sel, q, 30) : [])
   // В расчёт для клиента ставим АЛИАС (короткое разговорное имя), а 1С-наименование
   // храним в строке — оно понадобится при продаже/накладной, но клиенту его не показываем.
+  // Цена тянется из номенклатуры (розница этой орг): в фирму, помеченную «наша», а если
+  // такой нет — во все колонки, где цена ещё пустая (заполненные руками не перетираем).
   function pickProduct(i: number, p: any) {
     setSugFor('')
-    setRow(i, { name: (p.alias || '').trim() || p.name, name1c: p.name, productId: p.id, unit: p.unit || 'шт' })
+    const retail = Number(p.priceRetail) || 0
+    const own = brands.find((b: any) => b.own)
+    const nr = rows.map((r, j) => {
+      if (j !== i) return r
+      const prices = { ...(r.prices || {}) }
+      if (retail > 0) {
+        if (own) prices[own.id] = retail
+        else for (const b of brands) if (!(Number(prices[b.id]) > 0)) prices[b.id] = retail
+      }
+      return { ...r, name: (p.alias || '').trim() || p.name, name1c: p.name, productId: p.id, unit: p.unit || 'шт', prices }
+    })
+    commit(brands, nr)
   }
 
   // Открыть вкладку (без id — последняя). Несохранённое по таймеру успевает уйти: смена
@@ -162,6 +175,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                     <input type="color" value={b.color} onChange={e => setBrand(bi, { color: e.target.value })} title="Цвет" style={{ width: 20, height: 20, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }} />
                     <input value={b.name} onChange={e => setBrand(bi, { name: e.target.value })} style={{ width: 110, border: 'none', background: 'transparent', color: '#fff', fontWeight: 800, fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
+                    <button onClick={() => commit(brands.map((x, j) => ({ ...x, own: j === bi ? !x.own : false })), rows)} title="Наша фирма: розничная цена из номенклатуры тянется в эту колонку" style={{ border: 'none', background: b.own ? '#fff' : 'rgba(255,255,255,.3)', color: b.own ? b.color : '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 9px', fontFamily: 'inherit' }}>{b.own ? '● наша' : '○ наша'}</button>
                     <button onClick={() => setBrand(bi, { hidden: true })} title="Скрыть колонку этой фирмы" style={{ border: 'none', background: 'rgba(255,255,255,.3)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 11px', fontFamily: 'inherit' }}>⟨ скрыть</button>
                     <button onClick={() => delBrand(bi)} title="Убрать фирму совсем" style={{ border: 'none', background: 'rgba(255,255,255,.25)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 9px', fontFamily: 'inherit' }}>✕</button>
                   </div>
