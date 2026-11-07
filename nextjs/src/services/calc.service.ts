@@ -31,12 +31,42 @@ const SEED = {
 
 const safe = (s: any) => { try { const o = JSON.parse(s); return (o && o.brands) ? o : SEED } catch { return SEED } }
 
-export async function getCalc(orgId: string) {
-  const [row] = await sqlClient`select id::text, name, data from calc_sheets where org_id=${orgId} order by updated_at desc limit 1` as unknown as Array<{ id: string; name: string; data: string }>
-  if (row) return { id: row.id, name: row.name, data: safe(row.data) }
+// Вкладки листов орг: каждый лист — отдельный расчёт для клиента.
+export async function listCalc(orgId: string) {
+  return await sqlClient`select id::text, name, updated_at "updatedAt" from calc_sheets where org_id=${orgId} order by created_at, updated_at` as unknown as Array<any>
+}
+
+// Лист по id (вкладка) либо последний; если листов нет — создаём из сид-примера.
+export async function getCalc(orgId: string, id?: string | null) {
+  const rows = id
+    ? await sqlClient`select id::text, name, data from calc_sheets where id=${id} and org_id=${orgId} limit 1` as unknown as Array<any>
+    : await sqlClient`select id::text, name, data from calc_sheets where org_id=${orgId} order by updated_at desc limit 1` as unknown as Array<any>
+  const row = rows[0]
+  if (row) return { id: row.id, name: row.name, data: safe(row.data), tabs: await listCalc(orgId) }
+  const nid = randomUUID()
+  await db.insert(calcSheets).values({ id: nid, orgId, name: 'Расчёт водосток', data: JSON.stringify(SEED) })
+  return { id: nid, name: 'Расчёт водосток', data: SEED, tabs: await listCalc(orgId) }
+}
+
+// Новая вкладка: тот же набор позиций и фирм (цены — прайс), количества обнулены.
+// Так расчёт для следующего клиента начинается с готового прайса, а не с пустого листа.
+export async function createCalc(orgId: string, name: string, fromId?: string | null) {
+  let base: any = SEED
+  if (fromId) {
+    const [src] = await sqlClient`select data from calc_sheets where id=${fromId} and org_id=${orgId} limit 1` as unknown as Array<any>
+    if (src) base = safe(src.data)
+  }
+  const data = { brands: base.brands || [], rows: (base.rows || []).map((r: any) => ({ ...r, qty: 0 })) }
   const id = randomUUID()
-  await db.insert(calcSheets).values({ id, orgId, name: 'Расчёт водосток', data: JSON.stringify(SEED) })
-  return { id, name: 'Расчёт водосток', data: SEED }
+  await db.insert(calcSheets).values({ id, orgId, name: name || 'Новый расчёт', data: JSON.stringify(data) })
+  return { ok: true as const, id, name: name || 'Новый расчёт', data, tabs: await listCalc(orgId) }
+}
+
+export async function deleteCalc(orgId: string, id: string) {
+  const tabs = await listCalc(orgId)
+  if (tabs.length <= 1) return { ok: false as const, error: 'Последнюю вкладку удалить нельзя' }
+  await db.delete(calcSheets).where(eq(calcSheets.id, id))
+  return { ok: true as const, tabs: await listCalc(orgId) }
 }
 
 export async function saveCalc(orgId: string, id: string | null, name: string, data: any) {

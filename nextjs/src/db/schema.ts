@@ -651,6 +651,7 @@ export const calcSheets = pgTable('calc_sheets', {
   orgId: uuid('org_id').notNull(),
   name: text('name').notNull().default('Расчёт'),
   data: text('data').notNull().default('{}'),              // JSON (brands + rows)
+  createdAt: timestamp('created_at').notNull().defaultNow(),   // порядок вкладок (не прыгают при правке)
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, t => ({ byOrg: index('calc_sheets_org_idx').on(t.orgId) }))
 

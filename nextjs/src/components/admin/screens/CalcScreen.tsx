@@ -3,7 +3,7 @@
 // справа блоки-фирмы (Цена редактируется, Сумма=Цена×Кол-во авто), снизу итог по фирме.
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { calcGet, calcSave } from '@/lib/api/calc'
+import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
 
 const fmt = (n: number) => !n ? '0' : Number(n).toLocaleString('ru-RU')
 const num = (v: any) => { const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0 }
@@ -16,15 +16,43 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(true)
+  const [tabs, setTabs] = useState<any[]>([])          // вкладки-листы: отдельный расчёт на клиента
   const t = useRef<any>(null)
 
-  useEffect(() => { (async () => {
-    const d: any = await calcGet()
-    setId(d?.id || null); setName(d?.name || 'Расчёт'); setBrands(d?.data?.brands || []); setRows(d?.data?.rows || []); setLoading(false)
-  })() }, [])
+  // Открыть вкладку (без id — последняя). Несохранённое по таймеру успевает уйти: смена
+  // вкладки сбрасывает таймер и сохраняет текущий лист сразу.
+  async function open(sheetId?: string | null) {
+    clearTimeout(t.current)
+    if (!saved && id) { await calcSave(id, name, { brands, rows }); setSaved(true) }
+    setLoading(true)
+    const d: any = await calcGet(sheetId)
+    setId(d?.id || null); setName(d?.name || 'Расчёт')
+    setBrands(d?.data?.brands || []); setRows(d?.data?.rows || [])
+    setTabs(d?.tabs || []); setSaved(true); setLoading(false)
+  }
+  useEffect(() => { open() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function addTab() {
+    clearTimeout(t.current)
+    if (!saved && id) await calcSave(id, name, { brands, rows })
+    const r: any = await calcCreate(`Расчёт ${(tabs.length || 0) + 1}`, id)
+    const d = r?.data || r
+    if (!d?.id) return
+    setId(d.id); setName(d.name); setBrands(d.data?.brands || []); setRows(d.data?.rows || [])
+    setTabs(d.tabs || []); setSaved(true)
+  }
+  async function removeTab(sheetId: string) {
+    if (!confirm('Удалить этот расчёт?')) return
+    const r: any = await calcDelete(sheetId)
+    const d = r?.data || r
+    if (d?.ok === false) { alert(d.error || 'Не удалось'); return }
+    setTabs(d?.tabs || [])
+    if (sheetId === id) await open((d?.tabs || [])[0]?.id || null)
+  }
 
   function commit(nb = brands, nr = rows, nm = name) {
     setBrands(nb); setRows(nr); setName(nm); setSaved(false)
+    if (nm !== name && id) setTabs(ts => ts.map(x => x.id === id ? { ...x, name: nm } : x))   // имя вкладки — сразу
     clearTimeout(t.current)
     t.current = setTimeout(async () => {
       const r: any = await calcSave(id, nm, { brands: nb, rows: nr })
@@ -55,7 +83,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const cellInp: React.CSSProperties = { width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '4px 6px', fontFamily: 'inherit', fontSize: 13.5, background: 'transparent', outline: 'none', boxSizing: 'border-box' }
   const numInp: React.CSSProperties = { ...cellInp, textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }
 
-  if (loading) return <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
+  if (loading && !tabs.length) return <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
 
   return (
     <div>
@@ -64,6 +92,21 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         <input value={name} onChange={e => commit(brands, rows, e.target.value)} style={{ padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, minWidth: 220 }} />
         <span style={{ fontSize: 12.5, color: saved ? '#2e8a5e' : COLORS.textMuted }}>{saved ? '✓ сохранено' : '… сохраняю'}</span>
         <button onClick={addBrand} style={{ marginLeft: 'auto', padding: '7px 13px', borderRadius: 8, border: 'none', background: '#eef2ff', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>+ Фирма</button>
+      </div>
+
+      {/* Вкладки-листы: отдельный расчёт на каждого клиента. Имя вкладки = поле в шапке.
+          «+ Новый расчёт» справа создаёт лист с тем же прайсом и нулевыми количествами. */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginBottom: 10, overflowX: 'auto', paddingBottom: 2 }}>
+        {tabs.map(tb => {
+          const on = tb.id === id
+          return (
+            <div key={tb.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: '10px 10px 0 0', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? '#fff' : '#f1efec', boxShadow: on ? `0 0 0 1.5px ${COLORS.border}` : 'none', fontWeight: on ? 700 : 500, color: on ? COLORS.text : COLORS.textMuted, fontSize: 13.5 }}>
+              <span onClick={() => !on && open(tb.id)}>{tb.name || 'Расчёт'}</span>
+              {on && tabs.length > 1 && <span onClick={() => removeTab(tb.id)} title="Удалить расчёт" style={{ color: '#c1121c', fontSize: 13 }}>✕</span>}
+            </div>
+          )
+        })}
+        <button onClick={addTab} title="Новый расчёт для клиента" style={{ flexShrink: 0, padding: '7px 13px', borderRadius: '10px 10px 0 0', border: `1.5px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ Новый расчёт</button>
       </div>
 
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
