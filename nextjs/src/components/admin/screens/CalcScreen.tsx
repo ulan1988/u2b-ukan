@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
 import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
 import CatalogFilterBar from '@/components/CatalogFilterBar'
-import { FOLDERS, extraFolders, filterProducts, emptySel, type CatalogSel } from '@/lib/catalogNav'
+import { FOLDERS, extraFolders, filterProducts, emptySel, norm, type CatalogSel } from '@/lib/catalogNav'
 
 const fmt = (n: number) => !n ? '0' : Number(n).toLocaleString('ru-RU')
 const num = (v: any) => { const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0 }
@@ -41,19 +41,26 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const suggest = (q: string) => (activeFolder ? filterProducts(products, activeFolder, sel, q, 30) : [])
   // В расчёт для клиента ставим АЛИАС (короткое разговорное имя), а 1С-наименование
   // храним в строке — оно понадобится при продаже/накладной, но клиенту его не показываем.
-  // Цена тянется из номенклатуры (розница этой орг): в фирму, помеченную «наша», а если
-  // такой нет — во все колонки, где цена ещё пустая (заполненные руками не перетираем).
+  // Куда класть розничную цену из номенклатуры:
+  //  • в фирму, помеченную «● наша»;
+  //  • фирм нет вовсе — в свою колонку «Цена» (prices._), иначе цена пропадала;
+  //  • иначе — во все фирмы, где цена ещё пустая (вписанные руками не перетираем).
+  function applyRetail(prices: Record<string, number>, retail: number) {
+    if (!(retail > 0)) return prices
+    const own = brands.find((b: any) => b.own)
+    if (own) { prices[own.id] = retail; return prices }
+    const vis = brands.filter((b: any) => !b.hidden)
+    if (!vis.length) { if (!(Number(prices['_']) > 0)) prices['_'] = retail; return prices }
+    for (const b of brands) if (!(Number(prices[b.id]) > 0)) prices[b.id] = retail
+    return prices
+  }
+
   function pickProduct(i: number, p: any) {
     setSugFor('')
     const retail = Number(p.priceRetail) || 0
-    const own = brands.find((b: any) => b.own)
     const nr = rows.map((r, j) => {
       if (j !== i) return r
-      const prices = { ...(r.prices || {}) }
-      if (retail > 0) {
-        if (own) prices[own.id] = retail
-        else for (const b of brands) if (!(Number(prices[b.id]) > 0)) prices[b.id] = retail
-      }
+      const prices = applyRetail({ ...(r.prices || {}) }, retail)
       return { ...r, name: (p.alias || '').trim() || p.name, name1c: p.name, productId: p.id, unit: p.unit || 'шт', prices }
     })
     commit(brands, nr)
@@ -142,14 +149,26 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // «Вставить комплект»: всё, что отобрано фильтром сверху (например «Модерн бюджет 8017»),
   // разом ложится в строки — менеджеру остаётся проставить количества. Сначала заполняем
   // пустые строки, не хватает — добавляем новые. Цена тянется так же, как при выборе товара.
+  // Подтянуть цены к уже набранным строкам (например после вставки комплекта или когда
+  // цену в номенклатуре поправили): берём розницу по привязанному товару, иначе по имени.
+  function pullPrices() {
+    const byId = new Map(products.map((p: any) => [p.id, p]))
+    let hit = 0
+    const nr = rows.map(r => {
+      const p: any = r.productId ? byId.get(r.productId) : products.find((x: any) => norm(x.name) === norm(r.name1c || r.name) || norm(x.alias || '') === norm(r.name))
+      if (!p) return r
+      const retail = Number(p.priceRetail) || 0
+      if (retail > 0) hit++
+      return { ...r, productId: r.productId || p.id, name1c: r.name1c || p.name, prices: applyRetail({ ...(r.prices || {}) }, retail) }
+    })
+    commit(brands, nr)
+  }
+
   function insertKit() {
     const list = activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []
     if (!list.length) return
-    const own = brands.find((b: any) => b.own)
     const mk = (r: any, p: any) => {
-      const prices = { ...(r?.prices || {}) }
-      const retail = Number(p.priceRetail) || 0
-      if (retail > 0) { if (own) prices[own.id] = retail; else for (const b of brands) if (!(Number(prices[b.id]) > 0)) prices[b.id] = retail }
+      const prices = applyRetail({ ...(r?.prices || {}) }, Number(p.priceRetail) || 0)
       return { id: r?.id || uid(), name: (p.alias || '').trim() || p.name, name1c: p.name, productId: p.id, unit: p.unit || 'шт', qty: 0, prices }
     }
     const next = [...rows]
@@ -205,7 +224,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors}
         extra={(() => {
           const n = (activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []).length
-          return n ? <button onClick={insertKit} title="Вставить все позиции выбранного набора в строки — останется проставить количества" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>📦 вставить комплект · {n}</button> : null
+          return <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={pullPrices} title="Подтянуть розничные цены из номенклатуры к строкам, где цена пустая" style={{ border: '1px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>💲 подтянуть цены</button>
+            {n ? <button onClick={insertKit} title="Вставить все позиции выбранного набора в строки — останется проставить количества" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>📦 вставить комплект · {n}</button> : null}
+          </span>
         })()} />
 
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
