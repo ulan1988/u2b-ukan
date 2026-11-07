@@ -5,6 +5,9 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
 import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
+import { sellCheck } from '@/lib/api/orders'
+import { fetchRefs } from '@/lib/api/refs'
+import ContragentPicker from '@/components/ContragentPicker'
 import CatalogFilterBar from '@/components/CatalogFilterBar'
 import { FOLDERS, extraFolders, filterProducts, emptySel, norm, type CatalogSel } from '@/lib/catalogNav'
 
@@ -24,6 +27,13 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [sel, setSel] = useState<CatalogSel>(() => emptySel())   // фильтр сверху (папка/подпапка/цвет)
   const [allColors, setAllColors] = useState(false)
   const [sugFor, setSugFor] = useState('')             // в какой строке открыт список подсказок
+  // Продажа из расчёта: шторка оплаты, покупатель, код чека
+  const [sellOpen, setSellOpen] = useState(false)
+  const [sellContact, setSellContact] = useState('')
+  const [sellCode, setSellCode] = useState('')
+  const [selling, setSelling] = useState(false)
+  const [sellMsg, setSellMsg] = useState('')
+  const [cags, setCags] = useState<any[]>([])
   const [dragRow, setDragRow] = useState<string | null>(null)   // строка, которую тащим мышкой
   const [pullMsg, setPullMsg] = useState('')       // результат «подтянуть цены» — видно, что произошло
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
@@ -32,8 +42,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
   const t = useRef<any>(null)
 
+  useEffect(() => { fetchRefs(orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived && c.kind !== 'supplier'))).catch(() => {}) }, [orgId])
   useEffect(() => {
-    fetch(`/api/products?orgId=${orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch(`/api/products?orgId=`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
   }, [orgId])
 
   // Поиск строки работает ВНУТРИ выбранного сверху фильтра: папка/подпапка/цвет сужают
@@ -185,6 +196,33 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     for (let i = 0; i < next.length && k < list.length; i++) if (!String(next[i].name || '').trim()) next[i] = mk(next[i], list[k++])
     while (k < list.length) next.push(mk(null, list[k++]))
     commit(brands, next)
+  }
+
+  // ── ПРОДАЖА ИЗ РАСЧЁТА: тот же механизм, что касса магазина (sellCheck → cashier.sellDirect) ──
+  // Берём строки, где есть количество и цена; цена — из «нашей» фирмы, иначе из своей колонки,
+  // иначе из первой видимой фирмы (то, что менеджер реально показал клиенту).
+  const priceKeyOf = () => {
+    const own = brands.find((b: any) => b.own)
+    if (own) return own.id
+    if (noBrands) return SELF
+    return visBrands[0]?.id || SELF
+  }
+  const sellRows = rows.filter(r => String(r.name || '').trim() && Number(r.qty) > 0 && Number(r.prices?.[priceKeyOf()]) > 0)
+  const sellTotal = sellRows.reduce((s, r) => s + Number(r.qty) * Number(r.prices[priceKeyOf()]), 0)
+  async function doSell(how: 'cash' | 'kaspi' | 'qr' | 'debt') {
+    if (!sellRows.length) { setSellMsg('нет строк с количеством и ценой'); return }
+    if (how === 'debt' && !sellContact) { setSellMsg('для долга выберите покупателя'); return }
+    setSelling(true); setSellMsg('')
+    const key = priceKeyOf()
+    const r: any = await sellCheck({
+      contactId: sellContact || undefined, clientCode: sellCode,
+      cash: how === 'cash' ? sellTotal : 0, kaspi: how === 'kaspi' ? sellTotal : 0, qr: how === 'qr' ? sellTotal : 0,
+      comment: `Расчёт «${name}»`,
+      positions: sellRows.map(r2 => ({ productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, qty: Number(r2.qty), unit: r2.unit || 'шт', price: Number(r2.prices[key]) })),
+    })
+    setSelling(false)
+    setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(sellTotal)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
+    if (r.ok) { setSellOpen(false); setSellContact(''); setSellCode('') }
   }
 
   // Порядок строк мышкой — как в Номенклатуре: тянем за номер строки и бросаем на другую.
@@ -417,7 +455,37 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
 
       <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
         <button onClick={addRow} style={{ padding: '9px 16px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>+ Добавить строку</button>
+        {/* Продажа прямо из расчёта: берём строки с кол-вом и ценой, дальше — как в кассе. */}
+        {sellRows.length > 0 && (
+          <button onClick={() => { setSellOpen(v => !v); setSellMsg('') }} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>💵 Продать · {fmt(sellTotal)} ₸ ({sellRows.length})</button>
+        )}
+        {sellMsg && <span style={{ alignSelf: 'center', fontSize: 13, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</span>}
       </div>
+      {/* Шторка продажи: покупатель, код чека и способ оплаты — как в кассе магазина. */}
+      {sellOpen && sellRows.length > 0 && (
+        <div style={{ marginTop: 12, background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14, maxWidth: 560 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+            <b style={{ fontSize: 15 }}>Продажа по расчёту</b>
+            <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>{sellRows.length} поз.</span>
+            <b style={{ marginLeft: 'auto', fontSize: 18 }}>{fmt(sellTotal)} ₸</b>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <ContragentPicker contragents={cags} value={sellContact} onPick={(c: any) => setSellContact(c?.id || '')} placeholder="— покупатель (для долга обязателен) —" />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>Код чека</span>
+            <input value={sellCode} inputMode="numeric" onChange={e => setSellCode(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="последние 4 цифры телефона" style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 700 }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {([['cash', '💵 Нал', '#2e8a5e'], ['kaspi', 'Каспи', '#fff'], ['qr', 'QR', '#fff'], ['debt', 'В долг', '#fff8f5']] as const).map(([how, label, bg]) => (
+              <button key={how} disabled={selling} onClick={() => doSell(how as any)}
+                style={{ flex: 1, minWidth: 110, border: bg === '#2e8a5e' ? 'none' : `1.5px solid ${how === 'debt' ? '#e6c9b8' : COLORS.border}`, background: selling ? '#cfd8d2' : bg, color: bg === '#2e8a5e' ? '#fff' : (how === 'debt' ? '#c0532a' : COLORS.text), borderRadius: 10, padding: '12px 10px', cursor: selling ? 'default' : 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>{label}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 8 }}>Чек пробивается в кассу выбранной организации: склад списывается, деньги попадают на счёт. Строки без цены или количества в чек не идут.</div>
+        </div>
+      )}
+
       <div style={{ marginTop: 10, fontSize: 12, color: COLORS.textMuted }}>Сумма = Цена × Кол-во. Зелёным ✓ — самый дешёвый итог. Цены/фирмы/позиции редактируются прямо в таблице, сохраняется автоматически.</div>
     </div>
   )
