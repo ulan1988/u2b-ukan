@@ -55,9 +55,10 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
   return (
     <div className="tb" style={{ background: '#fff', borderBottom: '1px solid #e6e2dc', flexShrink: 0 }}>
       <button onClick={onBurger} className="hamburger" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, padding: '2px 6px', color: '#26231f', display: 'none', flexShrink: 0 }}>☰</button>
-      <div className="tb-title">
-        <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
-        <div className="tb-date" style={{ fontSize: 12, color: '#5f5952' }}>{new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      {/* Заголовок и дата одной строкой — шапка ниже, рабочей области больше. */}
+      <div className="tb-title" style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, whiteSpace: 'nowrap' }}>{title}</div>
+        <div className="tb-date" style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap' }}>{new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
       {!hideOrderInfo && <div className="tb-pills">
         {pills.map(({ label, bg, color }) => (

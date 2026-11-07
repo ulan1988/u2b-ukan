@@ -107,30 +107,27 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 22, fontWeight: 800 }}>🧮 Расчёт</span>
-        <input value={name} onChange={e => commit(brands, rows, e.target.value)} style={{ padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, minWidth: 220 }} />
-        <span style={{ fontSize: 12.5, color: saved ? '#2e8a5e' : COLORS.textMuted }}>{saved ? '✓ сохранено' : '… сохраняю'}</span>
-        <button onClick={addBrand} style={{ marginLeft: 'auto', padding: '7px 13px', borderRadius: 8, border: 'none', background: '#eef2ff', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>+ Фирма</button>
-      </div>
-
-      {/* Вкладки-листы: отдельный расчёт на каждого клиента. Имя вкладки = поле в шапке.
-          «+ Новый расчёт» справа создаёт лист с тем же прайсом и нулевыми количествами. */}
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginBottom: 10, overflowX: 'auto', paddingBottom: 2 }}>
+      {/* Одна строка вместо трёх: вкладки-листы (имя активной правится прямо во вкладке),
+          «+ Новый расчёт», справа — статус сохранения и «+ Фирма». */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, overflowX: 'auto' }}>
         {tabs.map(tb => {
           const on = tb.id === id
-          return (
-            <div key={tb.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: '10px 10px 0 0', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? '#fff' : '#f1efec', boxShadow: on ? `0 0 0 1.5px ${COLORS.border}` : 'none', fontWeight: on ? 700 : 500, color: on ? COLORS.text : COLORS.textMuted, fontSize: 13.5 }}>
-              <span onClick={() => !on && open(tb.id)}>{tb.name || 'Расчёт'}</span>
-              {on && tabs.length > 1 && <span onClick={() => removeTab(tb.id)} title="Удалить расчёт" style={{ color: '#c1121c', fontSize: 13 }}>✕</span>}
+          return on ? (
+            <div key={tb.id} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 9, flexShrink: 0, background: '#fff', boxShadow: `0 0 0 1.5px ${COLORS.primary}` }}>
+              <input value={name} onChange={e => commit(brands, rows, e.target.value)} title="Имя расчёта" style={{ border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, width: Math.max(90, (name || '').length * 8 + 14) }} />
+              {tabs.length > 1 && <span onClick={() => removeTab(tb.id)} title="Удалить расчёт" style={{ color: '#c1121c', fontSize: 13, cursor: 'pointer' }}>✕</span>}
             </div>
+          ) : (
+            <div key={tb.id} onClick={() => open(tb.id)} style={{ padding: '6px 10px', borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: '#f1efec', color: COLORS.textMuted, fontSize: 13.5 }}>{tb.name || 'Расчёт'}</div>
           )
         })}
-        <button onClick={addTab} title="Новый расчёт для клиента" style={{ flexShrink: 0, padding: '7px 13px', borderRadius: '10px 10px 0 0', border: `1.5px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ Новый расчёт</button>
+        <button onClick={addTab} title="Новый расчёт для клиента" style={{ flexShrink: 0, padding: '6px 11px', borderRadius: 9, border: `1.5px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ Новый расчёт</button>
+        <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 12, color: saved ? '#2e8a5e' : COLORS.textMuted }}>{saved ? '✓ сохранено' : '… сохраняю'}</span>
+        <button onClick={addBrand} style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 9, border: 'none', background: '#eef2ff', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>+ Фирма</button>
       </div>
 
       {/* Фильтр каталога (как в кассе): задаёт область, внутри которой ищет каждая строка. */}
-      <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors} compact />
+      <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors} />
 
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720 }}>
