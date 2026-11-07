@@ -131,6 +131,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     else if (e.key === 'ArrowRight' && atEnd) { e.preventDefault(); focusCell(r, c + 1) }
     else if (e.key === 'Delete') { e.preventDefault(); clear() }
   }
+  // Очистить колонку наименований: пропадает товар — пропадают и цены, иначе в листе
+  // остаются «висячие» суммы без позиции. Количества тоже обнуляем.
+  const clearNames = () => { if (!confirm('Очистить все наименования? Цены по позициям тоже уйдут.')) return; commit(brands, rows.map(r => ({ ...r, name: '', name1c: '', productId: null, qty: 0, prices: {} }))) }
+  const clearQty = () => { if (!confirm('Очистить все количества?')) return; commit(brands, rows.map(r => ({ ...r, qty: 0 }))) }
   // Очистить всю колонку цен фирмы (кнопка в её шапке).
   const clearBrand = (b: any) => { if (!confirm(`Очистить все цены «${b.name}»?`)) return; commit(brands, rows.map(r => { const p = { ...(r.prices || {}) }; delete p[b.id]; return { ...r, prices: p } })) }
 
@@ -189,8 +193,20 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             {/* Шапка-фирмы */}
             <tr>
               <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>№</th>
-              <th style={{ ...th, background: COLORS.bg, textAlign: "left" }} rowSpan={2}>Наименование</th>
-              <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>Кол-во</th>
+              {/* Очистка колонки: имена — вместе с ценами (товара нет — цене неоткуда взяться),
+                  количества — отдельно (прайс фирм остаётся). */}
+              <th style={{ ...th, background: COLORS.bg, textAlign: 'left' }} rowSpan={2}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Наименование
+                  <button onClick={clearNames} title="Очистить все наименования (цены тоже уйдут — товара нет)" style={{ border: `1px solid ${COLORS.border}`, background: '#fff', color: '#8a8377', borderRadius: 6, cursor: 'pointer', fontWeight: 800, fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>⌫</button>
+                </span>
+              </th>
+              <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                  Кол-во
+                  <button onClick={clearQty} title="Очистить все количества" style={{ border: `1px solid ${COLORS.border}`, background: '#fff', color: '#8a8377', borderRadius: 6, cursor: 'pointer', fontWeight: 800, fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>⌫</button>
+                </span>
+              </th>
               {brands.map((b, bi) => (
                 b.hidden ? (
                   // Свёрнутая фирма: узкая колонка, по клику разворачивается обратно.
@@ -199,14 +215,22 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                     ▸ {b.name}
                   </th>
                 ) : (
-                <th key={b.id} colSpan={2} style={{ ...th, background: b.color, color: '#fff', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                    <input type="color" value={b.color} onChange={e => setBrand(bi, { color: e.target.value })} title="Цвет" style={{ width: 20, height: 20, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }} />
-                    <input value={b.name} onChange={e => setBrand(bi, { name: e.target.value })} style={{ width: 110, border: 'none', background: 'transparent', color: '#fff', fontWeight: 800, fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
-                    <button onClick={() => clearBrand(b)} title="Очистить все цены этой фирмы" style={{ border: 'none', background: 'rgba(255,255,255,.3)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 9px', fontFamily: 'inherit' }}>⌫ очистить</button>
-                    <button onClick={() => commit(brands.map((x, j) => ({ ...x, own: j === bi ? !x.own : false })), rows)} title="Наша фирма: розничная цена из номенклатуры тянется в эту колонку" style={{ border: 'none', background: b.own ? '#fff' : 'rgba(255,255,255,.3)', color: b.own ? b.color : '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 9px', fontFamily: 'inherit' }}>{b.own ? '● наша' : '○ наша'}</button>
-                    <button onClick={() => setBrand(bi, { hidden: true })} title="Скрыть колонку этой фирмы" style={{ border: 'none', background: 'rgba(255,255,255,.3)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 11px', fontFamily: 'inherit' }}>⟨ скрыть</button>
-                    <button onClick={() => delBrand(bi)} title="Убрать фирму совсем" style={{ border: 'none', background: 'rgba(255,255,255,.25)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 9px', fontFamily: 'inherit' }}>✕</button>
+                <th key={b.id} colSpan={2} style={{ ...th, background: b.color, color: '#fff', textAlign: 'center', overflow: 'hidden', padding: '4px 4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center', minWidth: 0 }}>
+                    <input type="color" value={b.color} onChange={e => setBrand(bi, { color: e.target.value })} title="Цвет" style={{ width: 18, height: 18, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', flexShrink: 0 }} />
+                    <input value={b.name} onChange={e => setBrand(bi, { name: e.target.value })} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: '#fff', fontWeight: 800, fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
+                  </div>
+                  {/* Кнопки — второй строкой и значками, иначе шапка не влезала в ширину колонки
+                      и наезжала на соседние (свёрнутые) фирмы. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center', marginTop: 3 }}>
+                    {[
+                      { t: '⌫', title: 'Очистить все цены этой фирмы', on: () => clearBrand(b), act: false },
+                      { t: b.own ? '●' : '○', title: 'Наша фирма: розничная цена из номенклатуры тянется сюда', on: () => commit(brands.map((x, j) => ({ ...x, own: j === bi ? !x.own : false })), rows), act: !!b.own },
+                      { t: '⟨', title: 'Скрыть колонку этой фирмы', on: () => setBrand(bi, { hidden: true }), act: false },
+                      { t: '✕', title: 'Убрать фирму совсем', on: () => delBrand(bi), act: false },
+                    ].map(btn => (
+                      <button key={btn.t + btn.title} onClick={btn.on} title={btn.title} style={{ border: 'none', background: btn.act ? '#fff' : 'rgba(255,255,255,.3)', color: btn.act ? b.color : '#fff', borderRadius: 6, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '5px 9px', fontFamily: 'inherit' }}>{btn.t}</button>
+                    ))}
                   </div>
                 </th>
                 )
