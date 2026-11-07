@@ -34,9 +34,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const folders = useMemo(() => [...FOLDERS, ...extraFolders(products)], [products])
   const activeFolder = folders.find(f => f.key === sel.folder) || folders[0]
   const suggest = (q: string) => (activeFolder ? filterProducts(products, activeFolder, sel, q, 30) : [])
+  // В расчёт для клиента ставим АЛИАС (короткое разговорное имя), а 1С-наименование
+  // храним в строке — оно понадобится при продаже/накладной, но клиенту его не показываем.
   function pickProduct(i: number, p: any) {
     setSugFor('')
-    setRow(i, { name: p.name, productId: p.id, unit: p.unit || 'шт' })
+    setRow(i, { name: (p.alias || '').trim() || p.name, name1c: p.name, productId: p.id, unit: p.unit || 'шт' })
   }
 
   // Открыть вкладку (без id — последняя). Несохранённое по таймеру успевает уйти: смена
@@ -130,12 +132,23 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors} />
 
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720 }}>
+        {/* Ширины колонок заданы явно: всё лишнее место достаётся «Наименованию»,
+            а «Кол-во» и цены остаются узкими (иначе таблица растягивала их на пол-экрана). */}
+        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', minWidth: 450 + brands.reduce((s, b) => s + (b.hidden ? 30 : 188), 0) }}>
+          <colgroup>
+            <col style={{ width: 38 }} />
+            <col />
+            <col style={{ width: 78 }} />
+            {brands.map(b => b.hidden
+              ? <col key={b.id} style={{ width: 30 }} />
+              : <Fragment key={b.id}><col style={{ width: 92 }} /><col style={{ width: 96 }} /></Fragment>)}
+            <col style={{ width: 34 }} />
+          </colgroup>
           <thead>
             {/* Шапка-фирмы */}
             <tr>
               <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>№</th>
-              <th style={{ ...th, background: COLORS.bg, minWidth: 300 }} rowSpan={2}>Наименование</th>
+              <th style={{ ...th, background: COLORS.bg, textAlign: "left" }} rowSpan={2}>Наименование</th>
               <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>Кол-во</th>
               {brands.map((b, bi) => (
                 b.hidden ? (
@@ -183,12 +196,18 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                     return (
                       // Список шире ячейки — название номенклатуры читается целиком, без «…».
                       <div style={{ position: 'absolute', zIndex: 40, left: 4, width: 460, maxWidth: '70vw', ...(up ? { bottom: '100%' } : { top: '100%' }), background: '#fff', borderRadius: 10, boxShadow: '0 8px 22px rgba(38,35,31,.18)', border: `1px solid ${COLORS.border}`, maxHeight: 300, overflowY: 'auto' }}>
-                        {found.map((p: any) => (
-                          <div key={p.id} onMouseDown={() => pickProduct(i, p)} style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 8, alignItems: 'baseline', lineHeight: 1.35 }}>
-                            <span style={{ flex: 1, minWidth: 0 }}>{p.name}</span>
-                            <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>{p.unit || 'шт'}</span>
-                          </div>
-                        ))}
+                        {found.map((p: any) => {
+                          const al = (p.alias || '').trim()
+                          return (
+                            <div key={p.id} onMouseDown={() => pickProduct(i, p)} style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 8, alignItems: 'baseline', lineHeight: 1.35 }}>
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                {al || p.name}
+                                {al && <span style={{ display: 'block', fontSize: 11.5, color: COLORS.textMuted }}>{p.name}</span>}
+                              </span>
+                              <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>{p.unit || 'шт'}</span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )
                   })()}
