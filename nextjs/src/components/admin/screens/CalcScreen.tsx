@@ -24,6 +24,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [sel, setSel] = useState<CatalogSel>(() => emptySel())   // фильтр сверху (папка/подпапка/цвет)
   const [allColors, setAllColors] = useState(false)
   const [sugFor, setSugFor] = useState('')             // в какой строке открыт список подсказок
+  const [dragRow, setDragRow] = useState<string | null>(null)   // строка, которую тащим мышкой
+  const [pullMsg, setPullMsg] = useState('')       // результат «подтянуть цены» — видно, что произошло
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
   // Где рисовать список подсказок: координаты ячейки (список живёт поверх страницы).
   const [sugRect, setSugRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
@@ -152,16 +154,23 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // Подтянуть цены к уже набранным строкам (например после вставки комплекта или когда
   // цену в номенклатуре поправили): берём розницу по привязанному товару, иначе по имени.
   function pullPrices() {
+    if (!products.length) { setPullMsg('номенклатура ещё грузится — повторите'); return }
     const byId = new Map(products.map((p: any) => [p.id, p]))
-    let hit = 0
+    let hit = 0, noPrice = 0, notFound = 0
     const nr = rows.map(r => {
-      const p: any = r.productId ? byId.get(r.productId) : products.find((x: any) => norm(x.name) === norm(r.name1c || r.name) || norm(x.alias || '') === norm(r.name))
-      if (!p) return r
+      const named = String(r.name || r.name1c || '').trim()
+      if (!named) return r
+      // Ищем и по привязке, и по имени/алиасу: привязка могла остаться от другого листа
+      // или товар вписан руками.
+      const p: any = (r.productId && byId.get(r.productId))
+        || products.find((x: any) => norm(x.name) === norm(r.name1c || r.name) || (x.alias && norm(x.alias) === norm(r.name)))
+      if (!p) { notFound++; return r }
       const retail = Number(p.priceRetail) || 0
-      if (retail > 0) hit++
-      return { ...r, productId: r.productId || p.id, name1c: r.name1c || p.name, prices: applyRetail({ ...(r.prices || {}) }, retail) }
+      if (retail > 0) hit++; else noPrice++
+      return { ...r, productId: p.id, name1c: p.name, prices: applyRetail({ ...(r.prices || {}) }, retail) }
     })
     commit(brands, nr)
+    setPullMsg([hit ? `подтянуто ${hit}` : '', noPrice ? `нет цены в номенклатуре: ${noPrice}` : '', notFound ? `не нашёл товар: ${notFound}` : ''].filter(Boolean).join(' · ') || 'нечего подтягивать')
   }
 
   function insertKit() {
@@ -176,6 +185,16 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     for (let i = 0; i < next.length && k < list.length; i++) if (!String(next[i].name || '').trim()) next[i] = mk(next[i], list[k++])
     while (k < list.length) next.push(mk(null, list[k++]))
     commit(brands, next)
+  }
+
+  // Порядок строк мышкой — как в Номенклатуре: тянем за номер строки и бросаем на другую.
+  function moveRow(fromId: string, toId: string) {
+    if (!fromId || fromId === toId) return
+    const from = rows.find(r => r.id === fromId); if (!from) return
+    const arr = rows.filter(r => r.id !== fromId)
+    const idx = arr.findIndex(r => r.id === toId)
+    arr.splice(idx < 0 ? arr.length : idx, 0, from)   // вставляем ПЕРЕД целевой строкой
+    commit(brands, arr)
   }
 
   // Очистить колонку наименований: пропадает товар — пропадают и цены, иначе в листе
@@ -226,6 +245,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           const n = (activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []).length
           return <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button onClick={pullPrices} title="Подтянуть розничные цены из номенклатуры к строкам, где цена пустая" style={{ border: '1px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>💲 подтянуть цены</button>
+            {pullMsg ? <span style={{ fontSize: 11.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{pullMsg}</span> : null}
             {n ? <button onClick={insertKit} title="Вставить все позиции выбранного набора в строки — останется проставить количества" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>📦 вставить комплект · {n}</button> : null}
           </span>
         })()} />
@@ -308,8 +328,19 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={r.id} style={{ background: i === curRow ? '#fff6e0' : (i % 2 ? '#fafafa' : '#fff'), boxShadow: i === curRow ? `inset 0 0 0 2px ${COLORS.primary}55` : 'none' }}>
-                <td style={{ ...td, textAlign: 'center', color: COLORS.textMuted }}>{i + 1}</td>
+              <tr key={r.id}
+                draggable={dragRow !== null}
+                onDragStart={() => setDragRow(r.id)}
+                onDragEnd={() => setDragRow(null)}
+                onDragOver={e => { if (dragRow) e.preventDefault() }}
+                onDrop={e => { e.preventDefault(); if (dragRow && dragRow !== r.id) moveRow(dragRow, r.id); setDragRow(null) }}
+                style={{ background: dragRow === r.id ? '#fff3ee' : (i === curRow ? '#fff6e0' : (i % 2 ? '#fafafa' : '#fff')), boxShadow: i === curRow ? `inset 0 0 0 2px ${COLORS.primary}55` : 'none' }}>
+                {/* Тянем строку за номер: зажал ⠿ — перетащил на нужное место. */}
+                <td style={{ ...td, textAlign: 'center', color: COLORS.textMuted, cursor: 'grab', userSelect: 'none' }}
+                  title="Перетащите, чтобы переставить строку"
+                  onMouseDown={() => setDragRow(r.id)} onMouseUp={() => setDragRow(d => d === r.id ? null : d)}>
+                  {dragRow === r.id ? '⠿' : i + 1}
+                </td>
                 {/* Поиск по названию внутри выбранного сверху фильтра: набираешь — выпадают товары. */}
                 <td style={{ ...td, position: 'relative' }}>
                   <input id={cellId(i, 0)} value={r.name} onChange={e => { setRow(i, { name: e.target.value }); openSug(r.id, e.currentTarget) }}
