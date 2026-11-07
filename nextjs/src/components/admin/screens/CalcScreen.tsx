@@ -1,9 +1,11 @@
 'use client'
 // «Расчёт» — локальный лист сметы по фирмам/линейкам. Слева позиции (название+кол-во),
 // справа блоки-фирмы (Цена редактируется, Сумма=Цена×Кол-во авто), снизу итог по фирме.
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
+import CatalogFilterBar from '@/components/CatalogFilterBar'
+import { FOLDERS, extraFolders, filterProducts, emptySel, type CatalogSel } from '@/lib/catalogNav'
 
 const fmt = (n: number) => !n ? '0' : Number(n).toLocaleString('ru-RU')
 const num = (v: any) => { const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0 }
@@ -17,7 +19,25 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(true)
   const [tabs, setTabs] = useState<any[]>([])          // вкладки-листы: отдельный расчёт на клиента
+  const [products, setProducts] = useState<any[]>([])  // номенклатура для поиска в строках
+  const [sel, setSel] = useState<CatalogSel>(() => emptySel())   // фильтр сверху (папка/подпапка/цвет)
+  const [allColors, setAllColors] = useState(false)
+  const [sugFor, setSugFor] = useState('')             // в какой строке открыт список подсказок
   const t = useRef<any>(null)
+
+  useEffect(() => {
+    fetch(`/api/products?orgId=${orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [orgId])
+
+  // Поиск строки работает ВНУТРИ выбранного сверху фильтра: папка/подпапка/цвет сужают
+  // область, набранный текст ищет по названию и алиасу.
+  const folders = useMemo(() => [...FOLDERS, ...extraFolders(products)], [products])
+  const activeFolder = folders.find(f => f.key === sel.folder) || folders[0]
+  const suggest = (q: string) => (activeFolder ? filterProducts(products, activeFolder, sel, q, 30) : [])
+  function pickProduct(i: number, p: any) {
+    setSugFor('')
+    setRow(i, { name: p.name, productId: p.id, unit: p.unit || 'шт' })
+  }
 
   // Открыть вкладку (без id — последняя). Несохранённое по таймеру успевает уйти: смена
   // вкладки сбрасывает таймер и сохраняет текущий лист сразу.
@@ -109,6 +129,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         <button onClick={addTab} title="Новый расчёт для клиента" style={{ flexShrink: 0, padding: '7px 13px', borderRadius: '10px 10px 0 0', border: `1.5px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ Новый расчёт</button>
       </div>
 
+      {/* Фильтр каталога (как в кассе): задаёт область, внутри которой ищет каждая строка. */}
+      <CatalogFilterBar products={products} sel={sel} onChange={setSel} allColors={allColors} onAllColors={setAllColors} compact />
+
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720 }}>
           <thead>
@@ -141,7 +164,28 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             {rows.map((r, i) => (
               <tr key={r.id} style={{ background: i % 2 ? '#fafafa' : '#fff' }}>
                 <td style={{ ...td, textAlign: 'center', color: COLORS.textMuted }}>{i + 1}</td>
-                <td style={td}><input value={r.name} onChange={e => setRow(i, { name: e.target.value })} placeholder="позиция…" style={cellInp} /></td>
+                {/* Поиск по названию внутри выбранного сверху фильтра: набираешь — выпадают товары. */}
+                <td style={{ ...td, position: 'relative' }}>
+                  <input value={r.name} onChange={e => { setRow(i, { name: e.target.value }); setSugFor(r.id) }}
+                    onFocus={() => setSugFor(r.id)} onBlur={() => setTimeout(() => setSugFor(s => s === r.id ? '' : s), 160)}
+                    placeholder="🔍 поиск по названию" style={cellInp} />
+                  {sugFor === r.id && (() => {
+                    const found = suggest(r.name)
+                    if (!found.length) return null
+                    // Нижние строки открывают список ВВЕРХ — иначе он уезжает за край таблицы.
+                    const up = rows.length > 4 && i > rows.length - 4
+                    return (
+                      <div style={{ position: 'absolute', zIndex: 40, left: 4, right: 4, ...(up ? { bottom: '100%' } : { top: '100%' }), background: '#fff', borderRadius: 10, boxShadow: '0 8px 22px rgba(38,35,31,.18)', border: `1px solid ${COLORS.border}`, maxHeight: 280, overflowY: 'auto' }}>
+                        {found.map((p: any) => (
+                          <div key={p.id} onMouseDown={() => pickProduct(i, p)} style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                            <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap' }}>{p.unit || 'шт'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </td>
                 <td style={{ ...td, background: '#f4f3f0' }}><input value={r.qty ?? ''} inputMode="decimal" onChange={e => setRow(i, { qty: num(e.target.value) })} style={numInp} /></td>
                 {brands.map(b => (
                   <Fragment key={b.id}>
