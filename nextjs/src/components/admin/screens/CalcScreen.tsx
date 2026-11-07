@@ -135,21 +135,30 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             {/* Шапка-фирмы */}
             <tr>
               <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>№</th>
-              <th style={{ ...th, background: COLORS.bg, minWidth: 180 }} rowSpan={2}>Наименование</th>
+              <th style={{ ...th, background: COLORS.bg, minWidth: 300 }} rowSpan={2}>Наименование</th>
               <th style={{ ...th, background: COLORS.bg }} rowSpan={2}>Кол-во</th>
               {brands.map((b, bi) => (
+                b.hidden ? (
+                  // Свёрнутая фирма: узкая колонка, по клику разворачивается обратно.
+                  <th key={b.id} rowSpan={2} title={`Показать «${b.name}»`} onClick={() => setBrand(bi, { hidden: false })}
+                    style={{ ...th, background: b.color, color: '#fff', cursor: 'pointer', width: 34, padding: '6px 4px', writingMode: 'vertical-rl', textAlign: 'center' }}>
+                    ▸ {b.name}
+                  </th>
+                ) : (
                 <th key={b.id} colSpan={2} style={{ ...th, background: b.color, color: '#fff', textAlign: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                     <input type="color" value={b.color} onChange={e => setBrand(bi, { color: e.target.value })} title="Цвет" style={{ width: 20, height: 20, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }} />
                     <input value={b.name} onChange={e => setBrand(bi, { name: e.target.value })} style={{ width: 110, border: 'none', background: 'transparent', color: '#fff', fontWeight: 800, fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
-                    <button onClick={() => delBrand(bi)} title="Убрать фирму" style={{ border: 'none', background: 'rgba(255,255,255,.25)', color: '#fff', borderRadius: 5, cursor: 'pointer', fontWeight: 700, fontSize: 12, lineHeight: 1, padding: '1px 5px' }}>✕</button>
+                    <button onClick={() => setBrand(bi, { hidden: true })} title="Скрыть колонку этой фирмы" style={{ border: 'none', background: 'rgba(255,255,255,.3)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 11px', fontFamily: 'inherit' }}>⟨ скрыть</button>
+                    <button onClick={() => delBrand(bi)} title="Убрать фирму совсем" style={{ border: 'none', background: 'rgba(255,255,255,.25)', color: '#fff', borderRadius: 7, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, lineHeight: 1, padding: '6px 9px', fontFamily: 'inherit' }}>✕</button>
                   </div>
                 </th>
+                )
               ))}
               <th style={{ ...th, background: COLORS.bg }} rowSpan={2}></th>
             </tr>
             <tr>
-              {brands.map(b => (
+              {brands.map(b => b.hidden ? null : (
                 <Fragment key={b.id}>
                   <th style={{ ...th, background: tint(b.color, '22'), textAlign: 'right' }}>Цена</th>
                   <th style={{ ...th, background: tint(b.color, '33'), textAlign: 'right' }}>Сумма</th>
@@ -172,11 +181,12 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                     // Нижние строки открывают список ВВЕРХ — иначе он уезжает за край таблицы.
                     const up = rows.length > 4 && i > rows.length - 4
                     return (
-                      <div style={{ position: 'absolute', zIndex: 40, left: 4, right: 4, ...(up ? { bottom: '100%' } : { top: '100%' }), background: '#fff', borderRadius: 10, boxShadow: '0 8px 22px rgba(38,35,31,.18)', border: `1px solid ${COLORS.border}`, maxHeight: 280, overflowY: 'auto' }}>
+                      // Список шире ячейки — название номенклатуры читается целиком, без «…».
+                      <div style={{ position: 'absolute', zIndex: 40, left: 4, width: 460, maxWidth: '70vw', ...(up ? { bottom: '100%' } : { top: '100%' }), background: '#fff', borderRadius: 10, boxShadow: '0 8px 22px rgba(38,35,31,.18)', border: `1px solid ${COLORS.border}`, maxHeight: 300, overflowY: 'auto' }}>
                         {found.map((p: any) => (
-                          <div key={p.id} onMouseDown={() => pickProduct(i, p)} style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                            <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap' }}>{p.unit || 'шт'}</span>
+                          <div key={p.id} onMouseDown={() => pickProduct(i, p)} style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 8, alignItems: 'baseline', lineHeight: 1.35 }}>
+                            <span style={{ flex: 1, minWidth: 0 }}>{p.name}</span>
+                            <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>{p.unit || 'шт'}</span>
                           </div>
                         ))}
                       </div>
@@ -184,7 +194,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   })()}
                 </td>
                 <td style={{ ...td, background: '#f4f3f0' }}><input value={r.qty ?? ''} inputMode="decimal" onChange={e => setRow(i, { qty: num(e.target.value) })} style={numInp} /></td>
-                {brands.map(b => (
+                {brands.map(b => b.hidden
+                  ? <td key={b.id} style={{ ...td, background: tint(b.color, '10') }} />
+                  : (
                   <Fragment key={b.id}>
                     <td style={{ ...td, background: tint(b.color, '10') }}><input value={r.prices?.[b.id] ?? ''} inputMode="decimal" onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
                     <td style={{ ...td, background: tint(b.color, '1f'), textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{sumOf(r, b) ? fmt(sumOf(r, b)) : ''}</td>
@@ -199,6 +211,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
               <td style={td} colSpan={2}>ИТОГО по фирме</td>
               {brands.map(b => {
                 const isMin = totals[b.id] > 0 && totals[b.id] === minTotal
+                // Свёрнутая фирма участвует в сравнении, но итог показываем компактно.
+                if (b.hidden) return <td key={b.id} title={`${b.name}: ${fmt(totals[b.id])}`} style={{ ...td, background: isMin ? '#d7f5e0' : tint(b.color, '1f'), textAlign: 'center', fontSize: 11, color: '#5f5952' }}>•</td>
                 return (
                   <Fragment key={b.id}>
                     <td style={{ ...td, background: tint(b.color, '10') }}></td>
