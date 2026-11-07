@@ -2,6 +2,7 @@
 // «Расчёт» — локальный лист сметы по фирмам/линейкам. Слева позиции (название+кол-во),
 // справа блоки-фирмы (Цена редактируется, Сумма=Цена×Кол-во авто), снизу итог по фирме.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
 import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
 import CatalogFilterBar from '@/components/CatalogFilterBar'
@@ -24,6 +25,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [allColors, setAllColors] = useState(false)
   const [sugFor, setSugFor] = useState('')             // в какой строке открыт список подсказок
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
+  // Где рисовать список подсказок: координаты ячейки (список живёт поверх страницы).
+  const [sugRect, setSugRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
+  const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
   const t = useRef<any>(null)
 
   useEffect(() => {
@@ -252,18 +256,21 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 <td style={{ ...td, textAlign: 'center', color: COLORS.textMuted }}>{i + 1}</td>
                 {/* Поиск по названию внутри выбранного сверху фильтра: набираешь — выпадают товары. */}
                 <td style={{ ...td, position: 'relative' }}>
-                  <input id={cellId(i, 0)} value={r.name} onChange={e => { setRow(i, { name: e.target.value }); setSugFor(r.id) }}
-                    onFocus={() => { setSugFor(r.id); setCurRow(i) }} onBlur={() => setTimeout(() => setSugFor(s => s === r.id ? '' : s), 160)}
+                  <input id={cellId(i, 0)} value={r.name} onChange={e => { setRow(i, { name: e.target.value }); openSug(r.id, e.currentTarget) }}
+                    onFocus={e => { openSug(r.id, e.currentTarget); setCurRow(i) }} onBlur={() => setTimeout(() => setSugFor(s => s === r.id ? '' : s), 160)}
                     onKeyDown={e => cellKey(e, i, 0, () => setRow(i, { name: '', name1c: '', productId: null }))}
                     placeholder="🔍 поиск по названию" style={cellInp} />
-                  {sugFor === r.id && (() => {
+                  {sugFor === r.id && sugRect && (() => {
                     const found = suggest(r.name)
                     if (!found.length) return null
-                    // Нижние строки открывают список ВВЕРХ — иначе он уезжает за край таблицы.
-                    const up = rows.length > 4 && i > rows.length - 4
-                    return (
-                      // Список шире ячейки — название номенклатуры читается целиком, без «…».
-                      <div style={{ position: 'absolute', zIndex: 40, left: 4, width: 460, maxWidth: '70vw', ...(up ? { bottom: '100%' } : { top: '100%' }), background: '#fff', borderRadius: 10, boxShadow: '0 8px 22px rgba(38,35,31,.18)', border: `1px solid ${COLORS.border}`, maxHeight: 300, overflowY: 'auto' }}>
+                    // Список рисуем ПОВЕРХ страницы (portal + fixed): внутри таблицы его резал
+                    // контейнер с прокруткой, хотя справа места хватает. Ширина — до правого
+                    // края окна, вверх разворачивается, если снизу не помещается.
+                    const vw = window.innerWidth, vh = window.innerHeight
+                    const width = Math.max(460, Math.min(760, vw - sugRect.left - 24))
+                    const up = sugRect.bottom + 300 > vh && sugRect.top > 320
+                    return createPortal((
+                      <div style={{ position: 'fixed', zIndex: 2000, left: sugRect.left, width, ...(up ? { bottom: vh - sugRect.top + 2 } : { top: sugRect.bottom + 2 }), background: '#fff', borderRadius: 10, boxShadow: '0 10px 28px rgba(38,35,31,.22)', border: `1px solid ${COLORS.border}`, maxHeight: 300, overflowY: 'auto' }}>
                         {found.map((p: any) => {
                           const al = (p.alias || '').trim()
                           return (
@@ -277,7 +284,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                           )
                         })}
                       </div>
-                    )
+                    ), document.body)
                   })()}
                 </td>
                 <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} value={r.qty ?? ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} style={numInp} /></td>
