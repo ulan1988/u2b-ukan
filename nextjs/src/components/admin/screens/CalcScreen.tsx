@@ -114,7 +114,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // ── Работа как в Excel: ходим по ячейкам стрелками/Enter, Delete очищает ячейку ──
   // Колонки строки: 0 — наименование, 1 — кол-во, дальше цены видимых фирм.
   const visBrands = brands.filter((b: any) => !b.hidden)
-  const colCount = 2 + visBrands.length
+  // Фирмы нужны не всегда: когда ни одной видимой нет, лист работает как обычная смета —
+  // своя колонка «Цена» сразу после «Кол-во» и «Сумма» рядом (цена живёт в prices._).
+  const noBrands = visBrands.length === 0
+  const SELF = '_'
+  const colCount = 2 + (noBrands ? 1 : visBrands.length)
   const cellId = (r: number, c: number) => `calc-${r}-${c}`
   const focusCell = (r: number, c: number) => {
     if (r < 0 || c < 0 || r >= rows.length || c >= colCount) return
@@ -207,11 +211,12 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
         {/* Ширины колонок заданы явно: всё лишнее место достаётся «Наименованию»,
             а «Кол-во» и цены остаются узкими (иначе таблица растягивала их на пол-экрана). */}
-        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', minWidth: 450 + brands.reduce((s, b) => s + (b.hidden ? 30 : 188), 0) }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', minWidth: 450 + (noBrands ? 210 : 0) + brands.reduce((s, b) => s + (b.hidden ? 30 : 188), 0) }}>
           <colgroup>
             <col style={{ width: 38 }} />
             <col />
             <col style={{ width: 78 }} />
+            {noBrands && <><col style={{ width: 100 }} /><col style={{ width: 110 }} /></>}
             {brands.map(b => b.hidden
               ? <col key={b.id} style={{ width: 30 }} />
               : <Fragment key={b.id}><col style={{ width: 92 }} /><col style={{ width: 96 }} /></Fragment>)}
@@ -235,6 +240,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   <button onClick={clearQty} title="Очистить все количества" style={{ border: `1px solid ${COLORS.border}`, background: '#fff', color: '#8a8377', borderRadius: 6, cursor: 'pointer', fontWeight: 800, fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>⌫</button>
                 </span>
               </th>
+              {/* Без фирм — обычная смета: цена и сумма сразу после количества. */}
+              {noBrands && <>
+                <th style={{ ...th, background: COLORS.bg, textAlign: 'right' }} rowSpan={2}>Цена</th>
+                <th style={{ ...th, background: '#f4f3f0', textAlign: 'right' }} rowSpan={2}>Сумма</th>
+              </>}
               {brands.map((b, bi) => (
                 b.hidden ? (
                   // Свёрнутая фирма: узкая колонка, по клику разворачивается обратно.
@@ -312,6 +322,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   })()}
                 </td>
                 <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} value={Number(r.qty) ? String(Number(r.qty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} placeholder="0" style={numInp} /></td>
+                {noBrands && <>
+                  <td style={td}><input id={cellId(i, 2)} value={Number(r.prices?.[SELF]) ? String(Number(r.prices[SELF])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2, () => setPrice(i, SELF, ''))} onChange={e => setPrice(i, SELF, e.target.value)} placeholder="0" style={numInp} /></td>
+                  <td style={{ ...td, background: '#f8f7f4', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{(Number(r.prices?.[SELF]) || 0) * (Number(r.qty) || 0) ? fmt((Number(r.prices[SELF]) || 0) * (Number(r.qty) || 0)) : ''}</td>
+                </>}
                 {brands.map(b => b.hidden
                   ? <td key={b.id} style={{ ...td, background: tint(b.color, '10') }} />
                   : (
@@ -326,7 +340,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             {/* Итого */}
             <tr style={{ background: '#fff7d6', fontWeight: 800 }}>
               <td style={td}></td>
-              <td style={td} colSpan={2}>ИТОГО по фирме</td>
+              <td style={td} colSpan={2}>{noBrands ? 'ИТОГО' : 'ИТОГО по фирме'}</td>
+              {noBrands && <>
+                <td style={td}></td>
+                <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace', background: '#f4f3f0' }}>{fmt(rows.reduce((s, r) => s + (Number(r.prices?.[SELF]) || 0) * (Number(r.qty) || 0), 0))}</td>
+              </>}
               {brands.map(b => {
                 const isMin = totals[b.id] > 0 && totals[b.id] === minTotal
                 // Свёрнутая фирма участвует в сравнении, но итог показываем компактно.
