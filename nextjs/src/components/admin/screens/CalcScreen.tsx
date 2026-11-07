@@ -222,7 +222,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     })
     setSelling(false)
     setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(sellTotal)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
-    if (r.ok) { setSellOpen(false); setSellContact(''); setSellCode('') }
+    // Чек пробит — обнуляем количества: позиции и цены остаются прайсом на следующего
+    // клиента, а второй раз случайно пробить тот же чек уже нельзя (кнопка исчезает).
+    if (r.ok) { setSellOpen(false); setSellContact(''); setSellCode(''); commit(brands, rows.map(r2 => ({ ...r2, qty: 0 }))) }
   }
 
   // Порядок строк мышкой — как в Номенклатуре: тянем за номер строки и бросаем на другую.
