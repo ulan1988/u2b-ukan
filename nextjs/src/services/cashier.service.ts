@@ -378,6 +378,7 @@ export interface SellInput {
   contactId?: string
   sellerId?: string        // продавец за кассой (employees.id) — выбран на телефоне и держится до смены
   seller?: string          // его имя на момент чека
+  clientCode?: string      // код чека — последние цифры телефона покупателя (поиск при возврате)
   comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number     // скидка по чеку (₸ и/или % — инфо)
@@ -422,7 +423,9 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   // Продавец на чеке: id — для отчёта «кто сколько продал», имя — чтобы показывать без join.
   // Скидка по чеку — на заказ (payCard/накладная её учтут).
   const disc = Math.max(0, Number(i.discountSum) || 0), dpct = Math.max(0, Number(i.discountPct) || 0)
-  if (seller || i.sellerId || disc || dpct) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null, discountSum: String(disc), discountPct: String(dpct) } as any)
+  // Код чека — последние цифры телефона покупателя: по нему кассир находит чек при возврате.
+  const clientCode = (i.clientCode || '').replace(/\D/g, '').slice(-8)
+  if (seller || i.sellerId || disc || dpct || clientCode) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null, discountSum: String(disc), discountPct: String(dpct), clientCode } as any)
 
   const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
   if (!res.ok) return res

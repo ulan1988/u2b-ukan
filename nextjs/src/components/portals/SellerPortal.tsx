@@ -79,6 +79,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [stock, setStock] = useState<Record<string, number>>({})   // остаток склада магазина: productId → кол-во
   const [rows, setRows] = useState<Row[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
+  const [clientCode, setClientCode] = useState('')        // код чека: последние цифры телефона покупателя
+  const [chkQ, setChkQ] = useState('')                    // поиск чека по коду или номеру (по всем дням)
   const [checkExpanded, setCheckExpanded] = useState(false)   // чек-шторка: свёрнута (видно каталог) / раскрыта
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
   const [payOpen, setPayOpen] = useState(false)
@@ -450,14 +452,14 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     setBusy(true)
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined,
-      sellerId: seller?.id, seller: seller?.name,
+      sellerId: seller?.id, seller: seller?.name, clientCode,
       discountSum: discSum, discountPct: discPctN,
       ...body,
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
     })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось пробить чек')); return }
-    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
+    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setClientCode(''); setPayOpen(false)
     await load(); loadStock()
     showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
   }
@@ -470,13 +472,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!hqBridge) { showMsg('⚠ Контрагент «Адал Строй» (головной) не найден'); return }
     setBusy(true)
     const r = await sellCheck({
-      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name,
+      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name, clientCode,
       discountSum: discSum, discountPct: discPctN, cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '',
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
     })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setPayOpen(false)
+    setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setClientCode(''); setPayOpen(false)
     await load(); loadStock()
     showMsg(`🏢 Долг на Адал Строй · ${money(net)} ₸ — долг магазина уменьшен`)
   }
@@ -588,7 +590,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const sold = checks.filter((o: any) => o.prodPhase === 'sold' || o.linkedDocId)
   const debtChecks = sold.filter((o: any) => checkDebt(o) > 0.5).sort((a: any, b: any) => new Date(b.delivered || b.createdAt).getTime() - new Date(a.delivered || a.createdAt).getTime())
   const debtTotal = debtChecks.reduce((s: number, o: any) => s + checkDebt(o), 0)
-  const soldDay = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === checksDay)
+  // Поиск по коду чека (последние цифры телефона) или номеру — ищет по ВСЕМ дням:
+  // клиент приходит на возврат через неделю и называет код, день искать не нужно.
+  const chkQn = chkQ.trim().toLowerCase()
+  const soldDay = chkQn
+    ? sold.filter((o: any) => String(o.clientCode || '').includes(chkQn) || String(o.docNumber || o.id).toLowerCase().includes(chkQn))
+        .sort((a: any, b: any) => new Date(b.delivered || b.createdAt).getTime() - new Date(a.delivered || a.createdAt).getTime()).slice(0, 50)
+    : sold.filter((o: any) => localDay(o.delivered || o.createdAt) === checksDay)
   const daySum = soldDay.reduce((s: number, o: any) => s + cardTotal(o), 0)
   const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
@@ -873,11 +881,16 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <button onClick={() => setChecksDay(localDay())} style={{ border: checksDay === localDay() ? 'none' : '1.5px solid #e6e2dc', background: checksDay === localDay() ? PRIMARY : '#fff', color: checksDay === localDay() ? '#fff' : DARK, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>Сегодня</button>
                 <input type="date" value={checksDay} max={localDay()} onChange={e => setChecksDay(e.target.value || localDay())} style={{ border: '1.5px solid #e6e2dc', borderRadius: 9, padding: '7px 10px', fontFamily: 'inherit', fontSize: 13.5, color: DARK }} />
                 <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                  <div style={{ fontSize: 10.5, color: '#a09889' }}>{soldDay.length} чек.</div>
+                  <div style={{ fontSize: 10.5, color: '#a09889' }}>{chkQn ? 'найдено' : ''} {soldDay.length} чек.</div>
                   <div style={{ fontSize: 14.5, fontWeight: 800 }}>{money(daySum)} ₸</div>
                 </div>
               </div>
-              {soldDay.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>{checksDay === localDay() ? 'Сегодня продаж ещё нет' : 'За этот день продаж нет'}</div>}
+              {/* поиск чека по коду (последние цифры телефона) или номеру — по всем дням */}
+              <div style={{ background: '#fff', borderRadius: 12, padding: '8px 10px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input value={chkQ} inputMode="numeric" onChange={e => setChkQ(e.target.value)} placeholder="🔍 код чека (цифры телефона) или № чека" style={{ ...inp, flex: 1 }} />
+                {chkQ && <button onClick={() => setChkQ('')} style={{ border: 'none', background: '#f7f5f2', color: '#8a8377', borderRadius: 8, padding: '8px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>✕</button>}
+              </div>
+              {soldDay.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>{chkQn ? 'По этому коду чеков нет' : checksDay === localDay() ? 'Сегодня продаж ещё нет' : 'За этот день продаж нет'}</div>}
               {soldDay.map((o: any) => {
                 const t = cardTotal(o)
                 const retSum = Number(o.returnedSum || 0)
@@ -889,6 +902,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: GREEN }}>№ {o.docNumber || o.id}</span>
                         <span style={{ fontSize: 11.5, color: '#a09889' }}>{time}</span>
+                        {o.clientCode && <span title="Код чека (цифры телефона покупателя)" style={{ fontSize: 11, fontWeight: 800, color: '#4a4a8a', background: '#ececf8', borderRadius: 6, padding: '2px 7px', letterSpacing: '.06em' }}>код {o.clientCode}</span>}
+                        {chkQn && <span style={{ fontSize: 11, color: '#a09889' }}>{localDay(o.delivered || o.createdAt).split('-').reverse().slice(0, 2).join('.')}</span>}
                         {allBack && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c0532a', background: '#fbe9e1', borderRadius: 6, padding: '2px 6px' }}>возврат</span>}
                       </div>
                       <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.toName || o.contactName || o.fromName || 'Розница'} · {o.payment || '—'} · {(o.positions || []).length} поз.</div>
@@ -1036,6 +1051,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             </div>
             {/* выбор покупателя — всегда видим (не прячем за кнопкой) */}
             <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false) }} placeholder="— найти покупателя —" />
+            {/* Код чека — последние цифры телефона: придёт на возврат, назовёт их, чек найдётся. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12.5, color: '#5f5952', whiteSpace: 'nowrap' }}>Код чека</span>
+              <input value={clientCode} inputMode="numeric" onChange={e => setClientCode(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="последние 4 цифры телефона" style={{ ...inp, flex: 1, fontWeight: 700, letterSpacing: '.08em' }} />
+            </div>
 
             {/* строки чека */}
             <div style={{ maxHeight: payOpen ? 96 : 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>

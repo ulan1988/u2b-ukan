@@ -387,6 +387,7 @@ export const orders = pgTable('orders', {
   discountPct: money('discount_pct').notNull().default('0'), // скидка по чеку (%), инфо (сумма — в discountSum)
   sellerId: uuid('seller_id'),                            // → employees.id: кто из продавцов пробил чек (касса магазина)
   seller: text('seller').notNull().default(''),           // имя продавца на момент чека (без join)
+  clientCode: text('client_code').notNull().default(''),  // код чека = последние цифры телефона покупателя (поиск чека при возврате)
   trackingLink: text('tracking_link').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
   leg: integer('leg').notNull().default(2),               // 1 = первое плечо (филиал-поставщик), 2 = обычная
