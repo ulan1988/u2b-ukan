@@ -34,6 +34,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [selling, setSelling] = useState(false)
   const [sellMsg, setSellMsg] = useState('')
   const [cags, setCags] = useState<any[]>([])
+  const [staff, setStaff] = useState<any[]>([])          // сотрудники филиала — кто пробил чек
+  const [sellerId, setSellerId] = useState('')           // продавец по умолчанию (как в кассе, на устройстве)
   const [dragRow, setDragRow] = useState<string | null>(null)   // строка, которую тащим мышкой
   const [pullMsg, setPullMsg] = useState('')       // результат «подтянуть цены» — видно, что произошло
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
@@ -42,6 +44,16 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
   const t = useRef<any>(null)
 
+  // Сотрудники орг + запомненный продавец: ключ тот же, что у кассы магазина,
+  // поэтому выбранный там Нурбол подставится и в продаже из «Расчёта».
+  useEffect(() => {
+    fetch(`/api/employees?orgId=`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
+      const list = Array.isArray(d) ? d : []
+      setStaff(list)
+      try { const raw = localStorage.getItem(`u2b_seller_`); const saved = raw ? JSON.parse(raw) : null
+        setSellerId(prev => prev || (saved?.id && list.some(e => e.id === saved.id) ? saved.id : (list[0]?.id || ''))) } catch { setSellerId(prev => prev || (list[0]?.id || '')) }
+    }).catch(() => {})
+  }, [orgId])
   useEffect(() => { fetchRefs(orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived && c.kind !== 'supplier'))).catch(() => {}) }, [orgId])
   useEffect(() => {
     fetch(`/api/products?orgId=`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
@@ -214,8 +226,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     if (how === 'debt' && !sellContact) { setSellMsg('для долга выберите покупателя'); return }
     setSelling(true); setSellMsg('')
     const key = priceKeyOf()
+    const emp = staff.find((s: any) => s.id === sellerId)
     const r: any = await sellCheck({
       contactId: sellContact || undefined, clientCode: sellCode,
+      sellerId: emp?.id, seller: emp?.name,
       cash: how === 'cash' ? sellTotal : 0, kaspi: how === 'kaspi' ? sellTotal : 0, qr: how === 'qr' ? sellTotal : 0,
       comment: `Расчёт «${name}»`,
       positions: sellRows.map(r2 => ({ productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, qty: Number(r2.qty), unit: r2.unit || 'шт', price: Number(r2.prices[key]) })),
@@ -473,6 +487,15 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           </div>
           <div style={{ marginBottom: 8 }}>
             <ContragentPicker contragents={cags} value={sellContact} onPick={(c: any) => setSellContact(c?.id || '')} placeholder="— покупатель (для долга обязателен) —" />
+          </div>
+          {/* Кто пробил чек: по умолчанию тот, кто выбран за кассой на этом устройстве. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 12.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>Продавец</span>
+            <select value={sellerId} onChange={e => { setSellerId(e.target.value); const s = staff.find((x: any) => x.id === e.target.value); try { localStorage.setItem(`u2b_seller_${orgId}`, JSON.stringify(s ? { id: s.id, name: s.name } : null)) } catch {} }}
+              style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, background: '#fff' }}>
+              <option value="">— не указан —</option>
+              {staff.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.position ? ` · ${s.position}` : ''}</option>)}
+            </select>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 12.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>Код чека</span>
