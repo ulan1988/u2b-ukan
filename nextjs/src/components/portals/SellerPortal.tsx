@@ -80,6 +80,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [rows, setRows] = useState<Row[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
   const [clientCode, setClientCode] = useState('')        // код чека: последние цифры телефона покупателя
+  const [holds, setHolds] = useState<any[]>([])           // отложенные заказы (этого устройства)
+  const [holdOpen, setHoldOpen] = useState(false)         // раскрыт список отложенных
   const [chkQ, setChkQ] = useState('')                    // поиск чека по коду или номеру (по всем дням)
   const [checkExpanded, setCheckExpanded] = useState(false)   // чек-шторка: свёрнута (видно каталог) / раскрыта
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
@@ -164,6 +166,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   useEffect(() => { loadStock() }, [loadStock])
 
   const SELLER_KEY = `u2b_seller_${user.orgId}`
+  // ── ОТЛОЖЕННЫЕ ЗАКАЗЫ: чек можно отложить, обслужить следующего и вернуться к нему ──
+  // Живут на ЭТОМ устройстве (localStorage): ничего не проводится, склад и касса не трогаются.
+  const HOLD_KEY = `u2b_hold_${user.orgId}`
+  const readHold = (): any[] => { try { const v = JSON.parse(localStorage.getItem(HOLD_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
+  const writeHold = (v: any[]) => { try { localStorage.setItem(HOLD_KEY, JSON.stringify(v.slice(0, 20))) } catch { /* приватный режим */ } }
   useEffect(() => {
     fetch(`/api/employees?orgId=${user.orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setStaff(Array.isArray(d) ? d : []))
     try {
@@ -544,6 +551,27 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
   }
 
+  // Отложить текущий заказ: запоминаем состав, покупателя, код и скидку; касса очищается.
+  function holdCurrent() {
+    if (!rows.length) { showMsg('⚠ Чек пустой'); return }
+    const h = { id: 'h' + Date.now(), ts: Date.now(), rows, contactId, clientCode, disc, seller: seller?.name || '' }
+    const next = [h, ...readHold()]
+    writeHold(next); setHolds(next)
+    setRows([]); setContactId(''); setClientCode(''); setDisc({ mode: 'sum', val: '' }); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setPayOpen(false)
+    showMsg('⏸ Заказ отложен')
+  }
+  // Вернуть отложенный в кассу (текущий непустой чек сначала откладываем, чтобы не потерять).
+  function resumeHold(h: any) {
+    if (rows.length) holdCurrent()
+    setRows(h.rows || []); setContactId(h.contactId || ''); setClientCode(h.clientCode || '')
+    setDisc(h.disc || { mode: 'sum', val: '' })
+    const next = readHold().filter((x: any) => x.id !== h.id)
+    writeHold(next); setHolds(next); setHoldOpen(false); setCheckExpanded(true)
+    showMsg('▶ Заказ в кассе — можно оплатить')
+  }
+  function dropHold(id: string) { const next = readHold().filter((x: any) => x.id !== id); writeHold(next); setHolds(next) }
+  useEffect(() => { setHolds(readHold()) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── ПРАВКА ЧЕКА: кол-во, цена, состав и счета оплаты (без возврата/перепробития) ──
   function openEdit(o: any) {
     setEditFor(o)
@@ -739,6 +767,33 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         </div>
       ) : tab === 'cash' ? (
         <div style={{ paddingBottom: 74 + checkH }}>
+          {/* Отложенные заказы — сверху: нажал, выбрал, заказ вернулся в кассу и можно оплатить. */}
+          {holds.length > 0 && (
+            <div style={{ background: '#f7f3fc', borderBottom: '1px solid #e7ddf3', padding: '7px 10px' }}>
+              <button onClick={() => setHoldOpen(v => !v)} style={{ border: 'none', background: 'none', color: '#7a3aaa', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, padding: 0 }}>
+                ⏸ Отложенные заказы · {holds.length} {holdOpen ? '▾' : '▸'}
+              </button>
+              {holdOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 7 }}>
+                  {holds.map((h: any) => {
+                    const sum = (h.rows || []).reduce((s: number, r: any) => s + lineAmount({ name: r.name1c, qty: r.qty, price: r.price, widthCm: r.widthCm }), 0)
+                    const who = cags.find((c: any) => c.id === h.contactId)?.name || 'Розница'
+                    return (
+                      <div key={h.id} style={{ background: '#fff', borderRadius: 10, padding: '8px 10px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}{h.clientCode ? ` · код ${h.clientCode}` : ''}</div>
+                          <div style={{ fontSize: 11.5, color: '#8a8377' }}>{new Date(h.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {(h.rows || []).length} поз. · {money(sum)} ₸</div>
+                        </div>
+                        <button onClick={() => resumeHold(h)} style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800, whiteSpace: 'nowrap' }}>▶ В кассу</button>
+                        <button onClick={() => dropHold(h.id)} title="Удалить отложенный" style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>🗑</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* папки продавца — лента вкладок (все категории номенклатуры), прокручивается вправо */}
           <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', position: 'sticky', top: 56, zIndex: 50, overflowX: 'auto' }}>
             {folders.map(f => {
@@ -1047,7 +1102,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button onClick={() => setShowClient(v => !v)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c', maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {client ? client.name : 'Розница'}</button>
               {contactId && <button onClick={() => setContactId('')} style={{ border: 'none', background: '#f7f5f2', color: '#8a8377', borderRadius: 8, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>сброс</button>}
-              <button onClick={() => setRows([])} style={{ marginLeft: 'auto', border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>очистить</button>
+              <button onClick={holdCurrent} title="Отложить заказ и обслужить следующего — вернётесь и оплатите" style={{ marginLeft: 'auto', border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800 }}>⏸ Отложить</button>
+              <button onClick={() => setRows([])} style={{ border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>очистить</button>
             </div>
             {/* выбор покупателя — всегда видим (не прячем за кнопкой) */}
             <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false) }} placeholder="— найти покупателя —" />
