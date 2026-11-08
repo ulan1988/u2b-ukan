@@ -193,6 +193,9 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Карточка не проведена' }
+  // Сторно чека снимает и бонус. Долг товара соседу НЕ трогаем: товар у него уже взят,
+  // возврат соседу разбирается вручную в журнале «Долг товаров».
+  try { const { dropBonus } = await import('./bonus.service'); await dropBonus(cardId) } catch (e) { console.error('dropBonus', cardId, e) }
   const { db } = await import('../lib/db')
   const { documents, payments } = await import('../db/schema')
   const { eq, and, ne } = await import('drizzle-orm')
@@ -382,8 +385,13 @@ export interface SellInput {
   comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number     // скидка по чеку (₸ и/или % — инфо)
-  positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+  // bonusCost/bonusAgentId — бонусная позиция (товар соседа из папки «Долг товар»):
+  // идёт мимо склада, себестоимости в чеке нет, бонус делится 50/50 с головным.
+  positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number; bonusCost?: number; bonusAgentId?: string }[]
 }
+
+// Доля головного в бонусе: 50% (для бонусных позиций вместо обычной маржи 60/40).
+export const BONUS_HQ_SHARE = 0.5
 
 export async function sellDirect(orgId: string, i: SellInput, actor?: Session | null) {
   if (!i.positions?.length) return { ok: false as const, error: 'Пустой чек' }
@@ -406,11 +414,18 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   for (const p of i.positions) {
     const name = (p.name1c || '').trim()
     const pid = p.productId || (lookupOnly ? await findByName(name) : await ensureProduct(name))
+    // Бонусная позиция: товар соседа (группа «Долг товар») — мимо склада (transit),
+    // цена соседа и сам сосед остаются на строке, по ним потом считается бонус и долг.
+    const bonusCost = Math.max(0, Number(p.bonusCost) || 0)
+    const isBonus = bonusCost > 0 && !!p.bonusAgentId
     positions.push({
       productId: pid,
       name1c: name, oral: p.oral || name,
       qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0,
       widthCm: p.widthCm != null ? Number(p.widthCm) : undefined,
+      transit: isBonus,
+      bonusCost: isBonus ? String(bonusCost) : '0',
+      bonusAgentId: isBonus ? p.bonusAgentId : null,
     })
   }
   const contactId = i.contactId || await ensureRetailContragent(orgId)
@@ -430,6 +445,9 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
   if (!res.ok) return res
   await repo.updateOrder(id, { status: 'Доставлено' })
+  // Бонусные позиции (товар соседа): записать бонус и долг товара — не роняя продажу.
+  try { const { registerBonus } = await import('./bonus.service'); await registerBonus(orgId, id, undefined, actor) }
+  catch (e) { console.error('registerBonus', id, e) }
   // QR/банк магазина сразу к головному (наша кюар) — не роняем продажу при сбое синка.
   try { await syncSellerBankToHq(orgId) } catch { /* noop */ }
   return { ...res, id, seller }

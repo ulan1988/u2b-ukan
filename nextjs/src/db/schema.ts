@@ -412,6 +412,11 @@ export const orderPositions = pgTable('order_positions', {
   price: money('price').notNull().default('0'),
   costPrice: money('cost_price').notNull().default('0'),   // сквозная: закупочная цена (что платим поставщику); продажная = price
   transit: boolean('transit').notNull().default(false),   // сквозная позиция (drop-ship, мимо склада) — на уровне позиции
+  // БОНУСНАЯ ПРОДАЖА (группа «Долг товар»): товар взят у соседа, идёт мимо склада.
+  // bonusCost — цена соседа за единицу (её вернём ему), bonusAgentId — у кого взяли.
+  // Бонус = (price − bonusCost) × qty, делится 50/50 с головным; себестоимости в чеке нет.
+  bonusCost: money('bonus_cost').notNull().default('0'),
+  bonusAgentId: uuid('bonus_agent_id').references(() => contragents.id),
   widthCm: qtyCol('width_cm'),                             // ширина изделия в см (раскрой у мастера-производителя)
   respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
@@ -719,4 +724,26 @@ export const profitRows = pgTable('profit_rows', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({
   byDay: index('profit_rows_day_idx').on(t.orgId, t.date),
+}))
+
+// Бонусная продажа (товар соседа из папки «Долг товар»): чек проходит мимо склада,
+// себестоимости у позиции нет — есть БОНУС (продажа − цена соседа), который делится
+// 50/50 с головным. Строка пишется при пробитии чека, по ней видно долг соседу
+// (его деньги) и долю Адал Строй 2 (закрывается инкассацией).
+export const bonusRows = pgTable('bonus_rows', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  date: date('date').notNull(),
+  cardId: text('card_id').references(() => orders.id, { onDelete: 'cascade' }),
+  posId: text('pos_id'),
+  agentId: uuid('agent_id').references(() => contragents.id),   // сосед, у которого взяли товар
+  productName: text('product_name').notNull().default(''),
+  qty: qtyCol('qty').notNull().default('0'),
+  price: money('price').notNull().default('0'),        // по чём продали
+  cost: money('cost').notNull().default('0'),          // цена соседа (вернём ему)
+  bonus: money('bonus').notNull().default('0'),        // (price − cost) × qty
+  hqShare: money('hq_share').notNull().default('0'),   // доля головного (50%)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, t => ({
+  byDay: index('bonus_rows_day_idx').on(t.orgId, t.date),
 }))

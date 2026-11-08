@@ -46,3 +46,5 @@ export const finCancelPayment = (paymentId: string) => post('/api/finance/money'
 export const profitDay = (orgId: string, date: string) => getObj<any>(`/api/finance/profit-day?orgId=${orgId}&date=${date}`, null as any)
 export const profitPost = (orgId: string, date: string) => post('/api/finance/profit-day', { orgId, date, action: 'post' })
 export const profitUnpost = (orgId: string, date: string) => post('/api/finance/profit-day', { orgId, date, action: 'unpost' })
+// Бонусы дня (товар соседа): заработок магазина и доля головного.
+export const bonusDay = (orgId: string, date: string) => getObj<any>(`/api/finance/bonus-day?orgId=${orgId}&date=${date}`, null as any)

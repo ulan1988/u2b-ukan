@@ -70,7 +70,7 @@ const FOLDERS = [
   { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица', levels: ['subgroup'] },
 ]
 
-interface Row { key: string; name1c: string; oral: string; qty: number; unit: string; price: number; widthCm?: number; productId?: string }
+interface Row { key: string; name1c: string; oral: string; qty: number; unit: string; price: number; widthCm?: number; productId?: string; bonusCost?: number; bonusAgentId?: string }
 
 export default function SellerPortal({ user, orgName }: { user: { id: string; name: string; orgId: string; slug?: string }; orgName?: string }) {
   const [tab, setTab] = useState<Tab>('cash')
@@ -79,6 +79,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [stock, setStock] = useState<Record<string, number>>({})   // остаток склада магазина: productId → кол-во
   const [rows, setRows] = useState<Row[]>([]); const [showCatalog, setShowCatalog] = useState(false)
   const [contactId, setContactId] = useState(''); const [showClient, setShowClient] = useState(false)
+  const [bonusPick, setBonusPick] = useState<string | null>(null)   // строка, для которой выбираем соседа
   const [clientCode, setClientCode] = useState('')        // код чека: последние цифры телефона покупателя
   const [holds, setHolds] = useState<any[]>([])           // отложенные заказы (этого устройства)
   const [holdOpen, setHoldOpen] = useState(false)         // раскрыт список отложенных
@@ -429,6 +430,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const discPctN = disc.mode === 'pct' ? num(disc.val) : 0
   const discSum = Math.min(total, Math.max(0, disc.mode === 'pct' ? Math.round(total * discPctN / 100) : num(disc.val)))
   const net = Math.max(0, total - discSum)
+  // Бонусный товар — тот, что лежит в папке «Долг товар» (берём у соседа, мимо склада).
+  // Папку владелец называет по-разному («Сосед товар», «Долг товар») — ловим оба варианта.
+  const normS = (s: any) => String(s || '').trim().toLowerCase().replace(/ё/g, 'е')
+  const isBonusFolder = (v: any) => { const s = normS(v); return s.includes('сосед') || s === 'долг товар' || s.includes('долг товар') }
+  const prodOf = (r: Row) => products.find((p: any) => (r.productId && p.id === r.productId) || normS(p.name) === normS(r.name1c))
+  const isBonusRow = (r: Row) => { const p: any = prodOf(r); return !!p && (isBonusFolder(p.group) || isBonusFolder(p.cat)) }
+  // Итоги по бонусу для подсказки продавцу: сколько вернуть соседу и как делится бонус.
+  const bonusRowsCart = rows.filter(isBonusRow)
+  const bonusToAgent = bonusRowsCart.reduce((s, r) => s + (Number(r.bonusCost) || 0) * Number(r.qty), 0)
+  const bonusSum = bonusRowsCart.reduce((s, r) => s + Math.max(0, (Number(r.price) - (Number(r.bonusCost) || 0)) * Number(r.qty)), 0)
+  const bonusHq = Math.round(bonusSum * 0.5)
   // Себестоимость чека (закуп priceIn по товарам) — для скрытого «глазка». Изделия/см считает lineAmount.
   const totalCost = rows.reduce((s, r) => { const p = byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId); return s + lineAmount({ name: r.name1c, qty: r.qty, price: Number((p as any)?.priceIn) || 0, widthCm: r.widthCm }) }, 0)
   const margin = net - totalCost
@@ -456,13 +468,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const body = p || { cash: cashN, kaspi: kaspiN, qr: qrN, change: num(pay.change), changeFrom: pay.changeFrom }
     // Покупатель обязателен для ЛЮБОГО чека (без контрагента чек не пробиваем).
     if (!contactId) { setShowClient(true); showMsg('⚠ Выберите покупателя'); return }
+    // Бонусный товар без цены соседа или без самого соседа проводить нельзя: он пошёл бы
+    // как обычная продажа — списался бы наш склад, которого по этому товару нет.
+    const badBonus = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
+    if (badBonus) { showMsg(`⚠ ${badBonus.name1c}: укажите цену соседа и у кого взяли`); return }
     setBusy(true)
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined,
       sellerId: seller?.id, seller: seller?.name, clientCode,
       discountSum: discSum, discountPct: discPctN,
       ...body,
-      positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
+      positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm, bonusCost: x.bonusCost || undefined, bonusAgentId: x.bonusAgentId || undefined })),
     })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось пробить чек')); return }
@@ -481,7 +497,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const r = await sellCheck({
       uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name, clientCode,
       discountSum: discSum, discountPct: discPctN, cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '',
-      positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm })),
+      positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm, bonusCost: x.bonusCost || undefined, bonusAgentId: x.bonusAgentId || undefined })),
     })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
@@ -1118,16 +1134,40 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               {rows.map(r => {
                 const perCm = isIzdelie(r.name1c) && Number(r.widthCm) > 0
                 const sum = lineAmount({ name: r.name1c, qty: r.qty, price: r.price, widthCm: r.widthCm })
+                const bon = isBonusRow(r)
                 return (
-                  <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div key={r.key} style={{ display: 'flex', flexDirection: 'column', gap: 4, ...(bon ? { background: '#f4f1fb', borderRadius: 8, padding: '4px 6px', margin: '0 -6px' } : {}) }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#4a443c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name1c} · {r.qty}{r.widthCm ? `×${r.widthCm}см` : ''}</div>
                     <input value={r.price ? String(r.price) : ''} inputMode="decimal" placeholder={perCm ? '₸/см' : '₸'} onChange={e => patchRow(r.key, { price: num(e.target.value.replace(/[^0-9.,]/g, '')) })} style={{ ...inp, width: 78, padding: '6px 8px', fontSize: 13, border: r.price ? '1.5px solid #e6e2dc' : `1.5px solid ${PRIMARY}` }} />
                     <span style={{ fontSize: 13.5, fontWeight: 800, minWidth: 62, textAlign: 'right' }}>{money(sum)}</span>
                     <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} style={{ border: 'none', background: 'none', color: '#c0532a', cursor: 'pointer', fontSize: 13, padding: '2px 2px' }}>✕</button>
                   </div>
+                  {/* Бонусный товар («Долг товар»): цена соседа и у кого взяли — мелко и неярко,
+                      клиенту через прилавок не прочитать. Бонус = (цена − цена соседа) × кол-во. */}
+                  {bon && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10.5, color: '#a09889' }}>соседа</span>
+                      <input value={r.bonusCost ? String(r.bonusCost) : ''} inputMode="decimal" placeholder="0"
+                        onChange={e => patchRow(r.key, { bonusCost: num(e.target.value.replace(/[^0-9.,]/g, '')) })}
+                        style={{ width: 62, height: 26, padding: '2px 6px', fontSize: 11.5, color: '#8a8377', background: 'transparent', border: '1px dashed #ddd7cd', borderRadius: 7, fontFamily: 'inherit', outline: 'none' }} />
+                      <button onClick={() => setBonusPick(r.key)} style={{ border: 'none', background: '#efeaf8', color: r.bonusAgentId ? '#5b4a8a' : '#a09889', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 10.5, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {cags.find((c: any) => c.id === r.bonusAgentId)?.name || 'у кого ▾'}
+                      </button>
+                      <span style={{ marginLeft: 'auto', fontSize: 10.5, color: '#2e8a5e' }}>{r.bonusCost ? `бонус ${money(Math.max(0, (Number(r.price) - Number(r.bonusCost)) * Number(r.qty)))}` : 'впишите цену соседа'}</span>
+                    </div>
+                  )}
+                  </div>
                 )
               })}
             </div>
+
+            {/* Бонус по чеку — мелкой серой строкой для продавца (клиент видит только сумму). */}
+            {bonusRowsCart.length > 0 && bonusSum > 0 && (
+              <div style={{ fontSize: 11, color: '#8a8377', lineHeight: 1.6 }}>
+                бонус {money(bonusSum)} · вам {money(bonusSum - bonusHq)} · Адал Строй 2 {money(bonusHq)} · соседу вернуть {money(bonusToAgent)}
+              </div>
+            )}
 
             {/* скидка по чеку: ₸ или % */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 5 }}>
@@ -1641,6 +1681,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         )
       })()}
 
+      {/* У кого взяли бонусный товар: только свои контрагенты магазина. */}
+      {bonusPick && (
+        <div onClick={() => setBonusPick(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>У кого взяли товар</div>
+            <ContragentPicker contragents={cags} value={rows.find(r => r.key === bonusPick)?.bonusAgentId || ''}
+              onPick={(c: any) => { patchRow(bonusPick, { bonusAgentId: c?.id || undefined }); setBonusPick(null) }} placeholder="— найти соседа —" />
+            <button onClick={() => setBonusPick(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#6b645b', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
+          </div>
+        </div>
+      )}
       {showCatalog && <StoreCatalog orgId={user.orgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
       {showGCatalog && <StoreCatalog orgId={user.orgId} onPick={onPickGForm} onClose={() => setShowGCatalog(false)} />}
       <PushSetup />

@@ -10,6 +10,9 @@ export const sellPositionSchema = z.object({
   unit: z.string().optional().default('шт'),
   price: z.coerce.number().nonnegative().default(0),
   widthCm: z.coerce.number().optional(),
+  // Бонусная позиция (товар соседа из папки «Долг товар»): его цена и у кого взяли.
+  bonusCost: z.coerce.number().nonnegative().optional(),
+  bonusAgentId: z.string().uuid().optional(),
 })
 
 export const sellSchema = z.object({

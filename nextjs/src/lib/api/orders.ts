@@ -124,7 +124,7 @@ export async function sellCheck(body: {
   uid?: string; contactId?: string; sellerId?: string; seller?: string; comment?: string; clientCode?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number
-  positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+  positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number; bonusCost?: number; bonusAgentId?: string }[]
 }) {
   const r = await post('/api/branch/sell', body)
   return {

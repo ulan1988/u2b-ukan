@@ -126,6 +126,9 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
     costPrice: String((p as any).costPrice ?? 0),
     transit: !!(p as any).transit || (p.supplierId ? transitSupIds.has(p.supplierId) : false),   // сквозная строка (или сквозной поставщик)
+    // Бонусная продажа: цена соседа и сам сосед живут на строке чека.
+    bonusCost: String((p as any).bonusCost ?? 0),
+    bonusAgentId: (p as any).bonusAgentId ?? null,
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? defLogist ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)

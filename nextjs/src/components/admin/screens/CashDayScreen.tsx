@@ -2,11 +2,11 @@
 // Касса дня (десктоп-финанс): дневная сверка филиала — доходы по способам (нал/каспи/QR/долг),
 // проверка «оплаты+долг=продано», счета за день, остаток KASPI GOLD + перевод в банк,
 // расходы (ЗП/текущие через «Деньги»), производство в запас, закрытие смены. Орг — из селектора.
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
-import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -28,6 +28,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
   const [retm, setRetm] = useState({ accountId: '', amount: '' })  // возврат денег ОТ головного на счёт филиала
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
+  const [bonus, setBonus] = useState<any>(null)        // бонусы дня: товар соседа мимо склада
   const [profit, setProfit] = useState<any>(null)             // прибыль дня: деление денег (себест / наценка)
   const [profitBusy, setProfitBusy] = useState(false)
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
@@ -42,6 +43,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     const [y, mo] = ym.split('-').map(Number); const last = new Date(y, mo, 0).getDate()
     setMonth(await cashMonth(orgId, `${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`)); monthKey.current = orgId + ym; setLoading(false)
   }, [orgId, ym])
+  // Бонусы дня грузим вместе с днём — блок показывается, только если они были.
+  useEffect(() => { if (view === 'day') bonusDay(orgId, date).then(setBonus).catch(() => setBonus(null)) }, [orgId, date, view])
   // Живое обновление: перезагрузка активного вида при realtime-сигнале (продажа/оплата в кабинете).
   useLiveData(() => { view === 'month' ? loadMonth() : load() }, [view, load, loadMonth])
 
@@ -415,6 +418,34 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               )
             })}
         </div>
+
+        {/* 🎁 БОНУС ДНЯ — товар соседа («Сосед товар»): мимо склада, себестоимости нет,
+            бонус делится 50/50 с головным, деньги соседа возвращаются ему. */}
+        {bonus && bonus.rows?.length > 0 && (
+          <div style={{ ...card, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🎁 БОНУС ДНЯ</span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>товар соседей · {bonus.rows.length} поз.</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              {[['продано', bonus.totals.sold, COLORS.text], ['вернуть соседям', bonus.totals.toAgent, COLORS.primaryDark], ['бонус', bonus.totals.bonus, '#2e8a5e'], ['наша доля', bonus.ourShare, '#2e8a5e'], ['Адал Строй 2', bonus.totals.hqShare, '#7a3aaa']].map(([l, v, c]: any) => (
+                <div key={l} style={{ background: COLORS.bgCard, borderRadius: 10, padding: '9px 14px', minWidth: 130 }}>
+                  <div style={{ fontSize: 12, color: COLORS.textLight }}>{l}</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: c }}>{m(v)} ₸</div>
+                </div>
+              ))}
+            </div>
+            {bonus.rows.map((r: any) => (
+              <div key={r.id} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '3px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                <span style={{ fontFamily: 'monospace' }}>{r.docNumber || r.cardId}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: COLORS.text }}>{r.productName} · {Number(r.qty)} × {m(r.price)}</span>
+                <span style={{ color: '#7a3aaa' }}>{r.agent || '—'}</span>
+                <span style={{ width: 92, textAlign: 'right' }}>соседу {m(Number(r.cost) * Number(r.qty))}</span>
+                <span style={{ width: 86, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>бонус {m(r.bonus)}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 💰 ПРИБЫЛЬ ДНЯ — чек делится на две части ДЕНЕГ: себестоимость («Оплата от покупателей»)
             и наценка («Прочие доходы»). Накладная не трогается. Счёт прибыли — куда пришли деньги. */}
