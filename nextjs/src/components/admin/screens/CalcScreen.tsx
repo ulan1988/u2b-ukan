@@ -45,6 +45,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [sugRect, setSugRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
   const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
   const t = useRef<any>(null)
+  const priceSaveT = useRef<any>(null)   // отложенная запись новой цены в номенклатуру
 
   // Сотрудники орг + запомненный продавец: ключ тот же, что у кассы магазина,
   // поэтому выбранный там Нурбол подставится и в продаже из «Расчёта».
@@ -159,7 +160,25 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
 
   // Позиции
   const setRow = (i: number, patch: any) => commit(brands, rows.map((r, j) => j === i ? { ...r, ...patch } : r))
-  const setPrice = (i: number, bid: string, val: any) => commit(brands, rows.map((r, j) => j === i ? { ...r, prices: { ...r.prices, [bid]: num(val) } } : r))
+  const setPrice = (i: number, bid: string, val: any) => {
+    const v = num(val)
+    commit(brands, rows.map((r, j) => j === i ? { ...r, prices: { ...r.prices, [bid]: v } } : r))
+    // «Указал один раз — и всё»: если у товара в номенклатуре цены ещё НЕТ, запоминаем
+    // введённую. Уже проставленный прайс правка в расчёте не трогает (для него — кнопка
+    // «💾 цены в номенклатуру»), чтобы разовая скидка клиенту не поехала в магазин.
+    const r = rows[i]; const nm = String(r?.name1c || r?.name || '').trim()
+    if (!(v > 0) || !nm) return
+    const p: any = products.find((x: any) => (r.productId && x.id === r.productId) || norm(x.name) === norm(nm))
+    if (!p || Number(p.priceRetail) > 0) return
+    clearTimeout(priceSaveT.current)
+    priceSaveT.current = setTimeout(async () => {
+      try {
+        await fetch('/api/pricing', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, price: v, priceType: 'retail', orgId }) })
+        setProducts(ps => ps.map((x: any) => x.id === p.id ? { ...x, priceRetail: String(v) } : x))
+        setPullMsg(`цена «${p.alias || p.name}» записана в номенклатуру`)
+      } catch { /* нет сети — останется только в листе */ }
+    }, 1200)
+  }
   const addRow = () => commit(brands, [...rows, { id: uid(), name: '', qty: 0, prices: {} }])
   const delRow = (i: number) => commit(brands, rows.filter((_, j) => j !== i))
   // Фирмы
