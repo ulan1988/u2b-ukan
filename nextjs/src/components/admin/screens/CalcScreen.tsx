@@ -537,7 +537,12 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   })()}
                   {/* Бонусный товар (взят у соседа): цена соседа + у кого взяли — без них чек не пробьётся.
                       Полоса живёт ВНУТРИ ячейки названия: отдельная строка с colSpan ломала ширину колонок. */}
-                  {isBonusRow(r) && (
+                  {/* Вписал цену соседа — прячет полосу глазком, чтобы клиент не видел её за плечом. */}
+                  {isBonusRow(r) && r.bonusHid && (
+                    <button onClick={() => setRow(i, { bonusHid: false })} title="Показать строку товара соседа"
+                      style={{ marginTop: 3, border: '1px solid #f0dcc9', background: '#fff6ee', color: '#c0532a', borderRadius: 7, padding: '1px 7px', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>👁</button>
+                  )}
+                  {isBonusRow(r) && !r.bonusHid && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: 12, marginTop: 4, padding: '4px 6px', background: '#fff6ee', border: '1px solid #f0dcc9', borderRadius: 8 }}>
                       <span style={{ color: '#c0532a', fontWeight: 700, whiteSpace: 'nowrap' }}>🤝 товар соседа</span>
                       <span style={{ color: COLORS.textMuted, whiteSpace: 'nowrap' }}>цена соседа</span>
@@ -552,6 +557,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                         ? (() => { const b = Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - Number(r.bonusCost)) * (Number(r.qty) || 0)
                             return <span style={{ color: '#2e8a5e', fontWeight: 700, whiteSpace: 'nowrap' }}>{`бонус ${fmt(b)} · вам ${fmt(b - Math.round(b * 0.5))} · ГО ${fmt(Math.round(b * 0.5))}`}</span> })()
                         : <span style={{ color: '#c0532a', whiteSpace: 'nowrap' }}>впишите цену соседа</span>}
+                      <button onClick={() => setRow(i, { bonusHid: true })} title="Скрыть строку товара соседа"
+                        style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#a09889', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '2px 4px' }}>🙈</button>
                     </div>
                   )}
                 </td>
