@@ -100,8 +100,25 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     if (!saved && id) { await calcSave(id, name, { brands, rows }); setSaved(true) }
     setLoading(true)
     const d: any = await calcGet(sheetId)
+    const bs: any[] = d?.data?.brands || []
+    let rs: any[] = d?.data?.rows || []
+    // Лист вели без фирм (цена в своей колонке), потом добавили фирму — цены оказались бы
+    // спрятаны. Переносим их в первую фирму один раз при открытии.
+    const vis = bs.filter((b: any) => !b.hidden)
+    const target = bs.find((b: any) => b.own) || vis[0] || bs[0]
+    if (target && rs.some(r => Number(r?.prices?.['_']) > 0)) {
+      rs = rs.map(r => {
+        const own = Number(r?.prices?.['_']) || 0
+        if (!(own > 0)) return r
+        const prices = { ...(r.prices || {}) }
+        if (!(Number(prices[target.id]) > 0)) prices[target.id] = own
+        delete prices['_']
+        return { ...r, prices }
+      })
+      calcSave(d.id, d.name, { brands: bs, rows: rs }).catch(() => {})
+    }
     setId(d?.id || null); setName(d?.name || 'Расчёт')
-    setBrands(d?.data?.brands || []); setRows(d?.data?.rows || [])
+    setBrands(bs); setRows(rs)
     setTabs(d?.tabs || []); setSaved(true); setLoading(false)
   }
   useEffect(() => { open() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -142,7 +159,15 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const delRow = (i: number) => commit(brands, rows.filter((_, j) => j !== i))
   // Фирмы
   const setBrand = (bi: number, patch: any) => commit(brands.map((b, j) => j === bi ? { ...b, ...patch } : b))
-  const addBrand = () => commit([...brands, { id: uid(), name: 'Фирма', color: '#6b7280' }])
+  // Первая фирма забирает цены из своей колонки — иначе они пропадут из вида.
+  const addBrand = () => {
+    const nb = { id: uid(), name: 'Фирма', color: '#6b7280' }
+    const first = brands.length === 0
+    const nr = first
+      ? rows.map(r => { const own = Number(r?.prices?.['_']) || 0; if (!(own > 0)) return r; const prices = { ...(r.prices || {}) }; prices[nb.id] = own; delete prices['_']; return { ...r, prices } })
+      : rows
+    commit([...brands, nb], nr)
+  }
   const delBrand = (bi: number) => { const b = brands[bi]; const nr = rows.map(r => { const p = { ...r.prices }; delete p[b.id]; return { ...r, prices: p } }); commit(brands.filter((_, j) => j !== bi), nr) }
 
   // ── Работа как в Excel: ходим по ячейкам стрелками/Enter, Delete очищает ячейку ──
