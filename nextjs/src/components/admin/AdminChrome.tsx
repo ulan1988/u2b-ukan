@@ -166,11 +166,12 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
         {/* На экранах со своей шапкой Topbar скрыт — даём отдельный бургер для телефона,
             иначе сайдбар (а в нём «Выйти») с телефона недоступен. */}
-        {(screen === 'money' || screen === 'accounting') && (
+        {(screen === 'money' || screen === 'accounting' || screen === 'calc') && (
           <button className="adm-burger" onClick={() => setSideOpen(true)} title="Меню"
             style={{ display: 'none', position: 'fixed', left: 10, bottom: 14, zIndex: 120, width: 46, height: 46, borderRadius: 14, border: 'none', background: COLORS.sidebar.bg, color: '#fff', fontSize: 20, alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(0,0,0,.28)', cursor: 'pointer', fontFamily: 'inherit' }}>☰</button>
         )}
-        {screen !== 'money' && screen !== 'accounting' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
+        {/* «Расчёт» — лист на весь экран: шапку прячем, чтобы помещалось 15–18 позиций. */}
+        {screen !== 'money' && screen !== 'accounting' && screen !== 'calc' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
         <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}

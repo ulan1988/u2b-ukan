@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
+import { useAdmin } from '@/components/admin/AdminChrome'
 import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
 import { sellCheck } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
@@ -16,6 +17,7 @@ const num = (v: any) => { const n = Number(String(v ?? '').replace(/\s/g, '').re
 const uid = () => 'x' + Math.random().toString(36).slice(2, 9)
 
 export default function CalcScreen({ orgId }: { orgId: string }) {
+  const orgName = (useAdmin() as any)?.orgName || ''   // шапки на этом экране нет — пишем орг рядом с вкладками
   const [id, setId] = useState<string | null>(null)
   const [name, setName] = useState('Расчёт')
   const [brands, setBrands] = useState<any[]>([])
@@ -276,21 +278,24 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     <div>
       {/* Одна строка вместо трёх: вкладки-листы (имя активной правится прямо во вкладке),
           «+ Новый расчёт», справа — статус сохранения и «+ Фирма». */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, overflowX: 'auto' }}>
+      {/* Одна узкая строка: орг · вкладки · новый расчёт · статус · фирма. Шапки страницы
+          на этом экране нет — всё место отдано таблице. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6, overflowX: 'auto' }}>
+        <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: COLORS.textMuted, paddingRight: 4 }}>{orgName || 'Расчёт'}</span>
         {tabs.map(tb => {
           const on = tb.id === id
           return on ? (
-            <div key={tb.id} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 9, flexShrink: 0, background: '#fff', boxShadow: `0 0 0 1.5px ${COLORS.primary}` }}>
-              <input value={name} onChange={e => commit(brands, rows, e.target.value)} title="Имя расчёта" style={{ border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, width: Math.max(90, (name || '').length * 8 + 14) }} />
-              {tabs.length > 1 && <span onClick={() => removeTab(tb.id)} title="Удалить расчёт" style={{ color: '#c1121c', fontSize: 13, cursor: 'pointer' }}>✕</span>}
+            <div key={tb.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 7, flexShrink: 0, background: '#fff', boxShadow: `0 0 0 1.5px ${COLORS.primary}` }}>
+              <input value={name} onChange={e => commit(brands, rows, e.target.value)} title="Имя расчёта" style={{ border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, width: Math.max(80, (name || '').length * 7.4 + 12) }} />
+              {tabs.length > 1 && <span onClick={() => removeTab(tb.id)} title="Удалить расчёт" style={{ color: '#c1121c', fontSize: 12, cursor: 'pointer' }}>✕</span>}
             </div>
           ) : (
-            <div key={tb.id} onClick={() => open(tb.id)} style={{ padding: '6px 10px', borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: '#f1efec', color: COLORS.textMuted, fontSize: 13.5 }}>{tb.name || 'Расчёт'}</div>
+            <div key={tb.id} onClick={() => open(tb.id)} style={{ padding: '4px 8px', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: '#f1efec', color: COLORS.textMuted, fontSize: 12.5 }}>{tb.name || 'Расчёт'}</div>
           )
         })}
-        <button onClick={addTab} title="Новый расчёт для клиента" style={{ flexShrink: 0, padding: '6px 11px', borderRadius: 9, border: `1.5px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ Новый расчёт</button>
-        <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 12, color: saved ? '#2e8a5e' : COLORS.textMuted }}>{saved ? '✓ сохранено' : '… сохраняю'}</span>
-        <button onClick={addBrand} style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 9, border: 'none', background: '#eef2ff', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>+ Фирма</button>
+        <button onClick={addTab} title="Новый расчёт для клиента (пустой, 12 строк)" style={{ flexShrink: 0, padding: '4px 9px', borderRadius: 7, border: `1px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>+ новый</button>
+        <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11.5, color: saved ? '#2e8a5e' : COLORS.textMuted }}>{saved ? '✓ сохранено' : '…'}</span>
+        <button onClick={addBrand} style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 7, border: 'none', background: '#eef2ff', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>+ фирма</button>
       </div>
 
       {/* Фильтр каталога (как в кассе): задаёт область, внутри которой ищет каждая строка. */}

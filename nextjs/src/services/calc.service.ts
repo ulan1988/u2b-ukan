@@ -48,15 +48,17 @@ export async function getCalc(orgId: string, id?: string | null) {
   return { id: nid, name: 'Расчёт водосток', data: SEED, tabs: await listCalc(orgId) }
 }
 
-// Новая вкладка: тот же набор позиций и фирм (цены — прайс), количества обнулены.
-// Так расчёт для следующего клиента начинается с готового прайса, а не с пустого листа.
+// Новая вкладка — ПУСТОЙ лист на 12 строк (решение владельца 08.11.2026): позиции
+// набираются поиском или кнопкой «вставить комплект». Фирмы (колонки) переносим
+// из текущего листа, чтобы не настраивать их заново.
+const EMPTY_ROWS = 12
 export async function createCalc(orgId: string, name: string, fromId?: string | null) {
-  let base: any = SEED
+  let brands: any[] = []
   if (fromId) {
     const [src] = await sqlClient`select data from calc_sheets where id=${fromId} and org_id=${orgId} limit 1` as unknown as Array<any>
-    if (src) base = safe(src.data)
+    if (src) brands = safe(src.data).brands || []
   }
-  const data = { brands: base.brands || [], rows: (base.rows || []).map((r: any) => ({ ...r, qty: 0 })) }
+  const data = { brands, rows: Array.from({ length: EMPTY_ROWS }, (_, i) => ({ id: `r${i + 1}`, name: '', qty: 0, prices: {} as Record<string, number> })) }
   const id = randomUUID()
   await db.insert(calcSheets).values({ id, orgId, name: name || 'Новый расчёт', data: JSON.stringify(data) })
   return { ok: true as const, id, name: name || 'Новый расчёт', data, tabs: await listCalc(orgId) }
