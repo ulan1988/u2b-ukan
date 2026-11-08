@@ -56,6 +56,15 @@ export const returnSchema = z.object({
   accountId: z.string().uuid().optional(),        // счёт возврата (cash_accounts.id); пусто → «в долг» (без денег)
 })
 
+// Обмен по чеку (касса магазина): что покупатель сдаёт (позиции чека) и что выдаём взамен.
+// Деньги не трогаем — обмен только на РАВНУЮ сумму (решение владельца 08.11.2026).
+export const exchangeSchema = z.object({
+  uid: z.string().uuid().optional(),
+  cardId: z.string().min(1),
+  back: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive() })).min(1),
+  out: z.array(sellPositionSchema).min(1),
+})
+
 // Правка пробитого чека (касса магазина): новый состав позиций + оплата + скидка/покупатель.
 // Старая накладная сторнируется, чек проводится заново (см. cashier.service.editCheck).
 export const editCheckSchema = z.object({

@@ -313,6 +313,101 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   return { ok: true as const, number: ret.number, returned: R, refund: refundOut, debtCleared, fullyReturned }
 }
 
+// ── ОБМЕН ПО ЧЕКУ (касса магазина) ───────────────────────────────────────────
+// Покупатель принёс товар и берёт взамен другой. Решение владельца 08.11.2026:
+//  • исходный чек НЕ трогаем — он остаётся в отчёте своего дня (правка чека сторнировала
+//    бы накладную и перенесла выручку на сегодня);
+//  • обмен проводится СЕГОДНЯ двумя документами: сданное — возвратной накладной на склад,
+//    выданное — расходной со склада;
+//  • денег не трогаем: обмен только на РАВНУЮ сумму, долг от расходной гасится кредитом
+//    от возвратной, выручка дня не растёт (продано +X, возврат −X).
+export async function exchangeSale(cardId: string, inp: { back: { posId: string; qty: number }[]; out: any[] }, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Чек не найден' }
+  if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
+  if (!order.contactId) return { ok: false as const, error: 'У чека нет заказчика' }
+  if (!inp.back?.length || !inp.out?.length) return { ok: false as const, error: 'Укажите, что сдают и что выдаём' }
+  const positions = await repo.positionsByCard(cardId)
+  const { sqlClient } = await import('../lib/db')
+  const { lineAmount } = await import('../lib/lineAmount')
+
+  // Сколько по каждой позиции уже ушло возвратами/обменами — больше этого сдать нельзя.
+  const doneRows = await sqlClient`
+    select dl.source_pos_id pid, coalesce(sum(dl.qty),0)::float q from document_lines dl
+    join documents d on d.id = dl.document_id
+    where d.type='return_in' and d.status<>'cancelled' and d.source_order_id=${cardId} and dl.source_pos_id is not null
+    group by dl.source_pos_id
+  ` as unknown as Array<{ pid: string; q: number }>
+  const retQ: Record<string, number> = {}
+  for (const r of doneRows) retQ[r.pid] = Number(r.q) || 0
+
+  const sel: { pos: any; qty: number }[] = []
+  for (const it of inp.back) {
+    const p = positions.find((x: any) => x.id === it.posId); if (!p) continue
+    const q = Math.min(Number(it.qty) || 0, Number(p.qty) - (retQ[p.id] || 0))
+    if (q > 0.0000001) sel.push({ pos: p, qty: q })
+  }
+  if (!sel.length) return { ok: false as const, error: 'Нечего сдавать (кол-во исчерпано)' }
+
+  const amtOf = (p: any, qty: number) => lineAmount({ name: p.name1c || p.oral, qty, price: p.price, widthCm: p.widthCm })
+  const back = sel.reduce((s, x) => s + amtOf(x.pos, x.qty), 0)
+  const out = inp.out.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c, qty: Number(p.qty), price: Number(p.price) || 0, widthCm: p.widthCm }), 0)
+  if (Math.abs(back - out) > 0.5) {
+    const d = Math.round(Math.abs(back - out))
+    return { ok: false as const, error: `Обмен только на равную сумму: сдали ${Math.round(back)} ₸, выдали ${Math.round(out)} ₸, разница ${d} ₸` }
+  }
+
+  const refsRepo = await import('../repositories/refs.repo')
+  const wh = await refsRepo.centralWarehouse(order.orgId)
+  if (!wh) return { ok: false as const, error: 'Склад филиала не найден' }
+
+  // Возврат: тот же товар и по той же цене, что физически отгрузили (строки продажной накладной).
+  const soldRows = await sqlClient`
+    select dl.source_pos_id pid, dl.product_id::text "productId", dl.price::float price, dl.unit, dl.width_cm::float "widthCm", p.name
+    from document_lines dl join products p on p.id = dl.product_id
+    where dl.document_id = ${order.linkedDocId} and dl.source_pos_id is not null
+  ` as unknown as Array<any>
+  const sold: Record<string, any> = {}; for (const r of soldRows) sold[r.pid] = r
+  const backLines = sel.map(x => {
+    const s = sold[x.pos.id]
+    return {
+      productId: s?.productId || x.pos.productId,
+      name: s?.name || x.pos.name1c || x.pos.oral,
+      qty: x.qty, unit: s?.unit || x.pos.unit || 'шт',
+      price: s ? Number(s.price) || 0 : Number(x.pos.price) || 0,
+      widthCm: s?.widthCm != null ? Number(s.widthCm) : (x.pos.widthCm != null ? Number(x.pos.widthCm) : undefined),
+      sourcePosId: x.pos.id,
+    }
+  })
+
+  const { ensureProduct } = await import('./producer.service')
+  const outLines: any[] = []
+  for (const p of inp.out) {
+    const name = String(p.name1c || '').trim()
+    if (!name) return { ok: false as const, error: 'У выдаваемого товара нет названия' }
+    outLines.push({
+      productId: p.productId || (await ensureProduct(name)),
+      name, qty: Number(p.qty), unit: p.unit || 'шт',
+      price: Number(p.price) || 0,
+      widthCm: p.widthCm != null ? Number(p.widthCm) : undefined,
+    })
+  }
+
+  const { createReturn, createSale } = await import('./document.service')
+  const mark = `Обмен по чеку ${cardId}`
+  const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines: backLines, date: today(), sourceOrderId: cardId, comment: mark, projectId: (order as any).specProjectId || null } as any, 'return_in')
+  let sale: any
+  try {
+    sale = await createSale({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines: outLines, date: today(), sourceOrderId: cardId, comment: mark, projectId: (order as any).specProjectId || null } as any)
+  } catch (e) {
+    // выдать не смогли — откатываем приём, иначе товар вернулся бы на склад без выдачи
+    await cancelDocument(ret.id).catch(() => {})
+    return { ok: false as const, error: 'Не удалось выдать товар, обмен отменён' }
+  }
+  await repo.insertHistory({ cardId, action: 'exchange', detail: `Обмен ${ret.number} → ${sale.number}: сдано ${sel.length} поз. на ${Math.round(back)} ₸, выдано ${outLines.length} поз.`, userName: actor?.name || 'Система' })
+  return { ok: true as const, retNumber: ret.number, saleNumber: sale.number, sum: Math.round(back) }
+}
+
 // Погашение долга по чеку (касса магазина): приход денег на счёт, гасит дебиторку заказчика.
 // Сумма клампится к текущему остатку долга (итог − уже оплачено). Пишется в payments (in),
 // привязка к документу чека — так остаток долга (net − Σ payments in) уменьшается.

@@ -271,6 +271,35 @@ async function withPositions(rows: any[]) {
     ` as unknown as Array<any>
     for (const r of rp) (retByPos[r.cid] ||= {})[r.pid] = Number(r.q) || 0
   }
+  // Обмен по чеку (касса магазина) — те же return_in, но с пометкой «Обмен по чеку».
+  // Считаем отдельно, чтобы в журнале он не выглядел возвратом: сдано (exch) и выдано (exchOut).
+  const exchSum: Record<string, number> = {}
+  const exchDate: Record<string, string> = {}
+  const exchIn: Record<string, Array<{ name: string; qty: number }>> = {}
+  const exchOut: Record<string, Array<{ name: string; qty: number }>> = {}
+  if (cardIds.length) {
+    const exDocs = await sqlClient`
+      select source_order_id cid, type, date, coalesce(total,0)::float total from documents
+      where status<>'cancelled' and comment like 'Обмен по чеку%' and source_order_id = any(${cardIds})
+    ` as unknown as Array<any>
+    for (const d of exDocs) {
+      if (d.type !== 'return_in') continue
+      exchSum[d.cid] = (exchSum[d.cid] || 0) + (Number(d.total) || 0)
+      exchDate[d.cid] = String(d.date)
+    }
+    const exLines = await sqlClient`
+      select d.source_order_id cid, d.type, p.name, dl.qty::float qty
+      from documents d
+      join document_lines dl on dl.document_id = d.id
+      join products p on p.id = dl.product_id
+      where d.status<>'cancelled' and d.comment like 'Обмен по чеку%' and d.source_order_id = any(${cardIds})
+      order by d.date, d.number
+    ` as unknown as Array<any>
+    for (const r of exLines) {
+      const bag = r.type === 'return_in' ? exchIn : exchOut
+      ;(bag[r.cid] ||= []).push({ name: r.name, qty: Number(r.qty) || 0 })
+    }
+  }
   return rows.map(o => ({
     ...o,
     positions: byCard[o.id] || [],
@@ -278,6 +307,11 @@ async function withPositions(rows: any[]) {
     paidTotal: o.linkedDocId ? (paidByDoc[o.linkedDocId] || 0) : 0,   // всего оплачено (для остатка долга)
     returnedSum: retSum[o.id] || 0,
     returnedByPos: retByPos[o.id] || {},
+    // Обмен: сумма ушедшего обменом (входит в returnedSum — вычитаем, чтобы не считать возвратом)
+    exchangeSum: exchSum[o.id] || 0,
+    exchangeDate: exchDate[o.id] || '',
+    exchangeIn: exchIn[o.id] || [],
+    exchangeOut: exchOut[o.id] || [],
     // Пункт назначения: закуп → Центр-Склад, продажа → клиент-получатель.
     toName: o.kind === 'purchase' ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || '') : ''),
   }))

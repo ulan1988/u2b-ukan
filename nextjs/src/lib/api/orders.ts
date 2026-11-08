@@ -48,6 +48,21 @@ export async function returnSale(body: { uid?: string; cardId: string; items?: {
     returned: r.data?.returned as number | undefined,
   }
 }
+// Обмен по чеку (касса магазина): что сдают (позиции чека) и что выдаём взамен.
+// Только на равную сумму — деньги не трогаются, исходный чек остаётся на своём дне.
+export async function exchangeCheck(body: {
+  uid?: string; cardId: string
+  back: { posId: string; qty: number }[]
+  out: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number }[]
+}) {
+  const r = await post('/api/branch/exchange', body)
+  return {
+    ok: r.ok, error: r.error as string | undefined,
+    retNumber: r.data?.retNumber as string | undefined,
+    saleNumber: r.data?.saleNumber as string | undefined,
+    sum: r.data?.sum as number | undefined,
+  }
+}
 // Производство: внести изделия карточки в базу (создать товар + выпуск на склад).
 export async function produceToBase(cardId: string, date?: string) {
   const r = await post(`/api/orders/${cardId}/tobase`, date ? { date } : {})

@@ -18,7 +18,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, editCheck, returnSale, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
+import { branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -109,6 +109,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
+  // Обмен по чеку: что покупатель сдаёт (позиции чека) и что выдаём взамен. Только равная сумма.
+  const [exFor, setExFor] = useState<any>(null)
+  const [exSel, setExSel] = useState<Set<string>>(new Set())
+  const [exQty, setExQty] = useState<Record<string, number>>({})
+  const [exOut, setExOut] = useState<any[]>([])
+  const [exCat, setExCat] = useState(false)
   const [retAcc, setRetAcc] = useState('')
   const [repayFor, setRepayFor] = useState<any>(null)                   // чек, по которому открыто погашение
   const [repaySplit, setRepaySplit] = useState<Record<string, string>>({})  // сумма по каждому счёту (смешанная)
@@ -567,6 +573,35 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     showMsg(`↩ Возврат ${r.number || ''} · ${money(r.returned || 0)} ₸${r.refund ? ` · со счёта ${money(r.refund)}` : ''}`)
   }
 
+  // ── ОБМЕН ПО ЧЕКУ ──────────────────────────────────────────────────────────
+  // Покупатель принёс товар и берёт другой. Исходный чек не трогаем: сданное уходит
+  // возвратной накладной на склад, выданное — расходной, деньги не двигаются,
+  // поэтому сумма сданного и выданного должна совпасть.
+  function openExchange(o: any) {
+    setExFor(o); setExSel(new Set()); setExQty({}); setExOut([])
+  }
+  function toggleExPos(id: string, rem: number) {
+    setExSel(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else { n.add(id); setExQty(m => ({ ...m, [id]: m[id] || rem })) } return n })
+  }
+  const setExQ = (id: string, v: number, max: number) => setExQty(m => ({ ...m, [id]: Math.max(0, Math.min(v, max)) }))
+  const exOutSum = (rows: any[]) => rows.reduce((s, r) => s + lineAmount({ name: r.name1c, qty: num(r.qty), price: num(r.price), widthCm: r.widthCm != null ? num(r.widthCm) : undefined }), 0)
+  async function doExchange() {
+    if (!exFor) return
+    const back = Array.from(exSel).map(id => ({ posId: id, qty: exQty[id] || 0 })).filter(i => i.qty > 0)
+    if (!back.length) { showMsg('⚠ Отметьте, что покупатель сдаёт'); return }
+    const out = exOut.filter(r => String(r.name1c || '').trim() && num(r.qty) > 0)
+    if (!out.length) { showMsg('⚠ Добавьте товар, который выдаёте'); return }
+    setBusy(true)
+    const r = await exchangeCheck({
+      uid: user.id, cardId: exFor.id, back,
+      out: out.map(x => ({ productId: x.productId, name1c: x.name1c, qty: num(x.qty), unit: x.unit || 'шт', price: num(x.price), widthCm: x.widthCm != null ? num(x.widthCm) : undefined })),
+    })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setExFor(null); await load(); loadStock()
+    showMsg(`🔄 Обмен проведён · ${money(r.sum || 0)} ₸ · ${r.retNumber || ''} → ${r.saleNumber || ''}`)
+  }
+
   // Отложить текущий заказ: запоминаем состав, покупателя, код и скидку; касса очищается.
   function holdCurrent() {
     if (!rows.length) { showMsg('⚠ Чек пустой'); return }
@@ -976,15 +1011,20 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                         {o.clientCode && <span title="Код чека (цифры телефона покупателя)" style={{ fontSize: 11, fontWeight: 800, color: '#4a4a8a', background: '#ececf8', borderRadius: 6, padding: '2px 7px', letterSpacing: '.06em' }}>код {o.clientCode}</span>}
                         {chkQn && <span style={{ fontSize: 11, color: '#a09889' }}>{localDay(o.delivered || o.createdAt).split('-').reverse().slice(0, 2).join('.')}</span>}
                         {allBack && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c0532a', background: '#fbe9e1', borderRadius: 6, padding: '2px 6px' }}>возврат</span>}
+                        {Number(o.exchangeSum || 0) > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#2f5aa8', background: '#e7eefb', borderRadius: 6, padding: '2px 6px' }}>обмен{o.exchangeDate ? ` ${String(o.exchangeDate).split('-').reverse().slice(0, 2).join('.')}` : ''}</span>}
                       </div>
                       <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.toName || o.contactName || o.fromName || 'Розница'} · {o.payment || '—'} · {(o.positions || []).length} поз.</div>
-                      {retSum > 0 && <div style={{ fontSize: 11.5, color: '#c0532a', fontWeight: 700 }}>↩ возвращено {money(retSum)} ₸</div>}
+                      {/* возвраты и обмены идут одними и теми же возвратными накладными —
+                          в строке показываем их раздельно, иначе обмен читается как возврат денег */}
+                      {retSum - Number(o.exchangeSum || 0) > 0.5 && <div style={{ fontSize: 11.5, color: '#c0532a', fontWeight: 700 }}>↩ возвращено {money(retSum - Number(o.exchangeSum || 0))} ₸</div>}
+                      {Number(o.exchangeSum || 0) > 0 && <div style={{ fontSize: 11.5, color: '#2f5aa8', fontWeight: 700 }}>🔄 обмен {money(Number(o.exchangeSum))} ₸ · {(o.exchangeIn || []).map((x: any) => x.name).join(', ')} → {(o.exchangeOut || []).map((x: any) => x.name).join(', ')}</div>}
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 15, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK }}>{money(t)} ₸</div>
                     </div>
                     <button onClick={e => { e.stopPropagation(); setRcpt(o) }} title="Показать / отправить чек" style={{ border: '1.5px solid #d6d0c7', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit' }}>🧾</button>
                     {!allBack && <button onClick={e => { e.stopPropagation(); openReturn(o) }} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
+                    {!allBack && <button onClick={e => { e.stopPropagation(); openExchange(o) }} title="Покупатель сдаёт товар и берёт другой на ту же сумму" style={{ border: '1.5px solid #c7d6f0', background: '#fff', color: '#2f5aa8', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🔄 Обмен</button>}
                   </div>
                 )
               })}
@@ -1320,6 +1360,96 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         setEditCat(false)
       }} onClose={() => setEditCat(false)} />}
 
+      {/* каталог для выдачи взамен при обмене */}
+      {exCat && <StoreCatalog orgId={user.orgId} onPick={items => {
+        setExOut(rs => [...rs, ...items.map((it: any) => {
+          const prod = products.find((p: any) => norm(p.name) === norm(it.name1c))
+          return { productId: prod?.id, name1c: it.name1c, qty: String(it.qty || 1), price: String(Number(prod?.priceRetail) || 0), unit: it.unit || 'шт' }
+        })])
+        setExCat(false)
+      }} onClose={() => setExCat(false)} />}
+
+      {/* ОБМЕН ПО ЧЕКУ: сверху — что сдают, снизу — что выдаём; суммы должны сойтись */}
+      {exFor && (() => {
+        const poss = (exFor.positions || [])
+        const backSum = poss.filter((p: any) => exSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: exQty[p.id] || 0, price: p.price, widthCm: p.widthCm }), 0)
+        const outSum = exOutSum(exOut)
+        const diff = Math.round(outSum - backSum)
+        const even = backSum > 0 && outSum > 0 && Math.abs(diff) <= 0
+        return (
+          <div onClick={() => setExFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>🔄 Обмен по чеку</div>
+                  <div style={{ fontSize: 12, color: '#8a8377', fontFamily: 'monospace' }}>№ {exFor.docNumber || exFor.id}</div>
+                </div>
+                <button onClick={() => setExFor(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+              </div>
+              <div style={{ padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12.5, color: '#5f5952', fontWeight: 700 }}>Покупатель сдаёт — вернём на склад</div>
+                {poss.map((p: any) => {
+                  const rem = retRemain(exFor, p)
+                  const done = rem <= 0.0000001
+                  const on = exSel.has(p.id)
+                  const q = exQty[p.id] || 0
+                  const sum = lineAmount({ name: p.name1c || p.oral, qty: q, price: p.price, widthCm: p.widthCm })
+                  return (
+                    <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${on ? '#2f5aa8' : '#eee9e2'}`, background: done ? '#f7f5f2' : on ? '#f2f6fd' : '#fff', opacity: done ? 0.6 : 1 }}>
+                      <div onClick={() => !done && toggleExPos(p.id, rem)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: done ? 'default' : 'pointer' }}>
+                        <span style={{ width: 22, height: 22, borderRadius: 6, border: done ? 'none' : `2px solid ${on ? '#2f5aa8' : '#cfc8bd'}`, background: on ? '#2f5aa8' : done ? '#ddd6cc' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{(on || done) ? '✓' : ''}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, color: DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name1c || p.oral}</div>
+                          <div style={{ fontSize: 11.5, color: '#a09889' }}>продано {Number(p.qty)}{p.widthCm ? `×${p.widthCm}см` : ''} · {done ? 'уже возвращено' : `можно сдать ${rem}`}</div>
+                        </div>
+                        {on && <span style={{ fontSize: 13.5, fontWeight: 800 }}>{money(sum)}</span>}
+                      </div>
+                      {on && !done && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
+                          <span style={{ fontSize: 12, color: '#5f5952' }}>Кол-во</span>
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <button onClick={() => setExQ(p.id, q - 1, rem)} style={{ width: 32, height: 32, borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 17, cursor: 'pointer', color: '#6b645b' }}>−</button>
+                            <input value={q} inputMode="decimal" onChange={e => setExQ(p.id, num(e.target.value.replace(/[^0-9.,]/g, '')), rem)} style={{ ...inp, width: 60, padding: '7px 6px', fontSize: 14, textAlign: 'center' }} />
+                            <button onClick={() => setExQ(p.id, q + 1, rem)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#2f5aa8', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>+</button>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#a09889', width: 38, textAlign: 'right' }}>/ {rem}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                <div style={{ fontSize: 12.5, color: '#5f5952', fontWeight: 700, marginTop: 6 }}>Выдаём взамен</div>
+                {exOut.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1.5px solid #eee9e2', background: '#fff' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, color: DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name1c}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                        <input value={r.qty} inputMode="decimal" onChange={e => setExOut(rs => rs.map((x, j) => j === i ? { ...x, qty: e.target.value.replace(/[^0-9.,]/g, '') } : x))} style={{ ...inp, width: 62, padding: '6px', fontSize: 13, textAlign: 'center' }} />
+                        <span style={{ fontSize: 12, color: '#a09889' }}>×</span>
+                        <input value={r.price} inputMode="decimal" onChange={e => setExOut(rs => rs.map((x, j) => j === i ? { ...x, price: e.target.value.replace(/[^0-9.,]/g, '') } : x))} style={{ ...inp, width: 86, padding: '6px', fontSize: 13, textAlign: 'right' }} />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 13.5, fontWeight: 800 }}>{money(lineAmount({ name: r.name1c, qty: num(r.qty), price: num(r.price) }))}</span>
+                    <button onClick={() => setExOut(rs => rs.filter((_, j) => j !== i))} style={{ border: 'none', background: 'transparent', color: '#b3261e', cursor: 'pointer', fontSize: 16 }}>🗑</button>
+                  </div>
+                ))}
+                <button onClick={() => setExCat(true)} style={{ border: '1.5px dashed #c7d6f0', background: '#f7faff', color: '#2f5aa8', borderRadius: 10, padding: '11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700 }}>＋ добавить из каталога</button>
+              </div>
+              <div style={{ padding: 14, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: even ? '#e9f6ee' : '#fdf3e4', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontWeight: 700, color: even ? '#1f6b43' : '#8a5a12' }}>
+                  <span>сдали {money(backSum)} ₸</span>
+                  <span>выдали {money(outSum)} ₸</span>
+                  <span style={{ marginLeft: 'auto' }}>{even ? '✓ суммы сходятся' : (backSum > 0 && outSum > 0 ? `разница ${money(Math.abs(diff))} ₸ — обмен только на равную сумму` : 'отметьте обе стороны')}</span>
+                </div>
+                <button disabled={busy || !even} onClick={doExchange} style={{ border: 'none', background: (busy || !even) ? '#bcc7da' : '#2f5aa8', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || !even) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `🔄 Провести обмен · ${money(backSum)} ₸`}</button>
+                <div style={{ fontSize: 11.5, color: '#8a8377' }}>Деньги не двигаются: сданное вернётся на склад, выданное спишется. Исходный чек остаётся в отчёте своего дня.</div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {retFor && (() => {
         const poss = (retFor.positions || [])
         const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: retQty[p.id] || 0, price: p.price, widthCm: p.widthCm }), 0)
@@ -1468,6 +1598,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <button onClick={() => { const c = viewChk; setViewChk(null); openEdit(c) }} style={{ marginTop: 6, border: '1.5px solid #d8d3cc', background: '#fff', color: DARK, borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>✏️ Изменить чек</button>
                 )}
                 <button onClick={() => { const c = viewChk; setViewChk(null); openReturn(c) }} style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>↩ Возврат по чеку</button>
+                <button onClick={() => { const c = viewChk; setViewChk(null); openExchange(c) }} style={{ border: '1.5px solid #c7d6f0', background: '#fff', color: '#2f5aa8', borderRadius: 11, padding: '12px', cursor: 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>🔄 Обмен по чеку</button>
                 <button disabled={busy} onClick={() => doCancelSale(viewChk)} title="Полностью отменить продажу (товар на склад, деньги снять, чек аннулировать)" style={{ marginTop: 6, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', borderRadius: 11, padding: '12px', cursor: busy ? 'default' : 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>🗑 Отменить продажу</button>
               </div>
             </div>
