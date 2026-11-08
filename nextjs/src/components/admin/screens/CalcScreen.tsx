@@ -487,7 +487,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 </td>
                 {/* Поиск по названию внутри выбранного сверху фильтра: набираешь — выпадают товары. */}
                 <td style={{ ...td, position: 'relative' }}>
-                  <input id={cellId(i, 0)} value={r.name} onChange={e => { setRow(i, { name: e.target.value }); openSug(r.id, e.currentTarget) }}
+                  <input id={cellId(i, 0)} autoComplete="off" autoCorrect="off" spellCheck={false} name={`calc-name-${i}`} value={r.name} onChange={e => { setRow(i, { name: e.target.value }); openSug(r.id, e.currentTarget) }}
                     onFocus={e => { openSug(r.id, e.currentTarget); setCurRow(i) }} onBlur={() => setTimeout(() => setSugFor(s => s === r.id ? '' : s), 160)}
                     onKeyDown={e => cellKey(e, i, 0, () => setRow(i, { name: '', name1c: '', productId: null }))}
                     placeholder="🔍 поиск по названию" style={cellInp} />
@@ -518,16 +518,16 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                     ), document.body)
                   })()}
                 </td>
-                <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} value={Number(r.qty) ? String(Number(r.qty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} placeholder="0" style={numInp} /></td>
+                <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} autoComplete="off" value={Number(r.qty) ? String(Number(r.qty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} placeholder="0" style={numInp} /></td>
                 {noBrands && <>
-                  <td style={td}><input id={cellId(i, 2)} value={Number(r.prices?.[SELF]) ? String(Number(r.prices[SELF])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2, () => setPrice(i, SELF, ''))} onChange={e => setPrice(i, SELF, e.target.value)} placeholder="0" style={numInp} /></td>
+                  <td style={td}><input id={cellId(i, 2)} autoComplete="off" value={Number(r.prices?.[SELF]) ? String(Number(r.prices[SELF])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2, () => setPrice(i, SELF, ''))} onChange={e => setPrice(i, SELF, e.target.value)} placeholder="0" style={numInp} /></td>
                   <td style={{ ...td, background: '#f8f7f4', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{(Number(r.prices?.[SELF]) || 0) * (Number(r.qty) || 0) ? fmt((Number(r.prices[SELF]) || 0) * (Number(r.qty) || 0)) : ''}</td>
                 </>}
                 {brands.map(b => b.hidden
                   ? <td key={b.id} style={{ ...td, background: tint(b.color, '10') }} />
                   : (
                   <Fragment key={b.id}>
-                    <td style={{ ...td, background: tint(b.color, '10') }}><input id={cellId(i, 2 + visBrands.findIndex((x: any) => x.id === b.id))} value={Number(r.prices?.[b.id]) ? String(Number(r.prices[b.id])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2 + visBrands.findIndex((x: any) => x.id === b.id), () => setPrice(i, b.id, ''))} onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
+                    <td style={{ ...td, background: tint(b.color, '10') }}><input autoComplete="off" id={cellId(i, 2 + visBrands.findIndex((x: any) => x.id === b.id))} value={Number(r.prices?.[b.id]) ? String(Number(r.prices[b.id])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2 + visBrands.findIndex((x: any) => x.id === b.id), () => setPrice(i, b.id, ''))} onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
                     <td style={{ ...td, background: tint(b.color, '1f'), textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{sumOf(r, b) ? fmt(sumOf(r, b)) : ''}</td>
                   </Fragment>
                 ))}

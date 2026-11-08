@@ -25,6 +25,7 @@ export const NAV: NavItem[] = [
   { key: 'bookkeeping', label: 'Бухгалтерия', icon: '📒' },
   { key: 'money', label: 'Финанс', icon: '💵' },
   { key: 'cashday', label: 'Касса дня', icon: '🧾' },
+  { key: 'calc', label: 'Расчёт', icon: '🧮' },
   { key: 'employees', label: 'Сотрудники', icon: '👥' },
   { key: 'dds', label: 'Статьи ДДС', icon: '📊' },
   { key: 'invoice_in', label: 'Приходные накладные', icon: '🧾' },
@@ -35,7 +36,6 @@ export const NAV: NavItem[] = [
   { key: 'nomenclature', label: 'Номенклатура', icon: '📦' },
   { key: 'material', label: 'Материал', icon: '🧱' },
   { key: 'projects', label: 'Проекты', icon: '📁' },
-  { key: 'calc', label: 'Расчёт', icon: '🧮' },
   { key: 'settings', label: 'Настройки', icon: '⚙️' },
 ]
 
