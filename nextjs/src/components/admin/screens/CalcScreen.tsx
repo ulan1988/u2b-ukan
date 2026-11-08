@@ -50,16 +50,19 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // Сотрудники орг + запомненный продавец: ключ тот же, что у кассы магазина,
   // поэтому выбранный там Нурбол подставится и в продаже из «Расчёта».
   useEffect(() => {
-    fetch(`/api/employees?orgId=`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
+    if (!orgId) return
+    fetch(`/api/employees?orgId=${orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
       const list = Array.isArray(d) ? d : []
       setStaff(list)
-      try { const raw = localStorage.getItem(`u2b_seller_`); const saved = raw ? JSON.parse(raw) : null
+      try { const raw = localStorage.getItem(`u2b_seller_${orgId}`); const saved = raw ? JSON.parse(raw) : null
         setSellerId(prev => prev || (saved?.id && list.some(e => e.id === saved.id) ? saved.id : (list[0]?.id || ''))) } catch { setSellerId(prev => prev || (list[0]?.id || '')) }
     }).catch(() => {})
   }, [orgId])
   useEffect(() => { fetchRefs(orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived && c.kind !== 'supplier'))).catch(() => {}) }, [orgId])
   useEffect(() => {
-    fetch(`/api/products?orgId=`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+    // ВАЖНО: без orgId сервер отдаёт шаблон без цен продажи — цены в расчёте будут нулевые.
+    if (!orgId) return
+    fetch(`/api/products?orgId=${orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
   }, [orgId])
 
   // Поиск строки работает ВНУТРИ выбранного сверху фильтра: папка/подпапка/цвет сужают

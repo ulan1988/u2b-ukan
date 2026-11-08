@@ -138,13 +138,17 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   // Головной (Адал Строй 2) не производит: без кабинета мастера, Производства, Материала и Расчёта.
   const isHqOrg = selKind === 'hq'
   const HQ_HIDE = ['production', 'material', 'calc']
-  const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)) && !(isHqOrg && HQ_HIDE.includes(n.key)))
+  // «Расчёт» — только магазин (Кристалл): остальным орг он не нужен.
+  const nav = NAV.filter(n => !(isBranchOrg && BRANCH_HIDE.includes(n.key)) && !(isSellerOrg && SELLER_HIDE.includes(n.key)) && !(isHqOrg && HQ_HIDE.includes(n.key)) && !(n.key === 'calc' && !isSellerOrg))
 
   // Открыт скрытый для магазина карточный экран (старая ссылка/закладка) → уходим на «Кассу дня».
   useEffect(() => {
     if (isSellerOrg && [...BRANCH_HIDE, ...SELLER_HIDE].includes(screen)) router.replace(`/admin/cashday?org=${orgId}`)
     else if (isHqOrg && HQ_HIDE.includes(screen)) router.replace(`/admin/dashboard?org=${orgId}`)
-  }, [isSellerOrg, isHqOrg, screen, orgId])
+    // «Расчёт» открыт по старой ссылке не у магазина — уводим на дашборд. Только когда вид
+    // орг уже известен (selKind пуст, пока грузятся организации — иначе выкинет и магазин).
+    else if (selKind && !isSellerOrg && screen === 'calc') router.replace(`/admin/dashboard?org=${orgId}`)
+  }, [isSellerOrg, isHqOrg, selKind, screen, orgId])
 
   const orgName = orgs.find(o => o.id === orgId)?.name || ''
   const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
