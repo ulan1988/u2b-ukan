@@ -10,7 +10,7 @@ import { sellCheck } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import CatalogFilterBar from '@/components/CatalogFilterBar'
-import { FOLDERS, extraFolders, filterProducts, emptySel, norm, type CatalogSel } from '@/lib/catalogNav'
+import { FOLDERS, extraFolders, filterProducts, emptySel, norm, isBonusProduct, type CatalogSel } from '@/lib/catalogNav'
 
 const fmt = (n: number) => !n ? '0' : Number(n).toLocaleString('ru-RU')
 const num = (v: any) => { const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0 }
@@ -41,6 +41,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [dragRow, setDragRow] = useState<string | null>(null)   // строка, которую тащим мышкой
   const [pullMsg, setPullMsg] = useState('')       // результат «подтянуть цены» — видно, что произошло
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
+  const [bonusPick, setBonusPick] = useState<string | null>(null)  // строка, для которой выбираем соседа
   // Где рисовать список подсказок: координаты ячейки (список живёт поверх страницы).
   const [sugRect, setSugRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
   const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
@@ -70,6 +71,12 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const folders = useMemo(() => [...FOLDERS, ...extraFolders(products)], [products])
   const activeFolder = folders.find(f => f.key === sel.folder) || folders[0]
   const suggest = (q: string) => (activeFolder ? filterProducts(products, activeFolder, sel, q, 30) : [])
+  // Бонусная продажа (папка «Долг товаров» / «Сосед товар»): товар взят у соседа и идёт
+  // мимо склада — в строке указываем цену соседа и у кого взяли, прибыль делим 50/50
+  // с Адал Строй 2, а количество уходит в журнал «Долг товаров».
+  const prodOf = (r: any) => products.find((p: any) => p.id === r.productId)
+    || products.find((p: any) => norm(p.name) === norm(r.name1c || r.name || ''))
+  const isBonusRow = (r: any) => isBonusProduct(prodOf(r))
   // В расчёт для клиента ставим АЛИАС (короткое разговорное имя), а 1С-наименование
   // храним в строке — оно понадобится при продаже/накладной, но клиенту его не показываем.
   // Куда класть розничную цену из номенклатуры:
@@ -307,9 +314,17 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   }
   const sellRows = rows.filter(r => String(r.name || '').trim() && Number(r.qty) > 0 && Number(r.prices?.[priceKeyOf()]) > 0)
   const sellTotal = sellRows.reduce((s, r) => s + Number(r.qty) * Number(r.prices[priceKeyOf()]), 0)
+  // Бонусные строки чека: без цены соседа и без «у кого взяли» продавать нельзя —
+  // иначе некому вернуть товар и нечего делить с головным.
+  const bonusRowsCart = sellRows.filter(isBonusRow)
+  const bonusSum = bonusRowsCart.reduce((s, r) => s + Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - (Number(r.bonusCost) || 0)) * Number(r.qty), 0)
+  const bonusHq = Math.round(bonusSum * 0.5)
+  const bonusToAgent = bonusRowsCart.reduce((s, r) => s + (Number(r.bonusCost) || 0) * Number(r.qty), 0)
   async function doSell(how: 'cash' | 'kaspi' | 'qr' | 'debt') {
     if (!sellRows.length) { setSellMsg('нет строк с количеством и ценой'); return }
     if (how === 'debt' && !sellContact) { setSellMsg('для долга выберите покупателя'); return }
+    const badBonus = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
+    if (badBonus) { setSellMsg(`⚠ ${badBonus.name}: укажите цену соседа и у кого взяли`); return }
     setSelling(true); setSellMsg('')
     const key = priceKeyOf()
     const emp = staff.find((s: any) => s.id === sellerId)
@@ -318,7 +333,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       sellerId: emp?.id, seller: emp?.name,
       cash: how === 'cash' ? sellTotal : 0, kaspi: how === 'kaspi' ? sellTotal : 0, qr: how === 'qr' ? sellTotal : 0,
       comment: `Расчёт «${name}»`,
-      positions: sellRows.map(r2 => ({ productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, qty: Number(r2.qty), unit: r2.unit || 'шт', price: Number(r2.prices[key]) })),
+      positions: sellRows.map(r2 => ({ productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, qty: Number(r2.qty), unit: r2.unit || 'шт', price: Number(r2.prices[key]), bonusCost: Number(r2.bonusCost) || undefined, bonusAgentId: r2.bonusAgentId || undefined })),
     })
     setSelling(false)
     setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(sellTotal)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
@@ -472,7 +487,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={r.id}
+              <Fragment key={r.id}>
+              <tr
                 draggable={dragRow !== null}
                 onDragStart={() => setDragRow(r.id)}
                 onDragEnd={() => setDragRow(null)}
@@ -533,6 +549,32 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 ))}
                 <td style={{ ...td, textAlign: 'center' }}><button onClick={() => delRow(i)} title="Убрать строку" style={{ border: 'none', background: 'transparent', color: '#b3261e', cursor: 'pointer', fontWeight: 700 }}>✕</button></td>
               </tr>
+              {/* Бонусный товар (взят у соседа): цена соседа + у кого взяли — без них чек не пробьётся. */}
+              {isBonusRow(r) && (
+                <tr style={{ background: '#fff6ee' }}>
+                  <td style={{ ...td, borderTop: 'none' }} />
+                  <td style={{ ...td, borderTop: 'none' }} colSpan={99}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12 }}>
+                      <span style={{ color: '#c0532a', fontWeight: 700 }}>🤝 товар соседа</span>
+                      <span style={{ color: COLORS.textMuted }}>цена соседа</span>
+                      <input value={Number(r.bonusCost) ? String(Number(r.bonusCost)) : ''} inputMode="decimal" autoComplete="off" placeholder="0"
+                        onChange={e => setRow(i, { bonusCost: num(e.target.value) })}
+                        style={{ width: 90, padding: '4px 7px', borderRadius: 7, border: `1.5px solid ${Number(r.bonusCost) > 0 ? '#e6c9b8' : '#eab59a'}`, fontSize: 13, fontWeight: 700, fontFamily: 'Consolas, monospace', textAlign: 'right', background: '#fff' }} />
+                      <button onClick={() => setBonusPick(r.id)}
+                        style={{ border: 'none', background: '#efeaf8', color: r.bonusAgentId ? '#5b4a8a' : '#a09889', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>
+                        {cags.find((c: any) => c.id === r.bonusAgentId)?.name || 'у кого взяли ▾'}
+                      </button>
+                      <span style={{ color: '#2e8a5e', fontWeight: 700 }}>
+                        {Number(r.bonusCost) > 0
+                          ? (() => { const b = Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - Number(r.bonusCost)) * (Number(r.qty) || 0)
+                              return `бонус ${fmt(b)} ₸ · вам ${fmt(b - Math.round(b * 0.5))} · Адал Строй 2 ${fmt(Math.round(b * 0.5))}` })()
+                          : <span style={{ color: '#c0532a' }}>впишите цену соседа</span>}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {/* Итого */}
             <tr style={{ background: '#fff7d6', fontWeight: 800 }}>
@@ -575,6 +617,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>{sellRows.length} поз.</span>
             <b style={{ marginLeft: 'auto', fontSize: 18 }}>{fmt(sellTotal)} ₸</b>
           </div>
+          {bonusRowsCart.length > 0 && bonusSum > 0 && (
+            <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', borderRadius: 9, padding: '7px 10px', marginBottom: 8, fontSize: 12.5, color: '#8a4a22', fontWeight: 700 }}>
+              🤝 бонус {fmt(bonusSum)} ₸ · вам {fmt(bonusSum - bonusHq)} · Адал Строй 2 {fmt(bonusHq)} · соседу вернуть {fmt(bonusToAgent)} ₸
+            </div>
+          )}
           <div style={{ marginBottom: 8 }}>
             <ContragentPicker contragents={cags} value={sellContact} onPick={(c: any) => setSellContact(c?.id || '')} placeholder="— покупатель (для долга обязателен) —" />
           </div>
@@ -598,6 +645,18 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             ))}
           </div>
           <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 8 }}>Чек пробивается в кассу выбранной организации: склад списывается, деньги попадают на счёт. Строки без цены или количества в чек не идут.</div>
+        </div>
+      )}
+
+      {/* У кого взяли бонусный товар — выбор соседа из контрагентов магазина. */}
+      {bonusPick && (
+        <div onClick={() => setBonusPick(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 2200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 16, width: 'min(460px, 92vw)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <b style={{ fontSize: 15 }}>У кого взяли товар</b>
+            <ContragentPicker contragents={cags} value={rows.find(r => r.id === bonusPick)?.bonusAgentId || ''}
+              onPick={(c: any) => { const i = rows.findIndex(r => r.id === bonusPick); if (i >= 0) setRow(i, { bonusAgentId: c?.id || undefined }); setBonusPick(null) }} placeholder="— найти соседа —" />
+            <button onClick={() => setBonusPick(null)} style={{ border: `1.5px solid ${COLORS.border}`, background: '#fff', color: COLORS.textMuted, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
+          </div>
         </div>
       )}
 
