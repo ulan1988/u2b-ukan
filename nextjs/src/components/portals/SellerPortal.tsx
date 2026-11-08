@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fmtTime, fmtDateTime } from '@/lib/adminFmt'
 import StoreCatalog from '@/components/StoreCatalog'
+import { isBonusProduct } from '@/lib/catalogNav'
 import { type PickedPos } from '@/components/NomPicker'
 import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
@@ -431,11 +432,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const discSum = Math.min(total, Math.max(0, disc.mode === 'pct' ? Math.round(total * discPctN / 100) : num(disc.val)))
   const net = Math.max(0, total - discSum)
   // Бонусный товар — тот, что лежит в папке «Долг товар» (берём у соседа, мимо склада).
-  // Папку владелец называет по-разному («Сосед товар», «Долг товар») — ловим оба варианта.
+  // Бонусный товар — из папки соседей; правило одно на все экраны (lib/catalogNav).
   const normS = (s: any) => String(s || '').trim().toLowerCase().replace(/ё/g, 'е')
-  const isBonusFolder = (v: any) => { const s = normS(v); return s.includes('сосед') || s === 'долг товар' || s.includes('долг товар') }
   const prodOf = (r: Row) => products.find((p: any) => (r.productId && p.id === r.productId) || normS(p.name) === normS(r.name1c))
-  const isBonusRow = (r: Row) => { const p: any = prodOf(r); return !!p && (isBonusFolder(p.group) || isBonusFolder(p.cat)) }
+  const isBonusRow = (r: Row) => isBonusProduct(prodOf(r))
   // Итоги по бонусу для подсказки продавцу: сколько вернуть соседу и как делится бонус.
   const bonusRowsCart = rows.filter(isBonusRow)
   const bonusToAgent = bonusRowsCart.reduce((s, r) => s + (Number(r.bonusCost) || 0) * Number(r.qty), 0)

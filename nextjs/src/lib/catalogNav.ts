@@ -11,12 +11,18 @@ export const KOMPLEKT_CHIPS = ['Изделие', 'J - профиль', 'H - пр
 
 export interface Folder { key: string; label: string; match: (p: any) => boolean; levels: string[]; thickness?: boolean; build?: boolean }
 
+// Папка товаров соседей: владелец называет её по-разному («Долг товаров», «Сосед товар»).
+// Такой товар продаётся мимо склада с бонусом 50/50 — правило живёт здесь, одно на все экраны.
+export const isBonusFolder = (v: any) => { const s = norm(v); return s.includes('сосед') || s.includes('долг товар') }
+export const isBonusProduct = (p: any) => !!p && (isBonusFolder(p.group) || isBonusFolder(p.cat))
+
 export const FOLDERS: Folder[] = [
   { key: 'vodostok', label: 'Водосток', match: (p: any) => norm(p.group) === 'водосток', levels: ['cat', 'subgroup'] },
   { key: 'evrobrus', label: 'Евро брус', match: (p: any) => norm(p.cat) === 'евро брус', levels: ['subgroup'], thickness: true },
   { key: 'kompl', label: 'Комплект.', match: (p: any) => norm(p.cat).includes('комплект'), build: true, levels: ['subgroup'] },
   { key: 'material', label: 'Материалы', match: (p: any) => norm(p.group) === 'материалы', levels: [] },
   { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица', levels: ['subgroup'] },
+  { key: 'dolg', label: 'Долг товаров', match: isBonusProduct, levels: [] },
 ]
 
 // Прочие категории номенклатуры — папками справа от основных.
@@ -24,6 +30,7 @@ export function extraFolders(products: any[]): Folder[] {
   const covered = new Set(['водосток', 'евро брус', 'комплектующие', 'металлочерепица'])
   const cats = new Set<string>()
   for (const p of products) {
+    if (isBonusProduct(p)) continue   // товары соседей — своя папка «Долг товаров»
     const g = norm(p.group); if (g === 'водосток' || g === 'материалы' || g === 'услуги') continue
     const c = (p.cat || '').trim(); if (c && !covered.has(norm(c))) cats.add(c)
   }
