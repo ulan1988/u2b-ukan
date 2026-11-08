@@ -241,6 +241,25 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     setPullMsg([hit ? `подтянуто ${hit}` : '', noPrice ? `нет цены в номенклатуре: ${noPrice}` : '', notFound ? `не нашёл товар: ${notFound}` : ''].filter(Boolean).join(' · ') || 'нечего подтягивать')
   }
 
+  // Вписал цену один раз — она уходит в номенклатуру (розница этой орг), и дальше
+  // подтягивается сама во всех расчётах и в кассе. Пишем только то, что есть в строке.
+  async function savePrices() {
+    const key = priceKeyOf()
+    const list = rows.filter(r => String(r.name1c || r.name || '').trim() && Number(r.prices?.[key]) > 0)
+    if (!list.length) { setPullMsg('нет цен для сохранения'); return }
+    setPullMsg('сохраняю…')
+    let ok = 0
+    for (const r of list) {
+      try {
+        const res = await fetch('/api/pricing', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: r.name1c || r.name, price: Number(r.prices[key]), priceType: 'retail', orgId }) })
+        if (res.ok) ok++
+      } catch { /* сеть — посчитаем в остатке */ }
+    }
+    setPullMsg(`в номенклатуру записано: ${ok}${ok < list.length ? ` (не удалось ${list.length - ok})` : ''}`)
+    fetch(`/api/products?orgId=${orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+  }
+
   function insertKit() {
     const list = activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []
     if (!list.length) return
@@ -346,6 +365,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         extra={(() => {
           const n = (activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []).length
           return <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={savePrices} title="Записать цены из листа в номенклатуру (розница этой орг) — потом подтянутся сами" style={{ border: '1px solid #cfeadd', background: '#eaf7f0', color: '#2e8a5e', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>💾 цены в номенклатуру</button>
             <button onClick={pullPrices} title="Подтянуть розничные цены из номенклатуры к строкам, где цена пустая" style={{ border: '1px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>💲 подтянуть цены</button>
             {pullMsg ? <span style={{ fontSize: 11.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{pullMsg}</span> : null}
             {n ? <button onClick={insertKit} title="Вставить все позиции выбранного набора в строки — останется проставить количества" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>📦 вставить комплект · {n}</button> : null}
