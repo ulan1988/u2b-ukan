@@ -149,7 +149,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     setTabs(d.tabs || []); setSaved(true)
   }
   async function removeTab(sheetId: string) {
-    if (!confirm('Удалить этот расчёт?')) return
+    // В подтверждении пишем ИМЯ листа: ✕ стоит вплотную к вкладке, и «удалить этот расчёт?»
+    // не показывало, какой именно лист уйдёт.
+    const nm = (tabs.find((t: any) => t.id === sheetId)?.name) || name
+    if (!confirm(`Удалить расчёт «${nm}»? Восстановить его будет нельзя.`)) return
     const r: any = await calcDelete(sheetId)
     const d = r?.data || r
     if (d?.ok === false) { alert(d.error || 'Не удалось'); return }
@@ -487,8 +490,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <Fragment key={r.id}>
-              <tr
+              <tr key={r.id}
                 draggable={dragRow !== null}
                 onDragStart={() => setDragRow(r.id)}
                 onDragEnd={() => setDragRow(null)}
@@ -533,6 +535,25 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                       </div>
                     ), document.body)
                   })()}
+                  {/* Бонусный товар (взят у соседа): цена соседа + у кого взяли — без них чек не пробьётся.
+                      Полоса живёт ВНУТРИ ячейки названия: отдельная строка с colSpan ломала ширину колонок. */}
+                  {isBonusRow(r) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: 12, marginTop: 4, padding: '4px 6px', background: '#fff6ee', border: '1px solid #f0dcc9', borderRadius: 8 }}>
+                      <span style={{ color: '#c0532a', fontWeight: 700, whiteSpace: 'nowrap' }}>🤝 товар соседа</span>
+                      <span style={{ color: COLORS.textMuted, whiteSpace: 'nowrap' }}>цена соседа</span>
+                      <input value={Number(r.bonusCost) ? String(Number(r.bonusCost)) : ''} inputMode="decimal" autoComplete="off" placeholder="0"
+                        onChange={e => setRow(i, { bonusCost: num(e.target.value) })}
+                        style={{ width: 78, padding: '3px 6px', borderRadius: 7, border: '1.5px solid #eab59a', fontSize: 13, fontWeight: 700, fontFamily: 'Consolas, monospace', textAlign: 'right', background: '#fff' }} />
+                      <button onClick={() => setBonusPick(r.id)}
+                        style={{ border: 'none', background: '#efeaf8', color: r.bonusAgentId ? '#5b4a8a' : '#a09889', borderRadius: 7, padding: '4px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {cags.find((c: any) => c.id === r.bonusAgentId)?.name || 'у кого взяли ▾'}
+                      </button>
+                      {Number(r.bonusCost) > 0
+                        ? (() => { const b = Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - Number(r.bonusCost)) * (Number(r.qty) || 0)
+                            return <span style={{ color: '#2e8a5e', fontWeight: 700, whiteSpace: 'nowrap' }}>{`бонус ${fmt(b)} · вам ${fmt(b - Math.round(b * 0.5))} · ГО ${fmt(Math.round(b * 0.5))}`}</span> })()
+                        : <span style={{ color: '#c0532a', whiteSpace: 'nowrap' }}>впишите цену соседа</span>}
+                    </div>
+                  )}
                 </td>
                 <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} autoComplete="off" value={Number(r.qty) ? String(Number(r.qty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} placeholder="0" style={numInp} /></td>
                 {noBrands && <>
@@ -549,32 +570,6 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 ))}
                 <td style={{ ...td, textAlign: 'center' }}><button onClick={() => delRow(i)} title="Убрать строку" style={{ border: 'none', background: 'transparent', color: '#b3261e', cursor: 'pointer', fontWeight: 700 }}>✕</button></td>
               </tr>
-              {/* Бонусный товар (взят у соседа): цена соседа + у кого взяли — без них чек не пробьётся. */}
-              {isBonusRow(r) && (
-                <tr style={{ background: '#fff6ee' }}>
-                  <td style={{ ...td, borderTop: 'none' }} />
-                  <td style={{ ...td, borderTop: 'none' }} colSpan={99}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12 }}>
-                      <span style={{ color: '#c0532a', fontWeight: 700 }}>🤝 товар соседа</span>
-                      <span style={{ color: COLORS.textMuted }}>цена соседа</span>
-                      <input value={Number(r.bonusCost) ? String(Number(r.bonusCost)) : ''} inputMode="decimal" autoComplete="off" placeholder="0"
-                        onChange={e => setRow(i, { bonusCost: num(e.target.value) })}
-                        style={{ width: 90, padding: '4px 7px', borderRadius: 7, border: `1.5px solid ${Number(r.bonusCost) > 0 ? '#e6c9b8' : '#eab59a'}`, fontSize: 13, fontWeight: 700, fontFamily: 'Consolas, monospace', textAlign: 'right', background: '#fff' }} />
-                      <button onClick={() => setBonusPick(r.id)}
-                        style={{ border: 'none', background: '#efeaf8', color: r.bonusAgentId ? '#5b4a8a' : '#a09889', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>
-                        {cags.find((c: any) => c.id === r.bonusAgentId)?.name || 'у кого взяли ▾'}
-                      </button>
-                      <span style={{ color: '#2e8a5e', fontWeight: 700 }}>
-                        {Number(r.bonusCost) > 0
-                          ? (() => { const b = Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - Number(r.bonusCost)) * (Number(r.qty) || 0)
-                              return `бонус ${fmt(b)} ₸ · вам ${fmt(b - Math.round(b * 0.5))} · Адал Строй 2 ${fmt(Math.round(b * 0.5))}` })()
-                          : <span style={{ color: '#c0532a' }}>впишите цену соседа</span>}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-              </Fragment>
             ))}
             {/* Итого */}
             <tr style={{ background: '#fff7d6', fontWeight: 800 }}>
