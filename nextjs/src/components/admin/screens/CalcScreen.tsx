@@ -104,15 +104,20 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     let rs: any[] = d?.data?.rows || []
     // Лист вели без фирм (цена в своей колонке), потом добавили фирму — цены оказались бы
     // спрятаны. Переносим их в первую фирму один раз при открытии.
+    // Цена не должна «исчезать» ни при одном переходе колонок (добавили/убрали/скрыли фирму).
+    // Ищем осиротевшие цены — те, что лежат под ключом, которого нет среди колонок листа, —
+    // и переносим их в первую подходящую: «нашу» фирму, иначе первую видимую, иначе свою колонку.
     const vis = bs.filter((b: any) => !b.hidden)
-    const target = bs.find((b: any) => b.own) || vis[0] || bs[0]
-    if (target && rs.some(r => Number(r?.prices?.['_']) > 0)) {
+    const target = bs.find((b: any) => b.own) || vis[0] || bs[0] || null
+    const known = new Set<string>([...bs.map((b: any) => b.id), ...(target ? [] : ['_'])])
+    const orphan = (p: any) => Object.entries(p || {}).find(([k, v]) => !known.has(k) && Number(v) > 0)
+    if (rs.some(r => orphan(r.prices))) {
       rs = rs.map(r => {
-        const own = Number(r?.prices?.['_']) || 0
-        if (!(own > 0)) return r
+        const o = orphan(r.prices); if (!o) return r
         const prices = { ...(r.prices || {}) }
-        if (!(Number(prices[target.id]) > 0)) prices[target.id] = own
-        delete prices['_']
+        const key = target ? target.id : '_'
+        if (!(Number(prices[key]) > 0)) prices[key] = Number(o[1])
+        delete prices[o[0]]
         return { ...r, prices }
       })
       calcSave(d.id, d.name, { brands: bs, rows: rs }).catch(() => {})
@@ -168,7 +173,20 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       : rows
     commit([...brands, nb], nr)
   }
-  const delBrand = (bi: number) => { const b = brands[bi]; const nr = rows.map(r => { const p = { ...r.prices }; delete p[b.id]; return { ...r, prices: p } }); commit(brands.filter((_, j) => j !== bi), nr) }
+  // Удаляем фирму: её цены уходят вместе с ней, НО если это была последняя фирма —
+  // цены переезжают в свою колонку, иначе лист остался бы без цен совсем.
+  const delBrand = (bi: number) => {
+    const b = brands[bi]
+    const last = brands.length === 1
+    const nr = rows.map(r => {
+      const p = { ...(r.prices || {}) }
+      const was = Number(p[b.id]) || 0
+      delete p[b.id]
+      if (last && was > 0) p['_'] = was
+      return { ...r, prices: p }
+    })
+    commit(brands.filter((_, j) => j !== bi), nr)
+  }
 
   // ── Работа как в Excel: ходим по ячейкам стрелками/Enter, Delete очищает ячейку ──
   // Колонки строки: 0 — наименование, 1 — кол-во, дальше цены видимых фирм.
