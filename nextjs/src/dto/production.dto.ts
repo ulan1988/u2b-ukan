@@ -29,3 +29,12 @@ export const createProductionSchema = z.object({
 })
 
 export type CreateProductionInput = z.infer<typeof createProductionSchema>
+
+// Себестоимость сантиметра (одно число на орг): владелец вводит цену ЛИСТА 1,25×2 м
+// либо цену за м²; ₸/см считается сервисом (лист 125 см, в листе 2,5 м²).
+export const costPerCmSchema = z.object({
+  orgId: z.string().uuid().optional(),
+  sheetPrice: z.coerce.number().nonnegative().optional(),
+  m2Price: z.coerce.number().nonnegative().optional(),
+  perCm: z.coerce.number().nonnegative().optional(),
+})

@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { fetchRefs, stockOverview } from '@/lib/api/refs'
-import { listProduction, createProduction, getDocument, cancelDocument } from '@/lib/api/docs'
+import { listProduction, createProduction, getDocument, cancelDocument, getCostPerCm, saveCostPerCm } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
 import { RAL_COLORS, extractRal } from '@/lib/ral'
 import { isIzdelie } from '@/lib/lineAmount'
@@ -136,6 +136,7 @@ function ProduceTab({ orgId, warehouseId, products, onMsg }: { orgId: string; wa
 
   return (
     <div>
+      <CostPerCmBar orgId={orgId} onMsg={onMsg} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>проведено: <b style={{ color: COLORS.text }}>{docs.filter((d: any) => d.status !== 'cancelled').length}</b>{docs.some((d: any) => d.status === 'cancelled') && <> · отменено: <b style={{ color: '#b03020' }}>{docs.filter((d: any) => d.status === 'cancelled').length}</b></>}</span>
         <button onClick={() => setOpen(o => !o)} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{open ? '× Свернуть' : '+ Новое производство'}</button>
@@ -276,6 +277,81 @@ function ProdDocDrawer({ id, onClose, onCancelDoc }: { id: string; onClose: () =
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── СЕБЕСТОИМОСТЬ 1 СМ ─────────────────────────────────────────────────────
+// Одно число на организацию: цвет на цену закупа не влияет (решение владельца 09.11.2026).
+// Лист 125 см и 2,5 м²: ₸/см = цена листа ÷ 125 = цена м² ÷ 50. Себестоимость изделия
+// = ширина_см × ₸/см — повторно на 125 НЕ делим.
+function CostPerCmBar({ orgId, onMsg }: { orgId: string; onMsg: (m: string) => void }) {
+  const [data, setData] = useState<{ costPerCm: number; sheetPrice: number; updatedAt: any }>({ costPerCm: 0, sheetPrice: 0, updatedAt: null })
+  const [open, setOpen] = useState(false)
+  const [sheet, setSheet] = useState('')
+  const [m2, setM2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => { getCostPerCm(orgId).then((d: any) => setData(d || { costPerCm: 0, sheetPrice: 0, updatedAt: null })) }, [orgId])
+  useEffect(() => { load() }, [load])
+
+  const n = (v: string) => { const x = Number(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(x) ? x : 0 }
+  // Что ввели последним, то и ведущее: лист ÷ 125 либо м² ÷ 50.
+  const perCm = n(sheet) > 0 ? n(sheet) / 125 : (n(m2) > 0 ? n(m2) / 50 : 0)
+  const fmt2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('ru-RU')
+
+  async function save() {
+    if (!(perCm > 0)) { onMsg('⚠ Впишите цену листа или цену за м²'); return }
+    setBusy(true)
+    const r: any = await saveCostPerCm({ orgId, sheetPrice: n(sheet) || undefined, m2Price: n(m2) || undefined })
+    setBusy(false)
+    if (r.ok === false || r.error) { onMsg('⚠ ' + (r.error || 'Не удалось сохранить')); return }
+    onMsg(`✓ Себестоимость 1 см = ${fmt2(r.data?.costPerCm ?? r.costPerCm ?? perCm)} ₸`)
+    setOpen(false); setSheet(''); setM2(''); load()
+  }
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <button onClick={() => { setOpen(o => !o); setSheet(data.sheetPrice ? String(data.sheetPrice) : ''); setM2('') }}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: `2px solid ${data.costPerCm > 0 ? '#2e8a5e' : '#e0b8a0'}`, borderRadius: 14, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+        <span style={{ fontSize: 22 }}>💰</span>
+        <span>
+          <div style={{ fontSize: 13, fontWeight: 800, color: data.costPerCm > 0 ? '#19653c' : '#b06a2a' }}>Себестоимость 1 см</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>
+            {data.costPerCm > 0
+              ? `лист ${fmt2(data.sheetPrice)} ₸ · ${fmt2(data.sheetPrice / 2.5)} ₸/м²${data.updatedAt ? ` · изменено ${fmtDate(data.updatedAt)}` : ''}`
+              : 'не задана — изделия выпускаются с нулевой себестоимостью'}
+          </div>
+        </span>
+        <span style={{ marginLeft: 'auto', textAlign: 'right' }}>
+          <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Consolas, monospace', color: data.costPerCm > 0 ? '#19653c' : '#b06a2a' }}>{fmt2(data.costPerCm)} ₸</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>нажми, чтобы изменить ✎</div>
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', padding: 16, marginTop: 8, maxWidth: 460 }}>
+          <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>Вводишь одно число — цену листа <b>или</b> цену квадрата. Второе считается само.</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <span style={{ ...LBL, width: 150, marginBottom: 0 }}>Цена листа 1,25×2 м</span>
+            <input value={sheet} inputMode="decimal" placeholder="0" onChange={e => { setSheet(e.target.value.replace(/[^0-9.,]/g, '')); setM2('') }}
+              style={{ ...INP, flex: 1, textAlign: 'right', fontSize: 16, fontWeight: 800, fontFamily: 'Consolas, monospace' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <span style={{ ...LBL, width: 150, marginBottom: 0 }}>или цена за м²</span>
+            <input value={m2} inputMode="decimal" placeholder="0" onChange={e => { setM2(e.target.value.replace(/[^0-9.,]/g, '')); setSheet('') }}
+              style={{ ...INP, flex: 1, textAlign: 'right', fontSize: 16, fontWeight: 800, fontFamily: 'Consolas, monospace' }} />
+          </div>
+          <div style={{ background: '#e7f6ec', border: '1px solid #bfe3cb', color: '#19653c', borderRadius: 10, padding: '10px 12px', fontWeight: 800 }}>1 см = {fmt2(perCm)} ₸</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 6, lineHeight: 1.6 }}>
+            лист 2,5 м² · ширина листа 125 см<br />цена листа ÷ 125 &nbsp;·&nbsp; цена м² ÷ 50<br />
+            изделие {perCm > 0 ? `26 см = ${fmt2(perCm * 26)} ₸` : '26 см = ширина × ₸/см'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={save} disabled={busy || !(perCm > 0)} style={{ flex: 1, border: 'none', background: busy || !(perCm > 0) ? '#cfd8d2' : '#2e8a5e', color: '#fff', borderRadius: 10, padding: 13, cursor: busy || !(perCm > 0) ? 'default' : 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : 'Сохранить'}</button>
+            <button onClick={() => setOpen(false)} style={{ flex: 1, border: '1.5px solid #e6e2dc', background: '#fff', color: COLORS.textMuted, borderRadius: 10, padding: 13, cursor: 'pointer', fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit' }}>Отмена</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

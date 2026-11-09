@@ -5,6 +5,7 @@
 import { randomUUID } from 'crypto'
 import * as repo from '../repositories/order.repo'
 import * as refsRepo from '../repositories/refs.repo'
+import * as prodSettingsRepo from '../repositories/prodSettings.repo'
 import { createProduction } from './document.service'
 import { itemName } from '../lib/itemName'
 import { isIzdelie } from '../lib/lineAmount'
@@ -14,52 +15,26 @@ const SHEET_WIDTH_CM = 125
 const SHEET_LENGTH_CM = 200
 const SHEET_AREA_M2 = (SHEET_WIDTH_CM / 100) * (SHEET_LENGTH_CM / 100)   // 2.5 м² в целом листе
 
-// Лист нужного цвета: товар-материал + его последняя цена закупа. Цену ищем сначала в своей
-// орг, затем в любой другой (листы закупает головной, а режет филиал — по мосту это один и
-// тот же лист). Без второго шага цена почти всегда выходила 0 и себестоимость обнулялась.
-type SheetInfo = { productId: string; unit: string; price: number }
-async function sheetForColor(orgId: string, color: string): Promise<SheetInfo | null> {
-  if (!color) return null
-  const { sqlClient } = await import('../lib/db')
-  // Декор ищем по словам (дуб/дерев/3D), обычный цвет — по коду РАЛа в названии листа.
-  const decor = color === 'дерево'
-  const like = decor ? '%' : '%' + color.toLowerCase() + '%'
-  const prods = await sqlClient`
-    select p.id, p.unit, p.price_in::float price_in
-    from products p
-    where p.category='material' and p.archived=false
-      and lower(p.name) like '%лист%' and lower(p.name) like ${like}
-      and lower(p.name) not like '%мат%'
-      and (${!decor} or p.name ~* '(дуб|дерев|3d)')
-    order by p.created_at desc limit 1` as unknown as Array<{ id: string; unit: string; price_in: number }>
-  const prod = prods[0]
-  if (!prod) return null
-  const own = await sqlClient`
-    select dl.price::float price
-    from document_lines dl
-    join documents d on d.id = dl.document_id and d.type='purchase' and d.status<>'cancelled'
-    where dl.product_id=${prod.id} and d.org_id=${orgId}
-    order by d.date desc, d.created_at desc limit 1` as unknown as Array<{ price: number }>
-  let price = own[0]?.price || 0
-  if (!(price > 0)) {
-    const any = await sqlClient`
-      select dl.price::float price
-      from document_lines dl
-      join documents d on d.id = dl.document_id and d.type='purchase' and d.status<>'cancelled'
-      where dl.product_id=${prod.id}
-      order by d.date desc, d.created_at desc limit 1` as unknown as Array<{ price: number }>
-    price = any[0]?.price || 0
-  }
-  if (!(price > 0)) price = Number(prod.price_in) || 0
-  return { productId: prod.id, unit: (prod.unit || 'шт').trim(), price }
+// Себестоимость сантиметра — ОДНО число на организацию (цвет на цену закупа не влияет,
+// решение владельца 09.11.2026). Лист 125 см: цена листа ÷ 125, либо цена м² ÷ 50.
+// Себестоимость изделия = ширина_см × costPerCm — делить на 125 ещё раз НЕЛЬЗЯ.
+export async function getCostPerCm(orgId: string): Promise<number> {
+  const row = await prodSettingsRepo.get(orgId)
+  return Number(row?.costPerCm) || 0
 }
 
-// Цена ЦЕЛОГО листа. Лист может быть заведён в штуках или в м² — приводим к штуке,
-// чтобы себестоимость доли считалась одинаково независимо от единицы номенклатуры.
-function pricePerSheet(s: SheetInfo) {
-  const isArea = /м2|м²|кв/i.test(s.unit)
-  return isArea ? s.price * SHEET_AREA_M2 : s.price
+// Сохранить себестоимость: владелец вводит цену ЛИСТА (1,25×2 м) либо цену за м² — считаем ₸/см.
+export async function saveCostPerCm(orgId: string, i: { sheetPrice?: number; m2Price?: number; perCm?: number }) {
+  let perCm = Number(i.perCm) || 0
+  let sheetPrice = Number(i.sheetPrice) || 0
+  if (!sheetPrice && Number(i.m2Price) > 0) sheetPrice = Number(i.m2Price) * SHEET_AREA_M2
+  if (sheetPrice > 0) perCm = sheetPrice / SHEET_WIDTH_CM
+  else if (perCm > 0) sheetPrice = perCm * SHEET_WIDTH_CM
+  if (!(perCm > 0)) return { ok: false as const, error: 'Укажите цену листа или цену за м²' }
+  const row = await prodSettingsRepo.save(orgId, { costPerCm: Math.round(perCm * 10000) / 10000, sheetPrice: Math.round(sheetPrice * 100) / 100 })
+  return { ok: true as const, costPerCm: Number(row.costPerCm), sheetPrice: Number(row.sheetPrice) }
 }
+
 // Цвет изделия — ТА ЖЕ формула, что в раскрое (material.service.sheetColor): 4-значный РАЛ,
 // иначе декор «дерево». Если разойдутся — раскрой спишет лист, а себестоимость выйдет 0.
 const ralOf = (name: string) => (name || '').match(/(\d{4})/)?.[1] || (/(дуб|дерев|3d)/i.test(name || '') ? 'дерево' : '')
@@ -118,7 +93,7 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
 
   const outputs: any[] = []
   const made: any[] = []          // позиции, реально выпущенные (для раскроя)
-  const sheetCache = new Map<string, SheetInfo | null>()
+  const perCm = await getCostPerCm(prodOrgId)   // ₸ за 1 см листа — одно число на орг
   let created = 0, skipped = 0
   for (const p of targets) {
     const raw = (p.name1c || p.oral || '').trim()
@@ -130,9 +105,8 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     const width = p.widthCm != null ? Number(p.widthCm) : 0
     // Себестоимость = доля листа по ширине: цена_целого_листа(цвет) × ширина / 125.
     const color = ralOf(nm)
-    if (!sheetCache.has(color)) sheetCache.set(color, await sheetForColor(order.orgId, color))
-    const sheet = sheetCache.get(color) || null
-    const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
+    // Себестоимость = ширина изделия в см × цена 1 см (лист 125 см уже учтён в ставке).
+    const cost = width > 0 ? Math.round(perCm * width * 100) / 100 : 0
 
     // ИЗДЕЛИЕ — СВОЙ товар по цвету и см («Изделие {РАЛ} {см} см»): изделие без цвета на складе
     // запрещено, остаток обязан считаться по цветам. Голые (без РАЛ/см) отсеяны выше.
@@ -183,7 +157,7 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
   if (!wh) return { ok: false as const, error: 'Не найден склад производителя' }
   const outputs: any[] = []
   const made: any[] = []
-  const sheetCache = new Map<string, SheetInfo | null>()
+  const perCm = await getCostPerCm(orgId)       // ₸ за 1 см листа — одно число на орг
   let created = 0, skipped = 0
   for (const it of items) {
     const qty = Number(it.qty) || 0
@@ -194,9 +168,8 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     const width = Number(it.cm) || 0
     // Изделие требует РАЛ и см — иначе лист не выбрать.
     if (izd && (!color || !(width > 0))) { skipped++; continue }
-    if (!sheetCache.has(color)) sheetCache.set(color, await sheetForColor(orgId, color))
-    const sheet = sheetCache.get(color) || null
-    const cost = sheet && width > 0 ? (pricePerSheet(sheet) * width) / SHEET_WIDTH_CM : 0
+    // Себестоимость = ширина изделия в см × цена 1 см (лист 125 см уже учтён в ставке).
+    const cost = width > 0 ? Math.round(perCm * width * 100) / 100 : 0
     let productId = it.productId || null
     if (izd) productId = await ensureProduct(nm)   // «Изделие {РАЛ} {см} см» — без цвета на склад нельзя
     else if (!productId) { productId = await ensureProduct(nm); created++ }

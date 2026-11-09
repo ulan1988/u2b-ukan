@@ -27,3 +27,8 @@ export const listTransfers = (orgId: string) => getArray(`/api/transfer?orgId=${
 export const createTransfer = (b: any) => post('/api/transfer', b)
 
 export const cancelDocument = (id: string) => post(`/api/documents/${id}/cancel`)
+
+// Себестоимость 1 см листа (производство): читать и сохранять. Цвет на закуп не влияет —
+// число одно на организацию, изделие = ширина_см × ₸/см.
+export const getCostPerCm = (orgId: string) => getObj(`/api/production/cost?orgId=${orgId}`, { costPerCm: 0, sheetPrice: 0, updatedAt: null } as any)
+export const saveCostPerCm = (b: { orgId: string; sheetPrice?: number; m2Price?: number; perCm?: number }) => post('/api/production/cost', b)

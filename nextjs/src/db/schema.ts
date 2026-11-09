@@ -747,3 +747,14 @@ export const bonusRows = pgTable('bonus_rows', {
 }, t => ({
   byDay: index('bonus_rows_day_idx').on(t.orgId, t.date),
 }))
+
+// Производственные настройки организации-производителя (Нипа листогиб).
+// Себестоимость считается от ОДНОГО числа — сколько стоит 1 см листа (цвет на цену
+// закупа не влияет, решение владельца 09.11.2026). Лист 125 см: цена листа ÷ 125,
+// либо цена за м² ÷ 50 (в листе 2,5 м²). Себестоимость изделия = ширина_см × cost_per_cm.
+export const prodSettings = pgTable('prod_settings', {
+  orgId: uuid('org_id').primaryKey().references(() => organizations.id),
+  costPerCm: numeric('cost_per_cm', { precision: 14, scale: 4 }).notNull().default('0'),
+  sheetPrice: money('sheet_price').notNull().default('0'),   // из чего посчитали — для подписи на экране
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
