@@ -29,10 +29,14 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [sel, setSel] = useState<CatalogSel>(() => emptySel())   // фильтр сверху (папка/подпапка/цвет)
   const [allColors, setAllColors] = useState(false)
   const [sugFor, setSugFor] = useState('')             // в какой строке открыт список подсказок
-  // Продажа из расчёта: шторка оплаты, покупатель, код чека
-  const [sellOpen, setSellOpen] = useState(false)
+  // Продажа из расчёта — панель «Чек» справа (рабочее место кассира за компьютером):
+  // покупатель, код чека, скидка, СМЕШАННАЯ оплата по счетам и сдача.
   const [sellContact, setSellContact] = useState('')
   const [sellCode, setSellCode] = useState('')
+  const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', debt: '' })   // суммы по способам — можно смешивать
+  const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })
+  const [given, setGiven] = useState('')                 // сколько дали налом → сдача
+  const [wide, setWide] = useState(true)                 // широкий экран: чек рядом с таблицей
   const [selling, setSelling] = useState(false)
   const [sellMsg, setSellMsg] = useState('')
   const [cags, setCags] = useState<any[]>([])
@@ -60,6 +64,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     }).catch(() => {})
   }, [orgId])
   useEffect(() => { fetchRefs(orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived && c.kind !== 'supplier'))).catch(() => {}) }, [orgId])
+  // Узкий экран (ноутбук/планшет) — чек уезжает под таблицу, широкий — стоит справа.
+  useEffect(() => {
+    const on = () => setWide(window.innerWidth >= 1180)
+    on(); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on)
+  }, [])
   useEffect(() => {
     // ВАЖНО: без orgId сервер отдаёт шаблон без цен продажи — цены в расчёте будут нулевые.
     if (!orgId) return
@@ -323,27 +332,58 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const bonusSum = bonusRowsCart.reduce((s, r) => s + Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - (Number(r.bonusCost) || 0)) * Number(r.qty), 0)
   const bonusHq = Math.round(bonusSum * 0.5)
   const bonusToAgent = bonusRowsCart.reduce((s, r) => s + (Number(r.bonusCost) || 0) * Number(r.qty), 0)
-  async function doSell(how: 'cash' | 'kaspi' | 'qr' | 'debt') {
+  // Скидка по чеку (₸ или %) и смешанная оплата: суммы по счетам должны сойтись с итогом.
+  const discPctN = disc.mode === 'pct' ? num(disc.val) : 0
+  const discSum = Math.min(sellTotal, Math.max(0, disc.mode === 'pct' ? Math.round(sellTotal * discPctN / 100) : num(disc.val)))
+  const net = Math.max(0, sellTotal - discSum)
+  const pCash = num(pay.cash), pKaspi = num(pay.kaspi), pQr = num(pay.qr), pDebt = num(pay.debt)
+  const allocated = pCash + pKaspi + pQr + pDebt
+  const rest = Math.round((net - allocated) * 100) / 100        // сколько ещё не распределено (минус = перебор)
+  const givenN = num(given)
+  const change = Math.max(0, Math.round((givenN - pCash) * 100) / 100)   // дали налом больше, чем строка «Нал»
+  const qtyTotal = sellRows.reduce((s, r) => s + (Number(r.qty) || 0), 0)
+  // Кнопка «всё/остаток» в строке оплаты: добить этот способ до итога.
+  const fillPay = (k: 'cash' | 'kaspi' | 'qr' | 'debt') => setPay(p => ({ ...p, [k]: String(Math.max(0, num((p as any)[k]) + rest)) }))
+  const canSell = sellRows.length > 0 && net > 0 && Math.abs(rest) < 0.5 && !selling
+
+  async function doSell() {
     if (!sellRows.length) { setSellMsg('нет строк с количеством и ценой'); return }
-    if (how === 'debt' && !sellContact) { setSellMsg('для долга выберите покупателя'); return }
+    if (!(net > 0)) { setSellMsg('итог чека 0'); return }
+    if (Math.abs(rest) >= 0.5) { setSellMsg(rest > 0 ? `⚠ не распределено ${fmt(rest)} ₸` : `⚠ перебор на ${fmt(-rest)} ₸`); return }
+    if (pDebt > 0 && !sellContact) { setSellMsg('⚠ долг — только на выбранного покупателя'); return }
     const badBonus = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
     if (badBonus) { setSellMsg(`⚠ ${badBonus.name}: укажите цену соседа и у кого взяли`); return }
     setSelling(true); setSellMsg('')
     const key = priceKeyOf()
     const emp = staff.find((s: any) => s.id === sellerId)
+    // Долг отдельным полем не шлём: в кассе он считается как итог − нал − каспи − QR.
+    // Сдача уменьшает реально внесённый нал (см. cashier.payCard), поэтому шлём «дали налом».
     const r: any = await sellCheck({
       contactId: sellContact || undefined, clientCode: sellCode,
       sellerId: emp?.id, seller: emp?.name,
-      cash: how === 'cash' ? sellTotal : 0, kaspi: how === 'kaspi' ? sellTotal : 0, qr: how === 'qr' ? sellTotal : 0,
+      cash: pCash + change, kaspi: pKaspi, qr: pQr, change, changeFrom: '',
+      discountSum: discSum, discountPct: discPctN,
       comment: `Расчёт «${name}»`,
       positions: sellRows.map(r2 => ({ productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, qty: Number(r2.qty), unit: r2.unit || 'шт', price: Number(r2.prices[key]), bonusCost: Number(r2.bonusCost) || undefined, bonusAgentId: r2.bonusAgentId || undefined })),
     })
     setSelling(false)
-    setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(sellTotal)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
-    // Чек пробит — обнуляем количества: позиции и цены остаются прайсом на следующего
-    // клиента, а второй раз случайно пробить тот же чек уже нельзя (кнопка исчезает).
-    if (r.ok) { setSellOpen(false); setSellContact(''); setSellCode(''); commit(brands, rows.map(r2 => ({ ...r2, qty: 0 }))) }
+    setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(net)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
+    // Чек пробит — обнуляем количества и оплату: позиции и цены остаются прайсом на следующего
+    // клиента, а второй раз случайно пробить тот же чек уже нельзя (количеств нет).
+    if (r.ok) {
+      setSellContact(''); setSellCode(''); setPay({ cash: '', kaspi: '', qr: '', debt: '' })
+      setDisc({ mode: 'sum', val: '' }); setGiven('')
+      commit(brands, rows.map(r2 => ({ ...r2, qty: 0 })))
+    }
   }
+
+  // F9 — пробить чек с любого места экрана (как на кассе).
+  const sellRef = useRef<() => void>(() => {})
+  sellRef.current = doSell
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'F9') { e.preventDefault(); sellRef.current() } }
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
+  }, [])
 
   // Порядок строк мышкой — как в Номенклатуре: тянем за номер строки и бросаем на другую.
   function moveRow(fromId: string, toId: string) {
@@ -412,6 +452,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           </span>
         })()} />
 
+      {/* Рабочее место кассира: слева лист-таблица, справа липкая панель «Чек». */}
+      <div style={{ display: 'grid', gridTemplateColumns: wide ? 'minmax(0,1fr) 392px' : '1fr', gap: 12, alignItems: 'start' }}>
+      <div style={{ minWidth: 0 }}>
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}` }}>
         {/* Ширины колонок заданы явно: всё лишнее место достаётся «Наименованию»,
             а «Кол-во» и цены остаются узкими (иначе таблица растягивала их на пол-экрана). */}
@@ -581,7 +624,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             {/* Итого */}
             <tr style={{ background: '#fff7d6', fontWeight: 800 }}>
               <td style={td}></td>
-              <td style={td} colSpan={2}>{noBrands ? 'ИТОГО' : 'ИТОГО по фирме'}</td>
+              <td style={td}>{noBrands ? 'ИТОГО' : 'ИТОГО по фирме'}{sellRows.length ? ` · ${sellRows.length} поз.` : ''}</td>
+              <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{qtyTotal ? fmt(qtyTotal) : ''}</td>
               {noBrands && <>
                 <td style={td}></td>
                 <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace', background: '#f4f3f0' }}>{fmt(rows.reduce((s, r) => s + (Number(r.prices?.[SELF]) || 0) * (Number(r.qty) || 0), 0))}</td>
@@ -603,52 +647,106 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         </table>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+      <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={addRow} style={{ padding: '9px 16px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>+ Добавить строку</button>
-        {/* Продажа прямо из расчёта: берём строки с кол-вом и ценой, дальше — как в кассе. */}
-        {sellRows.length > 0 && (
-          <button onClick={() => { setSellOpen(v => !v); setSellMsg('') }} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>💵 Продать · {fmt(sellTotal)} ₸ ({sellRows.length})</button>
-        )}
-        {sellMsg && <span style={{ alignSelf: 'center', fontSize: 13, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</span>}
+        <span style={{ fontSize: 12, color: COLORS.textMuted }}>стрелки — по ячейкам · Del — очистить ячейку · F9 — пробить чек</span>
       </div>
-      {/* Шторка продажи: покупатель, код чека и способ оплаты — как в кассе магазина. */}
-      {sellOpen && sellRows.length > 0 && (
-        <div style={{ marginTop: 12, background: '#fff', borderRadius: 12, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14, maxWidth: 560 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-            <b style={{ fontSize: 15 }}>Продажа по расчёту</b>
-            <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>{sellRows.length} поз.</span>
-            <b style={{ marginLeft: 'auto', fontSize: 18 }}>{fmt(sellTotal)} ₸</b>
+      </div>
+
+      {/* ── ПАНЕЛЬ «ЧЕК» (рабочее место кассира за компьютером): покупатель, скидка,
+             смешанная оплата по счетам и сдача. Стоит справа и всегда видна. ── */}
+      <aside style={{ position: wide ? 'sticky' : 'static', top: 12, background: '#fff', borderRadius: 14, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <b style={{ fontSize: 15 }}>🧾 Чек</b>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>{sellRows.length ? `${sellRows.length} поз. · ${fmt(qtyTotal)} шт` : 'впишите кол-во и цену'}</span>
+        </div>
+
+        {bonusRowsCart.length > 0 && bonusSum > 0 && (
+          <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', borderRadius: 9, padding: '7px 10px', fontSize: 12, color: '#8a4a22', fontWeight: 700 }}>
+            🤝 бонус {fmt(bonusSum)} ₸ · вам {fmt(bonusSum - bonusHq)} · Адал Строй 2 {fmt(bonusHq)} · соседу вернуть {fmt(bonusToAgent)} ₸
           </div>
-          {bonusRowsCart.length > 0 && bonusSum > 0 && (
-            <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', borderRadius: 9, padding: '7px 10px', marginBottom: 8, fontSize: 12.5, color: '#8a4a22', fontWeight: 700 }}>
-              🤝 бонус {fmt(bonusSum)} ₸ · вам {fmt(bonusSum - bonusHq)} · Адал Строй 2 {fmt(bonusHq)} · соседу вернуть {fmt(bonusToAgent)} ₸
-            </div>
-          )}
-          <div style={{ marginBottom: 8 }}>
-            <ContragentPicker contragents={cags} value={sellContact} onPick={(c: any) => setSellContact(c?.id || '')} placeholder="— покупатель (для долга обязателен) —" />
-          </div>
-          {/* Кто пробил чек: по умолчанию тот, кто выбран за кассой на этом устройстве. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 12.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>Продавец</span>
-            <select value={sellerId} onChange={e => { setSellerId(e.target.value); const s = staff.find((x: any) => x.id === e.target.value); try { localStorage.setItem(`u2b_seller_${orgId}`, JSON.stringify(s ? { id: s.id, name: s.name } : null)) } catch {} }}
-              style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, background: '#fff' }}>
-              <option value="">— не указан —</option>
-              {staff.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.position ? ` · ${s.position}` : ''}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 12.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>Код чека</span>
-            <input value={sellCode} inputMode="numeric" onChange={e => setSellCode(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="последние 4 цифры телефона" style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 700 }} />
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {([['cash', '💵 Нал', '#2e8a5e'], ['kaspi', 'Каспи', '#fff'], ['qr', 'QR', '#fff'], ['debt', 'В долг', '#fff8f5']] as const).map(([how, label, bg]) => (
-              <button key={how} disabled={selling} onClick={() => doSell(how as any)}
-                style={{ flex: 1, minWidth: 110, border: bg === '#2e8a5e' ? 'none' : `1.5px solid ${how === 'debt' ? '#e6c9b8' : COLORS.border}`, background: selling ? '#cfd8d2' : bg, color: bg === '#2e8a5e' ? '#fff' : (how === 'debt' ? '#c0532a' : COLORS.text), borderRadius: 10, padding: '12px 10px', cursor: selling ? 'default' : 'pointer', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit' }}>{label}</button>
+        )}
+
+        <ContragentPicker contragents={cags} value={sellContact} onPick={(c: any) => setSellContact(c?.id || '')} placeholder="— покупатель (для долга обязателен) —" />
+
+        {/* Кто пробил чек: по умолчанию тот, кто выбран за кассой на этом устройстве. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: COLORS.textMuted, width: 62, flex: 'none' }}>Продавец</span>
+          <select value={sellerId} onChange={e => { setSellerId(e.target.value); const s = staff.find((x: any) => x.id === e.target.value); try { localStorage.setItem(`u2b_seller_${orgId}`, JSON.stringify(s ? { id: s.id, name: s.name } : null)) } catch {} }}
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 13.5, fontFamily: 'inherit', fontWeight: 600, background: '#fff' }}>
+            <option value="">— не указан —</option>
+            {staff.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.position ? ` · ${s.position}` : ''}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: COLORS.textMuted, width: 62, flex: 'none' }}>Код чека</span>
+          <input value={sellCode} inputMode="numeric" onChange={e => setSellCode(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="последние 4 цифры телефона" style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 13.5, fontFamily: 'inherit', fontWeight: 700 }} />
+        </div>
+
+        {/* Скидка по чеку: ₸ или % — к оплате = позиции − скидка. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: COLORS.textMuted, width: 62, flex: 'none' }}>Скидка</span>
+          <div style={{ display: 'flex', border: `1.5px solid ${COLORS.border}`, borderRadius: 9, overflow: 'hidden' }}>
+            {(['sum', 'pct'] as const).map(mo => (
+              <button key={mo} onClick={() => setDisc(d => ({ ...d, mode: mo }))}
+                style={{ border: 'none', background: disc.mode === mo ? COLORS.primary : '#fff', color: disc.mode === mo ? '#fff' : '#6b645b', padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 800 }}>{mo === 'sum' ? '₸' : '%'}</button>
             ))}
           </div>
-          <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 8 }}>Чек пробивается в кассу выбранной организации: склад списывается, деньги попадают на счёт. Строки без цены или количества в чек не идут.</div>
+          <input value={disc.val} inputMode="decimal" placeholder="0" onChange={e => setDisc(d => ({ ...d, val: e.target.value.replace(/[^0-9.,]/g, '') }))}
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right' }} />
+          {discSum > 0 && <span style={{ fontSize: 12.5, color: '#c0532a', fontWeight: 800, whiteSpace: 'nowrap' }}>−{fmt(discSum)}</span>}
         </div>
-      )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 12px', borderRadius: 11, background: '#f4f3f0' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700 }}>К оплате</span>
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            {discSum > 0 && <span style={{ fontSize: 13, color: '#a09889', textDecoration: 'line-through' }}>{fmt(sellTotal)}</span>}
+            <b style={{ fontSize: 25, fontFamily: 'Consolas, monospace' }}>{fmt(net)}</b>
+          </span>
+        </div>
+
+        {/* СМЕШАННАЯ ОПЛАТА: сумма по каждому способу; «всё/остаток» добивает до итога. */}
+        <div style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: 700 }}>Оплата (можно смешанно)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '98px 1fr 64px', gap: 6, alignItems: 'center' }}>
+          {([
+            ['cash', '💵 Нал', '#e7f6ec', '#19653c', 'всё'],
+            ['kaspi', 'Каспи', '#eaf1fb', '#15447c', 'всё'],
+            ['qr', 'QR', '#f3edfb', '#4a2a7a', 'всё'],
+            ['debt', 'Долг', '#fff2e8', '#9a4a1e', 'остаток'],
+          ] as const).map(([k, label, bg, fg, btn]) => (
+            <Fragment key={k}>
+              <div style={{ background: bg, color: fg, fontWeight: 800, fontSize: 13, padding: '8px 6px', borderRadius: 9, textAlign: 'center' }}>{label}</div>
+              <input value={(pay as any)[k]} inputMode="decimal" placeholder="0"
+                onChange={e => setPay(p => ({ ...p, [k]: e.target.value.replace(/[^0-9.,]/g, '') }))}
+                style={{ width: '100%', padding: '9px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 16, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
+              <button onClick={() => fillPay(k)} title={`Добить «${label}» до итога`}
+                style={{ padding: '8px 4px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, background: '#fff', color: '#5f5952', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{btn}</button>
+            </Fragment>
+          ))}
+        </div>
+
+        {/* Сверка: пока оплата не сошлась с итогом — чек не пробивается. */}
+        {net > 0 && (
+          Math.abs(rest) < 0.5
+            ? <div style={{ background: '#e7f6ec', border: '1px solid #bfe3cb', color: '#19653c', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, fontWeight: 700 }}>✓ распределено {fmt(net)} из {fmt(net)}{pDebt > 0 ? ` · долг ${fmt(pDebt)} ₸ на покупателя` : ''}</div>
+            : <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', color: '#8a4a22', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, fontWeight: 700 }}>{rest > 0 ? `осталось распределить ${fmt(rest)} ₸` : `перебор на ${fmt(-rest)} ₸`}</div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: COLORS.textMuted, width: 62, flex: 'none' }}>Дали нал</span>
+          <input value={given} inputMode="decimal" placeholder="0" onChange={e => setGiven(e.target.value.replace(/[^0-9.,]/g, ''))}
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right' }} />
+          <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', color: change > 0 ? '#19653c' : COLORS.textMuted }}>сдача {fmt(change)}</span>
+        </div>
+
+        <button onClick={doSell} disabled={!canSell}
+          style={{ border: 'none', background: canSell ? '#2e8a5e' : '#cfd8d2', color: '#fff', borderRadius: 12, padding: '15px 10px', cursor: canSell ? 'pointer' : 'default', fontSize: 16.5, fontWeight: 800, fontFamily: 'inherit' }}>
+          {selling ? '…' : `💵 Пробить чек · ${fmt(net)} ₸ · F9`}
+        </button>
+        {sellMsg && <div style={{ fontSize: 13, fontWeight: 700, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</div>}
+        <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Склад филиала списывается, деньги ложатся на счета по строкам оплаты. Строки без цены или количества в чек не идут.</div>
+      </aside>
+      </div>
 
       {/* У кого взяли бонусный товар — выбор соседа из контрагентов магазина. */}
       {bonusPick && (
