@@ -37,6 +37,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })
   const [given, setGiven] = useState('')                 // сколько дали налом → сдача
   const [wide, setWide] = useState(true)                 // широкий экран: чек рядом с таблицей
+  const [full, setFull] = useState(false)                // полноэкранный режим кассы (без меню слева)
   const [selling, setSelling] = useState(false)
   const [sellMsg, setSellMsg] = useState('')
   const [cags, setCags] = useState<any[]>([])
@@ -64,6 +65,17 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     }).catch(() => {})
   }, [orgId])
   useEffect(() => { fetchRefs(orgId).then((r: any) => setCags((r.contragents || []).filter((c: any) => !c.archived && c.kind !== 'supplier'))).catch(() => {}) }, [orgId])
+  // Полный экран кассы: прячем меню админки (экран рисуем поверх страницы) и просим
+  // у браузера настоящий fullscreen. Esc браузера тоже выводит — слушаем fullscreenchange.
+  // requestFullscreen возвращает промис и браузер может его отклонить (нет «жеста» пользователя) —
+  // гасим отказ, иначе в консоли висит ошибка, а экран и так работает поверх страницы.
+  const enterFull = () => { setFull(true); try { (document.documentElement as any).requestFullscreen?.()?.catch?.(() => {}) } catch {} }
+  const exitFull = () => { setFull(false); try { if (document.fullscreenElement) document.exitFullscreen()?.catch?.(() => {}) } catch {} }
+  useEffect(() => {
+    const h = () => { if (!document.fullscreenElement) setFull(false) }
+    document.addEventListener('fullscreenchange', h); return () => document.removeEventListener('fullscreenchange', h)
+  }, [])
+
   // Узкий экран (ноутбук/планшет) — чек уезжает под таблицу, широкий — стоит справа.
   useEffect(() => {
     const on = () => setWide(window.innerWidth >= 1180)
@@ -416,8 +428,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
 
   if (loading && !tabs.length) return <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
 
-  return (
-    <div>
+  const body = (
+    <div style={full ? { padding: 12 } : undefined}>
       {/* Одна строка вместо трёх: вкладки-листы (имя активной правится прямо во вкладке),
           «+ Новый расчёт», справа — статус сохранения и «+ Фирма». */}
       {/* Одна узкая строка: орг · вкладки · новый расчёт · статус · фирма. Шапки страницы
@@ -437,6 +449,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         })}
         <button onClick={addTab} title="Новый расчёт для клиента (пустой, 12 строк)" style={{ flexShrink: 0, padding: '4px 9px', borderRadius: 7, border: `1px dashed ${COLORS.border}`, background: 'transparent', color: COLORS.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>+ новый</button>
         <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11.5, color: saved ? '#2e8a5e' : COLORS.textMuted }}>{saved ? '✓ сохранено' : '…'}</span>
+        {/* Полный экран: касса на всё окно, без меню слева. Выход — такая же заметная красная кнопка. */}
+        <button onClick={() => full ? exitFull() : enterFull()} title={full ? 'Выйти из полного экрана (Esc)' : 'Касса на весь экран — меню скроется'}
+          style={{ flexShrink: 0, padding: '9px 18px', borderRadius: 10, border: 'none', background: full ? '#c1121c' : '#211f1c', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>
+          {full ? '✕ Выйти из полного экрана' : '⛶ Во весь экран'}
+        </button>
         <button onClick={addBrand} style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 7, border: 'none', background: '#eef2ff', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>+ фирма</button>
       </div>
 
@@ -763,4 +780,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       <div style={{ marginTop: 10, fontSize: 12, color: COLORS.textMuted }}>Сумма = Цена × Кол-во. Зелёным ✓ — самый дешёвый итог. Цены/фирмы/позиции редактируются прямо в таблице, сохраняется автоматически.</div>
     </div>
   )
+
+  // Полный экран: рисуем кассу поверх страницы (меню админки остаётся под нами).
+  // zIndex 1200 — выше меню (120), но ниже подсказок и пикеров (2000+), иначе они пропадут.
+  return full
+    ? createPortal(<div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: COLORS.bg, overflow: 'auto' }}>{body}</div>, document.body)
+    : body
 }
