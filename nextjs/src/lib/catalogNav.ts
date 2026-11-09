@@ -70,7 +70,19 @@ export function filterProducts(products: any[], folder: Folder, sel: CatalogSel,
   const sQ = norm(q)
   const levels = folder.levels || []
   let base = products.filter(folder.match)
-  for (let i = 0; i < levels.length; i++) if (sel.path[i]) base = base.filter((p: any) => { const v = (p[levels[i]] || '').trim(); return v === sel.path[i] || v === '' })
+  // Подпапка: товар без подпапки показываем в выбранной ТОЛЬКО если подпапка — цветная
+  // («Модерн бюджет 7024», «Серый 7024»): там безцветная позиция общая на все цвета.
+  // Если подпапки — это бренды/линейки («КМК», «Меллиус», «Металл профиль»), товар без
+  // подпапки в них НЕ лезет (иначе все бренды выглядели как одна куча).
+  for (let i = 0; i < levels.length; i++) if (sel.path[i]) base = base.filter((p: any) => {
+    const v = (p[levels[i]] || '').trim()
+    if (v === sel.path[i]) return true
+    if (v !== '') return false
+    const subRal = extractRal(sel.path[i])
+    if (!subRal) return false                                   // подпапка-бренд: без подпапки — не лезем
+    const own = extractRal(p.name)
+    return !own || own === subRal                               // цвет в имени должен совпасть с цветом подпапки
+  })
   if (sel.thick) base = base.filter((p: any) => thickOf(p.name) === sel.thick)
   if (folder.build) {
     base = base.filter(p => !extractRal(p.name))
