@@ -47,7 +47,37 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   await docRepo.insertDocumentPosting(doc, lines, moves)
   // Ф2: приход листов → склад материала (единый лист, 0,35→0,4). Цена остаётся в документе.
   try { const { receiveSheetsFromLines } = await import('./material.service'); await receiveSheetsFromLines(input.orgId, input.warehouseId, lines.map(l => ({ productId: l.productId, qty: l.qty }))) } catch {}
+  await mirrorBetweenOrgs(input, { id: docId, number: doc.number }, 'purchase')
   return { id: docId, number: doc.number, total }
+}
+
+// ── ЗЕРКАЛО МЕЖ ОРГ (накладная, заведённая руками) ──────────────────────────────
+// Поставщик/покупатель документа — мост на другую орг (contragents.org_ref_id)?
+// Значит это движение МЕЖДУ нашими орг: у второй стороны заводим противоположную
+// накладную ТОЙ ЖЕ ДАТОЙ (приход у филиала ⇄ расход у головного), чтобы задним числом
+// сошлись обе книги и отчёты. Зеркало не зеркалит само себя (noMirror).
+async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }, kind: 'purchase' | 'sale') {
+  // Накладная из КАРТОЧКИ (sourceOrderId) зеркалится своим механизмом в invoice.service —
+  // второй раз здесь нельзя, иначе у второй орг будет две накладные.
+  if ((input as any).noMirror || (input as any).parentDocId || (input as any).sourceOrderId) return
+  try {
+    const [cp] = await docRepo.contragentById(input.contragentId)
+    const refOrg = (cp as any)?.orgRefId as string | undefined
+    if (!refOrg || refOrg === input.orgId) return
+    const refsRepo = await import('../repositories/refs.repo')
+    const mwh = await refsRepo.centralWarehouse(refOrg)
+    const [back] = await docRepo.contragentByOrgRef(refOrg, input.orgId)   // в книге второй орг — контрагент «наша орг»
+    if (!mwh || !back) return
+    const mlines = (input.lines || []).map((l: any) => ({ ...l, sourcePosId: null }))
+    const minput: any = {
+      orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines,
+      date: input.date, parentDocId: doc.id, noMirror: true,
+      comment: `Зеркало ${kind === 'purchase' ? 'прихода' : 'расхода'} ${doc.number}`,
+    }
+    // Приход у нас → расход у них, и наоборот.
+    if (kind === 'purchase') await createSale(minput)
+    else await createPurchase(minput)
+  } catch (e) { console.error('mirrorBetweenOrgs', doc.number, e) }
 }
 
 // Накладные + ДЕРЕВО карточек: к каждой строке добавляем корень дерева (мать ЗКП) и все id
@@ -235,6 +265,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves, links)
+  await mirrorBetweenOrgs(input, { id: docId, number: doc.number }, 'sale')
   return { id: docId, number: doc.number, total: netTotal }
 }
 
