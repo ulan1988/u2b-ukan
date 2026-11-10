@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
+import ModalShell from '@/components/admin/accDocs/ModalShell'
 import { payDebt } from '@/lib/api/orders'
 import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
@@ -369,14 +370,11 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           </div>
         )}
 
-        {/* Шторка погашения долга: счёт + сумма, деньги приходят сегодняшним днём. */}
+        {/* Окно погашения долга — через общий ModalShell (портал в body, Esc/фон/✕). */}
         {debtFor && (
-          <div onClick={() => setDebtFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 18, width: 'min(440px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 800 }}>💵 Вернуть долг</div>
-                <div style={{ fontSize: 12.5, color: COLORS.textLight, marginTop: 2 }}>{debtFor.customer || 'Розница'} · {debtFor.docNumber || debtFor.id} · долг {m(debtFor.debt)} ₸</div>
-              </div>
+          <ModalShell title={`💵 Вернуть долг · ${debtFor.customer || 'Розница'}`} width={440} onClose={() => setDebtFor(null)}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 12.5, color: COLORS.textLight }}>{debtFor.docNumber || debtFor.id} · долг {m(debtFor.debt)} ₸</div>
               <div>
                 <div style={{ fontSize: 12, color: COLORS.textLight, marginBottom: 4 }}>Счёт прихода</div>
                 <select value={debtAcc} onChange={e => setDebtAcc(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, background: '#fff' }}>
@@ -385,15 +383,12 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               </div>
               <div>
                 <div style={{ fontSize: 12, color: COLORS.textLight, marginBottom: 4 }}>Сумма (сегодня)</div>
-                <input value={debtSum} inputMode="decimal" onChange={e => setDebtSum(e.target.value.replace(/[^0-9.,]/g, ''))}
-                  style={{ width: '100%', padding: '12px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 20, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
+                <input value={debtSum} inputMode="decimal" autoFocus onChange={e => setDebtSum(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 20, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={doPayDebt} disabled={debtBusy} style={{ flex: 1, border: 'none', background: debtBusy ? '#cfd8d2' : '#2e8a5e', color: '#fff', borderRadius: 11, padding: 14, cursor: debtBusy ? 'default' : 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>{debtBusy ? '…' : 'Принять оплату'}</button>
-                <button onClick={() => setDebtFor(null)} style={{ flex: 'none', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: COLORS.textLight, borderRadius: 11, padding: '14px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>Отмена</button>
-              </div>
+              <button onClick={doPayDebt} disabled={debtBusy} style={{ border: 'none', background: debtBusy ? '#cfd8d2' : '#2e8a5e', color: '#fff', borderRadius: 11, padding: 14, cursor: debtBusy ? 'default' : 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>{debtBusy ? '…' : 'Принять оплату'}</button>
             </div>
-          </div>
+          </ModalShell>
         )}
 
         {/* Доходы */}
