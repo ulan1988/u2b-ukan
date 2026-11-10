@@ -89,6 +89,17 @@ async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }
   } catch (e) { console.error('mirrorBetweenOrgs', doc.number, e) }
 }
 
+// Отменить всю ветку зеркал под накладной: зеркальная приходная другой орг и всё,
+// что из неё родилось (её расходная на конечного клиента). Используется при смене
+// покупателя: товар к головному не ушёл — цепочка у него должна сторнироваться.
+async function cancelMirrorBranch(docId: string, out: string[] = []): Promise<string[]> {
+  for (const c of await docRepo.childDocs(docId)) {
+    await cancelMirrorBranch(c.id, out)
+    if (c.status !== 'cancelled') { try { await cancelDocument(c.id); out.push(c.number) } catch (e) { console.error('cancel branch', c.id, e) } }
+  }
+  return out
+}
+
 // Накладные + ДЕРЕВО карточек: к каждой строке добавляем корень дерева (мать ЗКП) и все id
 // ветки. Благодаря этому фильтры и поиск канбана «в курсе» связи: ищешь по ЗКП — находятся
 // и приходная закупа, и расходная дочерней продажи ПРД, и наоборот.
@@ -174,6 +185,15 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   if (patch.operation !== undefined) head.operation = patch.operation
   // Контрагент накладной (покупатель у расходной, поставщик у приходной) — правка ошибки
   // выбора. Долг идёт за контрагентом документа, поэтому смена переносит и долг.
+  // Смена покупателя расходной: если раньше стоял МОСТ на нашу другую орг (продавали
+  // головному), а теперь обычный клиент — значит товар к головному не поехал. Его цепочку
+  // (зеркальная приходная + её расходная клиенту) сторнируем, иначе у него висит чужой долг.
+  let rolledBack: string[] = []
+  if (patch.contragentId && headBefore?.type === 'sale' && String(patch.contragentId) !== String(headBefore.contragentId || '')) {
+    const [wasCg] = await docRepo.contragentById(headBefore.contragentId as string)
+    const [nowCg] = await docRepo.contragentById(String(patch.contragentId))
+    if ((wasCg as any)?.orgRefId && !(nowCg as any)?.orgRefId) rolledBack = await cancelMirrorBranch(id)
+  }
   if (patch.contragentId) head.contragentId = String(patch.contragentId)
   // Поставщик расходной (у кого взят товар). Пусто → очищаем, снова выводится из связей.
   if (patch.supplierId !== undefined) head.supplierId = patch.supplierId ? String(patch.supplierId) : null
@@ -209,8 +229,9 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
     if (head.number && head.number !== headBefore.number) changes.push(`номер ${headBefore.number} → ${head.number}`)
     if (String(headBefore.total) !== head.total) changes.push(`итог ${Number(headBefore.total)} → ${Number(head.total)}`)
   }
+  if (rolledBack.length) changes.push(`откат цепочки головного: ${rolledBack.join(', ')}`)
   if (changes.length) await docRepo.insertDocHistory({ documentId: id, action: 'edit', detail: changes.join(' · '), userName: actor?.name || 'Система' } as any)
-  return { ok: true, subtotal, discountSum, total: subtotal - discountSum }
+  return { ok: true, subtotal, discountSum, total: subtotal - discountSum, rolledBack }
 }
 
 // Создать расходную накладную (продажа): проводка = документ + строки +
