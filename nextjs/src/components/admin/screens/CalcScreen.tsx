@@ -766,9 +766,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             style={{ width: '100%', padding: '14px 12px', borderRadius: 11, border: `1.5px solid ${COLORS.border}`, fontSize: 22, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
           <input value={incNote} onChange={e => setIncNote(e.target.value)} placeholder="за что (необязательно)"
             style={{ width: '100%', padding: '9px 10px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', fontWeight: 600, boxSizing: 'border-box' }} />
+          {/* Две строки, а не одна: имя орг кончается цифрой («Адал Строй 2») и слипалось с суммой. */}
           {num(incSum) > 0 && (
-            <div style={{ background: '#f7f3fc', border: '1px solid #cdb6e2', color: '#5b3a8a', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, fontWeight: 700 }}>
-              вам {fmt(num(incSum) - Math.round(num(incSum) * 0.5))} ₸ · Адал Строй 2 {fmt(Math.round(num(incSum) * 0.5))} ₸
+            <div style={{ background: '#f7f3fc', border: '1px solid #cdb6e2', color: '#5b3a8a', borderRadius: 9, padding: '8px 10px', fontSize: 13, fontWeight: 700, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>вам</span><b style={{ fontFamily: 'Consolas, monospace' }}>{fmt(num(incSum) - Math.round(num(incSum) * 0.5))} ₸</b></span>
+              <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Адал Строй 2</span><b style={{ fontFamily: 'Consolas, monospace' }}>{fmt(Math.round(num(incSum) * 0.5))} ₸</b></span>
             </div>
           )}
           <button onClick={doOtherIncome} disabled={selling || !(num(incSum) > 0)}
@@ -785,7 +787,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', borderRadius: 9, padding: '7px 10px', fontSize: 12, color: '#8a4a22', fontWeight: 700 }}>
             {bonusBad
               ? `⚠ ${bonusBad.name}: впишите цену соседа и у кого взяли`
-              : `🤝 бонус 50/50 — ${fmt(bonusSum)} ₸ · вам ${fmt(bonusSum - bonusHq)} · Адал Строй 2 ${fmt(bonusHq)} · соседу вернуть ${fmt(bonusToAgent)} ₸`}
+              : `🤝 бонус 50/50 — ${fmt(bonusSum)} ₸ · вам ${fmt(bonusSum - bonusHq)} ₸ · головному (Адал Строй 2) ${fmt(bonusHq)} ₸ · соседу вернуть ${fmt(bonusToAgent)} ₸`}
           </div>
         )}
 
