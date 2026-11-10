@@ -51,7 +51,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [pullMsg, setPullMsg] = useState('')       // результат «подтянуть цены» — видно, что произошло
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
   const [bonusPick, setBonusPick] = useState<string | null>(null)  // строка, для которой выбираем соседа
-  const [bcol, setBcol] = useState(true)   // колонка «🤝 Бонус» (штуки соседа) — прячется глазком
+  // Колонка «🤝 Бонус» (штуки соседа) по умолчанию ВЫКЛЮЧЕНА — включается глазком у «Кол-во»
+  // и дальше помнится на этом устройстве (чтобы не включать каждый раз заново).
+  const [bcol, setBcol] = useState(false)
   // Где рисовать список подсказок: координаты ячейки (список живёт поверх страницы).
   const [sugRect, setSugRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
   const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
@@ -82,6 +84,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   }, [])
 
   // Узкий экран (ноутбук/планшет) — чек уезжает под таблицу, широкий — стоит справа.
+  useEffect(() => { try { if (localStorage.getItem('u2b_calc_bcol') === '1') setBcol(true) } catch {} }, [])
+  const toggleBcol = (v: boolean) => { setBcol(v); try { localStorage.setItem('u2b_calc_bcol', v ? '1' : '0') } catch {} }
+
   useEffect(() => {
     const on = () => setWide(window.innerWidth >= 1180)
     on(); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on)
@@ -547,7 +552,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                   Кол-во
                   <button onClick={clearQty} title="Очистить все количества" style={{ border: `1px solid ${COLORS.border}`, background: '#fff', color: '#8a8377', borderRadius: 6, cursor: 'pointer', fontWeight: 800, fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>⌫</button>
-                  {!bcol && <button onClick={() => setBcol(true)} title="Показать колонку «Бонус» (товар соседа)" style={{ border: `1px solid #e6c9b8`, background: '#fff6ee', color: '#8a4a22', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>👁</button>}
+                  {!bcol && <button onClick={() => toggleBcol(true)} title="Показать колонку «Бонус» (товар соседа)" style={{ border: `1px solid #e6c9b8`, background: '#fff6ee', color: '#8a4a22', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>👁</button>}
                 </span>
               </th>
               {/* Бонус: сколько штук взяли у соседа. Прибыль по ним делится 50/50 с головным. */}
@@ -555,7 +560,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 <th style={{ ...th, background: '#f8e7d8', color: '#8a4a22' }} rowSpan={2}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                     🤝 Бонус
-                    <button onClick={() => setBcol(false)} title="Скрыть колонку «Бонус»" style={{ border: '1px solid #e6c9b8', background: '#fff', color: '#8a4a22', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '5px 7px', fontFamily: 'inherit' }}>🙈</button>
+                    <button onClick={() => toggleBcol(false)} title="Скрыть колонку «Бонус»" style={{ border: '1px solid #e6c9b8', background: '#fff', color: '#8a4a22', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '5px 7px', fontFamily: 'inherit' }}>🙈</button>
                   </span>
                 </th>
               )}
