@@ -419,34 +419,6 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             })}
         </div>
 
-        {/* 🎁 БОНУС ДНЯ — товар соседа («Сосед товар»): мимо склада, себестоимости нет,
-            бонус делится 50/50 с головным, деньги соседа возвращаются ему. */}
-        {bonus && bonus.rows?.length > 0 && (
-          <div style={{ ...card, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🎁 БОНУС ДНЯ</span>
-              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>товар соседей · {bonus.rows.length} поз.</span>
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              {[['продано', bonus.totals.sold, COLORS.text], ['вернуть соседям', bonus.totals.toAgent, COLORS.primaryDark], ['бонус', bonus.totals.bonus, '#2e8a5e'], ['наша доля', bonus.ourShare, '#2e8a5e'], ['Адал Строй 2', bonus.totals.hqShare, '#7a3aaa']].map(([l, v, c]: any) => (
-                <div key={l} style={{ background: COLORS.bgCard, borderRadius: 10, padding: '9px 14px', minWidth: 130 }}>
-                  <div style={{ fontSize: 12, color: COLORS.textLight }}>{l}</div>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: c }}>{m(v)} ₸</div>
-                </div>
-              ))}
-            </div>
-            {bonus.rows.map((r: any) => (
-              <div key={r.id} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '3px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
-                <span style={{ fontFamily: 'monospace' }}>{r.docNumber || r.cardId}</span>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: COLORS.text }}>{r.productName} · {Number(r.qty)} × {m(r.price)}</span>
-                <span style={{ color: '#7a3aaa' }}>{r.agent || '—'}</span>
-                <span style={{ width: 92, textAlign: 'right' }}>соседу {m(Number(r.cost) * Number(r.qty))}</span>
-                <span style={{ width: 86, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>бонус {m(r.bonus)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* 💰 ПРИБЫЛЬ ДНЯ — чек делится на две части ДЕНЕГ: себестоимость («Оплата от покупателей»)
             и наценка («Прочие доходы»). Накладная не трогается. Счёт прибыли — куда пришли деньги. */}
         <div style={{ ...card, marginBottom: 16 }}>
@@ -500,6 +472,34 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             </>
           )}
         </div>
+
+        {/* 🎁 БОНУС ДНЯ — товар соседа («Сосед товар»): мимо склада, себестоимости нет,
+            бонус делится 50/50 с головным, деньги соседа возвращаются ему. */}
+        {bonus && bonus.rows?.length > 0 && (
+          <div style={{ ...card, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🤝 БОНУС ДНЯ · 50/50</span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>товар соседей (мимо склада) · {bonus.rows.length} поз. · прибыль делим пополам с головным</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              {[['продано', bonus.totals.sold, COLORS.text], ['вернуть соседям', bonus.totals.toAgent, COLORS.primaryDark], ['бонус', bonus.totals.bonus, '#2e8a5e'], ['наша доля 50%', bonus.ourShare, '#2e8a5e'], ['Адал Строй 2 50%', bonus.totals.hqShare, '#7a3aaa']].map(([l, v, c]: any) => (
+                <div key={l} style={{ background: COLORS.bgCard, borderRadius: 10, padding: '9px 14px', minWidth: 130 }}>
+                  <div style={{ fontSize: 12, color: COLORS.textLight }}>{l}</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: c }}>{m(v)} ₸</div>
+                </div>
+              ))}
+            </div>
+            {bonus.rows.map((r: any) => (
+              <div key={r.id} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '3px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                <span style={{ fontFamily: 'monospace' }}>{r.docNumber || r.cardId}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: COLORS.text }}>{r.productName} · {Number(r.qty)} × {m(r.price)}</span>
+                <span style={{ color: '#7a3aaa' }}>{r.agent || '—'}</span>
+                <span style={{ width: 92, textAlign: 'right' }}>соседу {m(Number(r.cost) * Number(r.qty))}</span>
+                <span style={{ width: 86, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>бонус {m(r.bonus)}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="cd-cols">
           {/* Левая: счета + GOLD */}

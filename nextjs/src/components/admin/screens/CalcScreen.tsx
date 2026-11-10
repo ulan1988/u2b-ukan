@@ -47,6 +47,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [pullMsg, setPullMsg] = useState('')       // результат «подтянуть цены» — видно, что произошло
   const [curRow, setCurRow] = useState(-1)             // активная строка — подсвечена целиком
   const [bonusPick, setBonusPick] = useState<string | null>(null)  // строка, для которой выбираем соседа
+  const [bcol, setBcol] = useState(true)   // колонка «🤝 Бонус» (штуки соседа) — прячется глазком
   // Где рисовать список подсказок: координаты ячейки (список живёт поверх страницы).
   const [sugRect, setSugRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
   const openSug = (id: string, el: HTMLInputElement) => { const r = el.getBoundingClientRect(); setSugRect({ left: Math.round(r.left), top: Math.round(r.top), bottom: Math.round(r.bottom) }); setSugFor(id) }
@@ -98,6 +99,13 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const prodOf = (r: any) => products.find((p: any) => p.id === r.productId)
     || products.find((p: any) => norm(p.name) === norm(r.name1c || r.name || ''))
   const isBonusRow = (r: any) => isBonusProduct(prodOf(r))
+  // Бонус теперь у ЛЮБОГО товара: колонка «🤝 Бонус» рядом с кол-вом — сколько штук взяли
+  // у соседа. Своих 10 + бонусных 5 = 15 шт в чеке: 10 со склада (маржа 60/40), 5 мимо
+  // склада (бонус 50/50 с головным, соседу долг товаром). Товар из папки «Долг товаров» —
+  // весь от соседа: там бонусное кол-во = всё кол-во строки.
+  const ownQty = (r: any) => isBonusRow(r) ? 0 : (Number(r.qty) || 0)
+  const bonQty = (r: any) => isBonusRow(r) ? (Number(r.qty) || 0) : (Number(r.bqty) || 0)
+  const totQty = (r: any) => ownQty(r) + bonQty(r)
   // В расчёт для клиента ставим АЛИАС (короткое разговорное имя), а 1С-наименование
   // храним в строке — оно понадобится при продаже/накладной, но клиенту его не показываем.
   // Куда класть розничную цену из номенклатуры:
@@ -248,7 +256,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // своя колонка «Цена» сразу после «Кол-во» и «Сумма» рядом (цена живёт в prices._).
   const noBrands = visBrands.length === 0
   const SELF = '_'
-  const colCount = 2 + (noBrands ? 1 : visBrands.length)
+  const priceC0 = bcol ? 3 : 2            // с какой колонки начинаются цены (0 имя, 1 кол-во, 2 бонус)
+  const colCount = priceC0 + (noBrands ? 1 : visBrands.length)
   const cellId = (r: number, c: number) => `calc-${r}-${c}`
   const focusCell = (r: number, c: number) => {
     if (r < 0 || c < 0 || r >= rows.length || c >= colCount) return
@@ -336,14 +345,16 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     if (noBrands) return SELF
     return visBrands[0]?.id || SELF
   }
-  const sellRows = rows.filter(r => String(r.name || '').trim() && Number(r.qty) > 0 && Number(r.prices?.[priceKeyOf()]) > 0)
-  const sellTotal = sellRows.reduce((s, r) => s + Number(r.qty) * Number(r.prices[priceKeyOf()]), 0)
+  const sellRows = rows.filter(r => String(r.name || '').trim() && totQty(r) > 0 && Number(r.prices?.[priceKeyOf()]) > 0)
+  const sellTotal = sellRows.reduce((s, r) => s + totQty(r) * Number(r.prices[priceKeyOf()]), 0)
   // Бонусные строки чека: без цены соседа и без «у кого взяли» продавать нельзя —
   // иначе некому вернуть товар и нечего делить с головным.
-  const bonusRowsCart = sellRows.filter(isBonusRow)
-  const bonusSum = bonusRowsCart.reduce((s, r) => s + Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - (Number(r.bonusCost) || 0)) * Number(r.qty), 0)
+  const bonusRowsCart = sellRows.filter(r => bonQty(r) > 0)
+  const bonusSum = bonusRowsCart.reduce((s, r) => s + Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - (Number(r.bonusCost) || 0)) * bonQty(r), 0)
   const bonusHq = Math.round(bonusSum * 0.5)
-  const bonusToAgent = bonusRowsCart.reduce((s, r) => s + (Number(r.bonusCost) || 0) * Number(r.qty), 0)
+  const bonusToAgent = bonusRowsCart.reduce((s, r) => s + (Number(r.bonusCost) || 0) * bonQty(r), 0)
+  // Пока не вписана цена соседа и не выбран он сам — бонус считать не из чего, чек не пробиваем.
+  const bonusBad = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
   // Скидка по чеку (₸ или %) и смешанная оплата: суммы по счетам должны сойтись с итогом.
   const discPctN = disc.mode === 'pct' ? num(disc.val) : 0
   const discSum = Math.min(sellTotal, Math.max(0, disc.mode === 'pct' ? Math.round(sellTotal * discPctN / 100) : num(disc.val)))
@@ -353,18 +364,18 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const rest = Math.round((net - allocated) * 100) / 100        // сколько ещё не распределено (минус = перебор)
   const givenN = num(given)
   const change = Math.max(0, Math.round((givenN - pCash) * 100) / 100)   // дали налом больше, чем строка «Нал»
-  const qtyTotal = sellRows.reduce((s, r) => s + (Number(r.qty) || 0), 0)
+  const qtyTotal = sellRows.reduce((s, r) => s + totQty(r), 0)
+  const bonQtyTotal = sellRows.reduce((s, r) => s + bonQty(r), 0)
   // Кнопка «всё/остаток» в строке оплаты: добить этот способ до итога.
   const fillPay = (k: 'cash' | 'kaspi' | 'qr' | 'debt') => setPay(p => ({ ...p, [k]: String(Math.max(0, num((p as any)[k]) + rest)) }))
-  const canSell = sellRows.length > 0 && net > 0 && Math.abs(rest) < 0.5 && !selling
+  const canSell = sellRows.length > 0 && net > 0 && Math.abs(rest) < 0.5 && !selling && !bonusBad
 
   async function doSell() {
     if (!sellRows.length) { setSellMsg('нет строк с количеством и ценой'); return }
     if (!(net > 0)) { setSellMsg('итог чека 0'); return }
     if (Math.abs(rest) >= 0.5) { setSellMsg(rest > 0 ? `⚠ не распределено ${fmt(rest)} ₸` : `⚠ перебор на ${fmt(-rest)} ₸`); return }
     if (pDebt > 0 && !sellContact) { setSellMsg('⚠ долг — только на выбранного покупателя'); return }
-    const badBonus = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
-    if (badBonus) { setSellMsg(`⚠ ${badBonus.name}: укажите цену соседа и у кого взяли`); return }
+    if (bonusBad) { setSellMsg(`⚠ ${bonusBad.name}: укажите цену соседа и у кого взяли`); return }
     setSelling(true); setSellMsg('')
     const key = priceKeyOf()
     const emp = staff.find((s: any) => s.id === sellerId)
@@ -376,7 +387,16 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       cash: pCash + change, kaspi: pKaspi, qr: pQr, change, changeFrom: '',
       discountSum: discSum, discountPct: discPctN,
       comment: `Расчёт «${name}»`,
-      positions: sellRows.map(r2 => ({ productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, qty: Number(r2.qty), unit: r2.unit || 'шт', price: Number(r2.prices[key]), bonusCost: Number(r2.bonusCost) || undefined, bonusAgentId: r2.bonusAgentId || undefined })),
+      // Строка листа = до ДВУХ позиций чека: свои штуки (со склада, маржа 60/40) и
+      // бонусные (мимо склада, бонус 50/50 с головным + долг товаром соседу).
+      // Цена у обеих одна — та, что показали клиенту.
+      positions: sellRows.flatMap(r2 => {
+        const base = { productId: r2.productId || undefined, name1c: r2.name1c || r2.name, oral: r2.name, unit: r2.unit || 'шт', price: Number(r2.prices[key]) }
+        const out: any[] = []
+        if (ownQty(r2) > 0) out.push({ ...base, qty: ownQty(r2) })
+        if (bonQty(r2) > 0) out.push({ ...base, qty: bonQty(r2), bonusCost: Number(r2.bonusCost) || undefined, bonusAgentId: r2.bonusAgentId || undefined })
+        return out
+      }),
     })
     setSelling(false)
     setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(net)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
@@ -385,7 +405,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     if (r.ok) {
       setSellContact(''); setSellCode(''); setPay({ cash: '', kaspi: '', qr: '', debt: '' })
       setDisc({ mode: 'sum', val: '' }); setGiven('')
-      commit(brands, rows.map(r2 => ({ ...r2, qty: 0 })))
+      commit(brands, rows.map(r2 => ({ ...r2, qty: 0, bqty: 0 })))
     }
   }
 
@@ -414,7 +434,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // Очистить всю колонку цен фирмы (кнопка в её шапке).
   const clearBrand = (b: any) => { if (!confirm(`Очистить все цены «${b.name}»?`)) return; commit(brands, rows.map(r => { const p = { ...(r.prices || {}) }; delete p[b.id]; return { ...r, prices: p } })) }
 
-  const sumOf = (r: any, b: any) => (Number(r.prices?.[b.id]) || 0) * (Number(r.qty) || 0)
+  const sumOf = (r: any, b: any) => (Number(r.prices?.[b.id]) || 0) * totQty(r)
   const totalOf = (b: any) => rows.reduce((s, r) => s + sumOf(r, b), 0)
   const totals: Record<string, number> = {}; for (const b of brands) totals[b.id] = totalOf(b)
   const positive = brands.map(b => totals[b.id]).filter(v => v > 0)
@@ -480,6 +500,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             <col style={{ width: 38 }} />
             <col />
             <col style={{ width: 78 }} />
+            {bcol && <col style={{ width: 86 }} />}
             {noBrands && <><col style={{ width: 100 }} /><col style={{ width: 110 }} /></>}
             {brands.map(b => b.hidden
               ? <col key={b.id} style={{ width: 30 }} />
@@ -502,8 +523,18 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                   Кол-во
                   <button onClick={clearQty} title="Очистить все количества" style={{ border: `1px solid ${COLORS.border}`, background: '#fff', color: '#8a8377', borderRadius: 6, cursor: 'pointer', fontWeight: 800, fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>⌫</button>
+                  {!bcol && <button onClick={() => setBcol(true)} title="Показать колонку «Бонус» (товар соседа)" style={{ border: `1px solid #e6c9b8`, background: '#fff6ee', color: '#8a4a22', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '5px 8px', fontFamily: 'inherit' }}>👁</button>}
                 </span>
               </th>
+              {/* Бонус: сколько штук взяли у соседа. Прибыль по ним делится 50/50 с головным. */}
+              {bcol && (
+                <th style={{ ...th, background: '#f8e7d8', color: '#8a4a22' }} rowSpan={2}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                    🤝 Бонус
+                    <button onClick={() => setBcol(false)} title="Скрыть колонку «Бонус»" style={{ border: '1px solid #e6c9b8', background: '#fff', color: '#8a4a22', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '5px 7px', fontFamily: 'inherit' }}>🙈</button>
+                  </span>
+                </th>
+              )}
               {/* Без фирм — обычная смета: цена и сумма сразу после количества. */}
               {noBrands && <>
                 <th style={{ ...th, background: COLORS.bg, textAlign: 'right' }} rowSpan={2}>Цена</th>
@@ -598,13 +629,13 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   {/* Бонусный товар (взят у соседа): цена соседа + у кого взяли — без них чек не пробьётся.
                       Полоса живёт ВНУТРИ ячейки названия: отдельная строка с colSpan ломала ширину колонок. */}
                   {/* Вписал цену соседа — прячет полосу глазком, чтобы клиент не видел её за плечом. */}
-                  {isBonusRow(r) && r.bonusHid && (
+                  {bonQty(r) > 0 && r.bonusHid && (
                     <button onClick={() => setRow(i, { bonusHid: false })} title="Показать строку товара соседа"
                       style={{ marginTop: 3, border: '1px solid #f0dcc9', background: '#fff6ee', color: '#c0532a', borderRadius: 7, padding: '1px 7px', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>👁</button>
                   )}
-                  {isBonusRow(r) && !r.bonusHid && (
+                  {bonQty(r) > 0 && !r.bonusHid && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: 12, marginTop: 4, padding: '4px 6px', background: '#fff6ee', border: '1px solid #f0dcc9', borderRadius: 8 }}>
-                      <span style={{ color: '#c0532a', fontWeight: 700, whiteSpace: 'nowrap' }}>🤝 товар соседа</span>
+                      <span style={{ color: '#c0532a', fontWeight: 700, whiteSpace: 'nowrap' }}>🤝 {fmt(bonQty(r))} {r.unit || 'шт'} у соседа</span>
                       <span style={{ color: COLORS.textMuted, whiteSpace: 'nowrap' }}>цена соседа</span>
                       <input value={Number(r.bonusCost) ? String(Number(r.bonusCost)) : ''} inputMode="decimal" autoComplete="off" placeholder="0"
                         onChange={e => setRow(i, { bonusCost: num(e.target.value) })}
@@ -614,7 +645,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                         {cags.find((c: any) => c.id === r.bonusAgentId)?.name || 'у кого взяли ▾'}
                       </button>
                       {Number(r.bonusCost) > 0
-                        ? (() => { const b = Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - Number(r.bonusCost)) * (Number(r.qty) || 0)
+                        ? (() => { const b = Math.max(0, (Number(r.prices?.[priceKeyOf()]) || 0) - Number(r.bonusCost)) * bonQty(r)
                             return <span style={{ color: '#2e8a5e', fontWeight: 700, whiteSpace: 'nowrap' }}>{`бонус ${fmt(b)} · вам ${fmt(b - Math.round(b * 0.5))} · ГО ${fmt(Math.round(b * 0.5))}`}</span> })()
                         : <span style={{ color: '#c0532a', whiteSpace: 'nowrap' }}>впишите цену соседа</span>}
                       <button onClick={() => setRow(i, { bonusHid: true })} title="Скрыть строку товара соседа"
@@ -623,15 +654,23 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
                   )}
                 </td>
                 <td style={{ ...td, background: '#f4f3f0' }}><input id={cellId(i, 1)} autoComplete="off" value={Number(r.qty) ? String(Number(r.qty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 1, () => setRow(i, { qty: 0 }))} onChange={e => setRow(i, { qty: num(e.target.value) })} placeholder="0" style={numInp} /></td>
+                {/* Бонус: штуки соседа. Вписал — под названием сама выходит строка с ценой соседа. */}
+                {bcol && (
+                  <td style={{ ...td, background: '#fff6ee' }} title="Сколько штук взяли у соседа — прибыль по ним 50/50">
+                    {isBonusRow(r)
+                      ? <span style={{ ...numInp, display: 'block', color: '#8a4a22', fontWeight: 800 } as any}>{Number(r.qty) ? fmt(Number(r.qty)) : '—'}</span>
+                      : <input id={cellId(i, 2)} autoComplete="off" value={Number(r.bqty) ? String(Number(r.bqty)) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2, () => setRow(i, { bqty: 0 }))} onChange={e => setRow(i, { bqty: num(e.target.value) })} placeholder="0" style={{ ...numInp, color: '#8a4a22' }} />}
+                  </td>
+                )}
                 {noBrands && <>
-                  <td style={td}><input id={cellId(i, 2)} autoComplete="off" value={Number(r.prices?.[SELF]) ? String(Number(r.prices[SELF])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2, () => setPrice(i, SELF, ''))} onChange={e => setPrice(i, SELF, e.target.value)} placeholder="0" style={numInp} /></td>
-                  <td style={{ ...td, background: '#f8f7f4', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{(Number(r.prices?.[SELF]) || 0) * (Number(r.qty) || 0) ? fmt((Number(r.prices[SELF]) || 0) * (Number(r.qty) || 0)) : ''}</td>
+                  <td style={td}><input id={cellId(i, priceC0)} autoComplete="off" value={Number(r.prices?.[SELF]) ? String(Number(r.prices[SELF])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, priceC0, () => setPrice(i, SELF, ''))} onChange={e => setPrice(i, SELF, e.target.value)} placeholder="0" style={numInp} /></td>
+                  <td style={{ ...td, background: '#f8f7f4', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{(Number(r.prices?.[SELF]) || 0) * totQty(r) ? fmt((Number(r.prices[SELF]) || 0) * totQty(r)) : ''}</td>
                 </>}
                 {brands.map(b => b.hidden
                   ? <td key={b.id} style={{ ...td, background: tint(b.color, '10') }} />
                   : (
                   <Fragment key={b.id}>
-                    <td style={{ ...td, background: tint(b.color, '10') }}><input autoComplete="off" id={cellId(i, 2 + visBrands.findIndex((x: any) => x.id === b.id))} value={Number(r.prices?.[b.id]) ? String(Number(r.prices[b.id])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, 2 + visBrands.findIndex((x: any) => x.id === b.id), () => setPrice(i, b.id, ''))} onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
+                    <td style={{ ...td, background: tint(b.color, '10') }}><input autoComplete="off" id={cellId(i, priceC0 + visBrands.findIndex((x: any) => x.id === b.id))} value={Number(r.prices?.[b.id]) ? String(Number(r.prices[b.id])) : ''} inputMode="decimal" onFocus={() => setCurRow(i)} onKeyDown={e => cellKey(e, i, priceC0 + visBrands.findIndex((x: any) => x.id === b.id), () => setPrice(i, b.id, ''))} onChange={e => setPrice(i, b.id, e.target.value)} placeholder="0" style={numInp} /></td>
                     <td style={{ ...td, background: tint(b.color, '1f'), textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700 }}>{sumOf(r, b) ? fmt(sumOf(r, b)) : ''}</td>
                   </Fragment>
                 ))}
@@ -643,9 +682,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
               <td style={td}></td>
               <td style={td}>{noBrands ? 'ИТОГО' : 'ИТОГО по фирме'}{sellRows.length ? ` · ${sellRows.length} поз.` : ''}</td>
               <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{qtyTotal ? fmt(qtyTotal) : ''}</td>
+              {bcol && <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace', background: '#fff6ee', color: '#8a4a22' }}>{bonQtyTotal ? fmt(bonQtyTotal) : ''}</td>}
               {noBrands && <>
                 <td style={td}></td>
-                <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace', background: '#f4f3f0' }}>{fmt(rows.reduce((s, r) => s + (Number(r.prices?.[SELF]) || 0) * (Number(r.qty) || 0), 0))}</td>
+                <td style={{ ...td, textAlign: 'right', fontFamily: 'Consolas, monospace', background: '#f4f3f0' }}>{fmt(rows.reduce((s, r) => s + (Number(r.prices?.[SELF]) || 0) * totQty(r), 0))}</td>
               </>}
               {brands.map(b => {
                 const isMin = totals[b.id] > 0 && totals[b.id] === minTotal
@@ -678,9 +718,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>{sellRows.length ? `${sellRows.length} поз. · ${fmt(qtyTotal)} шт` : 'впишите кол-во и цену'}</span>
         </div>
 
-        {bonusRowsCart.length > 0 && bonusSum > 0 && (
+        {bonusRowsCart.length > 0 && (
           <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', borderRadius: 9, padding: '7px 10px', fontSize: 12, color: '#8a4a22', fontWeight: 700 }}>
-            🤝 бонус {fmt(bonusSum)} ₸ · вам {fmt(bonusSum - bonusHq)} · Адал Строй 2 {fmt(bonusHq)} · соседу вернуть {fmt(bonusToAgent)} ₸
+            {bonusBad
+              ? `⚠ ${bonusBad.name}: впишите цену соседа и у кого взяли`
+              : `🤝 бонус 50/50 — ${fmt(bonusSum)} ₸ · вам ${fmt(bonusSum - bonusHq)} · Адал Строй 2 ${fmt(bonusHq)} · соседу вернуть ${fmt(bonusToAgent)} ₸`}
           </div>
         )}
 
