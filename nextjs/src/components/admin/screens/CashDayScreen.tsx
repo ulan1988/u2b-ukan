@@ -372,7 +372,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
         {/* Шторка погашения долга: счёт + сумма, деньги приходят сегодняшним днём. */}
         {debtFor && (
           <div onClick={() => setDebtFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 18, width: 'min(440px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 18, width: 'min(440px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800 }}>💵 Вернуть долг</div>
                 <div style={{ fontSize: 12.5, color: COLORS.textLight, marginTop: 2 }}>{debtFor.customer || 'Розница'} · {debtFor.docNumber || debtFor.id} · долг {m(debtFor.debt)} ₸</div>
