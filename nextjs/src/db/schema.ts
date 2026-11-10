@@ -300,6 +300,9 @@ export const payments = pgTable('payments', {
   // Оплата из кабинета клиента ждёт подтверждения: деньги считаются сразу, но строка
   // в «Деньгах» помечена и ждёт «Принять»/«Отказать» (отказ = удаление платежа).
   accepted: boolean('accepted').notNull().default(true),
+  // Номер операции, породившей платёж (сейчас — «прочий доход»: ПД-01-101126).
+  // У обычных оплат пусто: там номер берётся из накладной.
+  docNumber: text('doc_number'),
   comment: text('comment'),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),

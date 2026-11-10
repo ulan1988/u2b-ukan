@@ -153,6 +153,12 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   }
 
   const inc = data?.income || { cash: 0, kaspi: 0, qr: 0, debt: 0, total: 0 }
+  // Лента чеков дня: продажи и «прочий доход» вперемешку по времени.
+  const tsOf = (v: any) => { const x = String(v || ''); const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(x) ? x : x.replace(' ', 'T') + 'Z'); return isFinite(d.getTime()) ? d.getTime() : 0 }
+  const dayFeed = [
+    ...((data?.cards || []) as any[]).map(c => ({ kind: 'check' as const, t: tsOf(c.ts), c })),
+    ...((data?.otherIncome?.rows || []) as any[]).map(r => ({ kind: 'oi' as const, t: tsOf(r.ts), r })),
+  ].sort((a, b) => b.t - a.t)
   const chk = data?.check || { ok: true, diff: 0 }
   const accts = data?.accounts || []
   const card: React.CSSProperties = { background: COLORS.white, borderRadius: 14, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 16 }
@@ -414,9 +420,26 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             </span>
             <span style={{ width: 14 }} />
           </div>
-          {(data.cards || []).length === 0
+          {(data.cards || []).length === 0 && (data.otherIncome?.rows || []).length === 0
             ? <div style={{ padding: '18px 16px 22px', textAlign: 'center', color: COLORS.textMuted, fontSize: 13.5 }}>За этот день чеков нет</div>
-            : (data.cards || []).map((c: any) => {
+            : dayFeed.map((it: any) => {
+              // Прочий доход — операция без товара: такая же строка журнала, со своим номером.
+              if (it.kind === 'oi') {
+                const r = it.r
+                return (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderTop: `1px solid ${COLORS.borderLight}`, background: '#faf7fd' }}>
+                    <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 46 }}>{fmtTime(r.ts)}</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: 12.5, fontWeight: 700, color: '#7a3aaa', width: 150 }}>{r.docNumber || '—'}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', background: '#f0e8fa', borderRadius: 7, padding: '3px 8px', whiteSpace: 'nowrap' }}>➕ прочий доход</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: COLORS.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r.comment || '').replace(/^Прочий доход\s*·?\s*/, '') || 'без товара'}</span>
+                    <span style={{ fontSize: 12.5, color: COLORS.textLight, whiteSpace: 'nowrap' }}>{r.account}</span>
+                    <b style={{ fontSize: 14, color: '#5b3a8a', width: 110, textAlign: 'right' }}>{m(Number(r.amount) || 0)} ₸</b>
+                    <span style={{ width: 122, textAlign: 'right', fontSize: 12, color: '#7a3aaa' }}>50/50</span>
+                    <span style={{ width: 14 }} />
+                  </div>
+                )
+              }
+              const c = it.c
               const open = openCheck === c.id
               const time = fmtTime(c.ts)
               const paid = Number(c.paidCash || 0) + Number(c.paidKaspi || 0) + Number(c.paidQr || 0)
@@ -461,18 +484,6 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 </div>
               )
             })}
-          {/* Прочий доход: деньги без товара (услуга, мелочь) — отдельной строкой журнала,
-              чтобы в чеках дня было видно, откуда пришли деньги сверх продаж. */}
-          {(data.otherIncome?.rows || []).map((r: any) => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderTop: `1px solid ${COLORS.borderLight}`, background: '#faf7fd' }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', background: '#f0e8fa', borderRadius: 7, padding: '3px 8px', whiteSpace: 'nowrap' }}>➕ прочий доход</span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: COLORS.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r.comment || '').replace(/^Прочий доходs*·?s*/, '') || '—'}</span>
-              <span style={{ fontSize: 12.5, color: COLORS.textLight, whiteSpace: 'nowrap' }}>{r.account}</span>
-              <b style={{ fontSize: 14, color: '#5b3a8a', width: 110, textAlign: 'right' }}>{m(Number(r.amount) || 0)} ₸</b>
-              <span style={{ width: 122, textAlign: 'right', fontSize: 12, color: '#7a3aaa' }}>50/50</span>
-              <span style={{ width: 14 }} />
-            </div>
-          ))}
         </div>
 
         {/* 💰 ПРИБЫЛЬ ДНЯ — чек делится на две части ДЕНЕГ: себестоимость («Оплата от покупателей»)

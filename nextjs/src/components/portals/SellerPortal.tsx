@@ -679,6 +679,14 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     ? sold.filter((o: any) => String(o.clientCode || '').includes(chkQn) || String(o.docNumber || o.id).toLowerCase().includes(chkQn))
         .sort((a: any, b: any) => new Date(b.delivered || b.createdAt).getTime() - new Date(a.delivered || a.createdAt).getTime()).slice(0, 50)
     : sold.filter((o: any) => localDay(o.delivered || o.createdAt) === checksDay)
+  // Лента дня: чеки и «прочий доход» вперемешку по времени (операция без товара —
+  // такая же строка журнала, со своим номером ПД-…).
+  const tsOf = (v: any) => { const x = String(v || ''); const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(x) ? x : x.replace(' ', 'T') + 'Z'); return isFinite(d.getTime()) ? d.getTime() : 0 }
+  const dayFeed = [
+    ...soldDay.map((o: any) => ({ kind: 'check' as const, t: tsOf(o.delivered || o.createdAt), o })),
+    ...(chkQn ? [] : oiDay.rows.map((r: any) => ({ kind: 'oi' as const, t: tsOf(r.ts), r }))),
+  ].sort((a, b) => b.t - a.t)
+
   const daySum = soldDay.reduce((s: number, o: any) => s + cardTotal(o), 0)
   const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
@@ -1000,16 +1008,26 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <input value={chkQ} inputMode="numeric" onChange={e => setChkQ(e.target.value)} placeholder="🔍 код чека (цифры телефона) или № чека" style={{ ...inp, flex: 1 }} />
                 {chkQ && <button onClick={() => setChkQ('')} style={{ border: 'none', background: '#f7f5f2', color: '#8a8377', borderRadius: 8, padding: '8px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>✕</button>}
               </div>
-              {/* Прочий доход: деньги без товара — отдельной строкой, чтобы было видно в журнале дня. */}
-              {!chkQn && oiDay.rows.map((r: any) => (
-                <div key={r.id} style={{ background: '#faf7fd', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e0d2ef', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', background: '#f0e8fa', borderRadius: 7, padding: '3px 8px', whiteSpace: 'nowrap' }}>➕ прочий доход</span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#6b645b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r.comment || '').replace(/^Прочий доход\s*·?\s*/, '') || '—'}</span>
-                  <b style={{ fontSize: 14.5, color: '#5b3a8a', whiteSpace: 'nowrap' }}>{money(Number(r.amount) || 0)} ₸</b>
-                </div>
-              ))}
               {soldDay.length === 0 && oiDay.rows.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>{chkQn ? 'По этому коду чеков нет' : checksDay === localDay() ? 'Сегодня продаж ещё нет' : 'За этот день продаж нет'}</div>}
-              {soldDay.map((o: any) => {
+              {dayFeed.map((it: any) => {
+                if (it.kind === 'oi') {
+                  const r = it.r
+                  return (
+                    <div key={r.id} style={{ background: '#faf7fd', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e0d2ef', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 12.5, fontWeight: 700, color: '#7a3aaa' }}>№ {r.docNumber || '—'}</span>
+                          <span style={{ fontSize: 11.5, color: '#a09889' }}>{fmtTime(r.ts)}</span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: '#6b645b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          ➕ прочий доход · {String(r.comment || '').replace(/^Прочий доход\s*·?\s*/, '') || 'без товара'}
+                        </div>
+                      </div>
+                      <b style={{ fontSize: 15, color: '#5b3a8a', whiteSpace: 'nowrap' }}>{money(Number(r.amount) || 0)} ₸</b>
+                    </div>
+                  )
+                }
+                const o = it.o
                 const t = cardTotal(o)
                 const retSum = Number(o.returnedSum || 0)
                 const time = fmtTime(o.delivered || o.createdAt)

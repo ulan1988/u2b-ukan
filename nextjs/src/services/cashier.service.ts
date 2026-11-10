@@ -721,11 +721,17 @@ export async function otherIncome(orgId: string, i: {
   const contactId = i.contactId || await ensureRetailContragent(orgId)
   const acc = await ensureCashAccounts(orgId)
   const day = i.date || today()
+  // Номер операции — как у чека, чтобы в журнале было на что сослаться: ПД-01-101126.
+  const { sqlClient: sqlC } = await import('../lib/db')
+  const seq = Number((await sqlC`select count(distinct coalesce(doc_number, id::text))::int n from payments
+    where org_id = ${orgId} and date = ${day} and doc_number like 'ПД-%'` as unknown as Array<any>)[0]?.n || 0) + 1
+  const dd = day.slice(8, 10) + day.slice(5, 7) + day.slice(2, 4)
+  const docNumber = `ПД-${String(seq).padStart(2, '0')}-${dd}`
   const note = (i.comment || '').trim()
   const label = `Прочий доход${note ? ` · ${note}` : ''}${i.seller ? ` · ${i.seller}` : ''}`
-  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: null, comment: `${label} · нал` } as any)
-  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: null, comment: `${label} · каспи` } as any)
-  if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: null, comment: `${label} · QR` } as any)
+  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: null, docNumber, comment: `${label} · нал` } as any)
+  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: null, docNumber, comment: `${label} · каспи` } as any)
+  if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: null, docNumber, comment: `${label} · QR` } as any)
 
   // Дележ 50/50 — тем же журналом, что бонус товара соседа (виден в «Кассе дня»).
   const { db } = await import('../lib/db')
@@ -736,7 +742,7 @@ export async function otherIncome(orgId: string, i: {
     productName: note ? `Прочий доход · ${note}` : 'Прочий доход',
     qty: '1', price: String(sum), cost: '0', bonus: String(sum), hqShare: String(hq),
   } as any)
-  return { ok: true as const, sum, hqShare: hq, ourShare: sum - hq }
+  return { ok: true as const, sum, hqShare: hq, ourShare: sum - hq, docNumber }
 }
 
 // Прочие доходы за день (для журнала чеков и «Кассы дня»): платежи без документа,
@@ -744,7 +750,8 @@ export async function otherIncome(orgId: string, i: {
 export async function listOtherIncome(orgId: string, date: string) {
   const { sqlClient } = await import('../lib/db')
   const rows = await sqlClient`
-    select p.id, p.amount::float amount, coalesce(p.comment,'') comment, p.created_at ts, coalesce(a.name,'') account
+    select p.id, p.amount::float amount, coalesce(p.comment,'') comment, coalesce(p.doc_number,'') "docNumber",
+      to_char(p.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') ts, coalesce(a.name,'') account
     from payments p left join cash_accounts a on a.id = p.cash_account_id
     where p.org_id = ${orgId} and p.date = ${date} and p.direction = 'in' and p.comment ilike 'Прочий доход%'
     order by p.created_at desc` as unknown as Array<any>
