@@ -98,3 +98,16 @@ export const payDebtSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 export type PayDebtInput = z.infer<typeof payDebtSchema>
+
+// «Прочий доход» (касса/Расчёт): деньги без товара — приход по счетам + бонус 50/50 с головным.
+// Склад и накладные НЕ трогаются: себестоимости нет, вся сумма = бонус, половина — доля ГО.
+export const otherIncomeSchema = z.object({
+  uid: z.string().uuid().optional(),
+  contactId: z.string().uuid().optional(),        // от кого деньги; пусто → «Розничный покупатель»
+  cash: z.coerce.number().nonnegative().optional().default(0),
+  kaspi: z.coerce.number().nonnegative().optional().default(0),
+  qr: z.coerce.number().nonnegative().optional().default(0),
+  comment: z.string().max(200).optional().default(''),
+  seller: z.string().optional().default(''),
+  date: z.string().optional(),
+})

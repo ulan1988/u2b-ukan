@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import { calcGet, calcSave, calcCreate, calcDelete } from '@/lib/api/calc'
-import { sellCheck } from '@/lib/api/orders'
+import { sellCheck, otherIncome } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import CatalogFilterBar from '@/components/CatalogFilterBar'
@@ -35,7 +35,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [sellCode, setSellCode] = useState('')
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', debt: '' })   // суммы по способам — можно смешивать
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })
-  const [given, setGiven] = useState('')                 // сколько дали налом → сдача
+  const [given, setGiven] = useState('')
+  const [incNote, setIncNote] = useState('')          // за что «прочий доход» (пишем в комментарий платежа)                 // сколько дали налом → сдача
   const [wide, setWide] = useState(true)                 // широкий экран: чек рядом с таблицей
   const [full, setFull] = useState(false)                // полноэкранный режим кассы (без меню слева)
   const [selling, setSelling] = useState(false)
@@ -369,6 +370,23 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // Кнопка «всё/остаток» в строке оплаты: добить этот способ до итога.
   const fillPay = (k: 'cash' | 'kaspi' | 'qr' | 'debt') => setPay(p => ({ ...p, [k]: String(Math.max(0, num((p as any)[k]) + rest)) }))
   const canSell = sellRows.length > 0 && net > 0 && Math.abs(rest) < 0.5 && !selling && !bonusBad
+
+  // «Прочий доход»: деньги без товара. Берём суммы из строк оплаты (нал/каспи/QR),
+  // кладём на счета и делим 50/50 с головным — склад и накладные не трогаются.
+  async function doOtherIncome() {
+    const money = pCash + pKaspi + pQr
+    if (!(money > 0)) { setSellMsg('⚠ впишите сумму в «Нал», «Каспи» или «QR»'); return }
+    if (!confirm(`Провести как ПРОЧИЙ ДОХОД ${fmt(money)} ₸?
+
+Товар не списывается, прибыль делится 50/50 с Адал Строй 2 (ваша доля ${fmt(money - Math.round(money * 0.5))} ₸).`)) return
+    setSelling(true); setSellMsg('')
+    const emp = staff.find((s2: any) => s2.id === sellerId)
+    const r: any = await otherIncome({ contactId: sellContact || undefined, cash: pCash, kaspi: pKaspi, qr: pQr, comment: incNote, seller: emp?.name })
+    setSelling(false)
+    if (!r.ok) { setSellMsg('⚠ ' + (r.error || 'не удалось')); return }
+    setSellMsg(`✓ прочий доход ${fmt(r.sum || money)} ₸ · вам ${fmt(r.ourShare || 0)} · Адал Строй 2 ${fmt(r.hqShare || 0)}`)
+    setPay({ cash: '', kaspi: '', qr: '', debt: '' }); setGiven(''); setIncNote('')
+  }
 
   async function doSell() {
     if (!sellRows.length) { setSellMsg('нет строк с количеством и ценой'); return }
@@ -802,6 +820,15 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           style={{ border: 'none', background: canSell ? '#2e8a5e' : '#cfd8d2', color: '#fff', borderRadius: 12, padding: '15px 10px', cursor: canSell ? 'pointer' : 'default', fontSize: 16.5, fontWeight: 800, fontFamily: 'inherit' }}>
           {selling ? '…' : `💵 Пробить чек · ${fmt(net)} ₸ · F9`}
         </button>
+        {/* Прочий доход: деньги без товара (услуга, доставка, мелочь) — на счета и 50/50 с головным. */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input value={incNote} onChange={e => setIncNote(e.target.value)} placeholder="за что (необязательно)"
+            style={{ flex: 1, minWidth: 0, padding: '9px 10px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }} />
+          <button onClick={doOtherIncome} disabled={selling || !(pCash + pKaspi + pQr > 0)} title="Деньги без товара: на счета + прибыль 50/50 с Адал Строй 2"
+            style={{ flex: 'none', border: '1.5px solid #cdb6e2', background: (selling || !(pCash + pKaspi + pQr > 0)) ? '#f3f1ee' : '#f7f3fc', color: (selling || !(pCash + pKaspi + pQr > 0)) ? '#a09889' : '#7a3aaa', borderRadius: 10, padding: '11px 14px', cursor: (selling || !(pCash + pKaspi + pQr > 0)) ? 'default' : 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            ➕ Прочий доход{pCash + pKaspi + pQr > 0 ? ` · ${fmt(pCash + pKaspi + pQr)} ₸` : ''}
+          </button>
+        </div>
         {sellMsg && <div style={{ fontSize: 13, fontWeight: 700, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</div>}
         <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Склад филиала списывается, деньги ложатся на счета по строкам оплаты. Строки без цены или количества в чек не идут.</div>
       </aside>

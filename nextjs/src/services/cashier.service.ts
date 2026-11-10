@@ -704,3 +704,37 @@ export async function editCheck(cardId: string, i: EditCheckInput, actor?: Sessi
   await repo.insertHistory({ cardId, action: 'edit', detail: `Чек изменён: ${i.positions.length} поз., нал ${i.cash || 0}, каспи ${i.kaspi || 0}, QR ${i.qr || 0}`, userName: actor?.name || 'Система' })
   return { ...res, id: cardId }
 }
+
+// ── ПРОЧИЙ ДОХОД: деньги без товара, прибыль 50/50 с головным ───────────────────
+// Кассир берёт деньги, которых нет в товарном чеке (услуга, доставка, мелочь соседу
+// и т.п.): склад и накладные НЕ трогаем, себестоимости нет — вся сумма идёт в бонус,
+// половина доля головного (как у товара соседа). Деньги ложатся на счета по способам.
+export async function otherIncome(orgId: string, i: {
+  contactId?: string; cash?: number; kaspi?: number; qr?: number; comment?: string; seller?: string; date?: string
+}, actor?: Session | null) {
+  const cash = Math.max(0, Math.round(Number(i.cash) || 0))
+  const kaspi = Math.max(0, Math.round(Number(i.kaspi) || 0))
+  const qr = Math.max(0, Math.round(Number(i.qr) || 0))
+  const sum = cash + kaspi + qr
+  if (!(sum > 0)) return { ok: false as const, error: 'Впишите сумму по счетам (нал / каспи / QR)' }
+
+  const contactId = i.contactId || await ensureRetailContragent(orgId)
+  const acc = await ensureCashAccounts(orgId)
+  const day = i.date || today()
+  const note = (i.comment || '').trim()
+  const label = `Прочий доход${note ? ` · ${note}` : ''}${i.seller ? ` · ${i.seller}` : ''}`
+  if (cash > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(cash), date: day, cashAccountId: acc.cash, documentId: null, comment: `${label} · нал` } as any)
+  if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: null, comment: `${label} · каспи` } as any)
+  if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: null, comment: `${label} · QR` } as any)
+
+  // Дележ 50/50 — тем же журналом, что бонус товара соседа (виден в «Кассе дня»).
+  const { db } = await import('../lib/db')
+  const { bonusRows } = await import('../db/schema')
+  const hq = Math.round(sum * 0.5)
+  await db.insert(bonusRows).values({
+    id: randomUUID(), orgId, date: day, cardId: null, posId: null, agentId: null,
+    productName: note ? `Прочий доход · ${note}` : 'Прочий доход',
+    qty: '1', price: String(sum), cost: '0', bonus: String(sum), hqShare: String(hq),
+  } as any)
+  return { ok: true as const, sum, hqShare: hq, ourShare: sum - hq }
+}

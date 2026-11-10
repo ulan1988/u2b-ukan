@@ -166,3 +166,9 @@ export async function editCheck(body: {
 }
 // Кабинет мастера: отправить выполненный заказ сразу головному (цепочка накладных, без логиста).
 export const sendToHq = (cardId: string, date?: string) => post(`/api/orders/${cardId}/tohq`, date ? { date } : {})
+
+// «Прочий доход»: деньги без товара (приход по счетам + бонус 50/50 с головным).
+export async function otherIncome(body: { uid?: string; contactId?: string; cash?: number; kaspi?: number; qr?: number; comment?: string; seller?: string }) {
+  const r = await post('/api/branch/other-income', body)
+  return { ok: r.ok && r.data?.ok !== false, error: (r.data?.error || r.error) as string | undefined, sum: r.data?.sum as number | undefined, hqShare: r.data?.hqShare as number | undefined, ourShare: r.data?.ourShare as number | undefined }
+}
