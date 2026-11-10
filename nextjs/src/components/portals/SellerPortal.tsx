@@ -1033,10 +1033,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 const time = fmtTime(o.delivered || o.createdAt)
                 const allBack = (o.positions || []).length > 0 && (o.positions || []).every((p: any) => retRemain(o, p) <= 0.0000001)
                 return (
-                  <div key={o.id} onClick={() => setViewChk(o)} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: GREEN }}>№ {o.docNumber || o.id}</span>
+                  <div key={o.id} onClick={() => setViewChk(o)} style={{ background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: GREEN, whiteSpace: 'nowrap' }}>№ {o.docNumber || o.id}</span>
                         <span style={{ fontSize: 11.5, color: '#a09889' }}>{time}</span>
                         {o.clientCode && <span title="Код чека (цифры телефона покупателя)" style={{ fontSize: 11, fontWeight: 800, color: '#4a4a8a', background: '#ececf8', borderRadius: 6, padding: '2px 7px', letterSpacing: '.06em' }}>код {o.clientCode}</span>}
                         {chkQn && <span style={{ fontSize: 11, color: '#a09889' }}>{localDay(o.delivered || o.createdAt).split('-').reverse().slice(0, 2).join('.')}</span>}
@@ -1049,12 +1049,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       {retSum - Number(o.exchangeSum || 0) > 0.5 && <div style={{ fontSize: 11.5, color: '#c0532a', fontWeight: 700 }}>↩ возвращено {money(retSum - Number(o.exchangeSum || 0))} ₸</div>}
                       {Number(o.exchangeSum || 0) > 0 && <div style={{ fontSize: 11.5, color: '#2f5aa8', fontWeight: 700 }}>🔄 обмен {money(Number(o.exchangeSum))} ₸ · {(o.exchangeIn || []).map((x: any) => x.name).join(', ')} → {(o.exchangeOut || []).map((x: any) => x.name).join(', ')}</div>}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK }}>{money(t)} ₸</div>
-                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK, whiteSpace: 'nowrap' }}>{money(t)} ₸</div>
+                      <span style={{ flex: 1 }} />
                     <button onClick={e => { e.stopPropagation(); setRcpt(o) }} title="Показать / отправить чек" style={{ border: '1.5px solid #d6d0c7', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit' }}>🧾</button>
                     {!allBack && <button onClick={e => { e.stopPropagation(); openReturn(o) }} style={{ border: '1.5px solid #e6c9b8', background: '#fff', color: '#c0532a', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Возврат</button>}
                     {!allBack && <button onClick={e => { e.stopPropagation(); openExchange(o) }} title="Покупатель сдаёт товар и берёт другой на ту же сумму" style={{ border: '1.5px solid #c7d6f0', background: '#fff', color: '#2f5aa8', borderRadius: 9, padding: '8px 10px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🔄 Обмен</button>}
+                    </div>
                   </div>
                 )
               })}
