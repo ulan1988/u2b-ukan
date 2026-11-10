@@ -18,7 +18,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
+import { otherIncomeDay, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -97,6 +97,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [hqBridge, setHqBridge] = useState<any>(null)   // контрагент-мост «Адал Строй» (головной) — для «долга на головного»
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
   const [checksDay, setChecksDay] = useState(localDay())
+  const [oiDay, setOiDay] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 })   // прочий доход за день
   const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
   // правка пробитого чека: строки, оплата, скидка
   const [editFor, setEditFor] = useState<any>(null)
@@ -206,6 +207,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   }, [])
 
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
+  // Прочий доход (деньги без товара) живёт не в накладных, а в платежах — тянем отдельно.
+  useEffect(() => { otherIncomeDay(checksDay, user.id).then((d: any) => setOiDay({ rows: d?.rows || [], total: Number(d?.total) || 0 })).catch(() => setOiDay({ rows: [], total: 0 })) }, [checksDay, user.id])
   useEffect(() => { load() }, [load])
   useLiveData(() => { if (!showCatalog && !busy) load() }, [])
 
@@ -987,8 +990,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <button onClick={() => setChecksDay(localDay())} style={{ border: checksDay === localDay() ? 'none' : '1.5px solid #e6e2dc', background: checksDay === localDay() ? PRIMARY : '#fff', color: checksDay === localDay() ? '#fff' : DARK, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>Сегодня</button>
                 <input type="date" value={checksDay} max={localDay()} onChange={e => setChecksDay(e.target.value || localDay())} style={{ border: '1.5px solid #e6e2dc', borderRadius: 9, padding: '7px 10px', fontFamily: 'inherit', fontSize: 13.5, color: DARK }} />
                 <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                  <div style={{ fontSize: 10.5, color: '#a09889' }}>{chkQn ? 'найдено' : ''} {soldDay.length} чек.</div>
+                  <div style={{ fontSize: 10.5, color: '#a09889' }}>{chkQn ? 'найдено' : ''} {soldDay.length} чек.{oiDay.total > 0 ? ' + прочий доход' : ''}</div>
                   <div style={{ fontSize: 14.5, fontWeight: 800 }}>{money(daySum)} ₸</div>
+                  {oiDay.total > 0 && <div style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa' }}>+ {money(oiDay.total)} ₸</div>}
                 </div>
               </div>
               {/* поиск чека по коду (последние цифры телефона) или номеру — по всем дням */}
@@ -996,7 +1000,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 <input value={chkQ} inputMode="numeric" onChange={e => setChkQ(e.target.value)} placeholder="🔍 код чека (цифры телефона) или № чека" style={{ ...inp, flex: 1 }} />
                 {chkQ && <button onClick={() => setChkQ('')} style={{ border: 'none', background: '#f7f5f2', color: '#8a8377', borderRadius: 8, padding: '8px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>✕</button>}
               </div>
-              {soldDay.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>{chkQn ? 'По этому коду чеков нет' : checksDay === localDay() ? 'Сегодня продаж ещё нет' : 'За этот день продаж нет'}</div>}
+              {/* Прочий доход: деньги без товара — отдельной строкой, чтобы было видно в журнале дня. */}
+              {!chkQn && oiDay.rows.map((r: any) => (
+                <div key={r.id} style={{ background: '#faf7fd', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e0d2ef', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', background: '#f0e8fa', borderRadius: 7, padding: '3px 8px', whiteSpace: 'nowrap' }}>➕ прочий доход</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#6b645b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r.comment || '').replace(/^Прочий доход\s*·?\s*/, '') || '—'}</span>
+                  <b style={{ fontSize: 14.5, color: '#5b3a8a', whiteSpace: 'nowrap' }}>{money(Number(r.amount) || 0)} ₸</b>
+                </div>
+              ))}
+              {soldDay.length === 0 && oiDay.rows.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>{chkQn ? 'По этому коду чеков нет' : checksDay === localDay() ? 'Сегодня продаж ещё нет' : 'За этот день продаж нет'}</div>}
               {soldDay.map((o: any) => {
                 const t = cardTotal(o)
                 const retSum = Number(o.returnedSum || 0)

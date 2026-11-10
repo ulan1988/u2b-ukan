@@ -172,3 +172,8 @@ export async function otherIncome(body: { uid?: string; contactId?: string; cash
   const r = await post('/api/branch/other-income', body)
   return { ok: r.ok && r.data?.ok !== false, error: (r.data?.error || r.error) as string | undefined, sum: r.data?.sum as number | undefined, hqShare: r.data?.hqShare as number | undefined, ourShare: r.data?.ourShare as number | undefined }
 }
+
+// Прочие доходы за день (деньги без товара) — для журнала чеков магазина.
+export async function otherIncomeDay(date: string, uid?: string) {
+  return getObj(`/api/branch/other-income?date=${date}${uid ? `&uid=${uid}` : ''}`, { rows: [], total: 0 } as any)
+}

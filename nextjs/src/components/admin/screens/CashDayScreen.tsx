@@ -364,7 +364,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px 10px' }}>
             <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🧾 ЧЕКИ ДНЯ</span>
             <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{(data.cards || []).length} шт</span>
-            <b style={{ marginLeft: 'auto', fontSize: 15 }}>{m(inc.total)} ₸</b>
+            {Number(data.otherIncome?.total) > 0 && <span style={{ fontSize: 12.5, fontWeight: 800, color: '#7a3aaa', marginLeft: 'auto' }}>+ прочий доход {m(data.otherIncome.total)} ₸</span>}
+            <b style={{ marginLeft: Number(data.otherIncome?.total) > 0 ? 10 : 'auto', fontSize: 15 }}>{m(inc.total)} ₸</b>
             <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 108, textAlign: 'right' }}>
               себест {m((data.cards || []).reduce((s: number, c: any) => s + Number(c.cost || 0), 0))}
             </span>
@@ -417,6 +418,18 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 </div>
               )
             })}
+          {/* Прочий доход: деньги без товара (услуга, мелочь) — отдельной строкой журнала,
+              чтобы в чеках дня было видно, откуда пришли деньги сверх продаж. */}
+          {(data.otherIncome?.rows || []).map((r: any) => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderTop: `1px solid ${COLORS.borderLight}`, background: '#faf7fd' }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: '#7a3aaa', background: '#f0e8fa', borderRadius: 7, padding: '3px 8px', whiteSpace: 'nowrap' }}>➕ прочий доход</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: COLORS.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r.comment || '').replace(/^Прочий доходs*·?s*/, '') || '—'}</span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight, whiteSpace: 'nowrap' }}>{r.account}</span>
+              <b style={{ fontSize: 14, color: '#5b3a8a', width: 110, textAlign: 'right' }}>{m(Number(r.amount) || 0)} ₸</b>
+              <span style={{ width: 122, textAlign: 'right', fontSize: 12, color: '#7a3aaa' }}>50/50</span>
+              <span style={{ width: 14 }} />
+            </div>
+          ))}
         </div>
 
         {/* 💰 ПРИБЫЛЬ ДНЯ — чек делится на две части ДЕНЕГ: себестоимость («Оплата от покупателей»)

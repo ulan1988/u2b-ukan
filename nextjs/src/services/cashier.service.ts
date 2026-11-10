@@ -738,3 +738,16 @@ export async function otherIncome(orgId: string, i: {
   } as any)
   return { ok: true as const, sum, hqShare: hq, ourShare: sum - hq }
 }
+
+// Прочие доходы за день (для журнала чеков и «Кассы дня»): платежи без документа,
+// помеченные комментарием «Прочий доход…». Товара в них нет — показываем отдельной строкой.
+export async function listOtherIncome(orgId: string, date: string) {
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`
+    select p.id, p.amount::float amount, coalesce(p.comment,'') comment, p.created_at ts, coalesce(a.name,'') account
+    from payments p left join cash_accounts a on a.id = p.cash_account_id
+    where p.org_id = ${orgId} and p.date = ${date} and p.direction = 'in' and p.comment ilike 'Прочий доход%'
+    order by p.created_at desc` as unknown as Array<any>
+  const total = rows.reduce((s2: number, r: any) => s2 + (Number(r.amount) || 0), 0)
+  return { rows, total }
+}

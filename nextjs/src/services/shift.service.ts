@@ -184,8 +184,12 @@ export async function masterShift(orgId: string, date: string) {
   ` as unknown as Array<any>
   const debtTotal = debts.reduce((a: number, x: any) => a + num(x.debt), 0)
 
+  // Прочие доходы дня (деньги без товара, 50/50) — отдельной строкой в журнале чеков.
+  const { listOtherIncome } = await import('./cashier.service')
+  const otherIncome = await listOtherIncome(orgId, date)
+
   return {
-    date, kind: orgKind, income, check, cards, staff, attendance: attIds, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, attendance: attIds, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
