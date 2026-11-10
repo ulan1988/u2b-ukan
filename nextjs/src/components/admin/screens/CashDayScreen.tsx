@@ -330,6 +330,10 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   <div style={line}><span>Продано</span><b>{m(r.sold)} ₸</b></div>
                   <div style={line}><span>Наценка</span><b style={{ color: '#2e8a5e' }}>{m(r.margin)} ₸ · {Math.round((r.marginPct || 0) * 100)}%</b></div>
                   <div style={line}><span>Долг</span><b style={{ color: COLORS.primaryDark }}>{m(r.debt)} ₸</b></div>
+                  {/* Возврат: товар принят обратно по себестоимости; из кассы ушли деньги (минус). */}
+                  {(Number(r.ret) > 0 || Number(r.refund) > 0) && (
+                    <div style={line}><span>Возврат <span style={{ color: COLORS.textLight }}>(по себест.)</span></span><b style={{ color: '#c0532a' }}>−{m(r.ret)} ₸{Number(r.refund) > 0 ? <span style={{ fontWeight: 600, color: COLORS.textLight }}> · касса −{m(r.refund)}</span> : null}</b></div>
+                  )}
                   <div style={{ ...line, color: COLORS.textLight, fontSize: 12.5, borderTop: `1px solid ${COLORS.borderLight}`, marginTop: 4, paddingTop: 6 }}><span>нал {m(r.cash)} · каспи {m(r.kaspi)} · QR {m(r.qr)}</span></div>
                 </div>
                 {/* РАСХОД */}
@@ -345,6 +349,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <div style={{ background: '#eef7f1', borderRadius: 10, padding: '10px 14px' }}>
                   <div style={sub}>ИТОГ</div>
                   <div style={line}><span>Продажа</span><span>{m(r.sold)}</span></div>
+                  {Number(r.ret) > 0 && <div style={line}><span>− Возврат</span><span>{m(r.ret)}</span></div>}
                   <div style={line}><span>− ЗП</span><span>{m(r.zpTotal)}</span></div>
                   <div style={line}><span>− Расходы</span><span>{m(r.shopExp)}</span></div>
                   <div style={{ ...line, fontWeight: 800, fontSize: 18, color: '#2e8a5e', borderTop: `1px solid #cfe6d8`, marginTop: 4, paddingTop: 8 }}><span>Итого</span><span>{m(r.result)} ₸</span></div>

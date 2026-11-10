@@ -52,7 +52,9 @@ export const goodsDebtSchema = z.object({
 export const returnSchema = z.object({
   uid: z.string().uuid().optional(),
   cardId: z.string().min(1),
-  items: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive() })).optional(), // пусто → весь чек
+  // price — цена возврата за единицу (у изделия — за см, как везде). Пусто → СЕБЕСТОИМОСТЬ
+  // позиции (правило магазина: принимаем товар обратно по себестоимости), её можно изменить.
+  items: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive(), price: z.coerce.number().min(0).optional() })).optional(), // пусто → весь чек
   accountId: z.string().uuid().optional(),        // счёт возврата (cash_accounts.id); пусто → «в долг» (без денег)
 })
 

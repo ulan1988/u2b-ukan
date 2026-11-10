@@ -110,6 +110,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [retFor, setRetFor] = useState<any>(null)        // чек, по которому открыт возврат
   const [retSel, setRetSel] = useState<Set<string>>(new Set())
   const [retQty, setRetQty] = useState<Record<string, number>>({})  // кол-во к возврату по позиции
+  const [retPrice, setRetPrice] = useState<Record<string, string>>({}) // цена возврата (пусто = себестоимость)
   // Обмен по чеку: что покупатель сдаёт (позиции чека) и что выдаём взамен. Только равная сумма.
   const [exFor, setExFor] = useState<any>(null)
   const [exSel, setExSel] = useState<Set<string>>(new Set())
@@ -518,10 +519,19 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Остаток к возврату по позиции = продано − уже возвращено.
   const retRemain = (o: any, p: any) => Number(p.qty) - Number((o.returnedByPos || {})[p.id] || 0)
   // Возврат: открыть шторку по чеку (все ещё не возвращённые позиции отмечены на полный остаток).
+  // Цена возврата по умолчанию = СЕБЕСТОИМОСТЬ единицы (у изделия — за см, как цена продажи).
+  // Нет себестоимости (0) — откат на цену продажи, иначе приняли бы товар за 0.
+  const costPriceOf = (p: any) => {
+    const perUnit = Number(p.unitCost) || 0
+    const cm = Number(p.widthCm) || 0
+    const asPrice = isIzdelie(p.name1c || p.oral) && cm > 0 ? perUnit / cm : perUnit
+    return asPrice > 0 ? Math.round(asPrice * 100) / 100 : Number(p.price) || 0
+  }
+  const retPriceOf = (p: any) => { const v = retPrice[p.id]; return v === undefined || v === '' ? costPriceOf(p) : num(v) }
   function openReturn(o: any) {
     const sel = new Set<string>(); const qty: Record<string, number> = {}
     for (const p of (o.positions || [])) { const rem = retRemain(o, p); if (rem > 0) { sel.add(p.id); qty[p.id] = rem } }
-    setRetFor(o); setRetSel(sel); setRetQty(qty)
+    setRetFor(o); setRetSel(sel); setRetQty(qty); setRetPrice({})
     setRetAcc(payAccOf(o))   // счёт по способу оплаты чека (нал → касса, каспи → GOLD, QR → банк)
   }
   // Каким счётом платили чек — тем и возвращаем. Смешанная — берём счёт с большей суммой.
@@ -566,7 +576,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   async function doReturn() {
     if (!retFor) return
     if (!retAcc) { showMsg('⚠ Выберите счёт возврата'); return }
-    const items = Array.from(retSel).map(id => ({ posId: id, qty: retQty[id] || 0 })).filter(i => i.qty > 0)
+    const posById = new Map<string, any>((retFor.positions || []).map((p: any) => [p.id, p]))
+    const items = Array.from(retSel)
+      .map(id => ({ posId: id, qty: retQty[id] || 0, price: retPriceOf(posById.get(id) || {}) }))
+      .filter(i => i.qty > 0)
     if (items.length === 0) { showMsg('⚠ Отметьте позиции и кол-во к возврату'); return }
     setBusy(true)
     const r = await returnSale({ uid: user.id, cardId: retFor.id, items, accountId: retAcc })
@@ -1483,7 +1496,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
       {retFor && (() => {
         const poss = (retFor.positions || [])
-        const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: retQty[p.id] || 0, price: p.price, widthCm: p.widthCm }), 0)
+        // Считаем по ЦЕНЕ ВОЗВРАТА (себестоимость или вписанная), а не по цене продажи.
+        const selTotal = poss.filter((p: any) => retSel.has(p.id)).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: retQty[p.id] || 0, price: retPriceOf(p), widthCm: p.widthCm }), 0)
         const total = cardTotal(retFor)
         const paid = (Number(retFor.paidCash) || 0) + (Number(retFor.paidKaspi) || 0) + (Number(retFor.paidQr) || 0)
         const curDebt = Math.max(0, total - paid - Number(retFor.returnedSum || 0))
@@ -1516,7 +1530,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   const on = retSel.has(p.id)
                   const q = retQty[p.id] || 0
                   const perCm = isIzdelie(p.name1c || p.oral) && Number(p.widthCm) > 0
-                  const sum = lineAmount({ name: p.name1c || p.oral, qty: q, price: p.price, widthCm: p.widthCm })
+                  const cost = costPriceOf(p)
+                  const pr = retPriceOf(p)
+                  const sum = lineAmount({ name: p.name1c || p.oral, qty: q, price: pr, widthCm: p.widthCm })
                   return (
                     <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${on ? PRIMARY : '#eee9e2'}`, background: back ? '#f7f5f2' : on ? '#fdf6f2' : '#fff', opacity: back ? 0.6 : 1 }}>
                       <div onClick={() => !back && toggleRetPos(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: back ? 'default' : 'pointer' }}>
@@ -1538,6 +1554,24 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                           </div>
                           <span style={{ fontSize: 11, color: '#a09889', width: 38, textAlign: 'right' }}>/ {rem}{perCm ? ' шт' : ''}</span>
                         </div>
+                      )}
+                      {/* ЦЕНА ВОЗВРАТА: по умолчанию себестоимость, можно вписать свою. */}
+                      {on && !back && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
+                          <span style={{ fontSize: 12, color: '#5f5952' }}>Цена возврата{perCm ? ' (за см)' : ''}</span>
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <input value={retPrice[p.id] ?? ''} inputMode="decimal" placeholder={String(cost)}
+                              onChange={e => setRetPrice(m => ({ ...m, [p.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
+                              style={{ ...inp, width: 92, padding: '7px 6px', fontSize: 14, textAlign: 'right' }} />
+                            {retPrice[p.id] ? (
+                              <button onClick={() => setRetPrice(m => { const n = { ...m }; delete n[p.id]; return n })} title="Вернуть себестоимость"
+                                style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: '#6b645b' }}>↺</button>
+                            ) : <span style={{ fontSize: 11, color: GREEN, fontWeight: 700, width: 86 }}>себестоим.</span>}
+                          </div>
+                        </div>
+                      )}
+                      {on && !back && pr !== cost && (
+                        <div style={{ fontSize: 11, color: '#c0532a', paddingLeft: 32 }}>цена изменена вручную · себестоимость {money(cost)}{perCm ? ' /см' : ''}</div>
                       )}
                     </div>
                   )
@@ -1563,10 +1597,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
               <div style={{ padding: 14, borderTop: '1px solid #f1ede8', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
-                  <span>К возврату</span><span style={{ marginLeft: 'auto', fontWeight: 800, color: DARK }}>{money(selTotal)} ₸</span>
+                  <span>К возврату <span style={{ color: '#a09889' }}>(по себестоимости)</span></span><span style={{ marginLeft: 'auto', fontWeight: 800, color: DARK }}>{money(selTotal)} ₸</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: '#5f5952' }}>
-                  <span>Со счёта (остальное — в долг)</span><span style={{ marginLeft: 'auto', fontWeight: 800, color: refund > 0 ? '#c0532a' : GREEN }}>{money(refund)} ₸</span>
+                  <span>Касса минус <span style={{ color: '#a09889' }}>(остальное — в долг)</span></span><span style={{ marginLeft: 'auto', fontWeight: 800, color: refund > 0 ? '#c0532a' : GREEN }}>−{money(refund)} ₸</span>
                 </div>
                 <button disabled={busy || selTotal <= 0 || !retAcc} onClick={doReturn} style={{ border: 'none', background: (busy || selTotal <= 0 || !retAcc) ? '#d8b6a6' : '#c0532a', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || selTotal <= 0 || !retAcc) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `↩ Провести возврат · ${money(selTotal)} ₸`}</button>
               </div>

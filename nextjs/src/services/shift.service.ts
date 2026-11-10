@@ -163,8 +163,21 @@ export async function masterShift(orgId: string, date: string) {
   const zpFormula = reportSellers.reduce((a: number, r: any) => a + r.zp, 0)
   const zpTotal = hasMarks ? tabelZp : (salaryTotal > 0 ? salaryTotal : zpFormula)
   const shopExp = currentTotal                          // расходы магазина/административные
-  const dayResult = total - zpTotal - shopExp           // итого дня = продажа − ЗП − расходы
-  const report = { sold: total, margin, marginPct: total > 0 ? margin / total : 0, cash, kaspi, qr, debt, sellers: reportSellers, zpTotal, zpPaid: salaryTotal, zpFormula, shopExp, result: dayResult }
+  // ВОЗВРАТЫ ДНЯ (магазин принимает товар обратно по себестоимости): сумма возвратных
+  // накладных и сколько из них реально ушло ДЕНЬГАМИ со счёта (остальное погасило долг).
+  // Деньги со счёта — минус кассе, поэтому вычитаем из итога дня.
+  const retRow = (await sqlClient`
+    select coalesce(sum(total),0)::float v from documents
+    where org_id=${orgId} and type='return_in' and status<>'cancelled' and date=${date}
+      and coalesce(comment,'') not like 'Обмен по чеку%'
+  ` as unknown as Array<any>)[0] || { v: 0 }
+  const refundRow = (await sqlClient`
+    select coalesce(sum(amount),0)::float v from payments
+    where org_id=${orgId} and direction='out' and date=${date} and comment like 'Возврат %'
+  ` as unknown as Array<any>)[0] || { v: 0 }
+  const retTotal = num(retRow.v), refundTotal = num(refundRow.v)
+  const dayResult = total - retTotal - zpTotal - shopExp   // итого дня = продажа − возврат − ЗП − расходы
+  const report = { sold: total, margin, marginPct: total > 0 ? margin / total : 0, cash, kaspi, qr, debt, ret: retTotal, refund: refundTotal, sellers: reportSellers, zpTotal, zpPaid: salaryTotal, zpFormula, shopExp, result: dayResult }
 
   // ── ДОЛГИ (дебиторка): непогашенные чеки орг = итог − скидка − всего оплачено > 0 (не по дню) ──
   const debts = await sqlClient`

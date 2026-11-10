@@ -212,7 +212,7 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
 // (return_in: товар +склад филиала, −долг заказчика), затем деньги — сначала ГАСИМ ДОЛГ по чеку,
 // оставшееся ВОЗВРАЩАЕМ со СЧЁТА ВОЗВРАТА (payment out). Исходная продажа остаётся (учёт цел),
 // возврат — отдельный документ. Повторный возврат тех же позиций не пробьётся (source_pos_id).
-export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number }[]; accountId?: string }, actor?: Session | null) {
+export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number; price?: number }[]; accountId?: string }, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
@@ -233,19 +233,41 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   for (const r of doneRows) retQ[r.pid] = Number(r.q) || 0
 
   // Что возвращаем: заданные позиции с кол-вом (клампим к остатку) или весь остаток чека.
-  const req = opts.items?.length ? opts.items : positions.map((p: any) => ({ posId: p.id, qty: Number(p.qty) }))
-  const sel: { pos: any; qty: number }[] = []
+  const req: Array<{ posId: string; qty: number; price?: number }> = opts.items?.length
+    ? opts.items
+    : positions.map((p: any) => ({ posId: p.id as string, qty: Number(p.qty) }))
+  const sel: { pos: any; qty: number; price?: number }[] = []
   for (const it of req) {
     const p = positions.find((x: any) => x.id === it.posId); if (!p) continue
     const remaining = Number(p.qty) - (retQ[p.id] || 0)
     const q = Math.min(Number(it.qty) || 0, remaining)
-    if (q > 0.0000001) sel.push({ pos: p, qty: q })
+    if (q > 0.0000001) sel.push({ pos: p, qty: q, price: it.price != null ? Number(it.price) : undefined })
   }
   if (!sel.length) return { ok: false as const, error: 'Нечего возвращать (кол-во исчерпано)' }
 
-  const { lineAmount } = await import('../lib/lineAmount')
+  const { lineAmount, isIzdelie } = await import('../lib/lineAmount')
   const amtOf = (p: any, qty: number) => lineAmount({ name: p.name1c || p.oral, qty, price: p.price, widthCm: p.widthCm })
-  const R = sel.reduce((s, x) => s + amtOf(x.pos, x.qty), 0)
+
+  // ── ЦЕНА ВОЗВРАТА (правило магазина): товар принимаем обратно ПО СЕБЕСТОИМОСТИ —
+  // себестоимость строки (cost_price, у изделия доля листа), иначе закуп товара (price_in).
+  // У изделия цена всегда ЗА СМ, поэтому себестоимость штуки делим на см. Себестоимости нет
+  // (0) — откат на цену продажи, иначе вернули бы за 0. Кассир может вписать свою цену.
+  const prodIds = Array.from(new Set(sel.map(x => x.pos.productId).filter(Boolean))) as string[]
+  const priceIn: Record<string, number> = {}
+  if (prodIds.length) {
+    for (const r of await sqlClient`select id::text id, price_in::float v from products where id = any(${prodIds})` as unknown as Array<any>) priceIn[r.id] = Number(r.v) || 0
+  }
+  const costPriceOf = (p: any) => {
+    const perUnit = Number(p.costPrice) || (p.productId ? priceIn[p.productId] || 0 : 0)   // себестоимость ШТУКИ
+    const cm = Number(p.widthCm) || 0
+    const asPrice = isIzdelie(p.name1c || p.oral) && cm > 0 ? perUnit / cm : perUnit       // у изделия цена за см
+    return asPrice > 0 ? asPrice : Number(p.price) || 0                                    // нет себестоимости → цена продажи
+  }
+  const manual = sel.some(x => x.price != null)
+  const retPriceOf = (x: { pos: any; price?: number }) => (x.price != null ? x.price : costPriceOf(x.pos))
+  const retAmt = (x: { pos: any; qty: number; price?: number }) =>
+    lineAmount({ name: x.pos.name1c || x.pos.oral, qty: x.qty, price: retPriceOf(x), widthCm: x.pos.widthCm })
+  const R = sel.reduce((s, x) => s + retAmt(x), 0)
 
   const refsRepo = await import('../repositories/refs.repo')
   const wh = await refsRepo.centralWarehouse(order.orgId)
@@ -287,7 +309,8 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
       productId: s?.productId || x.pos.productId,
       name: s?.name || x.pos.name1c || x.pos.oral,
       qty: x.qty, unit: s?.unit || x.pos.unit || 'шт',
-      price: s ? Number(s.price) || 0 : Number(x.pos.price) || 0,
+      // цена возврата: себестоимость (по умолчанию) или вписанная кассиром — не цена продажи
+      price: retPriceOf(x),
       widthCm: s?.widthCm != null ? Number(s.widthCm) : (x.pos.widthCm != null ? Number(x.pos.widthCm) : undefined),
       sourcePosId: x.pos.id,
     }
@@ -309,7 +332,7 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   const debtCleared = Math.min(R, currentDebt)
   // Чек полностью возвращён, когда по каждой позиции возвращённое + текущее ≥ проданного.
   const fullyReturned = positions.every((p: any) => (retQ[p.id] || 0) + (sel.find(x => x.pos.id === p.id)?.qty || 0) >= Number(p.qty) - 0.0000001)
-  await repo.insertHistory({ cardId, action: 'return', detail: `Возврат ${ret.number}: ${sel.length} поз. на ${R} ₸ (долг −${debtCleared}, со счёта −${refundOut})`, userName: actor?.name || 'Система' })
+  await repo.insertHistory({ cardId, action: 'return', detail: `Возврат ${ret.number}: ${sel.length} поз. на ${Math.round(R)} ₸ ${manual ? '(цена вручную)' : '(по себестоимости)'} — долг −${Math.round(debtCleared)}, со счёта −${Math.round(refundOut)}`, userName: actor?.name || 'Система' })
   return { ok: true as const, number: ret.number, returned: R, refund: refundOut, debtCleared, fullyReturned }
 }
 

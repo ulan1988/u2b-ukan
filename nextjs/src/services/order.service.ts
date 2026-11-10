@@ -244,12 +244,20 @@ async function withPositions(rows: any[]) {
   for (const u of users as any[]) userName[u.id] = u.name
   const cagName: Record<string, string> = {}
   for (const c of cags as any[]) cagName[c.id] = c.name
+  // Себестоимость ЕДИНИЦЫ позиции: цена строки (cost_price — доля листа у изделия), иначе
+  // закуп товара (price_in). Нужна кассе магазина: возврат принимаем по себестоимости.
+  const prodIds = Array.from(new Set(pos.map((p: any) => p.productId).filter(Boolean))) as string[]
+  const priceIn: Record<string, number> = {}
+  if (prodIds.length) {
+    for (const r of await sqlNames`select id::text id, price_in::float v from products where id = any(${prodIds})` as unknown as Array<any>) priceIn[r.id] = Number(r.v) || 0
+  }
   const byCard: Record<string, any[]> = {}
   for (const p of pos) {
     (byCard[p.cardId] ||= []).push({
       ...p,
       resp: p.respUserId ? (userName[p.respUserId] || '') : '',
       supplier: p.supplierId ? (cagName[p.supplierId] || '') : '',
+      unitCost: Number(p.costPrice) || (p.productId ? priceIn[p.productId] || 0 : 0),
     })
   }
   // Номер проведённой накладной (№ чека) + возвраты по карточке — для журнала чеков кассы магазина.
