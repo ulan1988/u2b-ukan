@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
+import { payDebt } from '@/lib/api/orders'
 import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
@@ -31,6 +32,11 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [bonus, setBonus] = useState<any>(null)        // бонусы дня: товар соседа мимо склада
   const [profit, setProfit] = useState<any>(null)             // прибыль дня: деление денег (себест / наценка)
   const [profitBusy, setProfitBusy] = useState(false)
+  // Погашение долга прямо из блока «ДОЛГИ»: счёт + сумма, деньги приходят сегодняшним днём.
+  const [debtFor, setDebtFor] = useState<any>(null)
+  const [debtAcc, setDebtAcc] = useState('')
+  const [debtSum, setDebtSum] = useState('')
+  const [debtBusy, setDebtBusy] = useState(false)
   const [ym, setYm] = useState(() => todayStr().slice(0, 7))
   const [month, setMonth] = useState<any>(null)
   const toast = (t: string) => { setFlash(t); setTimeout(() => setFlash(''), 2200) }
@@ -49,6 +55,19 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   useLiveData(() => { view === 'month' ? loadMonth() : load() }, [view, load, loadMonth])
 
   // Прибыль дня: посчитать (деньги дня делятся на себестоимость и наценку), провести, отменить.
+  // «💵 Вернуть долг»: приход на выбранный счёт, привязан к накладной этого чека.
+  async function doPayDebt() {
+    if (!debtFor) return
+    const sum = Math.round(Number(String(debtSum).replace(/\s/g, '').replace(',', '.')) || 0)
+    if (!(sum > 0)) { toast('Укажите сумму'); return }
+    if (!debtAcc) { toast('Выберите счёт'); return }
+    setDebtBusy(true)
+    const r: any = await payDebt({ cardId: debtFor.id, splits: [{ accountId: debtAcc, amount: sum }] })
+    setDebtBusy(false)
+    if (r.ok) { toast(`✓ Погашено ${m(sum)} ₸ · ${debtFor.customer || ''}`); setDebtFor(null); setDebtSum(''); load() }
+    else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+
   const calcProfit = useCallback(async () => { setProfitBusy(true); setProfit(await profitDay(orgId, date)); setProfitBusy(false) }, [orgId, date])
   async function doProfitPost() {
     setProfitBusy(true); const r: any = await profitPost(orgId, date); setProfitBusy(false)
@@ -342,9 +361,38 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <span style={{ fontFamily: 'monospace', fontSize: 12.5, color: '#2e8a5e', width: 150 }}>{x.docNumber || x.id}</span>
                 <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 100 }}>{x.seller ? `👤 ${x.seller}` : '—'}</span>
                 <b style={{ fontSize: 14.5, width: 110, textAlign: 'right', color: COLORS.primaryDark }}>{m(x.debt)} ₸</b>
+                <button onClick={() => { setDebtFor(x); setDebtSum(String(Math.round(Number(x.debt) || 0))); setDebtAcc(prev => prev || (accts[0]?.id || '')) }}
+                  style={{ marginLeft: 10, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Вернуть долг</button>
               </div>
             ))}
-            <div style={{ padding: '6px 16px 10px', fontSize: 11.5, color: COLORS.textLight }}>Погашение долгов — в кассе продавца (вкладка «Долги»).</div>
+            <div style={{ padding: '6px 16px 10px', fontSize: 11.5, color: COLORS.textLight }}>Клиент принёс деньги — «💵 Вернуть долг»: приход сегодняшним днём на выбранный счёт.</div>
+          </div>
+        )}
+
+        {/* Шторка погашения долга: счёт + сумма, деньги приходят сегодняшним днём. */}
+        {debtFor && (
+          <div onClick={() => setDebtFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 18, width: 'min(440px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>💵 Вернуть долг</div>
+                <div style={{ fontSize: 12.5, color: COLORS.textLight, marginTop: 2 }}>{debtFor.customer || 'Розница'} · {debtFor.docNumber || debtFor.id} · долг {m(debtFor.debt)} ₸</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: COLORS.textLight, marginBottom: 4 }}>Счёт прихода</div>
+                <select value={debtAcc} onChange={e => setDebtAcc(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, background: '#fff' }}>
+                  {accts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: COLORS.textLight, marginBottom: 4 }}>Сумма (сегодня)</div>
+                <input value={debtSum} inputMode="decimal" onChange={e => setDebtSum(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  style={{ width: '100%', padding: '12px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 20, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={doPayDebt} disabled={debtBusy} style={{ flex: 1, border: 'none', background: debtBusy ? '#cfd8d2' : '#2e8a5e', color: '#fff', borderRadius: 11, padding: 14, cursor: debtBusy ? 'default' : 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>{debtBusy ? '…' : 'Принять оплату'}</button>
+                <button onClick={() => setDebtFor(null)} style={{ flex: 'none', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: COLORS.textLight, borderRadius: 11, padding: '14px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>Отмена</button>
+              </div>
+            </div>
           </div>
         )}
 
