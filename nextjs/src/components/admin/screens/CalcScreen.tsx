@@ -36,6 +36,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', debt: '' })   // суммы по способам — можно смешивать
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })
   const [given, setGiven] = useState('')
+  const [incMode, setIncMode] = useState(false)      // галочка «прочий доход»: деньги без товара
+  const [incAcc, setIncAcc] = useState<'cash' | 'kaspi' | 'qr'>('cash')
+  const [incSum, setIncSum] = useState('')
   const [incNote, setIncNote] = useState('')          // за что «прочий доход» (пишем в комментарий платежа)                 // сколько дали налом → сдача
   const [wide, setWide] = useState(true)                 // широкий экран: чек рядом с таблицей
   const [full, setFull] = useState(false)                // полноэкранный режим кассы (без меню слева)
@@ -374,18 +377,21 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // «Прочий доход»: деньги без товара. Берём суммы из строк оплаты (нал/каспи/QR),
   // кладём на счета и делим 50/50 с головным — склад и накладные не трогаются.
   async function doOtherIncome() {
-    const money = pCash + pKaspi + pQr
-    if (!(money > 0)) { setSellMsg('⚠ впишите сумму в «Нал», «Каспи» или «QR»'); return }
+    const money = incMode ? num(incSum) : pCash + pKaspi + pQr
+    if (!(money > 0)) { setSellMsg('⚠ впишите сумму'); return }
     if (!confirm(`Провести как ПРОЧИЙ ДОХОД ${fmt(money)} ₸?
 
 Товар не списывается, прибыль делится 50/50 с Адал Строй 2 (ваша доля ${fmt(money - Math.round(money * 0.5))} ₸).`)) return
     setSelling(true); setSellMsg('')
     const emp = staff.find((s2: any) => s2.id === sellerId)
-    const r: any = await otherIncome({ contactId: sellContact || undefined, cash: pCash, kaspi: pKaspi, qr: pQr, comment: incNote, seller: emp?.name })
+    const body = incMode
+      ? { cash: incAcc === 'cash' ? money : 0, kaspi: incAcc === 'kaspi' ? money : 0, qr: incAcc === 'qr' ? money : 0 }
+      : { cash: pCash, kaspi: pKaspi, qr: pQr }
+    const r: any = await otherIncome({ contactId: sellContact || undefined, ...body, comment: incNote, seller: emp?.name })
     setSelling(false)
     if (!r.ok) { setSellMsg('⚠ ' + (r.error || 'не удалось')); return }
     setSellMsg(`✓ прочий доход ${fmt(r.sum || money)} ₸ · вам ${fmt(r.ourShare || 0)} · Адал Строй 2 ${fmt(r.hqShare || 0)}`)
-    setPay({ cash: '', kaspi: '', qr: '', debt: '' }); setGiven(''); setIncNote('')
+    setPay({ cash: '', kaspi: '', qr: '', debt: '' }); setGiven(''); setIncNote(''); setIncSum('')
   }
 
   async function doSell() {
@@ -733,8 +739,42 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
       <aside style={{ position: wide ? 'sticky' : 'static', top: 12, background: '#fff', borderRadius: 14, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 9 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <b style={{ fontSize: 15 }}>🧾 Чек</b>
-          <span style={{ fontSize: 12, color: COLORS.textMuted }}>{sellRows.length ? `${sellRows.length} поз. · ${fmt(qtyTotal)} шт` : 'впишите кол-во и цену'}</span>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>{incMode ? 'деньги без товара' : (sellRows.length ? `${sellRows.length} поз. · ${fmt(qtyTotal)} шт` : 'впишите кол-во и цену')}</span>
         </div>
+
+        {/* Прочий доход: галочка наверху — панель превращается в «счёт + сумма + отправить».
+            Позиции не нужны, склад и накладные не трогаются, прибыль делится 50/50. */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', background: incMode ? '#f7f3fc' : '#faf9f7', border: `1.5px solid ${incMode ? '#cdb6e2' : COLORS.border}` }}>
+          <input type="checkbox" checked={incMode} onChange={e => { setIncMode(e.target.checked); setSellMsg('') }} style={{ width: 17, height: 17, accentColor: '#7a3aaa', cursor: 'pointer' }} />
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: incMode ? '#7a3aaa' : COLORS.text }}>➕ Прочий доход</span>
+          <span style={{ fontSize: 11.5, color: COLORS.textMuted }}>без товара · 50/50</span>
+        </label>
+
+        {incMode && (<>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([['cash', '💵 Нал', '#e7f6ec', '#19653c'], ['kaspi', 'Каспи', '#eaf1fb', '#15447c'], ['qr', 'QR', '#f3edfb', '#4a2a7a']] as const).map(([k, label, bg, fg]) => (
+              <button key={k} onClick={() => setIncAcc(k)}
+                style={{ flex: 1, border: incAcc === k ? `2px solid ${fg}` : `1.5px solid ${COLORS.border}`, background: incAcc === k ? bg : '#fff', color: incAcc === k ? fg : COLORS.textMuted, borderRadius: 10, padding: '11px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>{label}</button>
+            ))}
+          </div>
+          <input value={incSum} inputMode="decimal" placeholder="сумма" onChange={e => setIncSum(e.target.value.replace(/[^0-9.,]/g, ''))}
+            style={{ width: '100%', padding: '14px 12px', borderRadius: 11, border: `1.5px solid ${COLORS.border}`, fontSize: 22, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
+          <input value={incNote} onChange={e => setIncNote(e.target.value)} placeholder="за что (необязательно)"
+            style={{ width: '100%', padding: '9px 10px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', fontWeight: 600, boxSizing: 'border-box' }} />
+          {num(incSum) > 0 && (
+            <div style={{ background: '#f7f3fc', border: '1px solid #cdb6e2', color: '#5b3a8a', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, fontWeight: 700 }}>
+              вам {fmt(num(incSum) - Math.round(num(incSum) * 0.5))} ₸ · Адал Строй 2 {fmt(Math.round(num(incSum) * 0.5))} ₸
+            </div>
+          )}
+          <button onClick={doOtherIncome} disabled={selling || !(num(incSum) > 0)}
+            style={{ border: 'none', background: (selling || !(num(incSum) > 0)) ? '#cfd8d2' : '#7a3aaa', color: '#fff', borderRadius: 12, padding: '15px 10px', cursor: (selling || !(num(incSum) > 0)) ? 'default' : 'pointer', fontSize: 16.5, fontWeight: 800, fontFamily: 'inherit' }}>
+            {selling ? '…' : `➕ Отправить ${fmt(num(incSum))} ₸`}
+          </button>
+          {sellMsg && <div style={{ fontSize: 13, fontWeight: 700, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</div>}
+          <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Деньги лягут на выбранный счёт. Товар не списывается, позиции листа не трогаются, прибыль делится 50/50 с Адал Строй 2.</div>
+        </>)}
+
+        {!incMode && (<>
 
         {bonusRowsCart.length > 0 && (
           <div style={{ background: '#fff6ee', border: '1px solid #e6c9b8', borderRadius: 9, padding: '7px 10px', fontSize: 12, color: '#8a4a22', fontWeight: 700 }}>
@@ -820,17 +860,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           style={{ border: 'none', background: canSell ? '#2e8a5e' : '#cfd8d2', color: '#fff', borderRadius: 12, padding: '15px 10px', cursor: canSell ? 'pointer' : 'default', fontSize: 16.5, fontWeight: 800, fontFamily: 'inherit' }}>
           {selling ? '…' : `💵 Пробить чек · ${fmt(net)} ₸ · F9`}
         </button>
-        {/* Прочий доход: деньги без товара (услуга, доставка, мелочь) — на счета и 50/50 с головным. */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input value={incNote} onChange={e => setIncNote(e.target.value)} placeholder="за что (необязательно)"
-            style={{ flex: 1, minWidth: 0, padding: '9px 10px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }} />
-          <button onClick={doOtherIncome} disabled={selling || !(pCash + pKaspi + pQr > 0)} title="Деньги без товара: на счета + прибыль 50/50 с Адал Строй 2"
-            style={{ flex: 'none', border: '1.5px solid #cdb6e2', background: (selling || !(pCash + pKaspi + pQr > 0)) ? '#f3f1ee' : '#f7f3fc', color: (selling || !(pCash + pKaspi + pQr > 0)) ? '#a09889' : '#7a3aaa', borderRadius: 10, padding: '11px 14px', cursor: (selling || !(pCash + pKaspi + pQr > 0)) ? 'default' : 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-            ➕ Прочий доход{pCash + pKaspi + pQr > 0 ? ` · ${fmt(pCash + pKaspi + pQr)} ₸` : ''}
-          </button>
-        </div>
         {sellMsg && <div style={{ fontSize: 13, fontWeight: 700, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</div>}
         <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Склад филиала списывается, деньги ложатся на счета по строкам оплаты. Строки без цены или количества в чек не идут.</div>
+        </>)}
       </aside>
       </div>
 
