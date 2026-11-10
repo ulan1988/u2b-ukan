@@ -42,6 +42,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     parentDocId: (input as any).parentDocId || null,        // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
+    ...((input as any).createdAt ? { createdAt: (input as any).createdAt } : {}),
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves)
@@ -72,11 +73,19 @@ async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }
     const minput: any = {
       orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines,
       date: input.date, parentDocId: doc.id, noMirror: true,
+      // Порядок по времени: сначала отгрузил ЦЕНТРАЛЬНЫЙ склад, потом принял филиал.
+      // Время берём от САМОГО документа (не от часов приложения — они могут расходиться
+      // с базой) и отнимаем 2 секунды, чтобы отгрузка всегда шла первой.
       comment: `Зеркало ${kind === 'purchase' ? 'прихода' : 'расхода'} ${doc.number}`,
     }
     // Приход у нас → расход у них, и наоборот.
-    if (kind === 'purchase') await createSale(minput)
-    else await createPurchase(minput)
+    const mdoc = kind === 'purchase' ? await createSale(minput) : await createPurchase(minput)
+    // Порядок по времени: сначала отгрузил ЦЕНТРАЛЬНЫЙ склад, потом принял филиал.
+    // Сдвигаем время зеркала прямо в SQL (JS-дата ломала бы часовой пояс).
+    if (kind === 'purchase') {
+      const { sqlClient } = await import('../lib/db')
+      await sqlClient`update documents set created_at = (select created_at from documents where id=${doc.id}) - interval '2 seconds' where id=${mdoc.id}`
+    }
   } catch (e) { console.error('mirrorBetweenOrgs', doc.number, e) }
 }
 
@@ -262,6 +271,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     date, status: 'posted', total: String(netTotal),
     discountSum: String(disc), discountPct: String(disc > 0 && total > 0 ? Math.round(disc / total * 10000) / 100 : 0),
     comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
+    ...((input as any).createdAt ? { createdAt: (input as any).createdAt } : {}),
   }
 
   await docRepo.insertDocumentPosting(doc, lines, moves, links)
