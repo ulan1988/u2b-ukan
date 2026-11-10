@@ -1,7 +1,8 @@
 // Заявки-карточки Улкана (только запросы Drizzle).
 import { db, sqlClient } from '../lib/db'
-import { orders, orderPositions, orderHistory, products, contragents, users, organizations } from '../db/schema'
+import { orders, orderPositions, orderHistory, products, contragents, users, organizations, procurementLinks, warehouses } from '../db/schema'
 import { and, or, eq, ne, isNull, desc, inArray, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 // Кабинет-юзер заказчика по его контрагенту (чтобы заказ «от имени» появился в его кабинете).
 // Сквозной поставщик? (contragents.transit) — при выборе поставщиком позиция авто-сквозная.
@@ -142,6 +143,28 @@ export const positionsByCards = (cardIds: string[]) =>
   cardIds.length
     ? db.select().from(orderPositions).where(inArray(orderPositions.cardId, cardIds)).orderBy(orderPositions.id)
     : Promise.resolve([] as any[])
+
+// ПОЛУЧАТЕЛИ ЗАКУПА: закуп собирается из заявок клиентов (procurement_links →
+// карточка-продажа). Настоящий получатель — заказчик этой продажи, Центр-Склад лишь
+// посредник. Отдаём имена по каждому закупу (контрагент продажи, иначе её создатель).
+export const recipientsByPurchases = (cardIds: string[]) => {
+  if (!cardIds.length) return Promise.resolve([] as Array<{ cardId: string; product: string; name: string }>)
+  const saleOrders = alias(orders, 'sale_orders')
+  return db.selectDistinct({
+    cardId: procurementLinks.purchaseCardId,
+    product: procurementLinks.product,
+    name: sql<string>`coalesce(nullif(${contragents.name}, ''), nullif(${saleOrders.fromName}, ''), '')`,
+  }).from(procurementLinks)
+    .leftJoin(saleOrders, eq(saleOrders.id, procurementLinks.saleCardId))
+    .leftJoin(contragents, eq(contragents.id, saleOrders.contactId))
+    .where(inArray(procurementLinks.purchaseCardId, cardIds))
+}
+
+// Имена складов (куда идёт закуп, если заявок клиентов за ним нет).
+export const warehouseNames = (ids: string[]) =>
+  ids.length
+    ? db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses).where(inArray(warehouses.id, ids))
+    : Promise.resolve([] as Array<{ id: string; name: string }>)
 
 export const getOrder = (id: string) =>
   db.select().from(orders).where(eq(orders.id, id)).limit(1)

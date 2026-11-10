@@ -22,7 +22,16 @@ async function addDeliveryToShift(orgId: string, pos: any, order: any) {
   const cagName: Record<string, string> = {}
   for (const c of cags as any[]) cagName[c.id] = c.name
   const supplier = pos.supplierId ? (cagName[pos.supplierId] || '') : ''
-  const toWho = order.kind === 'purchase' ? 'Центр-Склад' : (order.contactId ? (cagName[order.contactId] || '') : '')
+  // Кому везём: продажа → клиент; закуп → заказчик связанной заявки (Центр-Склад лишь
+  // посредник), а если заявки нет — сам склад назначения.
+  let toWho = order.contactId ? (cagName[order.contactId] || '') : ''
+  if (order.kind === 'purchase') {
+    const rec = (await repo.recipientsByPurchases([order.id]))
+      .filter(r => !String((r as any).product || '') || String((r as any).product).trim().toLowerCase() === String(pos.name1c || pos.oral || '').trim().toLowerCase())
+      .map(r => String((r as any).name || '').trim()).filter(Boolean)
+    const [wh] = order.toWarehouseId ? await repo.warehouseNames([order.toWarehouseId]) : []
+    toWho = rec[0] || (wh as any)?.name || 'Центр-Склад'
+  }
   const rowData = {
     posId: pos.id, name: pos.name1c || pos.oral || '', fromWho: supplier || order.fromName || '',
     qtyIn: String(pos.qty), commentIn: '',
@@ -300,9 +309,44 @@ async function withPositions(rows: any[]) {
       ;(bag[r.cid] ||= []).push({ name: r.name, qty: Number(r.qty) || 0 })
     }
   }
+  // ПОЛУЧАТЕЛЬ ЗАКУПА. Закуп собирается из заявок клиентов — настоящий получатель это
+  // заказчик, а Центр-Склад только посредник. Берём заказчиков связанных продаж
+  // (procurement_links); если их нет — закуп «на склад», пишем сам склад.
+  const purchaseIds = rows.filter(r => r.kind === 'purchase').map(r => r.id)
+  const recByCard: Record<string, string[]> = {}
+  const recByPos: Record<string, string[]> = {}   // {cardId}::{товар} → заказчики этой строки
+  if (purchaseIds.length) {
+    for (const r of await repo.recipientsByPurchases(purchaseIds)) {
+      const nm = String((r as any).name || '').trim()
+      if (!nm) continue
+      const bag = (recByCard[(r as any).cardId] ||= [])
+      if (!bag.includes(nm)) bag.push(nm)
+      const k = `${(r as any).cardId}::${String((r as any).product || '').trim().toLowerCase()}`
+      const pb = (recByPos[k] ||= [])
+      if (!pb.includes(nm)) pb.push(nm)
+    }
+  }
+  const shortRec = (list: string[]) => (list.length > 1 ? `${list[0]} +${list.length - 1}` : (list[0] || ''))
+  const whIds = Array.from(new Set(rows.map((r: any) => r.toWarehouseId).filter(Boolean))) as string[]
+  const whName: Record<string, string> = {}
+  for (const w of await repo.warehouseNames(whIds)) whName[(w as any).id] = (w as any).name
+  // Получателей несколько (закуп на нескольких клиентов) → «Первый +N».
+  const purchaseTo = (o: any) => {
+    const rec = recByCard[o.id] || []
+    if (rec.length) return shortRec(rec)
+    return (o.toWarehouseId && whName[o.toWarehouseId]) || 'Центр-Склад'
+  }
+  // Заказчик строки закупа (строка собрана из заявок клиентов по имени товара).
+  const posRecipient = (o: any, p: any) => {
+    if (o.kind !== 'purchase') return ''
+    const list = recByPos[`${o.id}::${String(p.name1c || p.oral || '').trim().toLowerCase()}`] || []
+    return shortRec(list)
+  }
   return rows.map(o => ({
     ...o,
-    positions: byCard[o.id] || [],
+    positions: (byCard[o.id] || []).map(p => ({ ...p, recipient: posRecipient(o, p) })),
+    // Все получатели закупа (для подсказки/шторки) — в шапке показываем свёрнуто.
+    recipients: o.kind === 'purchase' ? (recByCard[o.id] || []) : [],
     docNumber: o.linkedDocId ? (docNum[o.linkedDocId] || '') : '',
     paidTotal: o.linkedDocId ? (paidByDoc[o.linkedDocId] || 0) : 0,   // всего оплачено (для остатка долга)
     returnedSum: retSum[o.id] || 0,
@@ -312,8 +356,9 @@ async function withPositions(rows: any[]) {
     exchangeDate: exchDate[o.id] || '',
     exchangeIn: exchIn[o.id] || [],
     exchangeOut: exchOut[o.id] || [],
-    // Пункт назначения: закуп → Центр-Склад, продажа → клиент-получатель.
-    toName: o.kind === 'purchase' ? 'Центр-Склад' : (o.contactId ? (cagName[o.contactId] || '') : ''),
+    // Пункт назначения: продажа → клиент-получатель; закуп → заказчик связанной продажи,
+    // а если закуп «в запас» — склад назначения.
+    toName: o.kind === 'purchase' ? purchaseTo(o) : (o.contactId ? (cagName[o.contactId] || '') : ''),
   }))
 }
 

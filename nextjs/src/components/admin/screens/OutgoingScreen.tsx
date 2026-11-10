@@ -47,7 +47,7 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
           <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: barColor(pct) }}>{pct}%</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.fromName} → {order.toName || '—'}</span><span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>
+          <span title={(order.recipients || []).length > 1 ? `Получатели: ${(order.recipients || []).join(', ')}` : undefined} style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.fromName} → {order.toName || '—'}</span><span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>
           {order.deadline && <span style={{ fontSize: 13, color: '#5f5952' }}>срок {fmtDate(order.deadline)}</span>}
           <span style={{ fontSize: 13, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(order.createdAt)}</span>
         </div>
@@ -61,7 +61,11 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
             <div key={pos.id} className="og-pos" style={{ padding: '7px 0', borderBottom: i < ps.length - 1 ? '1px solid #f8f6f3' : 'none' }}>
               <div className="og-pos-main">
                 <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}><RalDot code={extractRal(pos.name1c || pos.oral || '')} size={13} />{pos.name1c || pos.oral}</div>
-                <div style={{ fontSize: 12, color: '#5f5952' }}>{Number(pos.qty)} {pos.unit}{pos.resp ? ` · ${pos.resp}` : ''}{pos.supplier ? ` · ${pos.supplier}` : ''}</div>
+                <div style={{ fontSize: 12, color: '#5f5952' }}>
+                  {Number(pos.qty)} {pos.unit}{pos.resp ? ` · ${pos.resp}` : ''}{pos.supplier ? ` · ${pos.supplier}` : ''}
+                  {/* Кому эта строка: закуп собран из заявок клиентов — показываем заказчика, а не склад. */}
+                  {pos.recipient && <span style={{ color: '#2e8a5e', fontWeight: 600 }}> · для {pos.recipient}</span>}
+                </div>
               </div>
               <div className="og-pos-bar"><ProgressBar pct={posPct(pos)} height={4} /></div>
               {pos.late && <span style={{ fontSize: 12, background: '#faeaea', color: '#b03020', padding: '1px 6px', borderRadius: 20, fontWeight: 600, flexShrink: 0 }}>ПРОСРОЧ.</span>}

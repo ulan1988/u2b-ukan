@@ -11,13 +11,28 @@ export async function threads(orgId: string) {
   const cags = await (await import('../repositories/refs.repo')).listContragents()
   const cagName: Record<string, string> = {}
   for (const c of cags as any[]) cagName[c.id] = c.name
+  // Получатель закупа — заказчик связанной заявки (Центр-Склад только посредник).
+  const orderRepo = await import('../repositories/order.repo')
+  const purchaseIds = Array.from(new Set(rows.filter((m: any) => m.kind === 'purchase').map((m: any) => m.cardId)))
+  const recByCard: Record<string, string[]> = {}
+  for (const r of await orderRepo.recipientsByPurchases(purchaseIds as string[])) {
+    const nm = String((r as any).name || '').trim()
+    if (!nm) continue
+    const bag = (recByCard[(r as any).cardId] ||= [])
+    if (!bag.includes(nm)) bag.push(nm)
+  }
+  const toOf = (m: any) => {
+    if (m.kind !== 'purchase') return m.contactId ? (cagName[m.contactId] || '') : ''
+    const rec = recByCard[m.cardId] || []
+    return rec.length ? (rec.length > 1 ? `${rec[0]} +${rec.length - 1}` : rec[0]) : 'Центр-Склад'
+  }
   const byCard = new Map<string, any>()
   for (const m of rows) {
     const e = byCard.get(m.cardId)
     if (e) e.count++
     else byCard.set(m.cardId, {
       cardId: m.cardId, from: m.fromName || '—',
-      to: m.kind === 'purchase' ? 'Центр-Склад' : (m.contactId ? (cagName[m.contactId] || '') : ''),
+      to: toOf(m),
       count: 1, lastText: m.text, lastAuthor: m.userName, lastRole: m.role, lastAt: m.createdAt,
     })
   }
