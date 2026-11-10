@@ -386,7 +386,7 @@ export async function exchangeSale(cardId: string, inp: { back: { posId: string;
     const name = String(p.name1c || '').trim()
     if (!name) return { ok: false as const, error: 'У выдаваемого товара нет названия' }
     outLines.push({
-      productId: p.productId || (await ensureProduct(name)),
+      productId: p.productId || (await ensureProduct(name, order.orgId)),
       name, qty: Number(p.qty), unit: p.unit || 'шт',
       price: Number(p.price) || 0,
       widthCm: p.widthCm != null ? Number(p.widthCm) : undefined,
@@ -508,7 +508,7 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   const positions = [] as any[]
   for (const p of i.positions) {
     const name = (p.name1c || '').trim()
-    const pid = p.productId || (lookupOnly ? await findByName(name) : await ensureProduct(name))
+    const pid = p.productId || (lookupOnly ? await findByName(name) : await ensureProduct(name, orgId))
     // Бонусная позиция: товар соседа (группа «Долг товар») — мимо склада (transit),
     // цена соседа и сам сосед остаются на строке, по ним потом считается бонус и долг.
     const bonusCost = Math.max(0, Number(p.bonusCost) || 0)
@@ -682,7 +682,7 @@ export async function editCheck(cardId: string, i: EditCheckInput, actor?: Sessi
   let idx = (await repo.nextPosSeq(cardId)) - 1   // максимум занятых номеров: после удаления строки count коллизит
   for (const p of i.positions) {
     const name = (p.name1c || '').trim()
-    const productId = p.productId || (await ensureProduct(name))
+    const productId = p.productId || (await ensureProduct(name, order.orgId))
     const patch: any = {
       productId, name1c: name, oral: name, qty: String(Number(p.qty)), unit: p.unit || 'шт',
       price: String(Number(p.price) || 0), widthCm: p.widthCm != null ? String(Number(p.widthCm)) : null,

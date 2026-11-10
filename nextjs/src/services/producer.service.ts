@@ -48,7 +48,7 @@ async function setProductCost(productId: string, cost: number) {
 
 // Найти/создать товар по имени (goods, папка «Комплектующие»). Имя = идентичность изделия
 // (напр. «Изделие 9003 15 см») — по нему считается рентабельность конкретного товара.
-export async function ensureProduct(name: string): Promise<string> {
+export async function ensureProduct(name: string, orgId?: string): Promise<string> {
   const { db } = await import('../lib/db')
   const { products } = await import('../db/schema')
   const { sql } = await import('drizzle-orm')
@@ -60,7 +60,9 @@ export async function ensureProduct(name: string): Promise<string> {
   const [base] = await db.select({ group: products.group, cat: products.cat }).from(products)
     .where(sql`lower(coalesce(${products.group},'')||' '||coalesce(${products.cat},'')) like '%комплект%'`).limit(1)
   const id = randomUUID()
-  await db.insert(products).values({ id, name: nm, unit: 'шт', category: 'goods', group: base?.group || 'Товары', cat: base?.cat || 'Комплектующие' })
+  // Владелец: завёл филиал — товар остаётся у него, завёл головной — общий.
+  const { ownerOrgFor } = await import('../repositories/refs.repo')
+  await db.insert(products).values({ id, name: nm, unit: 'шт', category: 'goods', group: base?.group || 'Товары', cat: base?.cat || 'Комплектующие', ownerOrgId: await ownerOrgFor(orgId) } as any)
   return id
 }
 
@@ -112,9 +114,9 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     // запрещено, остаток обязан считаться по цветам. Голые (без РАЛ/см) отсеяны выше.
     let productId = p.productId as string | null
     if (izd) {
-      productId = await ensureProduct(nm)
+      productId = await ensureProduct(nm, prodOrgId)
     } else if (!productId) {
-      productId = await ensureProduct(nm)
+      productId = await ensureProduct(nm, prodOrgId)
       created++
     }
     const patch: any = {}
@@ -171,8 +173,8 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     // Себестоимость = ширина изделия в см × цена 1 см (лист 125 см уже учтён в ставке).
     const cost = width > 0 ? Math.round(perCm * width * 100) / 100 : 0
     let productId = it.productId || null
-    if (izd) productId = await ensureProduct(nm)   // «Изделие {РАЛ} {см} см» — без цвета на склад нельзя
-    else if (!productId) { productId = await ensureProduct(nm); created++ }
+    if (izd) productId = await ensureProduct(nm, orgId)   // «Изделие {РАЛ} {см} см» — без цвета на склад нельзя
+    else if (!productId) { productId = await ensureProduct(nm, orgId); created++ }
     if (productId) await setProductCost(productId, cost)
     outputs.push({ productId, qty, price: cost || 0, widthCm: width || undefined, comment: nm })
     made.push({ name1c: nm, oral: nm, widthCm: width, qty, productId })

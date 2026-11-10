@@ -68,9 +68,12 @@ export const products = pgTable('products', {
   priceSpec: money('price_spec').notNull().default('0'), // спец-цена (для изделий — за см)
   specTypeId: uuid('spec_type_id').references(() => specTypes.id),  // тип изделия (спецификация: стандартный см + материал)
   sortOrder: integer('sort_order').notNull().default(0),           // ручной порядок в номенклатуре (перетаскивание)
+  // Владелец товара: NULL = общий (завёл головной — виден всем орг). Если товар завёл
+  // ФИЛИАЛ, здесь его org_id — такой товар виден только этому филиалу (правило 10.11.2026).
+  ownerOrgId: uuid('owner_org_id').references(() => organizations.id),
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-}, t => ({ byName: index('products_name_idx').on(t.name) }))
+}, t => ({ byName: index('products_name_idx').on(t.name), byOwner: index('products_owner_idx').on(t.ownerOrgId) }))
 
 // Цены ПРОДАЖИ по организации: `products` — общий шаблон (имя/дерево/тип + закуп-себестоимость),
 // а розница/опт/спец — СВОИ у каждой орг (головной ставит свои, филиал свои, не влияют друг на
@@ -131,6 +134,8 @@ export const nomFolders = pgTable('nom_folders', {
   sub: text('sub').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
   hidden: boolean('hidden').notNull().default(false),     // скрыть из каталога-модельки (в номенклатуре видна)
+  // Владелец папки — как у товара: NULL = общая (головной), иначе только своя орг.
+  ownerOrgId: uuid('owner_org_id').references(() => organizations.id),
 })
 
 // Справочник единиц измерения (для номенклатуры). Глобальный, как products.

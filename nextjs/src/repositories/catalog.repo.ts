@@ -1,7 +1,7 @@
 // Справочники: создание, правка, список с архивом (только Drizzle).
 import { db } from '../lib/db'
 import { products, contragents, warehouses, cashAccounts, units, nomFolders } from '../db/schema'
-import { eq, and, asc, sql } from 'drizzle-orm'
+import { eq, and, or, isNull, asc, sql } from 'drizzle-orm'
 
 // Справочник единиц измерения (глобальный). products.unit хранит текст — правка единиц не ломает товары.
 export const listUnits = () => db.select().from(units).where(eq(units.archived, false)).orderBy(asc(units.sortOrder))
@@ -27,7 +27,9 @@ export const updateContragent = (id: string, patch: Partial<typeof contragents.$
 
 // Управление справочником — включая архивные (для UI правки). С orgId — цены продажи этой орг.
 export const listAllProducts = async (orgId?: string) => {
-  const rows = await db.select().from(products).orderBy(asc(products.sortOrder), asc(products.name))
+  const rows = await db.select().from(products)
+    .where(orgId ? or(isNull(products.ownerOrgId), eq(products.ownerOrgId, orgId)) : undefined)
+    .orderBy(asc(products.sortOrder), asc(products.name))
   if (!orgId) return rows
   const { productPrices } = await import('../db/schema')
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
@@ -37,15 +39,18 @@ export const listAllProducts = async (orgId?: string) => {
 export const listAllContragents = () => db.select().from(contragents)
 
 // ── Папки номенклатуры ─────────────────────────────────────────────────
-export const listFolders = () => db.select().from(nomFolders).orderBy(asc(nomFolders.sortOrder))
+// Папки: общие (owner NULL, завёл головной) + свои. Папка филиала у других орг не видна.
+export const listFolders = (orgId?: string) => db.select().from(nomFolders)
+  .where(orgId ? or(isNull(nomFolders.ownerOrgId), eq(nomFolders.ownerOrgId, orgId)) : undefined)
+  .orderBy(asc(nomFolders.sortOrder))
 
 // Создать папку по пути (grp / grp+cat / grp+cat+sub). Дубли молча игнорируются.
-export async function createFolder(grp: string, cat: string, sub: string) {
+export async function createFolder(grp: string, cat: string, sub: string, ownerOrgId?: string | null) {
   grp = (grp || '').trim(); cat = (cat || '').trim(); sub = (sub || '').trim()
   if (!grp) return { ok: false, error: 'Пустое имя группы' }
   if (sub && !cat) return { ok: false, error: 'Нет категории для подгруппы' }
   const [{ m }] = await db.select({ m: sql<number>`coalesce(max(${nomFolders.sortOrder}),0)` }).from(nomFolders)
-  await db.insert(nomFolders).values({ grp, cat, sub, sortOrder: Number(m) + 1 }).onConflictDoNothing()
+  await db.insert(nomFolders).values({ grp, cat, sub, sortOrder: Number(m) + 1, ownerOrgId: ownerOrgId || null } as any).onConflictDoNothing()
   return { ok: true }
 }
 

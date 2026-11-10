@@ -17,10 +17,13 @@ async function upsertOrgPrices(orgId: string, productId: string, fields: Record<
 
 export async function addProduct(i: z.infer<typeof createProductSchema>, orgId?: string) {
   // Шаблон: имя/дерево + закуп (общий). Цены продажи не пишем в шаблон.
+  // Владелец: головной заводит общий товар (виден всем), филиал — только свой.
+  const { ownerOrgFor } = await import('../repositories/refs.repo')
   const [p] = await repo.createProduct({
     name: i.name, alias: i.alias || '', unit: i.unit, category: i.category, group: i.group || '', cat: i.cat || '', subgroup: i.subgroup || '',
     priceIn: String(i.priceIn), priceRetail: '0', priceOpt: '0', priceSpec: '0',
-  })
+    ownerOrgId: await ownerOrgFor(orgId),
+  } as any)
   // Цены продажи (если заданы) — на орг создателя.
   const sell: Record<string, string> = {}
   if (Number(i.priceRetail) > 0) sell.priceRetail = String(i.priceRetail)

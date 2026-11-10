@@ -31,9 +31,11 @@ export const centralWarehouse = async (orgId: string) => {
 // Товары для форм/пикеров. С orgId — цены ПРОДАЖИ (розница/опт/спец) берутся из product_prices
 // этой орг (нет строки → 0, цена другой орг не подставляется). Закуп (priceIn) — общий шаблон.
 export const listProducts = async (orgId?: string) => {
+  // Владелец: общий товар (owner_org_id IS NULL — завёл головной) виден всем,
+  // товар филиала — только своей орг (правило владельца 10.11.2026).
   const rows = await db.select({ ...getTableColumns(products), stdWidthCm: specTypes.widthCm, typeName: specTypes.name })
     .from(products).leftJoin(specTypes, eq(products.specTypeId, specTypes.id))
-    .where(eq(products.archived, false))
+    .where(orgId ? and(eq(products.archived, false), or(isNull(products.ownerOrgId), eq(products.ownerOrgId, orgId))) : eq(products.archived, false))
     .orderBy(asc(products.sortOrder), asc(products.name))   // ручной порядок номенклатуры → во всех каталогах
   if (!orgId) return rows
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
@@ -74,6 +76,14 @@ export const listCashAccounts = () =>
   db.select().from(cashAccounts).where(eq(cashAccounts.archived, false))
 
 // Организация по id — нужен её kind (hq | producer_seller | seller), от него зависит вид кабинета.
+// Владелец нового товара/папки: головной заводит ОБЩЕЕ (null — видно всем),
+// филиал — только своё (его org_id). Правило владельца 10.11.2026.
+export const ownerOrgFor = async (orgId?: string | null): Promise<string | null> => {
+  if (!orgId) return null
+  const o = await orgById(orgId)
+  return o?.kind === 'hq' ? null : orgId
+}
+
 export const orgById = async (id: string) => {
   const [o] = await db.select().from(organizations).where(eq(organizations.id, id)).limit(1)
   return o || null

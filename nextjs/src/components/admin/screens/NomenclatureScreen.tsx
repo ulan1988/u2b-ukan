@@ -49,7 +49,7 @@ export default function NomenclatureScreen() {
   const [infoBusy, setInfoBusy] = useState(false)
   const [toast, setToast] = useState('')
   useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
-  const reloadFolders = useCallback(async () => { const f = await listFolders(); setFolders((f as any) || []) }, [])
+  const reloadFolders = useCallback(async () => { const f = await listFolders(orgId); setFolders((f as any) || []) }, [orgId])
   useEffect(() => { reloadFolders() }, [reloadFolders])
   const [priceEdit, setPriceEdit] = useState(false)
   const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string; priceSpec: string }>>({})
@@ -248,17 +248,17 @@ export default function NomenclatureScreen() {
   // ── Управление папками ───────────────────────────────────────────────
   async function createGroup() {
     const n = prompt('Название новой группы:')?.trim(); if (!n) return
-    const r = await createFolder({ grp: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    const r = await createFolder({ grp: n, orgId }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
     await reloadFolders(); setOpenGroups(p => ({ ...p, [n]: true })); showMsg('✓ Группа создана')
   }
   async function createCat(g: string) {
     const n = prompt(`Новая категория в «${g}»:`)?.trim(); if (!n) return
-    const r = await createFolder({ grp: g, cat: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    const r = await createFolder({ grp: g, cat: n, orgId }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
     await reloadFolders(); setOpenGroups(p => ({ ...p, [g]: true })); showMsg('✓ Категория создана')
   }
   async function createSub(g: string, c: string) {
     const n = prompt(`Новая подгруппа в «${c}»:`)?.trim(); if (!n) return
-    const r = await createFolder({ grp: g, cat: c, sub: n }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
+    const r = await createFolder({ grp: g, cat: c, sub: n, orgId }); if (!r.ok) { showMsg(r.error || 'Ошибка'); return }
     await reloadFolders(); setOpenCats(p => ({ ...p, [`${g}/${c}`]: true })); showMsg('✓ Подгруппа создана')
   }
   async function renameFolderUI(grp: string, cat: string, sub: string, cur: string) {
