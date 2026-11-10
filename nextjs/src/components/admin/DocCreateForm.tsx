@@ -37,7 +37,30 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
     listProducts(orgId).then((p: any) => setProducts(Array.isArray(p) ? p : [])).catch(() => {})
   }, [orgId])
 
-  const priceOf = (p: any) => isIn ? Number(p.priceIn) || 0 : (Number(p.priceRetail) || Number(p.priceIn) || 0)
+  // Поставщик — мост на НАШУ другую орг (например филиал покупает у «Адал Строй 2»)?
+  // Тогда цена прихода берётся из прайса ТОЙ орг (опт, иначе розница), а не из общего закупа:
+  // по этой же цене пройдёт её зеркальная расходная, и обе книги сходятся.
+  const cag = contragents.find((c: any) => c.id === cagId)
+  const refOrg = (cag as any)?.orgRefId as string | undefined
+  const [refPrices, setRefPrices] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!refOrg) { setRefPrices({}); return }
+    listProducts(refOrg).then((ps: any) => {
+      const m: Record<string, number> = {}
+      for (const x of (Array.isArray(ps) ? ps : [])) { const v = Number(x.priceOpt) || Number(x.priceRetail) || 0; if (v > 0) m[x.id] = v }
+      setRefPrices(m)
+    }).catch(() => setRefPrices({}))
+  }, [refOrg])
+
+  const priceOf = (p: any) => isIn
+    ? (refPrices[p.id] || Number(p.priceIn) || 0)
+    : (Number(p.priceRetail) || Number(p.priceIn) || 0)
+
+  // Сменили поставщика — пересчитываем цены уже набранных строк по его прайсу.
+  useEffect(() => {
+    setLines(ls => ls.map(l => { const pr = products.find((x: any) => x.id === l.productId); return pr ? { ...l, price: priceOf(pr) } : l }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refPrices, cagId])
 
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -102,7 +125,7 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>Добавить товар</div>
+            <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>Добавить товар{isIn && refOrg && cag ? ` · цены от «${cag.name}»` : ''}</div>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по номенклатуре…" style={inp} />
             {hits.length > 0 && (
               <div style={{ marginTop: 4, border: '1px solid #e6e2dc', borderRadius: 10, maxHeight: 240, overflowY: 'auto', background: '#fff' }}>
