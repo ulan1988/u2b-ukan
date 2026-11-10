@@ -49,12 +49,12 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
   function startEdit(pos: any) {
     // Если «наим. 1С» пусто — предзаполняем точным совпадением из «со слов».
     const ex = (!(pos.name1c || '').trim() && (pos.oral || '').trim()) ? matchNom(pos.oral, products).exact : null
-    setEditing(e => ({ ...e, [pos.id]: { productId: ex?.id || pos.productId || '', name1c: ex?.name || pos.name1c, widthCm: pos.widthCm != null ? String(pos.widthCm) : '', qty: String(pos.qty), unit: ex?.unit || pos.unit, price: ex ? String(priceOf(ex, Number(pos.price) || 0)) : String(pos.price), respUserId: pos.respUserId || '', deadline: pos.deadline ? String(pos.deadline).slice(0, 10) : '', payment: pos.payment || '' } }))
+    setEditing(e => ({ ...e, [pos.id]: { productId: ex?.id || pos.productId || '', name1c: ex?.name || pos.name1c, widthCm: pos.widthCm != null ? String(pos.widthCm) : '', qty: String(pos.qty), unit: ex?.unit || pos.unit, price: ex ? String(priceOf(ex, Number(pos.price) || 0)) : String(pos.price), respUserId: pos.respUserId || '', supplierId: pos.supplierId || '', deadline: pos.deadline ? String(pos.deadline).slice(0, 10) : '', payment: pos.payment || '' } }))
   }
   function cancelEdit(id: string) { setEditing(e => { const n = { ...e }; delete n[id]; return n }) }
   async function saveEdit(pos: any) {
     const ed = editing[pos.id]
-    await updatePosition(order.id, pos.id, { productId: ed.productId || undefined, name1c: ed.name1c, widthCm: ed.widthCm === '' || ed.widthCm == null ? null : Number(ed.widthCm), qty: Number(ed.qty) || 0, unit: ed.unit, price: Number(ed.price) || 0, respUserId: ed.respUserId || undefined, deadline: ed.deadline || null, payment: ed.payment })
+    await updatePosition(order.id, pos.id, { productId: ed.productId || undefined, name1c: ed.name1c, widthCm: ed.widthCm === '' || ed.widthCm == null ? null : Number(ed.widthCm), qty: Number(ed.qty) || 0, unit: ed.unit, price: Number(ed.price) || 0, respUserId: ed.respUserId || undefined, supplierId: ed.supplierId || undefined, deadline: ed.deadline || null, payment: ed.payment })
     cancelEdit(pos.id); onReload()
   }
   async function clone(pos: any) { await addPosition(order.id, { name1c: pos.name1c, oral: pos.oral, qty: Number(pos.qty), unit: pos.unit, price: Number(pos.price), respUserId: pos.respUserId || undefined, supplierId: pos.supplierId || undefined }); onReload(); toast('Позиция клонирована') }
@@ -88,6 +88,8 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
         {order.deadline && <span style={{ fontSize: 13, color: '#5f5952' }}>срок {fmtDate(order.deadline)}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <select style={{ ...inpSm, width: 140 }} value="" onChange={e => { if (e.target.value) ps.forEach((p: any) => upd(p.id, { respUserId: e.target.value })) }}><option value="">Логист → всем</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+          {/* Поставщик — у кого закупаем. Без него закуп не едет, поэтому ставим и строкой, и всем сразу. */}
+          <div style={{ width: 170 }}><ContragentPicker contragents={contragents} value="" defaultId={defaultCagId} onPick={c => { if (c?.id) ps.forEach((p: any) => upd(p.id, { supplierId: c.id })) }} placeholder="Поставщик → всем" /></div>
           <button onClick={pullPrices} style={{ border: '1.5px solid #e6c9b8', borderRadius: 7, padding: '5px 12px', background: '#fff8f5', color: '#c0532a', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>💰 Цены</button>
           <Btn onClick={() => onAction(order.id, 'returnToIncoming')}>← Вернуть</Btn>
           <Btn variant="primary" onClick={send}>ОТПРАВИТЬ В ИСХОДЯЩИЕ →</Btn>
@@ -96,8 +98,8 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
 
       <div style={{ padding: '12px 16px', overflowX: 'auto' }}>
         {ps.length === 0 && <div style={{ background: '#fff8e1', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#8a6f00', fontWeight: 500 }}>💬 Со слов: {order.comment}</div>}
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880 }}>
-          <thead><tr style={{ background: '#f1efec' }}>{['НАИМ. 1С', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА', 'ЛОГИСТ', 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 8px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
+          <thead><tr style={{ background: '#f1efec' }}>{['НАИМ. 1С', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА', 'ЛОГИСТ', 'ПОСТАВЩИК', 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 8px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
             {ps.map((pos: any) => {
               const ed = editing[pos.id]; const isEd = !!ed
@@ -109,6 +111,10 @@ export default function ProcessingCard({ order, contragents, defaultCagId, logis
                   <td style={{ padding: '6px 4px', width: 50 }}>{isEd ? <input style={{ ...inpSm, width: 44 }} value={ed.unit} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], unit: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{pos.unit}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 96, whiteSpace: 'nowrap' }}>{isEd ? <input style={{ ...inpSm, width: 84, textAlign: 'right' }} type="number" value={ed.price} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], price: e.target.value } }))} /> : <span style={{ fontSize: 13, fontWeight: 700, color: Number(pos.price) > 0 ? '#26231f' : '#837c72' }}>{Number(pos.price) > 0 ? fmtMoney(Number(pos.price)) : '—'}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 120 }}>{isEd ? <select style={{ ...inpSm, width: 112 }} value={ed.respUserId} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], respUserId: e.target.value } }))}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select> : <span style={{ fontSize: 13 }}>{pos.resp || <span style={{ color: '#837c72' }}>—</span>}</span>}</td>
+                  {/* ПОСТАВЩИК — у кого закупаем эту строку (красное «—» = не задан, карточка не поедет). */}
+                  <td style={{ padding: '6px 4px', width: 160 }} onClick={e => { if (isEd) e.stopPropagation() }}>{isEd
+                    ? <ContragentPicker contragents={contragents} value={ed.supplierId || ''} defaultId={defaultCagId} onPick={c => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], supplierId: c?.id || '' } }))} placeholder="— поставщик —" style={{ fontSize: 13 }} />
+                    : <span style={{ fontSize: 13 }}>{pos.supplier || <span style={{ color: '#c1121c' }}>—</span>}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 110 }}>{isEd ? <input style={{ ...inpSm, width: 100 }} type="date" value={ed.deadline} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], deadline: e.target.value } }))} /> : <span style={{ fontSize: 13 }}>{fmtDate(pos.deadline)}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 110 }}>{isEd ? <select style={{ ...inpSm, width: 100 }} value={ed.payment} onChange={e => setEditing(s => ({ ...s, [pos.id]: { ...s[pos.id], payment: e.target.value } }))}>{PAY.map(p => <option key={p} value={p}>{p || '—'}</option>)}</select> : <span style={{ fontSize: 13 }}>{pos.payment || <span style={{ color: '#837c72' }}>—</span>}</span>}</td>
                   <td style={{ padding: '6px 4px', width: 80 }}>
