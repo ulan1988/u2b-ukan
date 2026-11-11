@@ -34,8 +34,11 @@ export function ralOrdered(showAll: boolean): RalColor[] {
 // Извлечь RAL-код из имени: RAL 1234 или голый 4-значный код из палитры.
 export function extractRal(name: string): string {
   const s = name || ''
-  const m = s.match(/RAL\s?(\d{4})/i)
-  if (m) return m[1]
+  // «RAL7024М», «RAL7024МАТ» — МАТОВЫЙ цвет: буква М приклеена к номеру сразу (без пробела,
+  // чтобы «RAL7024 МП» — марка, а не мат). Без этой проверки матовые товары с префиксом RAL
+  // считались глянцевыми (7024) и под чипом 7024М не находились вообще.
+  const m = s.match(/RAL\s?(\d{4})([МM])?/i)
+  if (m) return m[2] && RAL_BY_CODE[m[1] + 'М'] ? m[1] + 'М' : m[1]
   // матовый код (напр. 8017М) — проверяем раньше глянцевого
   const mm = s.match(/(\d{4})\s?[МM](?![0-9])/)
   if (mm && RAL_BY_CODE[mm[1] + 'М']) return mm[1] + 'М'
