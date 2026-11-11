@@ -153,6 +153,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   }
 
   const inc = data?.income || { cash: 0, kaspi: 0, qr: 0, debt: 0, total: 0 }
+  // Факт по счетам за день (из payments) — то же, что видно в «Деньгах»/финансах.
+  const fact: any = (data?.income as any)?.fact || {}
   // Лента чеков дня: продажи и «прочий доход» вперемешку по времени.
   const tsOf = (v: any) => { const x = String(v || ''); const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(x) ? x : x.replace(' ', 'T') + 'Z'); return isFinite(d.getTime()) ? d.getTime() : 0 }
   const dayFeed = [
@@ -162,10 +164,11 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const chk = data?.check || { ok: true, diff: 0 }
   const accts = data?.accounts || []
   const card: React.CSSProperties = { background: COLORS.white, borderRadius: 14, boxShadow: `0 0 0 1.5px ${COLORS.border}`, padding: 16 }
-  const kpi = (label: string, val: string, color: string) => (
+  const kpi = (label: string, val: string, color: string, sub?: React.ReactNode) => (
     <div style={{ ...card, padding: '12px 14px', flex: 1, minWidth: 120 }}>
       <div style={{ fontSize: 12, color: COLORS.textLight, fontWeight: 700 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 4 }}>{val}</div>
+      {sub ? <div style={{ fontSize: 11.5, color: COLORS.textLight, marginTop: 2 }}>{sub}</div> : null}
     </div>
   )
 
@@ -403,14 +406,30 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
         )}
 
         {/* Доходы */}
-        <div style={{ fontSize: 13, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ (продажи)</div>
+        {/* Ячейки = ФАКТ по счетам (как в «Деньгах»): оплаты чеков + погашения долгов +
+            прочий доход. Мелкой строкой — сколько из этого по чекам дня. */}
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.04em', marginBottom: 8 }}>📥 ДОХОДЫ <span style={{ fontWeight: 600, color: COLORS.textLight }}>(приход на счета за день)</span></div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-          {kpi('Наличка', m(inc.cash), '#2e8a5e')}{kpi('Каспи (GOLD)', m(inc.kaspi), '#2a5aaa')}{kpi('QR (банк)', m(inc.qr), '#2a5aaa')}{kpi('Долг', m(inc.debt), COLORS.primaryDark)}{kpi('Продано', m(inc.total), COLORS.text)}
+          {kpi('Наличка', m(fact.cash ?? inc.cash), '#2e8a5e', fact.byCheck ? <>по чекам {m(fact.byCheck.cash)}</> : null)}
+          {kpi('Каспи (GOLD)', m(fact.kaspi ?? inc.kaspi), '#2a5aaa', fact.byCheck ? <>по чекам {m(fact.byCheck.kaspi)}</> : null)}
+          {kpi('QR (банк)', m(fact.qr ?? inc.qr), '#2a5aaa', fact.byCheck ? <>по чекам {m(fact.byCheck.qr)}</> : null)}
+          {kpi('Долг', m(inc.debt), COLORS.primaryDark, <>не оплачено по чекам дня</>)}
+          {kpi('Продано', m(inc.total), COLORS.text, <>чеки дня</>)}
         </div>
+        {/* Чем приход отличается от продаж дня — чтобы сходилось с «Деньгами». */}
+        {(Number(fact.debtPay) > 0 || Number(fact.otherIn) > 0 || Number(fact.out?.cash) + Number(fact.out?.kaspi) + Number(fact.out?.qr) > 0) && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12.5, color: COLORS.textLight, marginBottom: 10 }}>
+            {Number(fact.debtPay) > 0 && <span>💳 погашение долгов: <b style={{ color: '#2e8a5e' }}>{m(fact.debtPay)} ₸</b></span>}
+            {Number(fact.otherIn) > 0 && <span>➕ прочий доход: <b style={{ color: '#7a3aaa' }}>{m(fact.otherIn)} ₸</b></span>}
+            {Number(fact.out?.cash) + Number(fact.out?.kaspi) + Number(fact.out?.qr) > 0 && (
+              <span>↘ ушло со счетов (возвраты/инкассация): <b style={{ color: '#c0532a' }}>−{m(Number(fact.out?.cash) + Number(fact.out?.kaspi) + Number(fact.out?.qr))} ₸</b></span>
+            )}
+          </div>
+        )}
         {/* Проверка */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: chk.ok ? '#e8f5ee' : '#faeaea', borderRadius: 10, padding: '10px 16px', marginBottom: 18, fontSize: 15 }}>
           <b style={{ color: chk.ok ? '#2e8a5e' : '#b03020', fontSize: 16 }}>{chk.ok ? '✅ Проверка: сходится' : `❌ Расхождение ${m(chk.diff)}`}</b>
-          <span style={{ color: COLORS.textMuted, marginLeft: 'auto' }}>Нал + Каспи + QR + Долг = Продано · {(data.cards || []).length} продаж</span>
+          <span style={{ color: COLORS.textMuted, marginLeft: 'auto' }}>по чекам: нал + каспи + QR + долг = продано · {(data.cards || []).length} продаж</span>
         </div>
 
         {/* Журнал чеков дня — у магазина продажи собираются по ЧЕКАМ (в других орг это расходные накладные) */}

@@ -61,7 +61,40 @@ export async function masterShift(orgId: string, date: string) {
   const cash = num(incRow.cash), kaspi = num(incRow.kaspi), qr = num(incRow.qr), total = num(incRow.total)
   const paid = cash + kaspi + qr
   const debt = Math.max(0, total - paid)
+  // ── ФАКТ ПО СЧЕТАМ (синхронизация с «Деньгами»/финансами) ─────────────────────
+  // Ячейки «Касса дня» должны совпадать с движением денег по счетам: кроме оплат по
+  // чекам ДНЯ туда приходят погашения долгов за прошлые дни и прочий доход. По чекам
+  // считаем отдельно — чтобы сверка «продано = оплачено + долг» осталась целой.
+  const inRows = await sqlClient`
+    select coalesce(a.name,'') acc, p.amount::float amount, p.document_id::text did,
+      (d.date = ${date}) same_day, coalesce(p.comment,'') cm
+    from payments p
+    left join cash_accounts a on a.id = p.cash_account_id
+    left join documents d on d.id = p.document_id
+    where p.org_id=${orgId} and p.date=${date} and p.direction='in'
+  ` as unknown as Array<any>
+  const outRows = await sqlClient`
+    select coalesce(a.name,'') acc, p.amount::float amount, coalesce(p.comment,'') cm
+    from payments p left join cash_accounts a on a.id = p.cash_account_id
+    where p.org_id=${orgId} and p.date=${date} and p.direction='out'
+  ` as unknown as Array<any>
+  const slot = (nm: string) => /kaspi|касп/i.test(nm) ? 'kaspi' : /банк/i.test(nm) ? 'qr' : 'cash'
+  const factIn = { cash: 0, kaspi: 0, qr: 0 }          // всего пришло на счета
+  const byCheck = { cash: 0, kaspi: 0, qr: 0 }         // из них — оплаты чеков этого дня
+  let debtPay = 0, otherIn = 0                          // погашения долгов прошлых дней и прочий доход
+  for (const r of inRows) {
+    const k = slot(r.acc) as 'cash' | 'kaspi' | 'qr'
+    const v = num(r.amount)
+    factIn[k] += v
+    if (r.did && r.same_day) byCheck[k] += v
+    else if (r.did) debtPay += v
+    else otherIn += v
+  }
+  const factOut = { cash: 0, kaspi: 0, qr: 0 }          // ушло со счетов (возвраты, инкассация, расходы)
+  for (const r of outRows) factOut[slot(r.acc) as 'cash' | 'kaspi' | 'qr'] += num(r.amount)
+  const fact = { ...factIn, total: factIn.cash + factIn.kaspi + factIn.qr, byCheck, debtPay, otherIn, out: factOut }
   const income = { cash, kaspi, qr, debt, total }
+  ;(income as any).fact = fact   // факт по счетам — рядом с продажами дня
   // Проверка (как в Excel): оплаты + долг = продано (отпуск). Diff должен быть 0.
   const diff = Math.round((paid + debt) - total)
   const check = { paid, debt, sold: total, diff, ok: Math.abs(diff) < 1 }
