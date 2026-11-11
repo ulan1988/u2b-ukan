@@ -18,7 +18,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { otherIncomeDay, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
+import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -142,6 +142,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [pickSeller, setPickSeller] = useState(false)
   const [sellerReady, setSellerReady] = useState(false)
   const [installPrompt, setInstallPrompt] = useState<any>(null)   // PWA: событие установки кабинета
+  // «Прочий доход» (как в «Расчёте»): деньги без товара — счёт + сумма + отправить.
+  const [incMode, setIncMode] = useState(false)
+  const [incAcc, setIncAcc] = useState<'cash' | 'kaspi' | 'qr'>('cash')
+  const [incSum, setIncSum] = useState('')
+  const [incNote, setIncNote] = useState('')
 
   // Кнопка «Установить» — ловим beforeinstallprompt (когда браузер готов предложить установку).
   useEffect(() => {
@@ -152,6 +157,24 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   async function doInstall() { if (!installPrompt) return; installPrompt.prompt(); try { await installPrompt.userChoice } catch {}; setInstallPrompt(null) }
 
   function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3500) }
+
+  // «Прочий доход»: деньги без товара — ложатся на выбранный счёт, прибыль 50/50 с головным.
+  // Склад и накладные не трогаются; в журнале дня идёт отдельной строкой со своим номером ПД.
+  async function doOtherIncome() {
+    const sum = num(incSum)
+    if (!(sum > 0)) { showMsg('⚠ Впишите сумму'); return }
+    setBusy(true)
+    const r = await otherIncome({
+      uid: user.id, contactId: contactId || undefined,
+      cash: incAcc === 'cash' ? sum : 0, kaspi: incAcc === 'kaspi' ? sum : 0, qr: incAcc === 'qr' ? sum : 0,
+      comment: incNote, seller: seller?.name,
+    })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setIncSum(''); setIncNote(''); setIncMode(false)
+    await load(); loadOi()
+    showMsg(`➕ Прочий доход ${money(r.sum || sum)} ₸ · вам ${money(r.ourShare || 0)} · Адал Строй 2 ${money(r.hqShare || 0)}`)
+  }
 
   useEffect(() => {
     fetchRefs(user.orgId).then((r: any) => {   // цены/справочники СВОЕЙ орг (не сессии зрителя-админа)
@@ -209,7 +232,12 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   // Прочий доход (деньги без товара) живёт не в накладных, а в платежах — тянем отдельно.
-  useEffect(() => { otherIncomeDay(checksDay, user.id).then((d: any) => setOiDay({ rows: d?.rows || [], total: Number(d?.total) || 0 })).catch(() => setOiDay({ rows: [], total: 0 })) }, [checksDay, user.id])
+  const loadOi = useCallback(() => {
+    otherIncomeDay(checksDay, user.id)
+      .then((d: any) => setOiDay({ rows: d?.rows || [], total: Number(d?.total) || 0 }))
+      .catch(() => setOiDay({ rows: [], total: 0 }))
+  }, [checksDay, user.id])
+  useEffect(() => { loadOi() }, [loadOi])
   useEffect(() => { load() }, [load])
   useLiveData(() => { if (!showCatalog && !busy) load() }, [])
 
@@ -868,6 +896,40 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               )}
             </div>
           )}
+
+          {/* ПРОЧИЙ ДОХОД — та же галочка, что в «Расчёте»: деньги без товара.
+              Позиции не нужны, склад и накладные не трогаются, прибыль 50/50 с головным. */}
+          <div style={{ padding: '8px 10px', background: incMode ? '#f7f3fc' : '#fff', borderBottom: '1px solid #e6e2dc' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={incMode} onChange={e => setIncMode(e.target.checked)} style={{ width: 18, height: 18, accentColor: '#7a3aaa', cursor: 'pointer' }} />
+              <span style={{ fontSize: 13.5, fontWeight: 800, color: incMode ? '#7a3aaa' : DARK }}>➕ Прочий доход</span>
+              <span style={{ fontSize: 11.5, color: '#a09889' }}>без товара · 50/50</span>
+            </label>
+            {incMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 8 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {([['cash', '💵 Нал', '#e7f6ec', '#19653c'], ['kaspi', 'Каспи', '#eaf1fb', '#15447c'], ['qr', 'QR', '#f3edfb', '#4a2a7a']] as const).map(([k, label, bg, fg]) => (
+                    <button key={k} onClick={() => setIncAcc(k)}
+                      style={{ flex: 1, border: incAcc === k ? `2px solid ${fg}` : '1.5px solid #e6e2dc', background: incAcc === k ? bg : '#fff', color: incAcc === k ? fg : '#8a8377', borderRadius: 10, padding: '11px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>{label}</button>
+                  ))}
+                </div>
+                <input value={incSum} inputMode="decimal" placeholder="сумма" onChange={e => setIncSum(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  style={{ ...inp, padding: '13px 12px', fontSize: 21, fontWeight: 800, textAlign: 'right' }} />
+                <input value={incNote} onChange={e => setIncNote(e.target.value)} placeholder="за что (необязательно)" style={{ ...inp, fontSize: 13 }} />
+                {num(incSum) > 0 && (
+                  <div style={{ background: '#f7f3fc', border: '1px solid #cdb6e2', color: '#5b3a8a', borderRadius: 9, padding: '8px 10px', fontSize: 13, fontWeight: 700, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>вам</span><b>{money(num(incSum) - Math.round(num(incSum) * 0.5))} ₸</b></span>
+                    <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Адал Строй 2</span><b>{money(Math.round(num(incSum) * 0.5))} ₸</b></span>
+                  </div>
+                )}
+                <button onClick={doOtherIncome} disabled={busy || !(num(incSum) > 0)}
+                  style={{ border: 'none', background: (busy || !(num(incSum) > 0)) ? '#cfc6dd' : '#7a3aaa', color: '#fff', borderRadius: 12, padding: '14px 10px', cursor: (busy || !(num(incSum) > 0)) ? 'default' : 'pointer', fontSize: 16, fontWeight: 800, fontFamily: 'inherit' }}>
+                  {busy ? '…' : `➕ Отправить ${money(num(incSum))} ₸`}
+                </button>
+                <div style={{ fontSize: 11.5, color: '#a09889' }}>Деньги лягут на выбранный счёт. Товар не списывается, в журнале дня — отдельной строкой ПД.</div>
+              </div>
+            )}
+          </div>
 
           {/* папки продавца — лента вкладок (все категории номенклатуры), прокручивается вправо */}
           <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', position: 'sticky', top: 56, zIndex: 50, overflowX: 'auto' }}>
