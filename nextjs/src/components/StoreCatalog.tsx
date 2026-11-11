@@ -49,6 +49,24 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
   const [picked, setPicked] = useState<PickedPos[]>([])
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  // За компьютером (широкий экран) раскладка другая: поле кол-ва стоит СРАЗУ за названием,
+  // а выбранное — аккуратным списком справа, где и так пусто. На телефоне всё как было.
+  const [wide, setWide] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)')
+    const on = () => setWide(mq.matches); on()
+    mq.addEventListener('change', on); return () => mq.removeEventListener('change', on)
+  }, [])
+  // Переход между ячейками кол-ва стрелками ↑/↓ (и Enter) — как в таблице.
+  function qtyKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    const k = e.key
+    if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Enter') return
+    e.preventDefault()
+    const cells = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-qty-cell]'))
+    const i = cells.indexOf(e.currentTarget)
+    const next = cells[i + (k === 'ArrowUp' ? -1 : 1)]
+    if (next) { next.focus(); next.select() }
+  }
 
   useEffect(() => {
     const u = orgId ? `/api/products?orgId=${orgId}` : '/api/products'
@@ -158,7 +176,8 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
         <button onClick={onClose} style={{ border: '1px solid #444', background: 'none', color: '#ccc', fontSize: 13, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>Отмена</button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: picked.length ? 78 : 12 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: (picked.length && !wide) ? 78 : 12 }}>
         {/* папки */}
         <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', overflowX: 'auto' }}>
           {folders.map(f => { const on = folder === f.key; return (
@@ -245,7 +264,8 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
             const price = Number(p.priceRetail) || 0
             return (
               <div key={p.id} onClick={() => { if (izd && !build && color) setBuild({ base: p, cm: '', qty: '1' }) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default', opacity: (activeFolder.build && !color) ? 0.5 : 1 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                {/* За компьютером имя не растягиваем на всю ширину — иначе кол-во улетает к краю экрана. */}
+                <div style={{ flex: wide ? '0 1 480px' : 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                   <div style={{ fontSize: 11.5, color: '#a09889', display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</span>
@@ -255,7 +275,8 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
                 {izd ? (
                   <span style={{ width: 40, height: 40, borderRadius: 11, background: PRIMARY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 700, flexShrink: 0 }}>+</span>
                 ) : (
-                  <input value={qtyOf(name1c) ? String(qtyOf(name1c)) : ''} inputMode="decimal" placeholder="кол-во" disabled={!!(activeFolder.build && !color)} onClick={e => e.stopPropagation()}
+                  <input data-qty-cell value={qtyOf(name1c) ? String(qtyOf(name1c)) : ''} inputMode="decimal" placeholder="кол-во" disabled={!!(activeFolder.build && !color)}
+                    onClick={e => e.stopPropagation()} onFocus={e => e.currentTarget.select()} onKeyDown={qtyKey}
                     onChange={e => upsert(name1c, { qty: num(e.target.value.replace(/[^0-9.,]/g, '')), unit: p.unit || 'шт' })}
                     style={{ width: 74, padding: '9px 8px', borderRadius: 10, border: `1.5px solid ${qtyOf(name1c) > 0 ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />
                 )}
@@ -266,8 +287,35 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
         )}
       </div>
 
-      {/* нижняя панель: выбрано + Готово */}
-      {picked.length > 0 && (
+      {/* ЗА КОМПЬЮТЕРОМ: выбранное — аккуратным списком справа (там и так пусто),
+          с кол-вом и удалением строки. На телефоне остаётся нижняя полоска. */}
+      {wide && (
+        <div style={{ width: 340, flexShrink: 0, borderLeft: '1px solid #e2ddd5', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '11px 14px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <b style={{ fontSize: 14 }}>Выбрано</b>
+            <span style={{ fontSize: 12.5, color: '#a09889' }}>{picked.length} поз.</span>
+            {picked.length > 0 && <button onClick={() => setPicked([])} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#c0532a', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>очистить</button>}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {picked.length === 0
+              ? <div style={{ padding: '26px 16px', textAlign: 'center', color: '#a09889', fontSize: 13 }}>Впишите кол-во в строке слева — товар появится здесь. Между ячейками — стрелки ↑ ↓.</div>
+              : picked.map(x => (
+                <div key={x.name1c} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: '1px solid #f6f3f0' }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.oral || x.name1c}</div>
+                  <b style={{ fontSize: 13.5, whiteSpace: 'nowrap' }}>{x.qty} {x.unit || 'шт'}</b>
+                  <button onClick={() => setPicked(ps => ps.filter(y => y.name1c !== x.name1c))} style={{ border: 'none', background: 'none', color: '#c0532a', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                </div>
+              ))}
+          </div>
+          <div style={{ padding: 12, borderTop: '1px solid #f1ede8' }}>
+            <button onClick={done} disabled={!picked.length} style={{ width: '100%', border: 'none', background: picked.length ? PRIMARY : '#e0dbd3', color: '#fff', borderRadius: 11, padding: '13px 10px', cursor: picked.length ? 'pointer' : 'default', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>Готово{picked.length ? ` · ${picked.length}` : ''}</button>
+          </div>
+        </div>
+      )}
+      </div>
+
+      {/* нижняя панель (телефон): выбрано + Готово */}
+      {!wide && picked.length > 0 && (
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #e6e2dc', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 -4px 16px rgba(0,0,0,.1)', maxWidth: 760, margin: '0 auto' }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Выбрано <b style={{ color: DARK }}>{picked.length}</b>: {picked.map(x => x.oral).join(', ')}</div>
           <button onClick={done} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '12px 20px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Готово · {picked.length}</button>
