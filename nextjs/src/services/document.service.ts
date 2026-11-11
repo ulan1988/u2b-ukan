@@ -19,7 +19,9 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
 
   let total = 0
   const lines = input.lines.map((l: any) => {
-    const amount = lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })  // изделие: кол-во×см×цена
+    // Сумма строки: вписанная руками (накладная поставщика «в суммах») или кол-во×цена.
+    const amount = l.amount != null && Number(l.amount) >= 0 ? Math.round(Number(l.amount) * 100) / 100
+      : lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })  // изделие: кол-во×см×цена
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',
@@ -295,7 +297,9 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
 
   let total = 0
   const lines = input.lines.map((l: any) => {
-    const amount = lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })  // изделие: кол-во×см×цена
+    // Сумма строки: вписанная руками (накладная поставщика «в суммах») или кол-во×цена.
+    const amount = l.amount != null && Number(l.amount) >= 0 ? Math.round(Number(l.amount) * 100) / 100
+      : lineAmount({ name: l.name, qty: l.qty, price: l.price, widthCm: l.widthCm })  // изделие: кол-во×см×цена
     total += amount
     return {
       id: randomUUID(), documentId: docId, productId: l.productId, role: 'main',

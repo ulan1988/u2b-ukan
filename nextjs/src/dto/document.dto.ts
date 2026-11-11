@@ -7,6 +7,9 @@ export const purchaseLineSchema = z.object({
   price: z.coerce.number().min(0),
   unit: z.string().optional(),
   sourcePosId: z.string().optional(),   // атомарный ID позиции карточки ({cardId}-P{n}) — тянем сквозь цепочку
+  // СУММА строки, вписанная руками: накладная завода даётся суммой, и итог должен сойтись
+  // до копейки. Если передана — берём её как есть, а не кол-во×цену (там копейки теряются).
+  amount: z.coerce.number().min(0).optional(),
 })
 
 export const createPurchaseSchema = z.object({

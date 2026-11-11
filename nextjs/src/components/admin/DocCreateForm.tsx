@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import { COLORS } from '@/lib/colors'
-import { fmtMoney } from '@/lib/adminFmt'
+
 import { fetchRefs, listProducts, autoPrices } from '@/lib/api/refs'
 import { createPurchase, createSale } from '@/lib/api/docs'
 import { matchWords } from '@/lib/search'
@@ -17,7 +17,10 @@ import { isIzdelie } from '@/lib/lineAmount'
 // kind 'out' = расходная (createSale, контрагент = покупатель, цена по умолчанию = розница).
 const norm = (x?: string | null) => (x || '').trim().toLowerCase().replace(/ё/g, 'е')
 
-type Line = { productId: string; name: string; unit: string; qty: number; price: number }
+// amount — сумма строки. По умолчанию кол-во×цена, но её можно вписать РУКАМИ (накладная
+// завода даётся суммами) — тогда цена пересчитывается обратно, а в документ уходит ровно
+// эта сумма, до копейки. Деньги показываем и считаем с 2 знаками.
+type Line = { productId: string; name: string; unit: string; qty: number; price: number; amount: number }
 
 export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
   kind: 'in' | 'out'; orgId: string; onClose: () => void; onSaved: () => void
@@ -69,7 +72,7 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
 
   // Сменили поставщика — пересчитываем цены уже набранных строк по его прайсу.
   useEffect(() => {
-    setLines(ls => ls.map(l => { const pr = products.find((x: any) => x.id === l.productId); return pr ? { ...l, price: priceOf(pr) } : l }))
+    setLines(ls => ls.map(l => { const pr = products.find((x: any) => x.id === l.productId); if (!pr) return l; const price = priceOf(pr); return { ...l, price, amount: Math.round((Number(l.qty) || 0) * price * 100) / 100 } }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refPrices, cagId])
 
@@ -101,8 +104,8 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
         const prod = products.find((p: any) => norm(p.name) === norm(nm)) || ((it as any).productId ? products.find((p: any) => p.id === (it as any).productId) : null)
         if (!prod) { skipped.push(nm); continue }   // свободной строки в накладной нет — товар обязан быть в номенклатуре
         const i = next.findIndex(l => l.productId === prod.id)
-        if (i >= 0) next[i] = { ...next[i], qty: Number(next[i].qty) + Number(it.qty || 1) }
-        else next.push({ productId: prod.id, name: prod.name, unit: prod.unit || it.unit || 'шт', qty: Number(it.qty) || 1, price: priceOf(prod) })
+        if (i >= 0) { const q = Number(next[i].qty) + Number(it.qty || 1); next[i] = { ...next[i], qty: q, amount: Math.round(q * Number(next[i].price) * 100) / 100 } }
+        else { const q = Number(it.qty) || 1, pr = priceOf(prod); next.push({ productId: prod.id, name: prod.name, unit: prod.unit || it.unit || 'шт', qty: q, price: pr, amount: Math.round(q * pr * 100) / 100 }) }
       }
       return next
     })
@@ -114,14 +117,24 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
 
   function addLine(p: any) {
     setLines(ls => ls.some(l => l.productId === p.id)
-      ? ls.map(l => l.productId === p.id ? { ...l, qty: l.qty + 1 } : l)
-      : [...ls, { productId: p.id, name: p.name, unit: p.unit || 'шт', qty: 1, price: priceOf(p) }])
+      ? ls.map(l => l.productId === p.id ? { ...l, qty: l.qty + 1, amount: Math.round((l.qty + 1) * l.price * 100) / 100 } : l)
+      : [...ls, { productId: p.id, name: p.name, unit: p.unit || 'шт', qty: 1, price: priceOf(p), amount: Math.round(priceOf(p) * 100) / 100 }])
     setQ('')
   }
   const setLine = (i: number, patch: Partial<Line>) => setLines(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
+  const rr2 = (v: number) => Math.round((Number(v) || 0) * 100) / 100
+  // Меняем кол-во или цену — сумма пересчитывается. Вписали СУММУ — обратно считаем цену
+  // (сумма ÷ кол-во), а в документ уходит именно вписанная сумма, до копейки.
+  const setQty = (i: number, qty: number) => setLines(ls => ls.map((l, j) => j === i ? { ...l, qty, amount: rr2(qty * Number(l.price)) } : l))
+  const setPrice = (i: number, price: number) => setLines(ls => ls.map((l, j) => j === i ? { ...l, price, amount: rr2(Number(l.qty) * price) } : l))
+  const setAmount = (i: number, amount: number) => setLines(ls => ls.map((l, j) => j === i ? { ...l, amount: rr2(amount), price: Number(l.qty) > 0 ? rr2(amount / Number(l.qty)) : l.price } : l))
   const delLine = (i: number) => setLines(ls => ls.filter((_, j) => j !== i))
 
-  const total = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
+  const r2 = (v: number) => Math.round((Number(v) || 0) * 100) / 100
+  const amountOf = (l: Line) => (l.amount != null ? Number(l.amount) : r2((Number(l.qty) || 0) * (Number(l.price) || 0)))
+  const total = r2(lines.reduce((s, l) => s + amountOf(l), 0))
+  // Деньги в форме — всегда с двумя знаками, как в накладной завода (ххх,00).
+  const m2 = (v: number) => (Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   async function submit() {
     setMsg('')
@@ -130,7 +143,7 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
     const good = lines.filter(l => (Number(l.qty) || 0) > 0)
     if (!good.length) { setMsg('⚠ Добавьте хотя бы одну позицию'); return }
     setSaving(true)
-    const body: any = { orgId, contragentId: cagId, warehouseId: whId, date, lines: good.map(l => ({ productId: l.productId, qty: Number(l.qty), price: Number(l.price) || 0 })) }
+    const body: any = { orgId, contragentId: cagId, warehouseId: whId, date, lines: good.map(l => ({ productId: l.productId, qty: Number(l.qty), price: Number(l.price) || 0, amount: amountOf(l) })) }
     if (isIn && recId) body.recipientId = recId   // приход сразу уходит получателю (расходная той же датой)
     const r: any = isIn ? await createPurchase(body) : await createSale(body)
     setSaving(false)
@@ -178,7 +191,7 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
               {recId && (
                 <div style={{ marginTop: 6, fontSize: 12.5, color: '#2e8a5e', background: '#f2fbf6', border: '1px solid #cfe6d8', borderRadius: 8, padding: '7px 10px' }}>
                   📦 После проведения: приход на склад → расходная на «{contragents.find((c: any) => c.id === recId)?.name}» той же датой
-                  {shipTotal > 0 ? ` на ${fmtMoney(shipTotal)} ₸ (его цены)` : ''}
+                  {shipTotal > 0 ? ` на ${m2(shipTotal)} ₸ (его цены)` : ''}
                   {(contragents.find((c: any) => c.id === recId) as any)?.orgRefId ? ' → у него приходная тем же днём' : ''}
                 </div>
               )}
@@ -198,7 +211,7 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
                 {hits.map(p => (
                   <div key={p.id} onClick={() => addLine(p)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f1ee', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span>{p.name}</span>
-                    <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtMoney(priceOf(p))} ₸</span>
+                    <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap' }}>{m2(priceOf(p))} ₸</span>
                   </div>
                 ))}
               </div>
@@ -215,16 +228,20 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
                   {lines.map((l, i) => (
                     <tr key={l.productId} style={{ borderTop: '1px solid #f1efec' }}>
                       <td style={{ padding: '6px 12px' }}>{l.name}<span style={{ color: COLORS.textMuted }}> · {l.unit}</span></td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><input type="number" value={l.qty} min={0} onChange={e => setLine(i, { qty: Number(e.target.value) })} style={numInp} /></td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><input type="number" value={l.price} min={0} onChange={e => setLine(i, { price: Number(e.target.value) })} style={{ ...numInp, width: 90 }} /></td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney((Number(l.qty) || 0) * (Number(l.price) || 0))} ₸</td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><input type="number" step="any" value={l.qty} min={0} onChange={e => setQty(i, Number(e.target.value))} style={numInp} /></td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><input type="number" step="0.01" value={l.price} min={0} onChange={e => setPrice(i, Number(e.target.value))} style={{ ...numInp, width: 100 }} /></td>
+                      {/* СУММУ вписываем сами (как в накладной завода) — цена считается обратно. */}
+                      <td style={{ padding: '6px 12px', textAlign: 'right' }}>
+                        <input type="number" step="0.01" value={amountOf(l)} min={0} onChange={e => setAmount(i, Number(e.target.value))}
+                          title="Сумма строки из накладной поставщика — цена пересчитается сама" style={{ ...numInp, width: 120, fontWeight: 700 }} />
+                      </td>
                       <td style={{ padding: '6px 12px', textAlign: 'center' }}><button onClick={() => delLine(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b03020' }}>🗑</button></td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot><tr style={{ borderTop: '2px solid #e6e2dc', background: '#faf8f6' }}>
                   <td colSpan={3} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>Итого</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>{fmtMoney(total)} ₸</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>{m2(total)} ₸</td>
                   <td></td>
                 </tr></tfoot>
               </table>
