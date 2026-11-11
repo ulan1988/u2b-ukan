@@ -283,6 +283,11 @@ export async function replaceMovements(docId: string, moves: NewMove[]) {
   if (moves.length) await db.insert(stockMovements).values(moves)
 }
 
+// Дата движений документа = дате самого документа. Нужна при переносе накладной задним
+// числом: склад должен двигаться тем же днём, иначе остатки на дату разъедутся.
+export const setMovementsDate = (docId: string, date: string) =>
+  db.update(stockMovements).set({ date }).where(eq(stockMovements.documentId, docId))
+
 // Остаток товара на складе (для предупреждения «уйдёт в минус» при правке дочерней).
 export async function stockByProducts(orgId: string, warehouseId: string, productIds: string[]) {
   const out: Record<string, number> = {}

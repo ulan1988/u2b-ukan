@@ -213,6 +213,19 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   }
   head.total = String(Math.max(0, subtotal - discountSum))
   await docRepo.updateDoc(id, head)
+  // ДОМИНО ДАТЫ: день накладной тянет за собой её движения склада И зеркальные накладные
+  // филиалов. Головной перенёс документ задним числом — филиал должен приходовать тем же
+  // днём, иначе остатки и отчёты двух орг разъедутся по дням.
+  const dateMoved: string[] = []
+  if (head.date && headBefore && String(head.date) !== String(headBefore.date).slice(0, 10)) {
+    await docRepo.setMovementsDate(id, head.date)
+    for (const ch of await docRepo.childDocs(id)) {
+      await docRepo.updateDoc(ch.id, { date: head.date } as any)
+      await docRepo.setMovementsDate(ch.id, head.date)
+      await docRepo.insertDocHistory({ documentId: ch.id, action: 'edit', detail: `дата по головной: ${String(headBefore.date).slice(0, 10)} → ${head.date}`, userName: actor?.name || 'Система' } as any)
+      dateMoved.push(ch.number)
+    }
+  }
   // Журнал: что реально изменилось (кол-во/цена строк и ключевые поля шапки).
   const after = await docRepo.linesWithProduct(id)
   const changes: string[] = []
@@ -228,10 +241,12 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
     if (patch.supplierId !== undefined && (patch.supplierId || null) !== ((headBefore as any).supplierId || null)) changes.push('сменён поставщик')
     if (head.number && head.number !== headBefore.number) changes.push(`номер ${headBefore.number} → ${head.number}`)
     if (String(headBefore.total) !== head.total) changes.push(`итог ${Number(headBefore.total)} → ${Number(head.total)}`)
+    if (head.date && String(head.date) !== String(headBefore.date).slice(0, 10)) changes.push(`дата ${String(headBefore.date).slice(0, 10)} → ${head.date}`)
   }
+  if (dateMoved.length) changes.push(`дата перенесена и у филиалов: ${dateMoved.join(', ')}`)
   if (rolledBack.length) changes.push(`откат цепочки головного: ${rolledBack.join(', ')}`)
   if (changes.length) await docRepo.insertDocHistory({ documentId: id, action: 'edit', detail: changes.join(' · '), userName: actor?.name || 'Система' } as any)
-  return { ok: true, subtotal, discountSum, total: subtotal - discountSum, rolledBack }
+  return { ok: true, subtotal, discountSum, total: subtotal - discountSum, rolledBack, dateMoved }
 }
 
 // Создать расходную накладную (продажа): проводка = документ + строки +

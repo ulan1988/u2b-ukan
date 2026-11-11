@@ -54,7 +54,7 @@ export async function applyToChildren(docId: string, actor?: Session | null) {
     if (!child.transit && child.warehouseId) {
       await docRepo.replaceMovements(child.id, after.filter(l => l.productId).map(l => ({
         id: randomUUID(), orgId: child.orgId, warehouseId: child.warehouseId as string,
-        productId: l.productId as string, qty: String(sign * num(l.qty)), documentId: child.id, date: child.date,
+        productId: l.productId as string, qty: String(sign * num(l.qty)), documentId: child.id, date: mother.date,
       })) as any)
       // 4. Предупреждение: остаток филиала ушёл в минус (товар уже перепродан).
       const ids = after.map(l => l.productId).filter(Boolean) as string[]
@@ -67,7 +67,9 @@ export async function applyToChildren(docId: string, actor?: Session | null) {
 
     // 5. Итог + сброс «проверено»: филиал должен заново подтвердить изменённый документ.
     const total = after.reduce((s, l) => s + num(l.amount), 0)
-    await docRepo.updateDoc(child.id, { total: String(total), reviewed: false, contragentAccepted: false } as any)
+    // День дочерней = день матери: головной провёл задним числом — филиал приходует тем же
+    // днём (иначе остатки и отчёты двух орг разъедутся по дням).
+    await docRepo.updateDoc(child.id, { total: String(total), date: mother.date, reviewed: false, contragentAccepted: false } as any)
     synced++
 
     await docRepo.insertDocHistory({ documentId: child.id, action: 'applied', detail: `Состав и цены получены от ${mother.number} · итог ${Math.round(total)} ₸`, userName: actor?.name || 'Система' } as any)
