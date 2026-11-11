@@ -49,7 +49,39 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   // Ф2: приход листов → склад материала (единый лист, 0,35→0,4). Цена остаётся в документе.
   try { const { receiveSheetsFromLines } = await import('./material.service'); await receiveSheetsFromLines(input.orgId, input.warehouseId, lines.map(l => ({ productId: l.productId, qty: l.qty }))) } catch {}
   await mirrorBetweenOrgs(input, { id: docId, number: doc.number }, 'purchase')
+  // ДОМИНО ПРИХОДА: в приходной указан ПОЛУЧАТЕЛЬ — товар на складе не задерживается,
+  // сразу уходит ему расходной ТОЙ ЖЕ ДАТОЙ. Получатель-филиал увидит свою приходную
+  // зеркалом (тем же днём, с ценой).
+  if ((input as any).recipientId) await shipToRecipient(input, { id: docId, number: doc.number })
   return { id: docId, number: doc.number, total }
+}
+
+// Отгрузка получателю прямо из приходной (приход → расход одним действием).
+// Цена — ТА ЖЕ, что при обычной продаже: тип цены контрагента (спец/опт/розница) поверх
+// прайса своей орг (`product_prices`). Цены продажи у орг нет (0) — берём цену прихода,
+// иначе отгрузили бы за 0.
+async function shipToRecipient(input: any, doc: { id: string; number: string }) {
+  try {
+    const recipientId = String(input.recipientId)
+    if (!recipientId || recipientId === input.contragentId) return
+    const [rc] = await docRepo.contragentById(recipientId)
+    if (!rc) return
+    const priceType = (rc as any).priceType || 'retail'
+    const refsRepo = await import('../repositories/refs.repo')
+    const ids = Array.from(new Set((input.lines || []).map((l: any) => l.productId).filter(Boolean))) as string[]
+    const prods = await refsRepo.productsWithOrgPrices(input.orgId, ids)
+    const byId = new Map(prods.map((p: any) => [p.id, p]))
+    const { priceForClient } = await import('../lib/lineAmount')
+    const lines = (input.lines || []).map((l: any) => {
+      const p = l.productId ? byId.get(l.productId) : null
+      const sale = p ? priceForClient(p, priceType) : 0
+      return { ...l, sourcePosId: null, price: sale > 0 ? sale : Number(l.price) || 0 }
+    })
+    await createSale({
+      orgId: input.orgId, contragentId: recipientId, warehouseId: input.warehouseId,
+      lines, date: input.date, comment: `Отгрузка получателю по приходной ${doc.number}`,
+    } as any)
+  } catch (e) { console.error('shipToRecipient', doc.number, e) }
 }
 
 // ── ЗЕРКАЛО МЕЖ ОРГ (накладная, заведённая руками) ──────────────────────────────

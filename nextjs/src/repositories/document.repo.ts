@@ -210,7 +210,9 @@ export const linesWithProduct = (docId: string) =>
     .where(eq(documentLines.documentId, docId)).orderBy(asc(documentLines.sortOrder), asc(documentLines.id))
 
 export const contragentById = (id: string) =>
-  db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId }).from(contragents).where(eq(contragents.id, id)).limit(1)
+  // priceType нужен отгрузке получателю из приходной: цена = спец/опт/розница этого контрагента.
+  db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId, priceType: contragents.priceType })
+    .from(contragents).where(eq(contragents.id, id)).limit(1)
 // Контрагент-мост: в книге orgId запись, указывающая (orgRefId) на refOrgId. Нужен для
 // зеркальной накладной между орг (напр. в книге филиала контрагент «U2B головной»).
 export const contragentByOrgRef = (orgId: string, refOrgId: string) =>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import ContragentPicker from '@/components/ContragentPicker'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
-import { fetchRefs, listProducts } from '@/lib/api/refs'
+import { fetchRefs, listProducts, autoPrices } from '@/lib/api/refs'
 import { createPurchase, createSale } from '@/lib/api/docs'
 
 // Прямое создание накладной в разделе документов (без карточки-заявки).
@@ -19,6 +19,8 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [cagId, setCagId] = useState('')
+  const [recId, setRecId] = useState('')          // получатель прихода (товар сразу уходит ему)
+  const [recPrices, setRecPrices] = useState<Record<string, number>>({})   // его цены продажи
   const [whId, setWhId] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [lines, setLines] = useState<Line[]>([])
@@ -62,6 +64,15 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refPrices, cagId])
 
+  // Цены ПОЛУЧАТЕЛЯ (спец/опт/розница — как при обычной продаже): показываем, на какую
+  // сумму уйдёт отгрузка этой же датой. Пересчитываем при смене получателя и состава.
+  useEffect(() => {
+    const ids = lines.map(l => l.productId).filter(Boolean)
+    if (!isIn || !recId || !ids.length) { setRecPrices({}); return }
+    autoPrices(ids, recId).then((m: any) => setRecPrices(m && typeof m === 'object' ? m : {})).catch(() => setRecPrices({}))
+  }, [isIn, recId, lines.map(l => l.productId).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shipTotal = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (recPrices[l.productId] || Number(l.price) || 0), 0)
+
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase()
     if (!s) return []
@@ -86,7 +97,8 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
     const good = lines.filter(l => (Number(l.qty) || 0) > 0)
     if (!good.length) { setMsg('⚠ Добавьте хотя бы одну позицию'); return }
     setSaving(true)
-    const body = { orgId, contragentId: cagId, warehouseId: whId, date, lines: good.map(l => ({ productId: l.productId, qty: Number(l.qty), price: Number(l.price) || 0 })) }
+    const body: any = { orgId, contragentId: cagId, warehouseId: whId, date, lines: good.map(l => ({ productId: l.productId, qty: Number(l.qty), price: Number(l.price) || 0 })) }
+    if (isIn && recId) body.recipientId = recId   // приход сразу уходит получателю (расходная той же датой)
     const r: any = isIn ? await createPurchase(body) : await createSale(body)
     setSaving(false)
     if (r?.error || r?.ok === false) { setMsg('⚠ ' + (r.error || 'Ошибка сохранения')); return }
@@ -123,6 +135,22 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
               </div>
             </div>
           </div>
+
+          {/* ПОЛУЧАТЕЛЬ прихода: товар не лежит на складе — этой же датой уходит ему
+              расходной по ЕГО цене (спец/опт/розница). Филиалу его приходная придёт зеркалом. */}
+          {isIn && (
+            <div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>Получатель <span style={{ color: '#a09889' }}>(необязательно — товар сразу уйдёт ему этой же датой)</span></div>
+              <ContragentPicker contragents={contragents.filter((c: any) => c.id !== cagId)} value={recId} onPick={(c: any) => setRecId(c?.id || '')} placeholder="— остаётся на складе —" />
+              {recId && (
+                <div style={{ marginTop: 6, fontSize: 12.5, color: '#2e8a5e', background: '#f2fbf6', border: '1px solid #cfe6d8', borderRadius: 8, padding: '7px 10px' }}>
+                  📦 После проведения: приход на склад → расходная на «{contragents.find((c: any) => c.id === recId)?.name}» той же датой
+                  {shipTotal > 0 ? ` на ${fmtMoney(shipTotal)} ₸ (его цены)` : ''}
+                  {(contragents.find((c: any) => c.id === recId) as any)?.orgRefId ? ' → у него приходная тем же днём' : ''}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>Добавить товар{isIn && refOrg && cag ? ` · цены от «${cag.name}»` : ''}</div>

@@ -18,6 +18,9 @@ export const createPurchaseSchema = z.object({
   lines: z.array(purchaseLineSchema).min(1),
   sourceOrderId: z.string().optional(), // номер карточки-основания (ЗП-…/ПР-…), чтобы связь не терялась
   sourceDocId: z.string().uuid().optional(), // id исходной накладной (для возврата — узнать откуда)
+  // ПОЛУЧАТЕЛЬ прихода: товар не остаётся на складе — сразу уходит ему расходной той же
+  // датой по ЕГО цене (спец/опт/розница). Филиалу его приходная родится зеркалом.
+  recipientId: z.string().uuid().optional(),
 })
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>
