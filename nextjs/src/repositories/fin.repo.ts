@@ -11,6 +11,8 @@ export const contragentOpenInvoices = (orgId: string, contragentId: string, kind
     from documents
     where org_id=${orgId} and contragent_id=${contragentId} and type=${kind} and status<>'cancelled'
       and (total - paid_sum) > 0
+      -- всё до даты начальных остатков уже сидит в opening_balance контрагента
+      and date >= coalesce((select opening_as_of from organizations o where o.id = documents.org_id), '0001-01-01'::date)
     order by date, created_at` as unknown as Promise<any[]>
 
 export const bumpPaidSum = (docId: string, delta: number) =>

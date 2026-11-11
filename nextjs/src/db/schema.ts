@@ -19,6 +19,11 @@ export const organizations = pgTable('organizations', {
   defaultLogistId: uuid('default_logist_id'),            // логист по умолчанию для авто-связанных продаж (без FK — избегаем цикла с users)
   defaultContragentId: uuid('default_contragent_id'),    // контрагент по умолчанию (первым в списке выбора «Кому»/поставщик)
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  // ДАТА НАЧАЛЬНЫХ ОСТАТКОВ: на этот день сальдо контрагентов перенесено из 1С
+  // (`contragents.opening_balance`). Документы и оплаты ДО неё в долг не считаются —
+  // они уже внутри остатка. Работать задним числом это не мешает: любой документ
+  // ПОСЛЕ даты отсечения учитывается как обычно.
+  openingAsOf: date('opening_as_of'),
 })
 
 export const users = pgTable('users', {
