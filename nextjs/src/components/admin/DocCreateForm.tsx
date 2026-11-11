@@ -228,12 +228,12 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
                   {lines.map((l, i) => (
                     <tr key={l.productId} style={{ borderTop: '1px solid #f1efec' }}>
                       <td style={{ padding: '6px 12px' }}>{l.name}<span style={{ color: COLORS.textMuted }}> · {l.unit}</span></td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><input type="number" step="any" value={l.qty} min={0} onChange={e => setQty(i, Number(e.target.value))} style={numInp} /></td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><input type="number" step="0.01" value={l.price} min={0} onChange={e => setPrice(i, Number(e.target.value))} style={{ ...numInp, width: 100 }} /></td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><NumCell value={l.qty} onChange={n => setQty(i, n)} decimals={0} col="qty" row={i} /></td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right' }}><NumCell value={l.price} onChange={n => setPrice(i, n)} decimals={2} width={100} col="price" row={i} /></td>
                       {/* СУММУ вписываем сами (как в накладной завода) — цена считается обратно. */}
                       <td style={{ padding: '6px 12px', textAlign: 'right' }}>
-                        <input type="number" step="0.01" value={amountOf(l)} min={0} onChange={e => setAmount(i, Number(e.target.value))}
-                          title="Сумма строки из накладной поставщика — цена пересчитается сама" style={{ ...numInp, width: 120, fontWeight: 700 }} />
+                        <NumCell value={amountOf(l)} onChange={n => setAmount(i, n)} decimals={2} width={120} bold col="amount" row={i}
+                          title="Сумма строки из накладной поставщика — цена пересчитается сама" />
                       </td>
                       <td style={{ padding: '6px 12px', textAlign: 'center' }}><button onClick={() => delLine(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b03020' }}>🗑</button></td>
                     </tr>
@@ -257,6 +257,35 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
         </div>
       </div>
     </div>
+  )
+}
+
+// Числовая ячейка накладной. type=text (а не number) — НЕТ стрелок-степпера; деньги
+// показываем читаемо «681 148,51», пока не правишь (в фокусе — голое число, чтобы каретка
+// не прыгала). Между ячейками СТОЛБЦА ходим стрелками ↑/↓ и Enter (как в каталоге).
+function NumCell({ value, onChange, decimals, width, bold, col, row, title }: {
+  value: number; onChange: (n: number) => void; decimals: number
+  width?: number; bold?: boolean; col: string; row: number; title?: string
+}) {
+  const [focused, setFocused] = useState(false)
+  const [draft, setDraft] = useState('')
+  const fmt = (v: number) => (Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: decimals, maximumFractionDigits: decimals === 0 ? 3 : decimals })
+  const shown = focused ? draft : (value ? fmt(value) : '')
+  function key(e: React.KeyboardEvent<HTMLInputElement>) {
+    const k = e.key
+    if (k !== 'ArrowUp' && k !== 'ArrowDown' && k !== 'Enter') return
+    e.preventDefault()
+    const dir = k === 'ArrowUp' ? -1 : 1
+    const next = document.querySelector<HTMLInputElement>(`input[data-col="${col}"][data-row="${row + dir}"]`)
+    if (next) { next.focus(); next.select() }
+  }
+  return (
+    <input type="text" inputMode="decimal" data-col={col} data-row={row} value={shown} placeholder="0" title={title}
+      onFocus={e => { setFocused(true); setDraft(value ? String(value).replace('.', ',') : ''); e.currentTarget.select() }}
+      onBlur={() => setFocused(false)}
+      onKeyDown={key}
+      onChange={e => { const t = e.target.value.replace(/[^0-9.,]/g, ''); setDraft(t); onChange(Number(t.replace(/\s/g, '').replace(',', '.')) || 0) }}
+      style={{ ...numInp, ...(width ? { width } : {}), ...(bold ? { fontWeight: 700 } : {}) }} />
   )
 }
 
