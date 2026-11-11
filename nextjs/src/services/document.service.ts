@@ -46,7 +46,8 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,    // id карточки-основания (ЗП-…), чтобы связь не терялась
-    parentDocId: (input as any).parentDocId || null,        // мать-накладная (зеркало филиала ← наша расходная)
+    parentDocId: (input as any).parentDocId || null,
+    originDocId: (input as any).originDocId || null,   // накладная-основание (приход → отгрузка получателю)        // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
     // Бумажные поля из формы накладной: № и дата документа поставщика, операция, скидка, оплата.
@@ -93,6 +94,7 @@ async function shipToRecipient(input: any, doc: { id: string; number: string }) 
     await createSale({
       orgId: input.orgId, contragentId: recipientId, warehouseId: input.warehouseId,
       lines, date: input.date, comment: `Отгрузка получателю по приходной ${doc.number}`,
+      originDocId: doc.id,   // связь приход → отгрузка: по ней домино переносит дату всей цепочке
     } as any)
   } catch (e) { console.error('shipToRecipient', doc.number, e) }
 }
@@ -132,6 +134,32 @@ async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }
       await sqlClient`update documents set created_at = (select created_at from documents where id=${doc.id}) - interval '2 seconds' where id=${mdoc.id}`
     }
   } catch (e) { console.error('mirrorBetweenOrgs', doc.number, e) }
+}
+
+// ЦЕПОЧКА НАКЛАДНОЙ (домино): всё, что связано с документом — мать-зеркало и накладная-
+// основание (вверх), зеркала филиалов и отгрузка получателю (вниз). Начинаем с любого
+// звена: поднимаемся к корню, потом собираем всё дерево. Себя в список не включаем.
+async function chainDocs(docId: string) {
+  let rootId = docId
+  for (let i = 0; i < 10; i++) {                      // защита от кольца
+    const [d] = await docRepo.getDoc(rootId); if (!d) break
+    const up = (d as any).parentDocId || (d as any).originDocId
+    if (!up || up === rootId) break
+    rootId = up
+  }
+  const seen = new Set<string>([rootId])
+  const out: Array<{ id: string; number: string }> = []
+  if (rootId !== docId) { const [r] = await docRepo.getDoc(rootId); if (r) out.push({ id: r.id, number: r.number }) }
+  const walk = async (pid: string) => {
+    for (const c of await docRepo.docsBornFrom(pid)) {
+      if (seen.has(c.id)) continue
+      seen.add(c.id)
+      if (c.id !== docId) out.push({ id: c.id, number: c.number })
+      await walk(c.id)
+    }
+  }
+  await walk(rootId)
+  return out
 }
 
 // Отменить всю ветку зеркал под накладной: зеркальная приходная другой орг и всё,
@@ -210,14 +238,19 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
       if (l.comment !== undefined) set.comment = l.comment
       if (l.block !== undefined) set.block = String(l.block || '')                 // блок (накладная поставщика)
       if (l.sortOrder !== undefined) set.sortOrder = Number(l.sortOrder) || 0       // порядок (перетаскивание)
+      if (l.amount !== undefined) set.amount = String(Math.round((Number(l.amount) || 0) * 100) / 100)   // сумма «как в накладной завода»
       if (Object.keys(set).length) await docRepo.updateLine(l.id, set)
     }
   }
   // Пересчёт сумм строк и подытога.
   const lines = await docRepo.linesWithProduct(id)
   let subtotal = 0
+  // Сумму НЕ пересчитываем, если её прислали руками (накладная поставщика «в суммах») —
+  // иначе итог разъедется с бумагой на копейки.
+  const manual = new Map<string, number>((Array.isArray(patch.lines) ? patch.lines : []).filter((l: any) => l.id && l.amount !== undefined).map((l: any) => [String(l.id), Math.round((Number(l.amount) || 0) * 100) / 100]))
   for (const ln of lines) {
-    const amount = lineAmount({ name: (ln as any).name, qty: ln.qty, price: ln.price, widthCm: (ln as any).widthCm })
+    const amount = manual.has(ln.id) ? (manual.get(ln.id) as number)
+      : lineAmount({ name: (ln as any).name, qty: ln.qty, price: ln.price, widthCm: (ln as any).widthCm })
     if (String(amount) !== String(ln.amount)) await docRepo.updateLine(ln.id, { amount: String(amount) })
     subtotal += amount
   }
@@ -264,10 +297,11 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   const dateMoved: string[] = []
   if (head.date && headBefore && String(head.date) !== String(headBefore.date).slice(0, 10)) {
     await docRepo.setMovementsDate(id, head.date)
-    for (const ch of await docRepo.childDocs(id)) {
+    const was = String(headBefore.date).slice(0, 10)
+    for (const ch of await chainDocs(id)) {
       await docRepo.updateDoc(ch.id, { date: head.date } as any)
       await docRepo.setMovementsDate(ch.id, head.date)
-      await docRepo.insertDocHistory({ documentId: ch.id, action: 'edit', detail: `дата по головной: ${String(headBefore.date).slice(0, 10)} → ${head.date}`, userName: actor?.name || 'Система' } as any)
+      await docRepo.insertDocHistory({ documentId: ch.id, action: 'edit', detail: `дата по цепочке: ${was} → ${head.date}`, userName: actor?.name || 'Система' } as any)
       dateMoved.push(ch.number)
     }
   }
@@ -351,7 +385,8 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     id: docId, orgId: input.orgId, type: 'sale', operation: 'shipment',
     number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
-    parentDocId: (input as any).parentDocId || null,       // мать-накладная (зеркало филиала ← наша расходная)
+    parentDocId: (input as any).parentDocId || null,
+    originDocId: (input as any).originDocId || null,   // накладная-основание (приход → отгрузка получателю)       // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(netTotal),
     discountSum: String(disc), discountPct: String(disc > 0 && total > 0 ? Math.round(disc / total * 10000) / 100 : 0),

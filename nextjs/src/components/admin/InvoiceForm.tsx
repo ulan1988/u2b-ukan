@@ -125,7 +125,10 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
     })
     setDragId(null)
   }
-  const updLine = (lid: string, patch: any) => setLines(ls => ls.map(x => x.id === lid ? { ...x, ...patch } : x))
+  const updLine = (lid: string, patch: any) => setLines(ls => ls.map(x => x.id === lid
+    // поменяли цену — сумма считается заново (ручную сумму строки сбрасываем)
+    ? { ...x, ...patch, ...(patch.price !== undefined ? { amount: undefined } : {}) }
+    : x))
   // Создание: кол-во/цена пересчитывают сумму, вписанная сумма — обратно цену.
   const setQtyL = (lid: string, qty: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, qty, amount: r2(qty * Number(x.price)) } : x))
   const setPriceL = (lid: string, price: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, price, amount: r2(Number(x.qty) * price) } : x))
@@ -210,7 +213,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
       contragentId: f.contragentId || undefined, supplierId: f.supplierId ?? null,
-      lines: lines.map((l, i) => ({ id: l.id, price: Number(l.price) || 0, unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
+      lines: lines.map((l, i) => ({ id: l.id, price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
     else patch.discountSum = Number(f.discountSum) || 0

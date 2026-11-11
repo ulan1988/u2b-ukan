@@ -207,6 +207,10 @@ export const documents = pgTable('documents', {
   // Дерево накладных: у зеркальной приходной филиала здесь id НАШЕЙ расходной (мать).
   // По нему работает централизованная правка: меняем мать → применяем всем дочерним.
   parentDocId: uuid('parent_doc_id').references((): any => documents.id, { onDelete: 'set null' }),
+  // Накладная-ОСНОВАНИЕ: из какой приходной родилась отгрузка получателю (приход → расход).
+  // Не parentDocId: «Применить всем» по дереву зеркал её трогать не должно (там другие цены),
+  // но ДОМИНО по дате идёт и по этой связи — день у всей цепочки один.
+  originDocId: uuid('origin_doc_id').references((): any => documents.id, { onDelete: 'set null' }),
   warehouseId: uuid('warehouse_id').references(() => warehouses.id),
   date: date('date').notNull(),
   status: text('status').notNull().default('draft'),      // draft|posted|paid|cancelled

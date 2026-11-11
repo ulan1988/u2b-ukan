@@ -273,6 +273,14 @@ export const postedBySourceOrder = (cardId: string) =>
     .where(and(eq(documents.sourceOrderId, cardId), ne(documents.status, 'cancelled')))
 
 // ── Дерево накладных: наша расходная (мать) → зеркальные приходные филиалов (дочери) ──
+// Накладные, РОЖДЁННЫЕ из этой: зеркала филиалов (parent_doc_id) и отгрузка получателю
+// (origin_doc_id). По обеим связям идёт домино даты — день у всей цепочки один.
+export const docsBornFrom = (docId: string) =>
+  db.select().from(documents).where(and(
+    or(eq(documents.parentDocId, docId), eq(documents.originDocId, docId)),
+    ne(documents.status, 'cancelled'),
+  ))
+
 export const childDocs = (docId: string) =>
   db.select().from(documents).where(and(eq(documents.parentDocId, docId), ne(documents.status, 'cancelled')))
 
