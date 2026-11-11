@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import OrderCard from '@/components/admin/OrderCard'
 import InvoiceForm from '@/components/admin/InvoiceForm'
-import DocCreateForm from '@/components/admin/DocCreateForm'
+
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { postInvoice } from '@/lib/adminApi'
@@ -88,7 +88,7 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         )}
 
       {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={loadDocs} />}
-      {creating && <DocCreateForm kind={kind} orgId={orgId} onClose={() => setCreating(false)} onSaved={() => { loadDocs(); setMsg('✅ Накладная создана') }} />}
+      {creating && <InvoiceForm createKind={kind === 'in' ? 'purchase' : 'sale'} orgId={orgId} onClose={() => setCreating(false)} onSaved={() => { loadDocs(); setMsg('✅ Накладная создана') }} />}
     </div>
   )
 }

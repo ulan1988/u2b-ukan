@@ -28,6 +28,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
       sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
       widthCm: l.widthCm != null ? String(l.widthCm) : null,
+      comment: l.comment || '', block: l.block || '',   // коммент строки и блок (накладная поставщика)
     }
   })
 
@@ -37,6 +38,10 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     productId: l.productId, qty: String(l.qty), documentId: docId, date,
   }))
 
+  // Скидка накладной (как в форме): % → сумма, итог = Σ строк − скидка.
+  const discPct = Number((input as any).discountPct) || 0
+  const discIn = Math.max(0, Math.min(discPct > 0 ? Math.round(total * discPct) / 100 : (Number((input as any).discountSum) || 0), total))
+  total = Math.round((total - discIn) * 100) / 100
   const doc = {
     id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
@@ -44,6 +49,12 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     parentDocId: (input as any).parentDocId || null,        // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
+    // Бумажные поля из формы накладной: № и дата документа поставщика, операция, скидка, оплата.
+    ...((input as any).inNumber ? { inNumber: (input as any).inNumber } : {}),
+    ...((input as any).inDate ? { inDate: (input as any).inDate } : {}),
+    ...((input as any).operation ? { operation: (input as any).operation } : {}),
+    ...((input as any).paidSum != null ? { paidSum: String(Number((input as any).paidSum) || 0) } : {}),
+    discountPct: String(discPct), discountSum: String(discIn),
     ...((input as any).createdAt ? { createdAt: (input as any).createdAt } : {}),
   }
 
@@ -306,6 +317,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
       sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
       widthCm: l.widthCm != null ? String(l.widthCm) : null,
+      comment: l.comment || '', block: l.block || '',   // коммент строки и блок (накладная поставщика)
     }
   })
 
@@ -332,7 +344,8 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   }
 
   // Скидка по чеку (касса): итог = Σпозиций − скидка. % — инфо, сумма (discountSum) — источник истины.
-  const disc = Math.max(0, Math.min(Number((input as any).discountSum) || 0, total))
+  const discPctS = Number((input as any).discountPct) || 0
+  const disc = Math.max(0, Math.min(discPctS > 0 ? Math.round(total * discPctS) / 100 : (Number((input as any).discountSum) || 0), total))
   const netTotal = total - disc
   const doc = {
     id: docId, orgId: input.orgId, type: 'sale', operation: 'shipment',
@@ -343,6 +356,8 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     date, status: 'posted', total: String(netTotal),
     discountSum: String(disc), discountPct: String(disc > 0 && total > 0 ? Math.round(disc / total * 10000) / 100 : 0),
     comment: input.comment || '', projectId: (input as any).projectId || null, transit: (input as any).noStock || (input as any).transit || false,
+    ...((input as any).operation ? { operation: (input as any).operation } : {}),
+    ...((input as any).paidSum != null ? { paidSum: String(Number((input as any).paidSum) || 0) } : {}),
     ...((input as any).createdAt ? { createdAt: (input as any).createdAt } : {}),
   }
 

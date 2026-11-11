@@ -10,6 +10,10 @@ export const purchaseLineSchema = z.object({
   // СУММА строки, вписанная руками: накладная завода даётся суммой, и итог должен сойтись
   // до копейки. Если передана — берём её как есть, а не кол-во×цену (там копейки теряются).
   amount: z.coerce.number().min(0).optional(),
+  name: z.string().optional(),            // имя товара (для изделий: цена за см)
+  widthCm: z.coerce.number().optional(),  // см изделия
+  comment: z.string().optional(),         // коммент строки (как в форме накладной)
+  block: z.string().optional(),           // блок = накладная поставщика внутри документа
 })
 
 export const createPurchaseSchema = z.object({
@@ -24,6 +28,14 @@ export const createPurchaseSchema = z.object({
   // ПОЛУЧАТЕЛЬ прихода: товар не остаётся на складе — сразу уходит ему расходной той же
   // датой по ЕГО цене (спец/опт/розница). Филиалу его приходная родится зеркалом.
   recipientId: z.string().uuid().optional(),
+  // Шапка «как в форме»: вх. документ поставщика, операция, скидка и оплата.
+  inNumber: z.string().optional(),
+  inDate: z.string().optional(),
+  operation: z.string().optional(),
+  number: z.string().optional(),
+  discountPct: z.coerce.number().min(0).optional(),
+  discountSum: z.coerce.number().min(0).optional(),
+  paidSum: z.coerce.number().min(0).optional(),
 })
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>

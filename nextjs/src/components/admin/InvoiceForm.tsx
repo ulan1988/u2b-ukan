@@ -2,7 +2,13 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
-import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren } from '@/lib/api/docs'
+import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale } from '@/lib/api/docs'
+import { listProducts, autoPrices } from '@/lib/api/refs'
+import { matchWords } from '@/lib/search'
+import { extractRal } from '@/lib/ral'
+import { itemName } from '@/lib/itemName'
+import StoreCatalog from '@/components/StoreCatalog'
+import type { PickedPos } from '@/components/NomPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
 import { fetchRefs } from '@/lib/api/refs'
@@ -10,7 +16,10 @@ import { fetchRefs } from '@/lib/api/refs'
 // «20.000 см» → «20 см» для показа (лишние нули из имени товара)
 const cleanNm = (s: string) => String(s || '').replace(/(\d+)\.0+(\s*см)/gi, '$1$2')
 const cmOf = (l: any) => { const n = Number(l?.widthCm); return n > 0 ? String(n) : '' }
-const amtOf = (l: any) => lineAmount({ name: l.name, qty: Number(l.qty) || 0, price: Number(l.price) || 0, widthCm: l.widthCm })
+const r2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100
+// Сумма строки: вписанная руками (накладная поставщика даётся суммами) или кол-во×цена.
+const amtOf = (l: any) => (l.amount != null && l.amount !== '' ? r2(l.amount) : lineAmount({ name: l.name, qty: Number(l.qty) || 0, price: Number(l.price) || 0, widthCm: l.widthCm }))
+const m2 = (v: number) => (Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Форма накладной (1С УНФ), зеркальная: приходная (закуп) и расходная (продажа).
 // Тип определяется по doc.type. Правим «бумажные» поля: вх.номер/дата (только приходная),
@@ -21,7 +30,11 @@ const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#5f595
 const OPS_IN = [{ v: 'receipt', l: 'Поступление от поставщика' }, { v: 'return', l: 'Возврат поставщику' }]
 const OPS_OUT = [{ v: 'shipment', l: 'Продажа покупателю' }, { v: 'return', l: 'Возврат от покупателя' }]
 
-export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { id: string; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
+// Та же форма работает и на СОЗДАНИЕ накладной (createKind + orgId вместо id): шапка,
+// блоки, строки, скидка и оплата — один в один как у проведённой, плюс каталог и поиск.
+export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, onSaved, drawer = false }: { id?: string; createKind?: 'purchase' | 'sale'; orgId?: string; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
+  const creating = !id && !!createKind
+  const newType = createKind === 'sale' ? 'sale' : 'purchase'
   const [data, setData] = useState<any>(null)
   const [tab, setTab] = useState<'goods' | 'pay'>('goods')
   const [f, setF] = useState<any>({})            // редактируемая шапка
@@ -34,8 +47,17 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
   const [flash, setFlash] = useState('')
   const [returning, setReturning] = useState(false)
   const [cags, setCags] = useState<any[]>([])   // контрагенты орг накладной — чтобы править ошибочного
+  // ── режим создания ───────────────────────────────────────────────────────────
+  const [products, setProducts] = useState<any[]>([])
+  const [whs, setWhs] = useState<any[]>([])
+  const [whId, setWhId] = useState('')
+  const [recId, setRecId] = useState('')          // получатель прихода (товар сразу уйдёт ему)
+  const [recPrices, setRecPrices] = useState<Record<string, number>>({})
+  const [q, setQ] = useState('')
+  const [showCatalog, setShowCatalog] = useState(false)
+  const [seq, setSeq] = useState(1)               // локальная нумерация новых строк
 
-  function reload() { return getDocument(id).then((d: any) => {
+  function reload() { return getDocument(id as string).then((d: any) => {
     if (!d) return
     setData(d)
     setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), contragentId: d.doc.contragentId || '', supplierId: d.doc.supplierId || '', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
@@ -45,16 +67,40 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     const izd = mapped.find((l: any) => isIzdelie(l.name) && Number(l.price) > 0)   // цена за см (общая) — из первой изделия
     setPriceCm(izd ? String(Number(izd.price)) : '')
   }) }
-  useEffect(() => { reload() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!creating) { reload(); return }
+    // Новая накладная: тот же шаблон, но пустой. Номер — авто (можно вписать свой).
+    const today = new Date().toISOString().slice(0, 10)
+    setData({ doc: { type: newType, number: '', status: 'new', orgId: newOrgId }, lines: [], warehouse: null, history: [], children: [] })
+    setF({ number: '', date: today, inNumber: '', inDate: '', operation: newType === 'sale' ? 'shipment' : 'receipt', contragentId: '', supplierId: '', comment: '', discountPct: 0, discountSum: 0, paidSum: 0, reviewed: false })
+    setLines([]); setBlocks([])
+  }, [id, creating]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Справочники для создания: товары (поиск/каталог) и склады орг.
+  useEffect(() => {
+    if (!creating || !newOrgId) return
+    listProducts(newOrgId).then((ps: any) => setProducts(Array.isArray(ps) ? ps : [])).catch(() => {})
+    fetchRefs(newOrgId).then((r: any) => {
+      const w = ((r.warehouses || []) as any[]).filter(x => x.orgId === newOrgId)
+      setWhs(w); setWhId((w.find((x: any) => x.isCentral) || w[0])?.id || '')
+    }).catch(() => {})
+  }, [creating, newOrgId])
+
+  // Цены ПОЛУЧАТЕЛЯ (его тип цены) — сразу видно, на какую сумму уйдёт отгрузка.
+  useEffect(() => {
+    const ids = lines.map(l => l.productId).filter(Boolean)
+    if (!creating || newType !== 'purchase' || !recId || !ids.length) { setRecPrices({}); return }
+    autoPrices(ids, recId).then((m: any) => setRecPrices(m && typeof m === 'object' ? m : {})).catch(() => setRecPrices({}))
+  }, [creating, newType, recId, lines.map(l => l.productId).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
   // Контрагенты орг этой накладной — для выбора/правки покупателя-поставщика.
   useEffect(() => {
-    const org = data?.doc?.orgId; if (!org) return
+    const org = data?.doc?.orgId || newOrgId; if (!org) return
     fetchRefs(org).then((r: any) => setCags(((r.contragents || []) as any[]).filter(c => !c.archived).sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'))))
   }, [data?.doc?.orgId])
   // Удалить ошибочную позицию из проведённой накладной (склад/итог пересчитаются).
   async function delLine(l: any) {
     if (!confirm(`Убрать позицию «${cleanNm(l.name)}» из накладной? Товар вернётся на склад, итог пересчитается.`)) return
-    const r: any = await deleteInvoiceLine(id, l.id)
+    const r: any = await deleteInvoiceLine(id as string, l.id)
     if (r?.ok === false) { setFlash('⚠ ' + (r.error || 'Не удалось')); return }
     await reload(); onSaved?.(); setFlash('✓ Позиция убрана'); setTimeout(() => setFlash(''), 1500)
   }
@@ -80,6 +126,57 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     setDragId(null)
   }
   const updLine = (lid: string, patch: any) => setLines(ls => ls.map(x => x.id === lid ? { ...x, ...patch } : x))
+  // Создание: кол-во/цена пересчитывают сумму, вписанная сумма — обратно цену.
+  const setQtyL = (lid: string, qty: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, qty, amount: r2(qty * Number(x.price)) } : x))
+  const setPriceL = (lid: string, price: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, price, amount: r2(Number(x.qty) * price) } : x))
+  const setAmountL = (lid: string, amount: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, amount: r2(amount), price: Number(x.qty) > 0 ? r2(amount / Number(x.qty)) : x.price } : x))
+  const dropLine = (lid: string) => setLines(ls => ls.filter(x => x.id !== lid))
+  // Цена по умолчанию: приход — закуп товара, расход — розница.
+  const priceOf = (pr: any) => (newType === 'purchase' ? Number(pr.priceIn) || 0 : Number(pr.priceRetail) || Number(pr.priceIn) || 0)
+  function addProduct(pr: any, qty = 1, widthCm?: number | null) {
+    setLines(ls => {
+      const i = ls.findIndex(x => x.productId === pr.id && String(x.widthCm || '') === String(widthCm || ''))
+      if (i >= 0) { const n = [...ls]; const qn = Number(n[i].qty) + qty; n[i] = { ...n[i], qty: qn, amount: r2(qn * Number(n[i].price)) }; return n }
+      const price = priceOf(pr)
+      const id = 'new-' + (seq + ls.length)
+      return [...ls, { id, productId: pr.id, name: pr.name, qty, unit: pr.unit || 'шт', price, amount: r2(qty * price), widthCm: widthCm ?? null, comment: '', block: '', sortOrder: ls.length }]
+    })
+    setSeq(x => x + 1); setQ('')
+  }
+  // Единый каталог кассы: папки → цвет → см → кол-во.
+  function addFromCatalog(items: PickedPos[]) {
+    const skipped: string[] = []
+    for (const it of items) {
+      const raw = it.name1c || it.oral || ''
+      const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm: it.widthCm != null ? String(it.widthCm) : '' }) : raw
+      const norm = (x: string) => String(x || '').trim().toLowerCase().replace(/ё/g, 'е')
+      const pr = products.find((x: any) => norm(x.name) === norm(nm)) || ((it as any).productId ? products.find((x: any) => x.id === (it as any).productId) : null)
+      if (!pr) { skipped.push(nm); continue }
+      addProduct(pr, Number(it.qty) || 1, it.widthCm != null ? Number(it.widthCm) : null)
+    }
+    setShowCatalog(false)
+    if (skipped.length) { setFlash('⚠ Нет в номенклатуре: ' + skipped.join(', ')); setTimeout(() => setFlash(''), 4000) }
+  }
+  // Создать накладную (та же форма, только вместо «Сохранить» — проведение).
+  async function createDoc() {
+    if (!f.contragentId) { setFlash('⚠ Выберите ' + (newType === 'sale' ? 'покупателя' : 'поставщика')); return }
+    if (!whId) { setFlash('⚠ Нет склада'); return }
+    const good = lines.filter(l => (Number(l.qty) || 0) > 0)
+    if (!good.length) { setFlash('⚠ Добавьте хотя бы одну позицию'); return }
+    setBusy(true)
+    const body: any = {
+      orgId: newOrgId, contragentId: f.contragentId, warehouseId: whId, date: f.date || undefined,
+      number: f.number || undefined, comment: f.comment || '', inNumber: f.inNumber || undefined, inDate: f.inDate || undefined,
+      operation: f.operation, paidSum: Number(f.paidSum) || 0,
+      [discMode === 'pct' ? 'discountPct' : 'discountSum']: Number(discMode === 'pct' ? f.discountPct : f.discountSum) || 0,
+      lines: good.map((l, i) => ({ productId: l.productId, name: l.name, qty: Number(l.qty), price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit || 'шт', widthCm: l.widthCm != null ? Number(l.widthCm) : undefined, comment: l.comment || '', block: l.block || '' })),
+    }
+    if (newType === 'purchase' && recId) body.recipientId = recId
+    const r: any = newType === 'purchase' ? await createPurchase(body) : await createSale(body)
+    setBusy(false)
+    if (r?.error || r?.ok === false) { setFlash('⚠ ' + (r.error || 'Ошибка сохранения')); return }
+    onSaved?.(); onClose()
+  }
 
   const subtotal = lines.reduce((s, l) => s + amtOf(l), 0)
   // Себестоимость продажи — верная (связанные приходные + непокрытое×price_in), приходит из API.
@@ -97,7 +194,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     if (!confirm('Применить этот состав и цены всем дочерним накладным?\n\n' + who)) return
     setBusy(true)
     await save()                                  // сперва сохраняем саму мать
-    const r: any = await applyToChildren(id)
+    const r: any = await applyToChildren(id as string)
     setBusy(false)
     const res = r?.data || r
     if (res?.ok === false) { setFlash('⚠ ' + (res.error || 'Не удалось')); return }
@@ -118,7 +215,7 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
     else patch.discountSum = Number(f.discountSum) || 0
     if (markReviewed) patch.reviewed = true
-    const r: any = await updateDocument(id, patch)
+    const r: any = await updateDocument(id as string, patch)
     setBusy(false)
     if (r.ok !== false) { if (markReviewed) setF((p: any) => ({ ...p, reviewed: true })); setFlash(markReviewed ? '✓ Проверено и сохранено' : '✓ Сохранено'); setTimeout(() => setFlash(''), 1500); onSaved?.() }
     else setFlash('⚠ ' + (r.error || 'Ошибка'))
@@ -139,9 +236,9 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
             {/* Шапка */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>{isSale ? 'Расходная накладная' : 'Приходная накладная'}</span>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{o.number}</span>
-              <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>
-              {o.status !== 'cancelled' && !f.reviewed && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#fff3cd', color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>}
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{creating ? 'новая' : o.number}</span>
+              {!creating && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>}
+              {!creating && o.status !== 'cancelled' && !f.reviewed && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#fff3cd', color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>}
               {o.transit && <span title="Сквозная продажа — товар шёл мимо склада (drop-ship)" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#ffe8d6', color: '#c2570f', fontWeight: 700 }}>🔀 Сквозная · мимо склада</span>}
               <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
             </div>
@@ -157,8 +254,8 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                   {cags.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              {!isSale && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
-              {isSale && (
+              {!isSale && !creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
+              {isSale && !creating && (
                 <div><label style={lbl}>ПОСТАВЩИК (у кого взят товар)</label>
                   <select style={inp} value={f.supplierId || ''} onChange={e => setF({ ...f, supplierId: e.target.value })} title="Центр-Склад бывает и поставщиком, и просто транзитным складом — выберите вручную; пусто = определить по закупу">
                     <option value="">— по закупу{data.supplier ? `: ${data.supplier}` : ''} —</option>
@@ -166,7 +263,25 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                   </select>
                 </div>
               )}
-              <div><label style={lbl}>СКЛАД</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled /></div>
+              <div><label style={lbl}>СКЛАД</label>{creating
+                ? <select style={inp} value={whId} onChange={e => setWhId(e.target.value)}>{whs.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
+                : <input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled />}</div>
+              {/* ПОЛУЧАТЕЛЬ прихода: товар сразу уйдёт ему расходной этой же датой (его цены). */}
+              {creating && newType === 'purchase' && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={lbl}>ПОЛУЧАТЕЛЬ <span style={{ fontWeight: 500, color: '#a09889' }}>(необязательно — товар сразу уйдёт ему этой же датой)</span></label>
+                  <select style={inp} value={recId} onChange={e => setRecId(e.target.value)}>
+                    <option value="">— остаётся на складе —</option>
+                    {cags.filter((c: any) => c.id !== f.contragentId).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {recId && (
+                    <div style={{ marginTop: 6, fontSize: 12.5, color: '#2e8a5e', background: '#f2fbf6', border: '1px solid #cfe6d8', borderRadius: 8, padding: '7px 10px' }}>
+                      📦 После проведения: приход на склад → расходная на «{cags.find((c: any) => c.id === recId)?.name}» той же датой
+                      {lines.length > 0 ? ` на ${m2(lines.reduce((sm, l) => sm + (Number(l.qty) || 0) * (recPrices[l.productId] || Number(l.price) || 0), 0))} ₸ (его цены)` : ''}
+                    </div>
+                  )}
+                </div>
+              )}
               {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}
               {!isSale && <div><label style={lbl}>ВХ. ДАТА</label><input style={inp} type="date" value={f.inDate ? String(f.inDate).slice(0, 10) : ''} onChange={e => setF({ ...f, inDate: e.target.value })} /></div>}
               <div><label style={lbl}>ОПЕРАЦИЯ</label><select style={inp} value={f.operation} onChange={e => { if (e.target.value === 'return') { setReturning(true) } else setF({ ...f, operation: e.target.value }) }}>{OPS.map(op => <option key={op.v} value={op.v}>{op.l}</option>)}</select></div>
@@ -201,6 +316,27 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                     <span style={{ fontSize: 12, color: '#8a6f00' }}>₸/шт = см × цена за см · сумма = шт × ₸/шт</span>
                   </div>
                 )}
+                {/* Создание: добавляем товар — поиск по словам и тот же каталог, что у кассы. */}
+                {creating && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input style={{ ...inp, flex: 1 }} value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по словам: «евро 7024»…" />
+                      <button onClick={() => setShowCatalog(true)} style={{ border: 'none', borderRadius: 8, padding: '0 16px', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>📖 Каталог</button>
+                    </div>
+                    {q.trim() && (
+                      <div style={{ marginTop: 4, border: '1px solid #e6e2dc', borderRadius: 10, maxHeight: 220, overflowY: 'auto', background: '#fff' }}>
+                        {products.filter((pr: any) => matchWords(q, pr.name, pr.alias)).slice(0, 30).map((pr: any) => (
+                          <div key={pr.id} onClick={() => addProduct(pr)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f1ee', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                            <span>{cleanNm(pr.name)}</span>
+                            <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap' }}>{m2(priceOf(pr))} ₸</span>
+                          </div>
+                        ))}
+                        {products.filter((pr: any) => matchWords(q, pr.name, pr.alias)).length === 0 && <div style={{ padding: '10px 12px', fontSize: 12.5, color: COLORS.textMuted }}>Ничего не найдено</div>}
+                      </div>
+                    )}
+                    {showCatalog && <StoreCatalog orgId={newOrgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <button onClick={addBlock} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px dashed #b79bd6', background: '#faf5ff', color: '#7a3aaa', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>＋ Блок (накладная поставщика)</button>
                   {blocks.length > 0 && <span style={{ fontSize: 12, color: COLORS.textMuted }}>Перетаскивай строки за ⠿ между блоками</span>}
@@ -231,15 +367,20 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                               <td style={{ padding: '6px 4px', color: '#c9c2b8', cursor: 'grab', textAlign: 'center' }} title="Перетащить">⠿</td>
                               <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : '' : ''}</td>
                               <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
-                              <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(l.qty)}</td>
+                              <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>{creating
+                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty} onChange={e => setQtyL(l.id, Number(e.target.value))} />
+                                : Number(l.qty)}</td>
                               <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => updLine(l.id, { unit: e.target.value })} /></td>
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
-                              <td style={{ padding: '6px 4px', width: 96 }}>{izd
+                              <td style={{ padding: '6px 4px', width: 96 }}>{izd && !creating
                                 ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
-                                : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" value={l.price || ''} onChange={e => updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
-                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(amtOf(l))}</td>
+                                : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="0.01" value={l.price || ''} onChange={e => creating ? setPriceL(l.id, Number(e.target.value)) : updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
+                              {/* СУММУ при создании вписываем сами (как в накладной завода) — цена пересчитается. */}
+                              <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', width: creating ? 120 : undefined }}>{creating
+                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l)} onChange={e => setAmountL(l.id, Number(e.target.value))} title="сумма строки из накладной поставщика" />
+                                : fmtMoney(amtOf(l))}</td>
                               <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
-                              <td style={{ padding: '6px 4px', width: 34, textAlign: 'center' }}><button type="button" onClick={() => delLine(l)} title="Убрать ошибочную позицию (товар вернётся на склад)" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b03020', fontSize: 15, lineHeight: 1 }}>🗑</button></td>
+                              <td style={{ padding: '6px 4px', width: 34, textAlign: 'center' }}><button type="button" onClick={() => creating ? dropLine(l.id) : delLine(l)} title="Убрать ошибочную позицию (товар вернётся на склад)" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b03020', fontSize: 15, lineHeight: 1 }}>🗑</button></td>
                             </tr>
                           ) })}
                         </tbody>
@@ -247,7 +388,9 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
                     </div>
                   )
                 })}
-                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>Кол-во и склад менять нельзя (движение склада). Ошибочную позицию можно убрать 🗑 (товар вернётся на склад, итог пересчитается). Блоки — перетаскивай строки за ⠿.</div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>{creating
+                  ? 'Сумму строки можно вписать руками — цена пересчитается сама (накладная завода даётся суммами). Блоки — перетаскивай строки за ⠿.'
+                  : <>Кол-во и склад менять нельзя (движение склада). Ошибочную позицию можно убрать 🗑 (товар вернётся на склад, итог пересчитается). Блоки — перетаскивай строки за ⠿.</>}</div>
               </div>
             ) : (
               <div style={{ padding: 20, background: '#faf8f6' }}>
@@ -286,21 +429,22 @@ export default function InvoiceForm({ id, onClose, onSaved, drawer = false }: { 
 
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
               {flash && <span style={{ marginRight: 'auto', fontSize: 13, color: flash.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{flash}</span>}
-              {o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
+              {!creating && o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
               <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
-              <button onClick={() => save()} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? '…' : 'Сохранить'}</button>
-              {(data?.children || []).length > 0 && o.status !== 'cancelled' && (
+              {creating && <button onClick={createDoc} disabled={busy} style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : (newType === 'sale' ? 'Создать расход' : 'Создать приход')}</button>}
+              {!creating && <button onClick={() => save()} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? '…' : 'Сохранить'}</button>}
+              {!creating && (data?.children || []).length > 0 && o.status !== 'cancelled' && (
                 <button onClick={applyAll} disabled={busy} title="Разослать состав и цены дочерним накладным филиалов"
                   style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
                   🌳 Применить всем ({(data.children || []).length})
                 </button>
               )}
-              {o.status !== 'cancelled' && !f.reviewed && <button onClick={() => save(true)} disabled={busy} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>✓ Проверено</button>}
+              {!creating && o.status !== 'cancelled' && !f.reviewed && <button onClick={() => save(true)} disabled={busy} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>✓ Проверено</button>}
             </div>
           </>
         )}
       </div>
-      {returning && <ReturnModal docId={id} onClose={() => setReturning(false)} onDone={() => { setReturning(false); onSaved?.() }} />}
+      {returning && id && <ReturnModal docId={id} onClose={() => setReturning(false)} onDone={() => { setReturning(false); onSaved?.() }} />}
     </div>
   )
 }
