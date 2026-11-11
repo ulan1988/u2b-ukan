@@ -230,6 +230,14 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     vv.addEventListener('resize', sync); vv.addEventListener('scroll', sync); sync()
     return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync) }
   }, [])
+  // За компьютером (≥1000px) раскладка кассы как в каталоге: слева один столбец номенклатуры
+  // с кол-вом, а собранный чек — панелью справа (не шторкой снизу). На планшете/телефоне — как было.
+  const [wide, setWide] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)')
+    const on = () => setWide(mq.matches); on()
+    mq.addEventListener('change', on); return () => mq.removeEventListener('change', on)
+  }, [])
 
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   // Прочий доход (деньги без товара) живёт не в накладных, а в платежах — тянем отдельно.
@@ -869,7 +877,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           <ClientApp user={{ id: user.id, name: orgName || user.name, orgId: user.orgId, slug: user.slug }} embedded viewAs />
         </div>
       ) : tab === 'cash' ? (
-        <div style={{ paddingBottom: 74 + checkH }}>
+        <div style={{ paddingBottom: wide ? 24 : 74 + checkH, paddingRight: (wide && rows.length > 0) ? 400 : undefined }}>
           {/* Отложенные заказы — сверху: нажал, выбрал, заказ вернулся в кассу и можно оплатить. */}
           {holds.length > 0 && (
             <div style={{ background: '#f7f3fc', borderBottom: '1px solid #e7ddf3', padding: '7px 10px' }}>
@@ -1243,10 +1251,20 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         </div>
       )}
 
-      {/* ЧЕК — шторка снизу: строки, итог, оплата в один тап */}
+      {/* ЧЕК — на телефоне/планшете шторка снизу, на компьютере (wide) панель справа */}
       {tab === 'cash' && rows.length > 0 && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: kb > 0 ? kb : 62, background: '#fff', borderRadius: '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(38,35,31,.16)', zIndex: 90, maxWidth: 760, margin: '0 auto' }}>
-          {/* ручка-тумблер: тап сворачивает/раскрывает чек */}
+        <div style={wide
+          ? { position: 'fixed', top: 56, right: 0, bottom: 62, width: 384, background: '#fff', borderLeft: '1px solid #e6e2dc', boxShadow: '-6px 0 20px rgba(38,35,31,.08)', zIndex: 90, display: 'flex', flexDirection: 'column' }
+          : { position: 'fixed', left: 0, right: 0, bottom: kb > 0 ? kb : 62, background: '#fff', borderRadius: '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(38,35,31,.16)', zIndex: 90, maxWidth: 760, margin: '0 auto' }}>
+          {/* компьютер: шапка панели; телефон: ручка-тумблер сворачивает/раскрывает чек */}
+          {wide ? (
+            <div style={{ padding: '11px 14px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 800 }}>🧾 Чек</span>
+              <span style={{ fontSize: 12.5, color: '#a09889' }}>{rows.length} поз.</span>
+              {noPrice && <span style={{ fontSize: 11.5, color: PRIMARY, fontWeight: 700 }}>впишите цены</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800 }}>{money(net)} ₸</span>
+            </div>
+          ) : (
           <div onClick={() => setCheckExpanded(v => !v)} style={{ padding: '8px 14px 6px', cursor: 'pointer' }}>
             <div style={{ width: 40, height: 4, borderRadius: 3, background: '#e0dbd3', margin: '0 auto' }} />
             {!checkExpanded && (
@@ -1258,8 +1276,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
             )}
           </div>
-          {checkExpanded && (
-          <div style={{ padding: '2px 14px 10px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          )}
+          {(wide || checkExpanded) && (
+          <div style={{ padding: '2px 14px 10px', display: 'flex', flexDirection: 'column', gap: 7, ...(wide ? { flex: 1, minHeight: 0, overflowY: 'auto', paddingTop: 10 } : {}) }}>
             {/* покупатель */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button onClick={() => setShowClient(v => !v)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c', maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {client ? client.name : 'Розница'}</button>
@@ -1276,7 +1295,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             </div>
 
             {/* строки чека */}
-            <div style={{ maxHeight: payOpen ? 96 : 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ maxHeight: wide ? 'none' : (payOpen ? 96 : 150), overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {rows.map(r => {
                 const perCm = isIzdelie(r.name1c) && Number(r.widthCm) > 0
                 const sum = lineAmount({ name: r.name1c, qty: r.qty, price: r.price, widthCm: r.widthCm })

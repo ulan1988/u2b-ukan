@@ -171,12 +171,14 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
   .bp-rail-lbl { display: block; font-size: 11px !important; line-height: 1.15; font-weight: 700; max-width: 100%; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 }
 
-/* Касса продавца на планшете/ноутбуке: каталог в две колонки */
-@media (min-width: 700px) {
+/* Касса продавца на планшете (700–999): каталог в две колонки, чек — шторкой снизу. */
+@media (min-width: 700px) and (max-width: 999px) {
   .sp-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .sp-list > div:only-child { grid-column: 1 / -1; }
   .sp-list > div:nth-child(odd) { border-right: 1px solid #f4f1ed; }
 }
+/* Компьютер (≥1000): каталог одним столбцом слева, собранный чек — панелью справа.
+   .sp-list остаётся одним столбцом (как на телефоне), чек рисуется правым рейлом в SellerPortal. */
 
 /* ── Кабинет логиста: телефон за рулём ─────────────────────────────────
    Крупные цели нажатия, нижняя панель с подписями (достаёт большой палец),
