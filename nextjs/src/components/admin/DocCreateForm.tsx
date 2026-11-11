@@ -5,10 +5,18 @@ import { COLORS } from '@/lib/colors'
 import { fmtMoney } from '@/lib/adminFmt'
 import { fetchRefs, listProducts, autoPrices } from '@/lib/api/refs'
 import { createPurchase, createSale } from '@/lib/api/docs'
+import { matchWords } from '@/lib/search'
+import StoreCatalog from '@/components/StoreCatalog'
+import type { PickedPos } from '@/components/NomPicker'
+import { itemName } from '@/lib/itemName'
+import { extractRal } from '@/lib/ral'
+import { isIzdelie } from '@/lib/lineAmount'
 
 // Прямое создание накладной в разделе документов (без карточки-заявки).
 // kind 'in' = приходная (createPurchase, контрагент = поставщик, цена по умолчанию = закуп),
 // kind 'out' = расходная (createSale, контрагент = покупатель, цена по умолчанию = розница).
+const norm = (x?: string | null) => (x || '').trim().toLowerCase().replace(/ё/g, 'е')
+
 type Line = { productId: string; name: string; unit: string; qty: number; price: number }
 
 export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
@@ -19,6 +27,7 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [cagId, setCagId] = useState('')
+  const [showCatalog, setShowCatalog] = useState(false)   // единый каталог (как у кассы)
   const [recId, setRecId] = useState('')          // получатель прихода (товар сразу уходит ему)
   const [recPrices, setRecPrices] = useState<Record<string, number>>({})   // его цены продажи
   const [whId, setWhId] = useState('')
@@ -76,8 +85,32 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase()
     if (!s) return []
-    return products.filter((p: any) => (p.name || '').toLowerCase().includes(s)).slice(0, 30)
+    // Поиск по СЛОВАМ: «евро 7024» находит «Евро брус МП RAL7024 0,4мм».
+    return products.filter((p: any) => matchWords(q, p.name, p.alias)).slice(0, 30)
   }, [q, products])
+
+  // Единый каталог магазина (StoreCatalog): тот же экран, что у кассы — папки, цвет, см,
+  // кол-во. Возвращает выбранные позиции, кладём их строками накладной.
+  function addFromCatalog(items: PickedPos[]) {
+    const skipped: string[] = []
+    setLines(ls => {
+      const next = [...ls]
+      for (const it of items) {
+        const raw = it.name1c || it.oral || ''
+        const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm: it.widthCm != null ? String(it.widthCm) : '' }) : raw
+        const prod = products.find((p: any) => norm(p.name) === norm(nm)) || ((it as any).productId ? products.find((p: any) => p.id === (it as any).productId) : null)
+        if (!prod) { skipped.push(nm); continue }   // свободной строки в накладной нет — товар обязан быть в номенклатуре
+        const i = next.findIndex(l => l.productId === prod.id)
+        if (i >= 0) next[i] = { ...next[i], qty: Number(next[i].qty) + Number(it.qty || 1) }
+        else next.push({ productId: prod.id, name: prod.name, unit: prod.unit || it.unit || 'шт', qty: Number(it.qty) || 1, price: priceOf(prod) })
+      }
+      return next
+    })
+    // Товара нет в номенклатуре — строку накладной из него не сделать (нужен product_id).
+    // Молча не теряем: говорим, что именно не добавилось.
+    setMsg(skipped.length ? `⚠ Нет в номенклатуре, не добавлено: ${skipped.join(', ')}` : '')
+    setShowCatalog(false)
+  }
 
   function addLine(p: any) {
     setLines(ls => ls.some(l => l.productId === p.id)
@@ -154,7 +187,12 @@ export default function DocCreateForm({ kind, orgId, onClose, onSaved }: {
 
           <div>
             <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>Добавить товар{isIn && refOrg && cag ? ` · цены от «${cag.name}»` : ''}</div>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по номенклатуре…" style={inp} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по словам: «евро 7024»…" style={{ ...inp, flex: 1 }} />
+              {/* Тот же каталог, что у кассы магазина: папки → цвет → см → кол-во. */}
+              <button onClick={() => setShowCatalog(true)} style={{ border: 'none', borderRadius: 10, padding: '0 16px', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>📖 Каталог</button>
+            </div>
+            {showCatalog && <StoreCatalog orgId={orgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
             {hits.length > 0 && (
               <div style={{ marginTop: 4, border: '1px solid #e6e2dc', borderRadius: 10, maxHeight: 240, overflowY: 'auto', background: '#fff' }}>
                 {hits.map(p => (

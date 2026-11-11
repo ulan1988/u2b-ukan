@@ -8,6 +8,7 @@ import type { PickedPos } from '@/components/NomPicker'
 import { itemName } from '@/lib/itemName'
 import { isIzdelie } from '@/lib/lineAmount'
 import { extractRal, ralOrdered } from '@/lib/ral'
+import { matchWords } from '@/lib/search'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
@@ -102,7 +103,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
 
   const list = useMemo(() => {
     const sQ = norm(q)
-    if (sQ) return products.filter(p => `${norm(p.name)} ${norm(p.alias || '')}`.includes(sQ)).slice(0, 150)
+    if (sQ) return products.filter(p => matchWords(q, p.name, p.alias)).slice(0, 150)   // по СЛОВАМ: «евро 7024» найдёт «Евро брус … RAL7024»
     let base = products.filter(activeFolder.match)
     // Подпапка: товар с ПУСТЫМ значением уровня (напр. «Воронка выпускная 76х102 (ЦВ)»
     // с подгруппой '') общий для всей ветки — показываем в каждой подпапке категории.

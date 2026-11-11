@@ -10,6 +10,7 @@ import { listProduction, createProduction, getDocument, cancelDocument, getCostP
 import NomInline from '@/components/NomInline'
 import { RAL_COLORS, extractRal } from '@/lib/ral'
 import { isIzdelie } from '@/lib/lineAmount'
+import { matchWords } from '@/lib/search'
 
 const TABS = [
   { key: 'orders', label: '📋 Заказы на производство', ready: false },
@@ -66,7 +67,7 @@ function MaterialsTab({ orgId }: { orgId: string }) {
   const [q, setQ] = useState('')
   const load = useCallback(() => { setLoading(true); stockOverview(orgId).then((s: any) => setStock(s || [])).finally(() => setLoading(false)) }, [orgId])
   useEffect(() => { load() }, [load])
-  const rows = stock.filter(s => !q || s.name.toLowerCase().includes(q.toLowerCase()))
+  const rows = stock.filter(s => matchWords(q, s.name))
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>

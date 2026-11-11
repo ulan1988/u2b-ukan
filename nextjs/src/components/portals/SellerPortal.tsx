@@ -24,6 +24,7 @@ import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
+import { matchWords } from '@/lib/search'
 
 const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e', BLUE = '#3a6ea5'
 type Tab = 'cash' | 'checks' | 'debts' | 'order'
@@ -365,7 +366,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const list = useMemo(() => {
     // Общий поиск: если что-то введено — ищем по ВСЕЙ номенклатуре (не только в открытой папке).
     const sQ = norm(q)
-    if (sQ) return products.filter(p => norm(p.name).includes(sQ)).slice(0, 150)
+    if (sQ) return products.filter(p => matchWords(q, p.name, p.alias)).slice(0, 150)   // по СЛОВАМ: «евро 7024» находит «Евро брус … RAL7024»
     let base = products.filter(activeFolder.match)
     // Подпапка: сузить по выбранным уровням дерева.
     // Подпапка: товар с ПУСТЫМ значением уровня (напр. «Воронка выпускная 76х102 (ЦВ)»
@@ -383,8 +384,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       // они выпускаются во всех цветах, значит нужны в любой цветной подпапке.
       base = base.filter(p => { const r = extractRal(p.name); return r === color || !r })
     }
-    const s = norm(q)
-    if (s) base = base.filter(p => norm(p.name).includes(s))
+    if (q.trim()) base = base.filter(p => matchWords(q, p.name, p.alias))
     return base.slice(0, 150)
   }, [products, activeFolder, levels, path, thick, kfilter, color, q])
 

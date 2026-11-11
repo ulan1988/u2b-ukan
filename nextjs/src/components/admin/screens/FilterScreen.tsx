@@ -12,6 +12,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { cardProgress, barColor, fmtDate } from '@/lib/adminFmt'
 import { COLORS } from '@/lib/colors'
 import { settings as fetchSettings } from '@/lib/api/refs'
+import { matchWords } from '@/lib/search'
 
 // Фильтр — drag-and-drop канбан (dnd-kit). Портирован из Улкана 1:1.
 type FilterStatus = 'incoming' | 'inwork' | 'delivered' | 'all'
@@ -50,7 +51,7 @@ function SectionDropdown({ sections, selected, onToggle, onClose, placeholder }:
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
   const q = search.toLowerCase()
-  const filtered = sections.map(s => ({ ...s, options: s.options.filter(o => o.name.toLowerCase().includes(q)) })).filter(s => s.options.length > 0)
+  const filtered = sections.map(s => ({ ...s, options: s.options.filter(o => matchWords(q, o.name)) })).filter(s => s.options.length > 0)
   return (
     <div ref={ref} style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 300, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.16)', width: 280, border: '1.5px solid #e6e2dc' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid #f1efec' }}>

@@ -6,6 +6,7 @@
 import { useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
+import { matchWords } from '@/lib/search'
 
 export default function ContragentPicker({ contragents, value, onPick, defaultId, placeholder = '— выберите контрагента —', style, autoOpen }: {
   contragents: any[]; value?: string; onPick: (c: any) => void; defaultId?: string; placeholder?: string; style?: React.CSSProperties
@@ -19,7 +20,7 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase().replace(/ё/g, 'е')
-    let base = s ? contragents.filter(c => (c.name || '').toLowerCase().replace(/ё/g, 'е').includes(s)) : contragents.slice()
+    let base = s ? contragents.filter(c => matchWords(q, c.name)) : contragents.slice()
     base.sort((a, b) => {
       if (a.id === defaultId) return -1
       if (b.id === defaultId) return 1

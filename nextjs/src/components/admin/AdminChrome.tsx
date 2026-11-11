@@ -12,6 +12,7 @@ import { fetchOrders, orderAction, logout, fetchUsers } from '@/lib/adminApi'
 import { fetchRefs } from '@/lib/api/refs'
 import { getOrgId, setOrgId as persistOrg } from '@/lib/org'
 import { useLiveData } from '@/lib/live'
+import { matchWords } from '@/lib/search'
 
 export const NAV: NavItem[] = [
   { key: 'dashboard', label: 'Дашборд', icon: '📊' },
@@ -123,7 +124,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const newCount = orders.filter(o => o.screen === 'incoming' && !o.toacc && !o.isDraft && !o.isCancelled).length
   const q = search.trim().toLowerCase()
   // В строку поиска карточки входит и id МАТЕРИ (parentCardId) — ищешь ЗКП, находишь и ПРД.
-  const visible = q ? orders.filter(o => `${o.id} ${o.parentCardId || ''} ${o.fromName} ${o.comment}`.toLowerCase().includes(q)) : orders
+  const visible = q ? orders.filter(o => matchWords(q, o.id, o.parentCardId, o.fromName, o.comment)) : orders
   const title = NAV.find(n => n.key === screen)?.label || ''
 
   // Меню под выбранную орг: у ФИЛИАЛА (листогиб/магазин, kind ≠ hq) свои кабинеты (касса/стол

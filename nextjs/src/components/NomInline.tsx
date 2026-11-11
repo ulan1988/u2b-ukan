@@ -6,6 +6,7 @@ import { useState, useMemo, useRef, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { COLORS } from '@/lib/colors'
 import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
+import { matchWords } from '@/lib/search'
 
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е')
 // Комплектующее (база) — собирается на лету: база + цвет + см → имя.
@@ -38,7 +39,7 @@ export default function NomInline({ products, value, name, onPick }: {
     let base = products
     // group совпадает с полем group ИЛИ cat (устойчиво к перепутанным полям 1С).
     if (group) base = base.filter(p => norm(p.group) === norm(group) || norm(p.cat) === norm(group))
-    if (q.trim()) { const s = q.toLowerCase(); base = base.filter(p => `${p.name || ''} ${p.alias || ''}`.toLowerCase().includes(s)) }
+    if (q.trim()) base = base.filter(p => matchWords(q, p.name, p.alias))   // по словам, в любом порядке
     return base.slice(0, 200)
   }, [products, group, q])
 

@@ -6,6 +6,7 @@ import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices, copyColorPrices, reorderProducts } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import { extractRal } from '@/lib/ral'
+import { matchWords } from '@/lib/search'
 
 // Безцветный товар (оцинковка «(ЦВ)», аксессуар) — в имени нет RAL-кода. Хранится ОДИН раз
 // на уровне категории (подгруппа пустая) и показывается в каждой цветной подгруппе этой категории.
@@ -130,7 +131,7 @@ export default function NomenclatureScreen() {
   // Толщина из имени («0,45мм», «0,4мм»…) — для фильтра-чипов (как цвет в пикере).
   const extractThick = (n: string) => { const m = (n || '').match(/(\d[.,]\d+)\s*мм/i); return m ? m[1].replace('.', ',') : '' }
   const baseItems = visible.filter(item => {
-    if (search) return item.name.toLowerCase().includes(search.toLowerCase())
+    if (search) return matchWords(search, item.name)
     if (selSubgroup) return inCat(item, selGroup!, selCat!) && (norm(item.subgroup) === norm(selSubgroup) || isColorless(item.name))
     if (selCat) return inCat(item, selGroup!, selCat!)
     if (selGroup) return inGroup(item, selGroup)

@@ -12,6 +12,7 @@ import NomInline from '@/components/NomInline'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import RouteModal from '@/components/admin/RouteModal'
 import PickSearch, { normSearch, searchWords } from '@/components/admin/PickSearch'
+import { matchWords } from '@/lib/search'
 
 const MODES = [
   { key: 'invoices', label: '🧾 Накладные', ready: true },
@@ -353,7 +354,7 @@ function DebtsMode({ orgId, onOpen }: { orgId: string; onOpen: (cid: string) => 
     if (side === 'they') list = list.filter(c => c.theyOwe > 0.001)
     else if (side === 'we') list = list.filter(c => c.weOwe > 0.001)
     const s = q.trim().toLowerCase()
-    if (s) list = list.filter(c => (c.name || '').toLowerCase().includes(s))
+    if (s) list = list.filter(c => matchWords(s, c.name))
     const amt = (c: any) => side === 'we' ? c.weOwe : side === 'they' ? c.theyOwe : Math.max(c.theyOwe, c.weOwe)
     return [...list].sort((a, b) => amt(b) - amt(a))
   }, [data, side, q])

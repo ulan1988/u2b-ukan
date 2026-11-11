@@ -4,6 +4,7 @@ import OrderCard, { type CardAction } from '@/components/admin/OrderCard'
 import KanbanColumns from '@/components/admin/KanbanColumns'
 import { COLORS } from '@/lib/colors'
 import { settings as fetchSettings } from '@/lib/api/refs'
+import { matchWords } from '@/lib/search'
 
 // «К учёту» — МОСТ-ПРОСМОТР (не стадия воркфлоу). Как в 1С: документ проводится сразу
 // на доставке, карточка уходит в Бухгалтерию. Сюда попадают только те, что авто-провести
@@ -40,7 +41,7 @@ export default function AccountingScreen({ orders, orgId, onAction, onOpen }: {
 
   const list = useMemo(() => base.filter(o => {
     if (supplierId && !(o.positions || []).some((p: any) => p.supplierId === supplierId)) return false
-    if (q.trim() && !`${o.id} ${o.fromName} ${o.comment}`.toLowerCase().includes(q.toLowerCase())) return false
+    if (q.trim() && !matchWords(q, o.id, o.fromName, o.comment)) return false
     if (dateFrom && new Date(o.createdAt) < new Date(dateFrom)) return false
     if (dateTo && new Date(o.createdAt) > new Date(dateTo + 'T23:59:59')) return false
     return true

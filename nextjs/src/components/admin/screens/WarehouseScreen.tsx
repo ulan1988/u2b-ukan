@@ -6,6 +6,7 @@ import { COLORS } from '@/lib/colors'
 import { stockOverview, stockMovements, stockIncome, fetchRefs, listFolders } from '@/lib/api/refs'
 import { createTransfer } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
+import { matchWords } from '@/lib/search'
 
 interface StockItem { id: string; name: string; unit: string; qty: number; reserved: number; cat?: string }
 interface Movement { id: string; type: 'income' | 'reserve' | 'expense'; name: string; qty: number; unit: string; cardId?: string; createdAt: string }
@@ -159,7 +160,7 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   const cCat = (g: string, c: string) => stockRows.filter(s => inCat(g, c, s)).length
   const cSub = (g: string, c: string, sub: string) => stockRows.filter(s => inCat(g, c, s) && norm(s.subgroup) === norm(sub)).length
   const filteredStock = stockRows.filter(s => {
-    if (search) return s.name.toLowerCase().includes(search.toLowerCase())
+    if (search) return matchWords(search, s.name)
     if (selSub) return inCat(selGroup!, selCat!, s) && norm(s.subgroup) === norm(selSub)
     if (selCat) return inCat(selGroup!, selCat!, s)
     if (selGroup) return inGroup(selGroup, s)

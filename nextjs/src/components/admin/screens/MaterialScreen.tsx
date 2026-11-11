@@ -6,6 +6,7 @@ import { COLORS } from '@/lib/colors'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { SHEET_WIDTH_CM, SHEET_LENGTH_CM, MIN_REMNANT_CM } from '@/lib/production'
 import { fetchRefs, listProducts, editProduct, listSpecTypes, createSpecType, editSpecType, materialStock, reviseSheet, addProduct, archiveProduct, materialReport } from '@/lib/api/refs'
+import { matchWords } from '@/lib/search'
 
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 7, fontSize: 13, border: `1.5px solid ${COLORS.border}`, background: '#fff', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }
 const LBL: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 5, display: 'block', letterSpacing: '.04em' }
@@ -94,7 +95,7 @@ export default function MaterialScreen({ orgId }: { orgId: string }) {
   const baseCompl = goods.filter((p: any) => /без\s*цвет/i.test(p.subgroup || ''))
   const typeOptions = baseCompl.length ? baseCompl : goods
   const q = bindSearch.trim().toLowerCase()
-  const bindList = (q ? goods.filter((p: any) => p.name.toLowerCase().includes(q)) : goods).slice(0, 60)
+  const bindList = (q ? goods.filter((p: any) => matchWords(q, p.name)) : goods).slice(0, 60)
   async function bindType(productId: string, specTypeId: string) {
     await editProduct(productId, { specTypeId: specTypeId || null })
     setProducts(prev => prev.map((p: any) => p.id === productId ? { ...p, specTypeId: specTypeId || null } : p))
