@@ -42,8 +42,10 @@ export default function OrderCard({ order, actions = [], onAction, onOpen }: {
       {/* Клиент крупно + число позиций + сумма */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: ps.length > 0 ? 8 : 0, cursor: onOpen ? 'pointer' : 'default' }} onClick={() => onOpen?.(order)}>
         <span style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.fromName || '—'}</span>
-        {order.toName && <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>→ {order.toName}</span>}
+        {order.toName && order.toName !== order.fromName && <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>→ {order.toName}</span>}
         {ps.length > 0 && <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>}
+        {/* Кто завёл карточку: заказчик (слева) и создатель — разные люди. */}
+        {order.createdBy && <span style={{ fontSize: 12, color: '#a09889', whiteSpace: 'nowrap' }}>создал {order.createdBy}</span>}
         {sum > 0 && <b style={{ marginLeft: 'auto', fontSize: 16, whiteSpace: 'nowrap' }}>{fmtMoney(sum)} ₸</b>}
       </div>
 

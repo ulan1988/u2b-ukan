@@ -194,10 +194,15 @@ export async function listForLogist(orgId: string, userId: string) {
     const byPurchase = await procRepo.clientsByPurchase(purchaseIds)
     for (const c of cards) {
       if (c.kind !== 'purchase') continue
+      if (c.clientName) continue                 // заказчик указан прямо в карточке — он и есть адресат
       const names = byPurchase.get(c.id) || []
       c.clientName = names.length ? `${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ''}` : 'Центр-Склад'
     }
   }
+  // Кто завёл карточку: берём из журнала (первая запись create). fromName — это ЗАКАЗЧИК
+  // (заявка «от имени заказчика»), поэтому создателя показываем отдельной подписью.
+  const creators = await repo.cardCreators(cards.map((c: any) => c.id))
+  for (const c of cards) c.createdBy = creators[c.id] || ''
   const saleIds = cards.filter(c => c.kind === 'sale').map(c => c.id)
   const waitPos = await procRepo.positionsWaitingProcure(saleIds)
   const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
@@ -340,6 +345,8 @@ async function withPositions(rows: any[]) {
   for (const w of await repo.warehouseNames(whIds)) whName[(w as any).id] = (w as any).name
   // Получателей несколько (закуп на нескольких клиентов) → «Первый +N».
   const purchaseTo = (o: any) => {
+    // Заказчик, указанный в самой карточке (админ выбрал «для кого»), — главнее всего.
+    if (o.contactId && cagName[o.contactId]) return cagName[o.contactId]
     const rec = recByCard[o.id] || []
     if (rec.length) return shortRec(rec)
     return (o.toWarehouseId && whName[o.toWarehouseId]) || 'Центр-Склад'
@@ -350,8 +357,11 @@ async function withPositions(rows: any[]) {
     const list = recByPos[`${o.id}::${String(p.name1c || p.oral || '').trim().toLowerCase()}`] || []
     return shortRec(list)
   }
+  // Кто завёл карточку (журнал create) — показываем подписью: fromName это ЗАКАЗЧИК.
+  const creators = await repo.cardCreators(rows.map((r: any) => r.id))
   return rows.map(o => ({
     ...o,
+    createdBy: creators[o.id] || '',
     positions: (byCard[o.id] || []).map(p => ({ ...p, recipient: posRecipient(o, p) })),
     // Все получатели закупа (для подсказки/шторки) — в шапке показываем свёрнуто.
     recipients: o.kind === 'purchase' ? (recByCard[o.id] || []) : [],

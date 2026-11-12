@@ -166,6 +166,18 @@ export const warehouseNames = (ids: string[]) =>
     ? db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses).where(inArray(warehouses.id, ids))
     : Promise.resolve([] as Array<{ id: string; name: string }>)
 
+// КТО ЗАВЁЛ карточку: первая запись журнала (action='create'). `from_name` — это заказчик
+// (правило «заявка от имени заказчика»), поэтому создателя берём отдельно, из истории.
+export async function cardCreators(cardIds: string[]) {
+  const out: Record<string, string> = {}
+  if (!cardIds.length) return out
+  const rows = await sqlClient`
+    select distinct on (card_id) card_id, user_name from order_history
+    where card_id = any(${cardIds}) and action = 'create'
+    order by card_id, created_at` as unknown as Array<{ card_id: string; user_name: string }>
+  for (const r of rows) out[r.card_id] = r.user_name || ''
+  return out
+}
 export const getOrder = (id: string) =>
   db.select().from(orders).where(eq(orders.id, id)).limit(1)
 

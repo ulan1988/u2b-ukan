@@ -47,7 +47,8 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
           <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: barColor(pct) }}>{pct}%</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span title={(order.recipients || []).length > 1 ? `Получатели: ${(order.recipients || []).join(', ')}` : undefined} style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.fromName} → {order.toName || '—'}</span><span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>
+          <span title={(order.recipients || []).length > 1 ? `Получатели: ${(order.recipients || []).join(', ')}` : undefined} style={{ fontWeight: 700, fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.toName && order.toName !== order.fromName ? `${order.fromName} → ${order.toName}` : (order.toName || order.fromName || '—')}</span><span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{ps.length} поз.</span>
+          {order.createdBy && <span style={{ fontSize: 12, color: '#a09889', whiteSpace: 'nowrap' }}>создал {order.createdBy}</span>}
           {order.deadline && <span style={{ fontSize: 13, color: '#5f5952' }}>срок {fmtDate(order.deadline)}</span>}
           <span style={{ fontSize: 13, color: '#5f5952', marginLeft: 'auto' }}>🕒 {fmtCreated(order.createdAt)}</span>
         </div>

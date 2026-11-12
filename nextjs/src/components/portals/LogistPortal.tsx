@@ -203,7 +203,10 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
               ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 12, color: '#b03020', fontWeight: 700 }}>Убрать?</span><button onClick={() => removePos(order.id, pos.id)} style={{ border: 'none', background: '#c1121c', color: '#fff', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Да</button><button onClick={() => setConfDelPos(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Нет</button></span>
               : <button onClick={() => setConfDelPos(pos.id)} title="Убрать позицию" style={{ width: 34, height: 34, border: '1.5px solid #f0e6e0', background: '#fff', color: '#b8b1a6', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit', borderRadius: 9, lineHeight: 1, flexShrink: 0 }}>🗑</button>)}</span>
         </div>
-        <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>{order.clientName || order.fromName || '—'}</div>
+        <div style={{ fontSize: compact ? 12.5 : 14, color: '#5f5952', marginBottom: 4 }}>
+          {order.clientName || order.fromName || '—'}
+          {order.createdBy ? <span style={{ color: '#a09889' }}> · создал {order.createdBy}</span> : null}
+        </div>
         {editable && (supEditPos === pos.id ? (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
             <select autoFocus value={pos.supplierId || ''} onChange={e => saveSupplier(order.id, pos.id, e.target.value)} style={{ flex: 1, padding: '7px 8px', borderRadius: 8, border: '1.5px solid #e6e2dc', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
@@ -284,6 +287,8 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 7 }}>
             <span style={{ fontSize: 16, fontWeight: 700, color: '#26231f', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {order.clientName || order.fromName || '—'}</span>
             <span style={{ fontSize: 13, color: '#5f5952', whiteSpace: 'nowrap' }}>{poss.length} поз.</span>
+            {/* Кто завёл карточку — заказчик и создатель это разные люди. */}
+            {order.createdBy ? <span style={{ fontSize: 12, color: '#a09889', whiteSpace: 'nowrap' }}>создал {order.createdBy}</span> : null}
           </div>
         </div>
         {open && <div style={{ borderTop: '1px solid #f1efec', padding: '6px 6px 2px' }}>{poss.map((p: any) => <PosCard key={p.id} pos={p} order={order} compact />)}</div>}
