@@ -8,7 +8,7 @@ import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import ModalShell from '@/components/admin/accDocs/ModalShell'
 import { payDebt } from '@/lib/api/orders'
-import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashTabelWage, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
 import { fmtTime } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -26,6 +26,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [wpick, setWpick] = useState<Record<string, boolean>>({})  // ЗП: отмеченные счета списания (птички)
   const [wamt, setWamt] = useState<Record<string, string>>({})     // ЗП: сколько снять с каждого (пусто = остаток)
   const [wsel, setWsel] = useState<Record<string, boolean>>({})    // Табель: кто отмечен на смене (из employee_shifts)
+  const [wedit, setWedit] = useState<Record<string, string>>({})   // Табель: ЗП за день, пока правят в поле
   const [wbonus, setWbonus] = useState<Record<string, string>>({})  // Выплата: бонус «+40%» вручную по сотруднику
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
   const [retm, setRetm] = useState({ accountId: '', amount: '' })  // возврат денег ОТ головного на счёт филиала
@@ -95,6 +96,16 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     if (r.ok) load(); else toast('⚠ Табель не сохранился')
   }
   const toggleMark = (id: string) => saveMarks({ ...wsel, [id]: !wsel[id] })
+  // ЗП за день, вписанная руками: что сейчас в поле (строкой), и сохранение по уходу из поля.
+  const wageStr = (id: string, def: number) => (wedit[id] !== undefined ? wedit[id] : String(Math.round((data?.attWage || {})[id] ?? def)))
+  async function saveWage(id: string, val: string) {
+    const num = Math.round(Number(String(val).replace(/s/g, '').replace(',', '.')) || 0)
+    setWedit(w => { const n = { ...w }; delete n[id]; return n })
+    const cur = Math.round((data?.attWage || {})[id] ?? Number((data?.staff || []).find((u: any) => u.id === id)?.dailyWage) ?? 0)
+    if (num === cur) return
+    const r: any = await cashTabelWage(orgId, id, num > 0 ? num : null, date)
+    if (r.ok) { toast('✓ ЗП обновлена'); load() } else toast('⚠ ' + (r.error || 'Не вышло'))
+  }
   // Бонус «+40%» сотрудника (введён вручную), число.
   const bonusEff = (id: string): number => Math.max(0, Math.round(Number(String(wbonus[id] ?? '').replace(/\s/g, '').replace(',', '.')) || 0))
   // Выплата ЗП+40% отмеченным: оклад (табель) + бонус (вручную по каждому).
@@ -701,7 +712,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       <div key={u.id} className="cd-wrap" style={{ padding: '8px 8px', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent' }}>
                         <button onClick={() => toggleMark(u.id)} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
                         <span onClick={() => toggleMark(u.id)} style={{ flex: 1, fontSize: 13.5, cursor: 'pointer' }}>{u.name}{u.position ? <span style={{ color: COLORS.textLight, fontSize: 12 }}> · {u.position}</span> : ''}</span>
-                        <span style={{ width: 120, textAlign: 'right', fontSize: 13.5, fontWeight: 700, color: on ? COLORS.text : COLORS.textLight, fontFamily: 'Consolas, monospace' }}>{m(wage)}</span>
+                        {/* ЗП за ЭТОТ день: можно вписать руками (пусто → дневной оклад) */}
+                        <input value={wageStr(u.id, wage)} disabled={!on} inputMode="decimal"
+                          onChange={e => setWedit(w => ({ ...w, [u.id]: e.target.value }))}
+                          onBlur={e => saveWage(u.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          title={on ? 'ЗП за этот день — можно изменить' : 'Отметьте на смене, чтобы менять ЗП'}
+                          style={{ width: 120, textAlign: 'right', fontSize: 13.5, fontWeight: 700, color: on ? COLORS.text : COLORS.textLight, fontFamily: 'Consolas, monospace', border: `1.5px solid ${on ? COLORS.border : 'transparent'}`, borderRadius: 7, padding: '4px 7px', background: on ? '#fff' : 'transparent' }} />
                         <span style={{ fontSize: 13, color: COLORS.textMuted }}>₸</span>
                       </div>
                     )

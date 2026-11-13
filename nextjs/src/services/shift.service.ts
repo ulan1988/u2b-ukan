@@ -164,6 +164,9 @@ export async function masterShift(orgId: string, date: string) {
   // Табель дня: кто отмечен на смене (начисление ЗП). Отметка есть → колонка ЗП = Σ окладов отмеченных.
   const marksRows = await attendance.listMarks(orgId, date)
   const attIds = marksRows.map((r: any) => r.employeeId)
+  // ЗП, вписанная руками за этот день (пусто → оклад сотрудника) — показываем в табеле.
+  const attWage: Record<string, number> = {}
+  for (const r of marksRows as any[]) if (r.amount != null) attWage[r.employeeId] = num(r.amount)
   // Статьи расходов (как в 1С: 7100/7200/7400) — для «текущего расхода».
   const expenseArticles = await sqlClient`select id::text, name, activity, direction from fin_expense_articles where org_id=${orgId} and archived=false and is_group=false order by activity, sort_order, name` as unknown as Array<any>
 
@@ -191,11 +194,13 @@ export async function masterShift(orgId: string, date: string) {
   const markedStaff = staff.filter((s: any) => attSet.has(s.id))
   const hasMarks = markedStaff.length > 0
   const wageByName: Record<string, number> = {}; for (const s of staff) wageByName[(s.name || '').trim().toLowerCase()] = num(s.dailyWage)
+  // Оклад дня = вписанный руками в табеле, иначе ставка сотрудника.
+  const wageOf = (u: any) => num(attWage[u.id] != null ? attWage[u.id] : u.dailyWage)
   const reportSellers = hasMarks
-    ? markedStaff.map((u: any) => { const oklad = num(u.dailyWage); return { name: u.name, oklad, bonus: 0, zp: oklad } })
+    ? markedStaff.map((u: any) => { const oklad = wageOf(u); return { name: u.name, oklad, bonus: 0, zp: oklad } })
     : sellersDay.map((s: any) => { const oklad = wageByName[(s.name || '').trim().toLowerCase()] || 0; return { name: s.name, oklad, bonus: 0, zp: oklad } })
   // Колонка ЗП = Σ окладов отмеченных (начисление по табелю); без отметок — Σ fin_rows ЗП (факт).
-  const tabelZp = markedStaff.reduce((a: number, u: any) => a + num(u.dailyWage), 0)
+  const tabelZp = markedStaff.reduce((a: number, u: any) => a + wageOf(u), 0)
   const zpFormula = reportSellers.reduce((a: number, r: any) => a + r.zp, 0)
   const zpTotal = hasMarks ? tabelZp : (salaryTotal > 0 ? salaryTotal : zpFormula)
   const shopExp = currentTotal                          // расходы магазина/административные
@@ -238,7 +243,7 @@ export async function masterShift(orgId: string, date: string) {
   const otherIncome = await listOtherIncome(orgId, date)
 
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, attendance: attIds, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, attendance: attIds, attWage, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
@@ -460,6 +465,17 @@ export async function setShiftMarks(orgId: string, date: string, ids: string[]) 
   return { ok: true as const, ids: saved }
 }
 
+// ЗП сотрудника за ЭТОТ день вписана руками (правило владельца 13.11.2026). Пусто/0 → снова
+// дневной оклад. Это НАЧИСЛЕНИЕ: деньги не двигаются, но отсюда считается выплата ЗП+40%,
+// колонка ЗП отчёта дня и месячный свод.
+export async function setShiftWage(orgId: string, date: string, employeeId: string, amount: number | null) {
+  if (!employeeId) return { ok: false as const, error: 'Не указан сотрудник' }
+  const val = amount == null || !Number.isFinite(amount) || amount <= 0 ? null : Math.round(num(amount) * 100) / 100
+  const ok = await attendance.setMarkAmount(orgId, date, employeeId, val)
+  if (!ok) return { ok: false as const, error: 'Сначала отметьте сотрудника на смене' }
+  return { ok: true as const, amount: val }
+}
+
 // Реальная выплата ЗП+40% отмеченным на смене: по каждому сумма = оклад (из табеля) + бонус,
 // который АДМИН вписывает ВРУЧНУЮ (40% маржи он делит сам, как захочет). Пишет fin_rows
 // article='ЗП' (posted, деньги out со счёта, who=имя). Идемпотентно: по сотрудникам, у кого за
@@ -471,6 +487,9 @@ export async function payShiftZp(orgId: string, date: string, accountId: string,
   if (!pool.length && !accountId) return { ok: false as const, error: 'Выберите счёт списания' }
   const marks = await attendance.listMarks(orgId, date)
   const attSet = new Set(marks.map((r: any) => r.employeeId))
+  // ЗП дня: вписанная руками в табеле, иначе дневной оклад сотрудника.
+  const wageMap: Record<string, number | null> = {}
+  for (const r of marks as any[]) wageMap[r.employeeId] = r.amount == null ? null : num(r.amount)
   if (!attSet.size) return { ok: false as const, error: 'Отметьте в табеле кто на смене' }
   const staff = await sqlClient`select id::text, name, daily_wage::float "dailyWage" from employees where org_id=${orgId} and archived=false` as unknown as Array<any>
   const marked = staff.filter((u: any) => attSet.has(u.id))
@@ -478,7 +497,7 @@ export async function payShiftZp(orgId: string, date: string, accountId: string,
   // Кому ЗП за этот день уже выдана (любая строка ЗП, draft или posted) — не дублируем.
   const paidRows = await sqlClient`select distinct lower(trim(who)) who from fin_rows where org_id=${orgId} and date=${date} and article='ЗП'` as unknown as Array<any>
   const paidSet = new Set(paidRows.map((r: any) => r.who).filter(Boolean))
-  const items = marked.map((u: any) => { const oklad = Math.round(num(u.dailyWage)); const bonus = bonusMap[u.id] || 0; return { who: u.name, oklad, bonus, total: oklad + bonus } })
+  const items = marked.map((u: any) => { const oklad = Math.round(wageMap[u.id] != null ? (wageMap[u.id] as number) : num(u.dailyWage)); const bonus = bonusMap[u.id] || 0; return { who: u.name, oklad, bonus, total: oklad + bonus } })
   const toPay = items.filter((i: any) => i.total > 0 && !paidSet.has((i.who || '').trim().toLowerCase()))
   if (!toPay.length) return { ok: false as const, error: 'ЗП+40% за этот день уже выдана' }
   const fin = await import('../repositories/fin.repo')

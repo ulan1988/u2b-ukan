@@ -197,6 +197,8 @@ export const employeeShifts = pgTable('employee_shifts', {
   orgId: uuid('org_id').notNull().references(() => organizations.id),
   employeeId: uuid('employee_id').notNull().references(() => employees.id),
   date: date('date').notNull(),                               // локальный YMD (как у документов)
+  // ЗП за ЭТОТ день, вписанная руками. Пусто → дневной оклад сотрудника (employees.daily_wage).
+  amount: money('amount'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({
   uq: uniqueIndex('employee_shifts_uq').on(t.orgId, t.employeeId, t.date),

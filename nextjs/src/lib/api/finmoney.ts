@@ -34,6 +34,9 @@ export const cashReturnUndo = (orgId: string, date: string) => post('/api/financ
 export const cashWages = (orgId: string, accountId: string, items: Array<{ who: string; amount: number }>, date: string) => post('/api/finance/shift', { orgId, action: 'wages', accountId, items, date })
 // Табель: сохранить отметки «кто на смене» за день (начисление, деньги не трогаются).
 export const cashTabelSet = (orgId: string, ids: string[], date: string) => post('/api/finance/shift', { orgId, action: 'tabelSet', ids, date })
+// ЗП сотрудника за этот день вписана руками (пусто → дневной оклад).
+export const cashTabelWage = (orgId: string, employeeId: string, amount: number | null, date: string) =>
+  post('/api/finance/shift', { orgId, action: 'tabelWage', employeeId, amount, date })
 // Выплата ЗП+40% отмеченным: оклад (табель) + бонус (админ делит 40% вручную), пишет fin_rows posted.
 // splits — с каких счетов и сколько снять (отмеченные птичкой); пусто → всё с accountId.
 export const cashPayZp = (orgId: string, accountId: string, date: string, bonuses: Array<{ employeeId: string; amount: number }>, splits?: Array<{ accountId: string; amount: number }>) => post('/api/finance/shift', { orgId, action: 'payZp', accountId, date, bonuses, splits })
