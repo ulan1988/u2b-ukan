@@ -467,10 +467,10 @@ function StatiPanel({ orgId }: { orgId: string }) {
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(true)
   useEffect(() => { (async () => {
-    const [r, c, refs] = await Promise.all([finFavList(), listContragents(true), fetchRefs()])
+    const [r, c, refs] = await Promise.all([finFavList(), listContragents(false, orgId), fetchRefs()])
     setList((((r as any)?.data) || []).map((f: any) => ({ code: f.code || '', label: f.label, type: f.type, activity: f.activity || 'operating', contragentId: f.contragentId || null, defaultAccountId: f.defaultAccountId || '' })))
     setCags(c as any[]); setAccs(((refs as any)?.cashAccounts || []).filter((a: any) => !a.archived)); setLoading(false)
-  })() }, [])
+  })() }, [orgId])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const upd = (i: number, patch: any) => setList(l => l.map((x, j) => j === i ? { ...x, ...patch } : x))
   const del = (i: number) => setList(l => l.filter((_, j) => j !== i))

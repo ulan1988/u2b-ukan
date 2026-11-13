@@ -25,7 +25,10 @@ export const deleteFolder = (b: { grp: string; cat?: string; sub?: string }) => 
 export const moveFolder = (b: { src: { grp: string; cat: string; sub: string }; dst: { grp: string; cat: string; sub: string } }) => send('/api/folders', 'PUT', b)
 export const hideFolder = (b: { grp: string; cat?: string; sub?: string; hidden: boolean }) => send('/api/folders', 'PATCH', b)
 
-export const listContragents = (all = false) => getArray(`/api/contragents${all ? '?all=1' : ''}`)
+// all=1 — ВСЕ орг (служебное). Обычно передаём orgId: контрагенты по правилу владельца
+// (головной и магазин видят строго своих, Нипа — своих + головного).
+export const listContragents = (all = false, orgId?: string) =>
+  getArray(`/api/contragents${all ? '?all=1' : orgId ? `?orgId=${orgId}` : ''}`)
 // Справочник единиц измерения.
 export const listUnits = () => getArray('/api/units')
 export const saveUnits = (items: any[]) => post('/api/units', items)

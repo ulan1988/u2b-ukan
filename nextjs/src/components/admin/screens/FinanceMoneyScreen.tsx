@@ -63,7 +63,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     didInit.current = true; setLoading(false)
   }, [date])
   useEffect(() => { load() }, [load])
-  useEffect(() => { listContragents(true).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [])
+  useEffect(() => { listContragents(false, orgId).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [orgId])
 
   const accounts: any[] = data?.accounts || []
   const opening: Record<string, number> = data?.opening || {}
