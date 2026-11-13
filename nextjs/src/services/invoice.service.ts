@@ -14,7 +14,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   if (o.linkedDocId) return { ok: false as const, error: 'Накладная уже проведена' }
 
   const positions = await orderRepo.positionsByCard(cardId)
-  await ensureProductIdsByName(positions)   // позиции без productId, но с совпадающим именем товара — подхватываем (иначе выпадали из накладной)
+  await ensureProductIdsByName(positions, o.orgId)   // позиции без productId: подхватываем по имени, а собранный в каталоге вариант заводим карточкой (иначе строка выпадала из накладной и склад не двигался)
   const withProd = positions.filter(p => p.productId)
   if (!withProd.length) return { ok: false as const, error: 'Нет позиций с товаром из справочника' }
 
@@ -129,9 +129,12 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
 }
 
 // Подхватить productId по имени для позиций, где он пуст (иначе позиция выпадает из накладной).
-// Матчим по точному имени товара из каталога; если товара нет — позиция остаётся без productId
-// (её в документ включить нельзя — нужен товар в номенклатуре).
-async function ensureProductIdsByName(positions: any[]) {
+// 1) точное имя товара из каталога;
+// 2) СОБРАННЫЙ В КАТАЛОГЕ ВАРИАНТ (база + цвет/см: «Изделие 7024 19 см», «Изделия №19 белый
+//    0.4мм 9003») — заводим карточку от базового товара. Правило владельца: собранный по цвету
+//    товар — НОВЫЙ товар, он обязан попасть на склад, чтобы его можно было двигать и продавать.
+//    Без этого строка выпадала из накладной: деньги в кассу шли, а остаток не менялся.
+async function ensureProductIdsByName(positions: any[], orgId?: string) {
   const need = positions.filter(p => !p.productId && (p.name1c || p.oral))
   if (!need.length) return
   const { db } = await import('../lib/db')
@@ -144,5 +147,40 @@ async function ensureProductIdsByName(positions: any[]) {
     const pid = byName.get(String(p.name1c || p.oral).trim().toLowerCase())
     if (pid) { p.productId = pid; try { await orderRepo.updatePosition(p.id, { productId: pid }) } catch {} }
   }
+  // Остались без товара → вариант, собранный в каталоге. Заводим карточку от базового товара.
+  for (const p of need.filter(x => !x.productId)) {
+    const id = await ensureVariantProduct(String(p.name1c || p.oral).trim(), orgId, Number(p.costPrice) || 0)
+    if (id) { p.productId = id; try { await orderRepo.updatePosition(p.id, { productId: id }) } catch {} }
+  }
 }
 
+// Карточка варианта: имя позиции начинается с имени базового товара («Изделие» → «Изделие 7024
+// 19 см»). Берём самую длинную подходящую базу и копируем её дерево/ед./тип — новый товар ложится
+// в ту же папку номенклатуры и сразу двигается по складу. Базы нет → ничего не выдумываем.
+async function ensureVariantProduct(name: string, orgId?: string, cost = 0): Promise<string | null> {
+  const nm = name.trim()
+  if (nm.length < 4) return null
+  const { db, sqlClient } = await import('../lib/db')
+  const { products } = await import('../db/schema')
+  const rows = await sqlClient`
+    select id, unit, category, "group", cat, subgroup, spec_type_id, price_in
+    from products
+    where length(trim(name)) >= 4
+      and position(lower(trim(name)) in ${nm.toLowerCase()}) = 1
+      and lower(trim(name)) <> ${nm.toLowerCase()}
+    order by length(trim(name)) desc limit 1` as unknown as any[]
+  const base = rows[0]
+  if (!base) return null
+  const { randomUUID } = await import('crypto')
+  const { ownerOrgFor } = await import('../repositories/refs.repo')
+  const id = randomUUID()
+  await db.insert(products).values({
+    id, name: nm, unit: base.unit || 'шт', category: base.category || 'goods',
+    group: base.group || '', cat: base.cat || '', subgroup: base.subgroup || '',
+    specTypeId: base.spec_type_id || null,
+    // Себестоимость: доля листа из строки, иначе закуп базового товара (нужна для возврата по себестоимости).
+    priceIn: String(cost > 0 ? cost : Number(base.price_in) || 0),
+    ownerOrgId: await ownerOrgFor(orgId),
+  } as any)
+  return id
+}
