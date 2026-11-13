@@ -328,3 +328,28 @@ export const docBySourceOrg = async (cardId: string, orgId: string, type: string
     .orderBy(desc(documents.createdAt)).limit(1)
   return r || null
 }
+
+// ── УДАЛИТЬ ДОКУМЕНТ БЕССЛЕДНО (ошибочный) ───────────────────────────────────
+// Сторно (cancelDocument) оставляет документ в списке со статусом «отменён». Иногда нужно
+// именно стереть: убираем движения склада, FIFO-связи, оплаты по документу, привязки оплат
+// листа «Деньги», строки, историю — и отвязываем карточку-заявку (она снова «к учёту»).
+// Зеркала (parent_doc_id) и отгрузку получателю (origin_doc_id) стираем тем же проходом.
+export async function purgeDocument(docId: string): Promise<string[]> {
+  const kids = await sqlClient`select id::text from documents
+    where parent_doc_id = ${docId} or origin_doc_id = ${docId}` as unknown as Array<{ id: string }>
+  const gone: string[] = []
+  for (const k of kids) gone.push(...await purgeDocument(k.id))
+  const [row] = await sqlClient`select number from documents where id = ${docId}` as unknown as Array<{ number: string }>
+  await sqlClient`delete from stock_movements where document_id = ${docId}`
+  await sqlClient`delete from doc_links where sale_doc_id = ${docId} or purchase_doc_id = ${docId}`
+  await sqlClient`delete from fin_row_alloc where doc_id = ${docId}`
+  await sqlClient`delete from payments where document_id = ${docId}`
+  await sqlClient`delete from document_lines where document_id = ${docId}`
+  await sqlClient`delete from document_history where document_id = ${docId}`
+  await sqlClient`update orders set linked_doc_id = null where linked_doc_id = ${docId}`
+  await sqlClient`update documents set parent_doc_id = null where parent_doc_id = ${docId}`
+  await sqlClient`update documents set origin_doc_id = null where origin_doc_id = ${docId}`
+  await sqlClient`delete from documents where id = ${docId}`
+  if (row?.number) gone.push(row.number)
+  return gone
+}

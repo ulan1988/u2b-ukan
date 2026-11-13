@@ -630,3 +630,13 @@ export async function cancelDocument(docId: string) {
   await docRepo.cancelDocument(docId)
   return { ok: true }
 }
+
+// Удалить ошибочный документ НАСОВСЕМ (правило владельца 13.11.2026): склад, FIFO-связи,
+// оплаты по документу и зеркала филиалов уходят вместе с ним, карточка-заявка отвязывается
+// и снова ждёт проведения. В отличие от сторно, в списке не остаётся «отменён».
+export async function purgeDocument(docId: string, actor?: any) {
+  const [d] = await docRepo.getDoc(docId)
+  if (!d) return { ok: false as const, error: 'Документ не найден' }
+  const numbers = await docRepo.purgeDocument(docId)
+  return { ok: true as const, numbers, count: numbers.length }
+}

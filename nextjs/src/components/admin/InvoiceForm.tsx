@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
-import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale } from '@/lib/api/docs'
+import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument } from '@/lib/api/docs'
 import { listProducts, autoPrices } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import { extractRal } from '@/lib/ral'
@@ -170,6 +170,28 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
     setShowCatalog(false)
     if (skipped.length) { setFlash('⚠ Нет в номенклатуре: ' + skipped.join(', ')); setTimeout(() => setFlash(''), 4000) }
   }
+  // Ошибочный документ — стереть совсем: движения склада, FIFO-связи, оплаты и зеркала
+  // филиалов уходят вместе с ним, карточка-заявка отвязывается и снова ждёт проведения.
+  async function purgeDoc() {
+    const n = o?.number || ''
+    const kids = (data?.children || []).length
+    const warn = [
+      `Удалить накладную ${n} НАСОВСЕМ?`, '',
+      '• товар вернётся на склад (движения снимутся)',
+      '• оплаты по этой накладной удалятся, долг контрагента пересчитается',
+      kids ? `• вместе с ней удалятся зеркальные накладные филиалов: ${kids}` : '',
+      '• карточка-заявка отвяжется и снова встанет «к учёту»', '',
+      'В списке её не останется — это не сторно.',
+    ].filter(Boolean).join(String.fromCharCode(10))
+    if (!confirm(warn)) return
+    if (!confirm(`Точно стереть ${n}? Отменить это будет нельзя.`)) return
+    setBusy(true)
+    const r: any = await purgeDocument(id as string)
+    setBusy(false)
+    if (r?.data?.ok === false || r?.error) { setFlash('⚠ ' + (r?.data?.error || r?.error || 'Не удалось')); return }
+    onClose()
+  }
+
   // Создать накладную (та же форма, только вместо «Сохранить» — проведение).
   async function createDoc() {
     if (!f.contragentId) { setFlash('⚠ Выберите ' + (newType === 'sale' ? 'покупателя' : 'поставщика')); return }
@@ -443,6 +465,8 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
               {flash && <span style={{ marginRight: 'auto', fontSize: 13, color: flash.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{flash}</span>}
               {!creating && o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
+              {!creating && <button onClick={purgeDoc} disabled={busy} title="Ошибочный документ: снять движения склада и стереть его совсем"
+                style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b3261e', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>🗑 Отменить и удалить</button>}
               <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
               {creating && <button onClick={createDoc} disabled={busy} style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : (newType === 'sale' ? 'Создать расход' : 'Создать приход')}</button>}
               {!creating && <button onClick={() => save()} disabled={busy || o.status === 'cancelled'} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: busy || o.status === 'cancelled' ? 0.6 : 1 }}>{busy ? '…' : 'Сохранить'}</button>}

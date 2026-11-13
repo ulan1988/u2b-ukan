@@ -27,6 +27,8 @@ export const listTransfers = (orgId: string) => getArray(`/api/transfer?orgId=${
 export const createTransfer = (b: any) => post('/api/transfer', b)
 
 export const cancelDocument = (id: string) => post(`/api/documents/${id}/cancel`)
+// Удалить ошибочный документ НАСОВСЕМ (склад, связи, оплаты, зеркала; карточка отвязывается).
+export const purgeDocument = (id: string) => send(`/api/documents/${id}/purge`, 'DELETE')
 
 // Себестоимость 1 см листа (производство): читать и сохранять. Цвет на закуп не влияет —
 // число одно на организацию, изделие = ширина_см × ₸/см.
