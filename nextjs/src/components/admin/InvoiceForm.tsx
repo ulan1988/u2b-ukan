@@ -137,13 +137,14 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
   const dropLine = (lid: string) => setLines(ls => ls.filter(x => x.id !== lid))
   // Цена по умолчанию: приход — закуп товара, расход — розница.
   const priceOf = (pr: any) => (newType === 'purchase' ? Number(pr.priceIn) || 0 : Number(pr.priceRetail) || Number(pr.priceIn) || 0)
-  function addProduct(pr: any, qty = 1, widthCm?: number | null) {
+  // label — имя строки, если оно отличается от имени товара (комплектующее с цветом → базовый товар).
+  function addProduct(pr: any, qty = 1, widthCm?: number | null, label?: string) {
     setLines(ls => {
       const i = ls.findIndex(x => x.productId === pr.id && String(x.widthCm || '') === String(widthCm || ''))
       if (i >= 0) { const n = [...ls]; const qn = Number(n[i].qty) + qty; n[i] = { ...n[i], qty: qn, amount: r2(qn * Number(n[i].price)) }; return n }
       const price = priceOf(pr)
       const id = 'new-' + (seq + ls.length)
-      return [...ls, { id, productId: pr.id, name: pr.name, qty, unit: pr.unit || 'шт', price, amount: r2(qty * price), widthCm: widthCm ?? null, comment: '', block: '', sortOrder: ls.length }]
+      return [...ls, { id, productId: pr.id, name: label || pr.name, qty, unit: pr.unit || 'шт', price, amount: r2(qty * price), widthCm: widthCm ?? null, comment: '', block: '', sortOrder: ls.length }]
     })
     setSeq(x => x + 1); setQ('')
   }
@@ -154,9 +155,17 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
       const raw = it.name1c || it.oral || ''
       const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm: it.widthCm != null ? String(it.widthCm) : '' }) : raw
       const norm = (x: string) => String(x || '').trim().toLowerCase().replace(/ё/g, 'е')
-      const pr = products.find((x: any) => norm(x.name) === norm(nm)) || ((it as any).productId ? products.find((x: any) => x.id === (it as any).productId) : null)
+      let pr = products.find((x: any) => norm(x.name) === norm(nm)) || ((it as any).productId ? products.find((x: any) => x.id === (it as any).productId) : null)
+      // Собрали с цветом («J - профиль дерево»), а в номенклатуре товар БЕЗ ЦВЕТА («J - профиль»):
+      // по правилу цвет в номенклатуру не оседает. Берём базовый товар, чьё имя — начало
+      // собранного (самый длинный), цвет остаётся в имени строки накладной.
+      if (!pr) {
+        const base = products.filter((x: any) => norm(x.name).length >= 3 && norm(nm).startsWith(norm(x.name) + ' '))
+          .sort((a: any, b: any) => norm(b.name).length - norm(a.name).length)[0]
+        if (base) pr = base
+      }
       if (!pr) { skipped.push(nm); continue }
-      addProduct(pr, Number(it.qty) || 1, it.widthCm != null ? Number(it.widthCm) : null)
+      addProduct(pr, Number(it.qty) || 1, it.widthCm != null ? Number(it.widthCm) : null, nm)
     }
     setShowCatalog(false)
     if (skipped.length) { setFlash('⚠ Нет в номенклатуре: ' + skipped.join(', ')); setTimeout(() => setFlash(''), 4000) }
