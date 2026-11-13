@@ -226,13 +226,23 @@ export const remitPairAtHq = (branchOrgId: string, date: string, amount: number)
       and p.comment like ${'Инкассация от «' + branchOrgId + '»%'}
     limit 1` as unknown as Promise<Array<{ id: string }>>
 
-// Остаток по счетам на конец дня: проведённые строки листа (≤ дата) + все платежи (≤ дата).
+// Остаток по счетам на конец дня: НАЧАЛЬНЫЙ ОСТАТОК счёта + проведённые строки листа (≤ дата)
+// + платежи (≤ дата). Движения ДО даты отсечения (`opening_as_of`) не считаем — они уже внутри
+// начального остатка (иначе перенос из 1С задваивается, как было с долгами контрагентов).
 export const balanceByAccount = (orgId: string, date: string) =>
   sqlClient`select acc id, coalesce(sum(amt),0)::float amt from (
+      select ca.id::text acc, ca.opening_balance::float amt
+        from cash_accounts ca
+        where ca.org_id=${orgId} and (ca.opening_as_of is null or ca.opening_as_of <= ${date})
+      union all
       select a.account_id::text acc, a.amount::float amt
         from fin_row_amounts a join fin_rows r on r.id=a.row_id
+        join cash_accounts ca2 on ca2.id=a.account_id
         where r.org_id=${orgId} and r.status='posted' and r.date <= ${date}
+          and r.date >= coalesce(ca2.opening_as_of, '0001-01-01'::date)
       union all
       select p.cash_account_id::text acc, (case when p.direction='in' then p.amount else -p.amount end)::float amt
-        from payments p where p.org_id=${orgId} and p.date <= ${date} and p.cash_account_id is not null and p.fin_row_id is null
+        from payments p join cash_accounts ca3 on ca3.id=p.cash_account_id
+        where p.org_id=${orgId} and p.date <= ${date} and p.cash_account_id is not null and p.fin_row_id is null
+          and p.date >= coalesce(ca3.opening_as_of, '0001-01-01'::date)
     ) t where acc is not null group by acc` as unknown as Promise<Array<{ id: string; amt: number }>>

@@ -64,3 +64,9 @@ export const createCashAccountSchema = z.object({
   name: z.string().min(1),
   kind: z.enum(['cash', 'bank']).default('cash'),
 })
+
+// Начальный остаток счёта (перенос из 1С) + дата отсечения: движения ДО неё уже внутри остатка.
+export const cashAccountPatchSchema = z.object({
+  openingBalance: z.coerce.number().optional(),
+  openingAsOf: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
+})

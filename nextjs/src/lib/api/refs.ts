@@ -40,6 +40,8 @@ export const editContragent = (id: string, b: any) => patch(`/api/contragents/${
 
 export const addWarehouse = (b: any) => post('/api/warehouses', b)
 export const addCashAccount = (b: any) => post('/api/cash-accounts', b)
+// Начальный остаток счёта: сумма + дата отсечения (баланс = остаток + движения с этой даты).
+export const setAccountOpening = (id: string, b: { openingBalance?: number; openingAsOf?: string | null }) => patch(`/api/cash-accounts/${id}`, b)
 
 export const stock = (orgId: string, warehouseId: string) => getArray(`/api/stock?orgId=${orgId}&warehouseId=${warehouseId}`)
 export const stockOverview = (orgId: string) => getArray(`/api/stock?orgId=${orgId}&overview=1`)

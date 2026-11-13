@@ -3,7 +3,7 @@
 // Всё в БД: строки/суммы по счетам/избранные. «Провести» создаёт payments → акт сверки.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { listContragents } from '@/lib/api/refs'
+import { listContragents, setAccountOpening } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
@@ -716,6 +716,10 @@ function DdsReport() {
 // Деньги в кассах филиала не инкассированы головному → помечаются «в ожидании» (оранжевым).
 function AccountsView() {
   const [data, setData] = useState<any>(null)
+  // Ввод начального остатка счёта (перенос из 1С): какой счёт правим, сумма, дата отсечения.
+  const [editAcc, setEditAcc] = useState<string | null>(null)
+  const [opSum, setOpSum] = useState('')
+  const [opDate, setOpDate] = useState('2026-11-01')
   const load = useCallback(async () => { setData(await finAccounts()) }, [])
   useLiveData(load, [])   // постоянная связь: обновляется при любой продаже/оплате/переводе
 
@@ -760,13 +764,35 @@ function AccountsView() {
                   // Банк/QR филиала (a.toHq) = деньги головного → зелёным «→ головному»/«инфо», не «в ожидании».
                   const itemPending = b.kind !== 'hq' && !a.toHq
                   const balColor = a.toHq ? '#15803d' : itemPending ? '#b45309' : '#211f1c'
+                  const ed = editAcc === a.id
                   return (
-                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px dashed #eee' }}>
+                  <div key={a.id} style={{ padding: '7px 0', borderBottom: '1px dashed #eee' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 13.5, color: '#4a4640' }}><span style={{ color: '#9ca3af', fontSize: 11.5, marginRight: 6 }}>{kindName(a.kind)}</span>{a.name}
                       {a.toHq && <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 700, color: '#15803d', background: '#e8f5ee', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>{data.isHq ? '→ головному' : 'инфо · головному'}</span>}
                       {itemPending && <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fff7ed', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>⏳ в ожидании</span>}
                     </span>
-                    <span style={{ fontFamily: 'Consolas, monospace', fontSize: 15, fontWeight: 700, color: balColor }}>{fmt(a.balance)}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontFamily: 'Consolas, monospace', fontSize: 15, fontWeight: 700, color: balColor }}>{fmt(a.balance)}</span>
+                      {/* Начальный остаток (перенос из 1С): сумма + дата отсечения. */}
+                      <button onClick={() => { setEditAcc(ed ? null : a.id); setOpSum(String(a.opening || '')); setOpDate(a.openingAsOf || '2026-11-01') }}
+                        title="Начальный остаток на дату" style={{ border: '1.5px solid #e6e2dc', background: ed ? '#fff3ee' : '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 12, padding: '2px 6px' }}>⚖</button>
+                    </span>
+                   </div>
+                   {/* Подпись: сколько перенесено из 1С и с какой даты считаются движения */}
+                   {!!a.opening && !ed && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>нач. остаток {fmt(a.opening)} от {a.openingAsOf ? a.openingAsOf.split('-').reverse().join('.') : '—'}</div>}
+                   {ed && (
+                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                       <input value={opSum} onChange={e => setOpSum(e.target.value.replace(/[^0-9.,-]/g, ''))} placeholder="нач. остаток"
+                         style={{ width: 130, padding: '6px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13, textAlign: 'right', fontFamily: 'Consolas, monospace' }} />
+                       <input type="date" value={opDate} onChange={e => setOpDate(e.target.value)}
+                         style={{ padding: '6px 8px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 13 }} />
+                       <button onClick={async () => { await setAccountOpening(a.id, { openingBalance: Number(String(opSum).replace(',', '.')) || 0, openingAsOf: opDate || null }); setEditAcc(null); load() }}
+                         style={{ padding: '6px 12px', borderRadius: 7, border: 'none', background: '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>💾</button>
+                       <button onClick={() => setEditAcc(null)} style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                       <span style={{ fontSize: 11, color: '#9ca3af' }}>движения с этой даты прибавляются к остатку</span>
+                     </div>
+                   )}
                   </div>
                 ) })}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 9, marginTop: 2 }}>

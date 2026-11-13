@@ -138,11 +138,14 @@ export async function masterShift(orgId: string, date: string) {
 
   // Накопительные остатки по счетам (оплаты продаж + движения «Денег»). 3 уровня инкассации:
   // у мастера = Наличка + KASPI GOLD; у филиала = Банковский счёт; у головного = отдано (payments out мосту).
+  // Остаток счёта = НАЧАЛЬНЫЙ ОСТАТОК + движения С ДАТЫ ОТСЕЧЕНИЯ (всё, что раньше, уже в нём).
   const balOf = async (accId?: string) => {
     if (!accId) return 0
-    const p = (await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where org_id=${orgId} and cash_account_id=${accId}` as unknown as Array<any>)[0]
-    const f = (await sqlClient`select coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.org_id=${orgId} and r.status='posted' and a.account_id=${accId}` as unknown as Array<any>)[0]
-    return num(p.v) + num(f.v)
+    const o = (await sqlClient`select opening_balance::float v, opening_as_of::text d from cash_accounts where id=${accId}` as unknown as Array<any>)[0]
+    const since = o?.d || '0001-01-01'
+    const p = (await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where org_id=${orgId} and cash_account_id=${accId} and date >= ${since}` as unknown as Array<any>)[0]
+    const f = (await sqlClient`select coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.org_id=${orgId} and r.status='posted' and a.account_id=${accId} and r.date >= ${since}` as unknown as Array<any>)[0]
+    return num(o?.v || 0) + num(p.v) + num(f.v)
   }
   const gold = findAcc(fd.accounts || [], 'KASPI GOLD'), cashA = findAcc(fd.accounts || [], 'Основная касса'), bankA = findAcc(fd.accounts || [], 'Банковский счет')
   const goldBalance = await balOf(gold?.id), cashBalance = await balOf(cashA?.id), bankBalance = await balOf(bankA?.id)
@@ -329,16 +332,23 @@ export async function cashReport(orgId: string, from: string, to: string) {
   // Стартовый остаток на начало периода = все движения по счёту ДО from (авто из истории).
   // ТОЛЬКО проведённые строки листа: черновик — это ещё не деньги (из-за этого в старт
   // остатков попадал неподтверждённый черновик и счёт показывал ложный минус).
+  // Начальный остаток счёта (перенос из 1С) идёт в старт, движения ДО даты отсечения — нет.
+  const openBal = await sqlClient`select id::text acc, opening_balance::float net from cash_accounts
+    where org_id=${orgId} and archived=false and (opening_as_of is null or opening_as_of <= ${to})` as unknown as Array<any>
   const payOpen = await sqlClient`
-    select cash_account_id::text acc, coalesce(sum(case when direction='in' then amount else -amount end),0)::float net
-    from payments where org_id=${orgId} and cash_account_id is not null and date < ${from} group by cash_account_id
+    select p.cash_account_id::text acc, coalesce(sum(case when p.direction='in' then p.amount else -p.amount end),0)::float net
+    from payments p join cash_accounts ca on ca.id=p.cash_account_id
+    where p.org_id=${orgId} and p.cash_account_id is not null and p.date < ${from}
+      and p.date >= coalesce(ca.opening_as_of, '0001-01-01'::date) group by p.cash_account_id
   ` as unknown as Array<any>
   const finOpen = await sqlClient`
     select a.account_id::text acc, coalesce(sum(a.amount),0)::float net
-    from fin_rows r join fin_row_amounts a on a.row_id=r.id where r.org_id=${orgId} and r.status='posted' and r.date < ${from} group by a.account_id
+    from fin_rows r join fin_row_amounts a on a.row_id=r.id join cash_accounts ca on ca.id=a.account_id
+    where r.org_id=${orgId} and r.status='posted' and r.date < ${from}
+      and r.date >= coalesce(ca.opening_as_of, '0001-01-01'::date) group by a.account_id
   ` as unknown as Array<any>
   const opening: Record<string, number> = {}; for (const a of accounts) opening[a.id] = 0
-  for (const r of [...payOpen, ...finOpen]) opening[r.acc] = (opening[r.acc] || 0) + num(r.net)
+  for (const r of [...openBal, ...payOpen, ...finOpen]) opening[r.acc] = (opening[r.acc] || 0) + num(r.net)
   const movByDay: Record<string, Record<string, number>> = {}
   for (const r of [...payMoves, ...finMoves]) { (movByDay[r.day] = movByDay[r.day] || {})[r.acc] = (movByDay[r.day][r.acc] || 0) + num(r.net) }
   const movDays = Object.keys(movByDay).sort()
@@ -389,11 +399,17 @@ export async function accountsOverview(viewerOrgId: string) {
   const orgs = isHq
     ? await sqlClient`select id::text id, name, kind from organizations order by case kind when 'hq' then 0 when 'producer_seller' then 1 else 2 end, name`
     : await sqlClient`select id::text id, name, kind from organizations where id=${viewerOrgId}`
-  const accs = await sqlClient`select id::text id, org_id::text oid, name, kind from cash_accounts where archived=false order by sort_order, name`
-  const pay = await sqlClient`select cash_account_id::text acc, coalesce(sum(case when direction='in' then amount else -amount end),0)::float v from payments where cash_account_id is not null group by cash_account_id`
-  const finm = await sqlClient`select a.account_id::text acc, coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id where r.status='posted' group by a.account_id`
+  const accs = await sqlClient`select id::text id, org_id::text oid, name, kind, opening_balance::float opening, opening_as_of::text "openingAsOf" from cash_accounts where archived=false order by sort_order, name`
+  // Баланс счёта = начальный остаток (перенос из 1С) + движения С ДАТЫ ОТСЕЧЕНИЯ.
+  const open = await sqlClient`select id::text acc, opening_balance::float v from cash_accounts where archived=false`
+  const pay = await sqlClient`select p.cash_account_id::text acc, coalesce(sum(case when p.direction='in' then p.amount else -p.amount end),0)::float v
+    from payments p join cash_accounts ca on ca.id=p.cash_account_id
+    where p.cash_account_id is not null and p.date >= coalesce(ca.opening_as_of, '0001-01-01'::date) group by p.cash_account_id`
+  const finm = await sqlClient`select a.account_id::text acc, coalesce(sum(a.amount),0)::float v
+    from fin_row_amounts a join fin_rows r on r.id=a.row_id join cash_accounts ca on ca.id=a.account_id
+    where r.status='posted' and r.date >= coalesce(ca.opening_as_of, '0001-01-01'::date) group by a.account_id`
   const bal = new Map<string, number>()
-  for (const r of [...(pay as any[]), ...(finm as any[])]) bal.set(r.acc, (bal.get(r.acc) || 0) + num(r.v))
+  for (const r of [...(open as any[]), ...(pay as any[]), ...(finm as any[])]) bal.set(r.acc, (bal.get(r.acc) || 0) + num(r.v))
   // Банк/QR филиала = наша кюар = деньги головного → сразу «свои», НЕ «в ожидании».
   // Нал/каспи филиала — физические, инкассируются позже → «в ожидании».
   const isBankQr = (a: any) => a.kind === 'bank' || /банков|qr|кюар|кюр/i.test(a.name || '')
@@ -401,6 +417,7 @@ export async function accountsOverview(viewerOrgId: string) {
     const isHqOrg = o.kind === 'hq'
     const items = (accs as any[]).filter(a => a.oid === o.id).map(a => ({
       id: a.id, name: a.name, kind: a.kind, balance: num(bal.get(a.id)),
+      opening: num(a.opening), openingAsOf: a.openingAsOf || null,   // начальный остаток (перенос из 1С)
       toHq: !isHqOrg && isBankQr(a),   // деньги головного (у филиала — инфо)
     }))
     const total = items.reduce((s, x) => s + x.balance, 0)

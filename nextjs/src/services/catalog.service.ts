@@ -51,6 +51,21 @@ export async function addCashAccount(i: z.infer<typeof createCashAccountSchema>)
   return a
 }
 
+// Начальный остаток счёта (перенос из 1С на дату). Деньги на счёте = этот остаток + движения
+// С ДАТЫ ОТСЕЧЕНИЯ; всё, что датировано раньше, уже внутри остатка и второй раз не считается.
+// Минус не запрещаем — счёт может уйти в минус, владелец выравнивает документами постепенно.
+export async function setAccountOpening(id: string, i: { openingBalance?: number; openingAsOf?: string | null }) {
+  const patch: any = {}
+  if (i.openingBalance !== undefined) patch.openingBalance = String(Math.round((Number(i.openingBalance) || 0) * 100) / 100)
+  if (i.openingAsOf !== undefined) patch.openingAsOf = i.openingAsOf || null
+  if (!Object.keys(patch).length) return { ok: false as const, error: 'Нечего менять' }
+  const { db } = await import('../lib/db')
+  const { cashAccounts } = await import('../db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [a] = await db.update(cashAccounts).set(patch).where(eq(cashAccounts.id, id)).returning()
+  return { ok: true as const, account: a }
+}
+
 // Массовая установка цен «на всех показанных»: приход (общий шаблон) + розница/опт/спец
 // (в product_prices выбранной орг). Пустые поля не трогаем. Одним апсертом.
 export async function bulkSetPrices(ids: string[], fields: { priceIn?: number; priceRetail?: number; priceOpt?: number; priceSpec?: number }, orgId?: string) {
