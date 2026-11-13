@@ -175,7 +175,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const res: any = await finFavSave(favs)
     show(res?.ok ? `★ Сохранено в избранное: ${favs.length} статей` : '⚠ Ошибка сохранения')
   }
-  async function setType(r: any, t: string) { r.type = t; setRows(p => [...p]); await persist(r) }
+  async function setType(r: any, t: string) {
+    r.type = t
+    // Сменили Поступление ⇄ Платёж — суммы переворачиваем, иначе расход остался бы плюсом.
+    for (const k of Object.keys(r.amt || {})) r.amt[k] = signOf(t, r.amt[k])
+    setRows(p => [...p]); await persist(r)
+  }
   async function applyStatia(r: any, fav: any) {
     r.type = fav.type; r.code = fav.code || null; r.article = fav.label || ''
     if (fav.contragentId && !r.contragentId) { r.contragentId = fav.contragentId; const c = cags.find((x: any) => x.id === fav.contragentId); if (c && !r.who) r.who = c.name }
@@ -188,8 +193,11 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     if (!n) delete r.amt[accId]; else r.amt[accId] = n
     setRows(p => [...p]); scheduleSave(r)
   }
+  // Знак по типу строки (как на сервере): Поступление +, Платёж −, Перемещение — как ввели.
+  const signOf = (type: string, v: number) => type === 'out' ? -Math.abs(v) : type === 'in' ? Math.abs(v) : v
   function setCell(r: any, accId: string, val: string) {
-    const n = calc(val); if (n == null) return
+    const n0 = calc(val); if (n0 == null) return
+    const n = signOf(r.type, n0)
     if (n === 0) delete r.amt[accId]; else r.amt[accId] = n
     setRows(p => [...p]); persist(r)   // сохраняем сразу (без задержки) — чтобы к «Провести» сумма уже была в базе
   }

@@ -134,7 +134,11 @@ export async function saveFinRow(orgId: string, input: any) {
     id = r.id
   }
   await fin.deleteAmounts(id)
-  const vals = (input.amounts || []).filter((a: any) => num(a.amount)).map((a: any) => ({ rowId: id, accountId: a.accountId, amount: String(num(a.amount)) }))
+  // ЗНАК ЗАДАЁТ ТИП СТРОКИ: «Поступление» всегда +, «Платёж» всегда −. Иначе расход,
+  // введённый обычным числом, ПРИБАВЛЯЛСЯ к остатку счёта (конец дня завышался).
+  // «Перемещение» (mv) и служебные строки знак не трогают — там плюс и минус в одной строке.
+  const sign = (v: number) => fields.type === 'out' ? -Math.abs(v) : fields.type === 'in' ? Math.abs(v) : v
+  const vals = (input.amounts || []).filter((a: any) => num(a.amount)).map((a: any) => ({ rowId: id, accountId: a.accountId, amount: String(sign(num(a.amount))) }))
   await fin.insertAmounts(vals as any)
   // Погашение накладных (пусто = предоплата/аванс).
   if (Array.isArray(input.alloc)) {
