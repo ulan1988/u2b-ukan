@@ -38,14 +38,19 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   const supplierOf = (d: any) => (kind === 'in' ? d.contragent : (d as any).supplier) || ''
   const partyOf = (d: any) => (kind === 'in' ? d.customer : d.contragent) || ''
   const partyLabel = kind === 'in' ? 'Заказчик' : 'Покупатель'
-  const suppliers = Array.from(new Set(docs.map(supplierOf).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru'))
-  const parties = Array.from(new Set(docs.map(partyOf).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru'))
+  // В накладной поставщиков может быть НЕСКОЛЬКО (строки от разных) — поле приходит склейкой
+  // «А, Б, В». В фильтре нужен список отдельных имён, иначе в выпадашке висят все комбинации.
+  const namesOf = (v: string) => String(v || '').split(',').map(x => x.trim()).filter(Boolean)
+  const uniqNames = (vals: string[]) => Array.from(new Set(vals.flatMap(namesOf))).sort((a, b) => a.localeCompare(b, 'ru'))
+  const suppliers = uniqNames(docs.map(supplierOf))
+  const parties = uniqNames(docs.map(partyOf))
   const filteredDocs = docs.filter(d => {
     const k = ymdKey(d.date)
     if (dFrom && k && k < dFrom) return false
     if (dTo && k && k > dTo) return false
-    if (fSup && supplierOf(d) !== fSup) return false
-    if (fParty && partyOf(d) !== fParty) return false
+    // Подходит, если выбранное имя есть СРЕДИ поставщиков/покупателей накладной.
+    if (fSup && !namesOf(supplierOf(d)).includes(fSup)) return false
+    if (fParty && !namesOf(partyOf(d)).includes(fParty)) return false
     return true
   })
   const hasFilter = !!(dFrom || dTo || fSup || fParty)
