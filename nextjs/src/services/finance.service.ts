@@ -84,6 +84,11 @@ export async function contragentLedger(orgId: string, contragentId: string, open
 // «−» (уменьшение): приход от него, возврат от клиента, оплата от клиента.
 // Начальный остаток на дату `from` = нач.остаток справочника + сумма движений ДО from.
 export async function contragentReconciliation(orgId: string, contragentId: string, from?: string, to?: string) {
+  // ДАТА ОТСЕЧЕНИЯ орг: всё, что датировано раньше, уже сидит в начальном остатке
+  // контрагента (перенос из 1С) — второй раз в акт сверки не берём, иначе долг задваивается.
+  const { sqlClient } = await import('../lib/db')
+  const cutRows = await sqlClient`select opening_as_of::text d from organizations where id=${orgId}` as unknown as Array<{ d: string | null }>
+  const cutoff = cutRows[0]?.d || null
   const [docs, pays, opening0, projTurn, projPaid] = await Promise.all([
     finRepo.contragentDocs(orgId, contragentId),
     finRepo.contragentPayments(orgId, contragentId),
@@ -107,7 +112,8 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
   const mv = [
     ...realDocs.map((d: any) => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total, docId: d.id as string | null, type: d.type })),
     ...pays.map(p => ({ date: p.date, title: (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику'), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0, docId: null as string | null, type: 'pay' })),
-  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  ].filter(m => !cutoff || String(m.date) >= cutoff)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
   let running = opening0
   for (const m of mv) { if (from && m.date < from) running += m.inc - m.dec }
