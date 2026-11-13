@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents, setAccountOpening } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finCellPayments, finEditPayment, finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
+import { finCellPayments, finEditPayment, finAddPayment, finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
@@ -54,6 +54,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [cell, setCell_] = useState<{ row: any; acc: any } | null>(null)
   const [cellPays, setCellPays] = useState<any[]>([])
   const [cellBusy, setCellBusy] = useState(false)
+  const [cellNew, setCellNew] = useState('')   // сумма, внесённая вручную
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
 
@@ -92,6 +93,17 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     if (res?.data?.ok === false) { show(res.data.error || 'Не вышло'); return }
     show(res?.data?.mirror ? '✔ Сумма изменена — и у второй стороны' : '✔ Сумма изменена')
     setCell_(null); await load()
+  }
+
+  async function addCellPay() {
+    const amount = parseCell(cellNew)
+    if (!amount || !cell) { show('Укажите сумму'); return }
+    setCellBusy(true)
+    const res: any = await finAddPayment({ date, accountId: cell.acc.id, contragentId: cell.row.contragentId, amount, direction: cell.row.type === 'out' ? 'out' : 'in' })
+    setCellBusy(false)
+    if (res?.data?.ok === false) { show(res.data.error || 'Не вышло'); return }
+    show(res?.data?.mirror ? '✔ Внесено — и списано у филиала' : '✔ Внесено')
+    setCellNew(''); setCell_(null); await load()
   }
 
   function payload(r: any) {
@@ -272,8 +284,8 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                         // Авто-ячейка = платежи дня по этому счёту и контрагенту. Клик открывает
                         // список: сумму можно поправить руками, правка идёт в сам платёж
                         // (и в зеркальную проводку второй орг).
-                        const canEdit = r.auto && !!v
-                        return <td key={a.id} onClick={() => canEdit && openCell(r, a)} title={canEdit ? 'Поправить сумму (изменится и у второй стороны)' : undefined}
+                        const canEdit = r.auto && !!r.contragentId
+                        return <td key={a.id} onClick={() => canEdit && openCell(r, a)} title={canEdit ? (v ? 'Поправить сумму' : 'Внести сумму вручную') : undefined}
                           style={{ ...tdNum, cursor: canEdit ? 'pointer' : undefined, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td>
                       }
                       // Перемещение: выбор «от/к» + сумма прямо в колонке счёта.
@@ -363,9 +375,19 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                   style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: cellBusy ? '#a9c9b5' : '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: 13, cursor: cellBusy ? 'default' : 'pointer' }}>💾</button>
               </div>
             ))}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-              <button onClick={() => setCell_(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 13.5, cursor: 'pointer' }}>Закрыть</button>
+            {/* Контрагент сам денег не отправил — вписываем сумму руками */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, padding: '12px 0 0', borderTop: '1.5px dashed #e6e2dc' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#4a4640' }}>＋ Внести вручную</span>
+              <input value={cellNew} onChange={e => setCellNew(e.target.value)} inputMode="decimal" placeholder="сумма"
+                onKeyDown={e => { if (e.key === 'Enter') addCellPay() }}
+                style={{ width: 140, padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'Consolas, monospace' }} />
+              <button disabled={cellBusy} onClick={addCellPay}
+                style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: cellBusy ? '#d8b6a6' : COLORS.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: cellBusy ? 'default' : 'pointer' }}>Внести</button>
+              <span style={{ marginLeft: 'auto' }}>
+                <button onClick={() => setCell_(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 13.5, cursor: 'pointer' }}>Закрыть</button>
+              </span>
             </div>
+            <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 6 }}>Деньги лягут на счёт «{cell.acc.name}» и уменьшат долг контрагента. Для филиала (Кристалл, Нипа) сумма спишется и у него.</div>
           </div>
         </div>
       )}

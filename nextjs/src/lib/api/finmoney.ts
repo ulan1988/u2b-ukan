@@ -53,3 +53,6 @@ export const bonusDay = (orgId: string, date: string) => getObj<any>(`/api/finan
 export const finCellPayments = (date: string, accountId: string, contragentId?: string | null) =>
   getObj<any>(`/api/finance/payment?date=${date}&accountId=${accountId}${contragentId ? `&contragentId=${contragentId}` : ''}`, null as any)
 export const finEditPayment = (id: string, amount: number) => patch('/api/finance/payment', { id, amount })
+// Внести платёж вручную в строку листа (контрагент сам не отправил деньги).
+export const finAddPayment = (b: { date: string; accountId: string; contragentId: string; amount: number; direction?: string; comment?: string }) =>
+  post('/api/finance/payment', b)

@@ -293,3 +293,22 @@ export const mirrorPayment = (p: any) =>
 
 export const setPaymentAmount = (id: string, amount: number) =>
   sqlClient`update payments set amount=${String(amount)} where id=${id}`
+
+// Контрагенты орг по именам — для фикс-слотов листа «Операции»: слот должен знать своего
+// контрагента, даже когда платежей за день ещё нет (иначе вручную сумму не внести).
+export const contragentsByNames = (orgId: string, names: string[]) =>
+  sqlClient`select id::text, name from contragents where org_id=${orgId} and archived=false and name = any(${names})` as unknown as Promise<Array<{ id: string; name: string }>>
+
+// Счёт той же природы (нал/банк) у второй орг — для зеркальной проводки, внесённой вручную.
+export const accountLike = (orgId: string, kind: string) =>
+  sqlClient`select id::text, name from cash_accounts where org_id=${orgId} and archived=false
+    order by (kind=${kind}) desc, sort_order, name limit 1` as unknown as Promise<Array<{ id: string; name: string }>>
+
+export const accountKind = (id: string) =>
+  sqlClient`select kind, org_id::text "orgId" from cash_accounts where id=${id} limit 1` as unknown as Promise<Array<{ kind: string; orgId: string }>>
+
+export const contragentBridge = (id: string) =>
+  sqlClient`select org_ref_id::text "orgRefId", name from contragents where id=${id} limit 1` as unknown as Promise<Array<{ orgRefId: string | null; name: string }>>
+
+export const bridgeBack = (ownerOrgId: string, targetOrgId: string) =>
+  sqlClient`select id::text from contragents where org_id=${targetOrgId} and org_ref_id=${ownerOrgId} and archived=false limit 1` as unknown as Promise<Array<{ id: string }>>

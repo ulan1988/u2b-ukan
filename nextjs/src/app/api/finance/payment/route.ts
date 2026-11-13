@@ -19,6 +19,24 @@ export async function GET(req: NextRequest) {
 
 const patchSchema = z.object({ id: z.string().uuid(), amount: z.coerce.number().nonnegative() })
 
+const addSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  accountId: z.string().uuid(),
+  contragentId: z.string().uuid(),
+  amount: z.coerce.number().positive(),
+  direction: z.enum(['in', 'out']).optional(),
+  comment: z.string().max(200).optional(),
+})
+
+// Внести сумму ВРУЧНУЮ в строку листа: контрагент денег сам не отправил — головной вписывает.
+export async function POST(req: NextRequest) {
+  const s = await sessionFromRequest(req)
+  if (!s?.orgId) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+  const parsed = addSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля' }, { status: 400 })
+  return NextResponse.json(await svc.addCellPayment(s.orgId, parsed.data, s))
+}
+
 // Правка суммы платежа: двигает кассу, долг контрагента, оплату по накладной
 // и зеркальную проводку второй орг (инкассация/возврат головного).
 export async function PATCH(req: NextRequest) {

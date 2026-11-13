@@ -57,6 +57,12 @@ export async function financeDay(orgId: string, date: string) {
       return -1 }
     const slotAmt: Array<Record<string, number>> = SLOTS.map(() => ({}))
     const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))
+    // Контрагент слота известен ДО платежей (по имени) — иначе в пустую строку нельзя внести
+    // сумму вручную: не к кому её отнести.
+    for (const c of await fin.contragentsByNames(orgId, SLOTS)) {
+      const i = SLOTS.indexOf(c.name)
+      if (i >= 0) slotCag[i].id = c.id
+    }
     const others = new Map<string, any>()
     for (const p of todayPays) {
       if (p.accepted === false) continue          // ждёт подтверждения — своей строкой ниже
@@ -380,4 +386,39 @@ export async function editAutoPayment(orgId: string, paymentId: string, amount: 
   if (p.docId) await fin.bumpPaidSum(p.docId, next - prev)
   if (mirror) await fin.setPaymentAmount(mirror.id, next)
   return { ok: true as const, changed: true, prev, next, mirror: mirror ? mirror.orgId : null }
+}
+
+// Внести платёж ВРУЧНУЮ в строку листа (правило владельца 13.11.2026): если контрагент/филиал
+// сам денег не отправил, головной вписывает сумму сам. Создаётся обычный платёж — он гасит долг
+// контрагента и ложится на счёт. Контрагент-МОСТ (филиал) получает зеркальную проводку, чтобы
+// деньги у него списались (как при инкассации).
+export async function addCellPayment(orgId: string, i: { date: string; accountId: string; contragentId: string; amount: number; direction?: string; comment?: string }, actor?: { name?: string } | null) {
+  const amount = Math.round(Math.max(0, num(i.amount)) * 100) / 100
+  if (!amount) return { ok: false as const, error: 'Укажите сумму' }
+  if (!i.contragentId) return { ok: false as const, error: 'Не указан контрагент строки' }
+  const dir = i.direction === 'out' ? 'out' : 'in'
+  const { randomUUID } = await import('crypto')
+  const payRepo = await import('../repositories/payment.repo')
+  const who = actor?.name ? ' · ' + actor.name : ''
+  const [cg] = await fin.contragentBridge(i.contragentId)
+  await payRepo.insertPayment({
+    id: randomUUID(), orgId, contragentId: i.contragentId, direction: dir, amount: String(amount),
+    date: i.date, cashAccountId: i.accountId, comment: (i.comment || 'Внесено вручную') + who,
+  } as any)
+  // Филиал (мост) — зеркальная проводка у него: деньги ушли с его счёта того же вида.
+  let mirror: string | null = null
+  if (cg?.orgRefId) {
+    const [back] = await fin.bridgeBack(orgId, cg.orgRefId)
+    const [acc] = await fin.accountKind(i.accountId)
+    const [branchAcc] = await fin.accountLike(cg.orgRefId, acc?.kind || 'cash')
+    if (back && branchAcc) {
+      await payRepo.insertPayment({
+        id: randomUUID(), orgId: cg.orgRefId, contragentId: back.id, direction: dir === 'in' ? 'out' : 'in',
+        amount: String(amount), date: i.date, cashAccountId: branchAcc.id,
+        comment: `Инкассация → головной (внесено вручную)${who}`,
+      } as any)
+      mirror = cg.orgRefId
+    }
+  }
+  return { ok: true as const, amount, mirror }
 }
