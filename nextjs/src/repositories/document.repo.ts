@@ -201,7 +201,9 @@ export const getDoc = (id: string) => db.select().from(documents).where(eq(docum
 
 export const linesWithProduct = (docId: string) =>
   db.select({
-    id: documentLines.id, productId: documentLines.productId, name: products.name,
+    id: documentLines.id, productId: documentLines.productId,
+    // Имя строки как в накладной (с цветом/размером), иначе имя товара из номенклатуры.
+    name: sql<string>`coalesce(nullif(${documentLines.name}, ''), ${products.name})`,
     qty: documentLines.qty, unit: documentLines.unit, price: documentLines.price, priceIn: products.priceIn,
     amount: documentLines.amount, comment: documentLines.comment, sourcePosId: documentLines.sourcePosId,
     role: documentLines.role, lengthCm: documentLines.lengthCm, widthCm: documentLines.widthCm, rate: documentLines.rate,

@@ -261,6 +261,9 @@ export const documentLines = pgTable('document_lines', {
   // не меняется при дроблении — по нему фильтруется вся цепочка позиции в базе.
   sourcePosId: text('source_pos_id').references((): any => orderPositions.id, { onDelete: 'set null' }),   // строка карточки, из которой выросла строка документа
   role: text('role').notNull().default('main'),           // main | input | output (производство)
+  // Имя строки КАК В НАКЛАДНОЙ: собранный в каталоге товар с цветом/размером («Нар. угол (пр)
+  // дерево»), тогда как сам товар — базовый безцветный. Пусто → берём имя товара.
+  name: text('name'),
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),             // ед. изм. строки (снимок)
   price: money('price').notNull().default('0'),

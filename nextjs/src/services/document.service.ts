@@ -28,6 +28,9 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
       sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
       widthCm: l.widthCm != null ? String(l.widthCm) : null,
+      // Имя как в накладной: собранный по цвету/размеру товар («Нар. угол (пр) дерево»),
+      // тогда как карточка товара — базовая безцветная. Пусто → покажем имя товара.
+      name: l.name || null,
       comment: l.comment || '', block: l.block || '',   // коммент строки и блок (накладная поставщика)
     }
   })
@@ -351,6 +354,9 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
       sourcePosId: l.sourcePosId || null,
       qty: String(l.qty), unit: l.unit || 'шт', price: String(l.price), amount: String(amount),
       widthCm: l.widthCm != null ? String(l.widthCm) : null,
+      // Имя как в накладной: собранный по цвету/размеру товар («Нар. угол (пр) дерево»),
+      // тогда как карточка товара — базовая безцветная. Пусто → покажем имя товара.
+      name: l.name || null,
       comment: l.comment || '', block: l.block || '',   // коммент строки и блок (накладная поставщика)
     }
   })
