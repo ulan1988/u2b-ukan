@@ -97,6 +97,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   }
   const toggleMark = (id: string) => saveMarks({ ...wsel, [id]: !wsel[id] })
   // ЗП за день, вписанная руками: что сейчас в поле (строкой), и сохранение по уходу из поля.
+  const wageDay = (u: any) => Math.round(Number((data?.attWage || {})[u.id] ?? u.dailyWage) || 0)
   const wageStr = (id: string, def: number) => (wedit[id] !== undefined ? wedit[id] : String(Math.round((data?.attWage || {})[id] ?? def)))
   async function saveWage(id: string, val: string) {
     const num = Math.round(Number(String(val).replace(/s/g, '').replace(',', '.')) || 0)
@@ -707,7 +708,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 {(data.staff || []).length === 0 ? <div style={{ fontSize: 13, color: COLORS.textMuted, padding: '6px 0' }}>Нет сотрудников — добавьте в разделе «👥 Сотрудники»</div>
                   : (data.staff || []).map((u: any) => {
                     const on = !!wsel[u.id]
-                    const wage = Math.round(Number(u.dailyWage) || 0)
+                    const wage = wageDay(u)
                     return (
                       <div key={u.id} className="cd-wrap" style={{ padding: '8px 8px', borderBottom: `1px solid ${COLORS.borderLight}`, background: on ? '#e8f5ee' : 'transparent' }}>
                         <button onClick={() => toggleMark(u.id)} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', background: on ? '#2e8a5e' : 'transparent', boxShadow: `inset 0 0 0 2px ${on ? '#2e8a5e' : COLORS.border}`, border: 'none', cursor: 'pointer', padding: 0 }}>{on ? '✓' : ''}</button>
@@ -729,7 +730,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   const N = marked.length
                   const noPct = data?.kind === 'producer_seller'   // листогиб: процентов нет, только оклад
                   const pool = Math.round((Number(data.report?.margin) || 0) * 0.4)   // ориентир: доступный пул 40% маржи
-                  const rows = marked.map((u: any) => { const oklad = Math.round(Number(u.dailyWage) || 0); const bonus = bonusEff(u.id); return { u, oklad, bonus, total: oklad + bonus } })
+                  const rows = marked.map((u: any) => { const oklad = wageDay(u); const bonus = bonusEff(u.id); return { u, oklad, bonus, total: oklad + bonus } })
                   const bonusSum = rows.reduce((s: number, r: any) => s + r.bonus, 0)
                   const payTotal = rows.reduce((s: number, r: any) => s + r.total, 0)
                   if (N === 0) return null
