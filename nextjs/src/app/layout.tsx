@@ -21,6 +21,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {children}
         <script dangerouslySetInnerHTML={{ __html: `
+          // Колесо мыши НЕ меняет число в поле: снимаем фокус, иначе прокрутка страницы
+          // накручивала суммы в накладной (крутилки у number-полей убраны в globals.css).
+          document.addEventListener('wheel', function (e) {
+            var el = document.activeElement;
+            if (el && el.tagName === 'INPUT' && el.type === 'number' && el === e.target) el.blur();
+          }, { passive: true });
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}); });
           }

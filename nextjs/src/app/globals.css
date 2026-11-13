@@ -228,3 +228,10 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 .bp-main { padding: 16px 62px 40px 12px; }
 @media (max-width: 899px) { .bp-main { padding: 12px 12px 96px; } }
 @media (max-width: 640px) { .bp-pair button { font-size: 12px !important; padding: 8px 2px !important; letter-spacing: -.01em; } }
+
+/* Числовые поля БЕЗ крутилок: стрелки у input[type=number] убраны совсем, колесо мыши
+   значение не меняет (скрипт в layout снимает фокус). Правило владельца 13.11.2026 —
+   «крутишь, а цифры меняются» ломало суммы в накладной и в кассе. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
