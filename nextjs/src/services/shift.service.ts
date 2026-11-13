@@ -167,6 +167,10 @@ export async function masterShift(orgId: string, date: string) {
   // ЗП, вписанная руками за этот день (пусто → оклад сотрудника) — показываем в табеле.
   const attWage: Record<string, number> = {}
   for (const r of marksRows as any[]) if (r.amount != null) attWage[r.employeeId] = num(r.amount)
+  // Кому ЗП за этот день УЖЕ выдана (строки fin_rows article='ЗП') — чтобы не выдать дважды.
+  const zpPaidRows = await sqlClient`select distinct lower(trim(who)) who from fin_rows
+    where org_id=${orgId} and date=${date} and article='ЗП' and coalesce(trim(who),'') <> ''` as unknown as Array<any>
+  const zpPaidWho = zpPaidRows.map((r: any) => r.who)
   // Статьи расходов (как в 1С: 7100/7200/7400) — для «текущего расхода».
   const expenseArticles = await sqlClient`select id::text, name, activity, direction from fin_expense_articles where org_id=${orgId} and archived=false and is_group=false order by activity, sort_order, name` as unknown as Array<any>
 
@@ -243,7 +247,7 @@ export async function masterShift(orgId: string, date: string) {
   const otherIncome = await listOtherIncome(orgId, date)
 
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, attendance: attIds, attWage, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,

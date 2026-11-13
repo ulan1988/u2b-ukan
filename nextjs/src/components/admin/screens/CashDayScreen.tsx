@@ -124,9 +124,12 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
       return { accountId: a.id, amount: isLast ? rest - each * (blanks.length - 1) : each }
     }).filter((x: any) => x.amount > 0)
   }
-  async function payZp(payTotal: number) {
+  async function payZp(payTotal: number, names?: string[]) {
     const bonuses = (data?.staff || []).filter((u: any) => wsel[u.id]).map((u: any) => ({ employeeId: u.id, amount: bonusEff(u.id) }))
     if (!bonuses.length) { toast('Отметьте в табеле кто на смене'); return }
+    // Переспрашиваем ВСЕГДА: деньги списываются со счёта, повтор по ошибке дорого стоит.
+    const who = (names || []).length ? `: ${(names || []).join(', ')}` : ''
+    if (!confirm(`Выдать ${m(payTotal)} ₸${who}? Деньги спишутся со счёта.`)) return
     const splits = zpSplits(payTotal)
     if (!splits.length) { toast('Отметьте счёт списания и сумму'); return }
     const r: any = await cashPayZp(orgId, splits[0].accountId, date, bonuses, splits)
@@ -730,9 +733,11 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   const N = marked.length
                   const noPct = data?.kind === 'producer_seller'   // листогиб: процентов нет, только оклад
                   const pool = Math.round((Number(data.report?.margin) || 0) * 0.4)   // ориентир: доступный пул 40% маржи
-                  const rows = marked.map((u: any) => { const oklad = wageDay(u); const bonus = bonusEff(u.id); return { u, oklad, bonus, total: oklad + bonus } })
-                  const bonusSum = rows.reduce((s: number, r: any) => s + r.bonus, 0)
-                  const payTotal = rows.reduce((s: number, r: any) => s + r.total, 0)
+                  const paidSet = new Set<string>((data?.zpPaidWho || []).map((x: string) => String(x).trim().toLowerCase()))
+                  const rows = marked.map((u: any) => { const oklad = wageDay(u); const bonus = bonusEff(u.id)
+                    return { u, oklad, bonus, total: oklad + bonus, paid: paidSet.has(String(u.name || '').trim().toLowerCase()) } })
+                  const bonusSum = rows.filter((r: any) => !r.paid).reduce((s: number, r: any) => s + r.bonus, 0)
+                  const payTotal = rows.filter((r: any) => !r.paid).reduce((s: number, r: any) => s + r.total, 0)
                   if (N === 0) return null
                   return (
                     <div style={{ marginTop: 12, background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>
@@ -759,17 +764,26 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                         })}
                       </div>
                       {rows.map((r: any) => (
-                        <div key={r.u.id} className="cd-wrap" style={{ padding: '5px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
+                        <div key={r.u.id} className="cd-wrap" style={{ padding: '5px 0', borderTop: `1px solid ${COLORS.borderLight}`, opacity: r.paid ? 0.55 : 1 }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {r.u.name}</span>
-                          <span style={{ width: 90, textAlign: 'right', fontSize: 12.5, color: COLORS.textLight }}>оклад {m(r.oklad)}</span>
-                          <span style={{ fontSize: 13, color: COLORS.textMuted }}>+</span>
-                          <input value={wbonus[r.u.id] ?? ''} inputMode="decimal" placeholder={noPct ? 'бонус' : '40%'}
-                            onChange={e => setWbonus(w => ({ ...w, [r.u.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
-                            style={{ width: 90, textAlign: 'right', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none' }} />
-                          <b style={{ width: 90, textAlign: 'right', fontSize: 13.5 }}>{m(r.total)}</b>
+                          {r.paid
+                            ? <span style={{ fontSize: 12, fontWeight: 700, color: '#2e8a5e', background: '#e8f5ee', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' }}>✓ уже выдано</span>
+                            : <>
+                              <span style={{ width: 90, textAlign: 'right', fontSize: 12.5, color: COLORS.textLight }}>оклад {m(r.oklad)}</span>
+                              <span style={{ fontSize: 13, color: COLORS.textMuted }}>+</span>
+                              <input value={wbonus[r.u.id] ?? ''} inputMode="decimal" placeholder={noPct ? 'бонус' : '40%'}
+                                onChange={e => setWbonus(w => ({ ...w, [r.u.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
+                                style={{ width: 90, textAlign: 'right', padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'Consolas, monospace', fontWeight: 700, outline: 'none' }} />
+                              <b style={{ width: 90, textAlign: 'right', fontSize: 13.5 }}>{m(r.total)}</b>
+                            </>}
                         </div>
                       ))}
-                      <button onClick={() => payZp(payTotal)} disabled={!(payTotal > 0)} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>{`${noPct ? '💵 Выдать ЗП' : '💵 Выдать ЗП+40%'}${payTotal > 0 ? ' · ' + m(payTotal) : ''}`}</button>
+                      {/* Выдано всем отмеченным → кнопка серая. Остался кто-то (нового отметили
+                          или правили сумму) — выдаём только им, с переспросом. */}
+                      <button onClick={() => payZp(payTotal, rows.filter((r: any) => !r.paid).map((r: any) => r.u.name))} disabled={!(payTotal > 0)}
+                        style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>
+                        {payTotal > 0 ? `${noPct ? '💵 Выдать ЗП' : '💵 Выдать ЗП+40%'} · ${m(payTotal)}` : '✓ ЗП за этот день выдана'}
+                      </button>
                     </div>
                   )
                 })()}
