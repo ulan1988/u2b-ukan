@@ -24,7 +24,7 @@ export const accounts = (orgId: string) =>
 // Счета-КОЛОНКИ листа «Операции» (Касса дня): только помеченные cashday. Балансы/«Счета»
 // показывают все активные счета, а оперативный лист — компактный фикс-набор.
 export const cashdayAccounts = (orgId: string) =>
-  sqlClient`select id::text, name, kind from cash_accounts where org_id=${orgId} and archived=false and cashday=true order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string }>>
+  sqlClient`select id::text, name, kind, opening_balance::float "openingBalance", opening_as_of::text "openingAsOf" from cash_accounts where org_id=${orgId} and archived=false and cashday=true order by sort_order, name` as unknown as Promise<Array<{ id: string; name: string; kind: string; openingBalance: number; openingAsOf: string | null }>>
 
 // Прямые платежи для АВТО-строк листа «Операции»/«Документы»: ВСЕ платежи орг без fin_row_id —
 // касса-продажи, инкассации, оплаты из кабинета, погашения долга, возвраты, оплаты поставщикам.
@@ -63,27 +63,43 @@ export const ledgerMovements = (orgId: string, from: string, to: string) =>
     ) t order by date, acc` as unknown as Promise<Array<{ date: string; acc: string; amount: number; contragent: string | null; article: string | null; docNumber: string | null; docId: string | null; src: string }>>
 
 // Остаток по счетам НА начало периода = Σ движений (платежи + строки «Деньги») до даты.
+// Остаток на начало периода: НАЧАЛЬНЫЙ ОСТАТОК счёта + движения с даты отсечения и до `before`.
 export const ledgerOpening = (orgId: string, before: string) =>
   sqlClient`
     select acc, sum(amount)::float amt from (
-      select cash_account_id::text acc, (case when direction='in' then amount else -amount end) amount
-        from payments where org_id=${orgId} and cash_account_id is not null and date < ${before}
+      select ca.id::text acc, ca.opening_balance amount
+        from cash_accounts ca
+        where ca.org_id=${orgId} and ca.archived=false and (ca.opening_as_of is null or ca.opening_as_of < ${before})
+      union all
+      select p.cash_account_id::text acc, (case when p.direction='in' then p.amount else -p.amount end) amount
+        from payments p join cash_accounts ca on ca.id=p.cash_account_id
+        where p.org_id=${orgId} and p.cash_account_id is not null and p.date < ${before}
+          and p.date >= coalesce(ca.opening_as_of, '0001-01-01'::date)
       union all
       select a.account_id::text acc, a.amount amount
-        from fin_row_amounts a join fin_rows r on r.id=a.row_id
+        from fin_row_amounts a join fin_rows r on r.id=a.row_id join cash_accounts ca on ca.id=a.account_id
         where r.org_id=${orgId} and r.status='posted' and r.date < ${before}
+          and r.date >= coalesce(ca.opening_as_of, '0001-01-01'::date)
     ) t group by acc` as unknown as Promise<Array<{ acc: string; amt: number }>>
 
 // Справочник статей затрат (для расходных строк).
 export const expenseArticles = (orgId: string) =>
   sqlClient`select id::text, code, name, sort_order "sortOrder" from fin_expense_articles where org_id=${orgId} and archived=false order by code, sort_order, name` as unknown as Promise<any[]>
 
-// Начальный остаток на дату = сумма проведённых сумм по счёту за дни ДО date.
+// Остаток на начало дня = НАЧАЛЬНЫЙ ОСТАТОК счёта (перенос из 1С) + проведённые строки листа
+// за дни ДО date, но не раньше даты отсечения (до неё всё уже внутри начального остатка).
+// Платежи (payments) прибавляет сервис — там же, где строит авто-строки.
 export const openingByAccount = (orgId: string, date: string) =>
-  sqlClient`select a.account_id::text id, coalesce(sum(a.amount),0)::float amt
-    from fin_row_amounts a join fin_rows r on r.id=a.row_id
-    where r.org_id=${orgId} and r.status='posted' and r.date < ${date}
-    group by a.account_id` as unknown as Promise<Array<{ id: string; amt: number }>>
+  sqlClient`select acc id, coalesce(sum(amt),0)::float amt from (
+      select ca.id::text acc, ca.opening_balance::float amt
+        from cash_accounts ca
+        where ca.org_id=${orgId} and ca.archived=false and (ca.opening_as_of is null or ca.opening_as_of <= ${date})
+      union all
+      select a.account_id::text acc, a.amount::float amt
+        from fin_row_amounts a join fin_rows r on r.id=a.row_id join cash_accounts ca on ca.id=a.account_id
+        where r.org_id=${orgId} and r.status='posted' and r.date < ${date}
+          and r.date >= coalesce(ca.opening_as_of, '0001-01-01'::date)
+    ) t group by acc` as unknown as Promise<Array<{ id: string; amt: number }>>
 
 export const rowsForDay = (orgId: string, date: string) =>
   sqlClient`select r.id::text, r.type, r.code, r.article, r.who, r.comment, r.status, r.sort_order "sortOrder",

@@ -30,11 +30,15 @@ export async function financeDay(orgId: string, date: string) {
   const artOf = (p: any) => p.direction === 'in' ? opArt : spArt
 
   // Прошлые дни → в остаток на начало; платежи дня → todayPays.
+  // НАЧАЛЬНЫЙ ОСТАТОК счёта уже в open (openingByAccount): платежи ДО даты отсечения
+  // второй раз не прибавляем — они внутри перенесённого из 1С остатка.
+  const asOf: Record<string, string> = {}
+  for (const a of accts as any[]) if (a.openingAsOf) asOf[a.id] = a.openingAsOf
   const todayPays: any[] = []
   for (const p of autoPays) {
     const col = colOf(p); if (!col) continue
     const signed = (p.direction === 'in' ? 1 : -1) * num(p.amount)
-    if (p.date < date) { open[col] = (open[col] || 0) + signed; continue }
+    if (p.date < date) { if (!asOf[col] || p.date >= asOf[col]) open[col] = (open[col] || 0) + signed; continue }
     if (p.date === date) todayPays.push({ ...p, col, signed })
   }
 
