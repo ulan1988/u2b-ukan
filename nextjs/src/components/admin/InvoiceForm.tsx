@@ -11,6 +11,7 @@ import StoreCatalog from '@/components/StoreCatalog'
 import type { PickedPos } from '@/components/NomPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
+import ContragentPicker from '@/components/ContragentPicker'
 import { fetchRefs } from '@/lib/api/refs'
 
 // «20.000 см» → «20 см» для показа (лишние нули из имени товара)
@@ -226,6 +227,13 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
 
   const o = data?.doc
   const isSale = o?.type === 'sale'
+  // Список для общего пикера контрагентов (поиск по словам, ⭐ избранные сверху). Контрагент
+  // уже проведённой накладной может быть не в списке орг — добавляем его, чтобы не пропал.
+  const cagList = (() => {
+    const cur = f.contragentId && !cags.some((c: any) => c.id === f.contragentId)
+      ? [{ id: f.contragentId, name: data?.contragent?.name || '—' }] : []
+    return [...cur, ...cags]
+  })()
   const OPS = isSale ? OPS_OUT : OPS_IN
   return (
     <div onClick={onClose} style={drawer
@@ -251,19 +259,14 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
               <div><label style={lbl}>{isSale ? 'ДАТА (день отгрузки)' : 'ДАТА (день приёмки)'}</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
               {/* Контрагент можно переназначить — иногда при проведении выбирают не того. */}
               <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label>
-                <select style={inp} value={f.contragentId || ''} onChange={e => setF({ ...f, contragentId: e.target.value })} title="Можно изменить, если выбрали не того — долг перейдёт на нового">
-                  {!f.contragentId && <option value="">— не выбран —</option>}
-                  {!cags.some((c: any) => c.id === f.contragentId) && f.contragentId && <option value={f.contragentId}>{data.contragent?.name || '—'}</option>}
-                  {cags.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => setF({ ...f, contragentId: c?.id || '' })}
+                  placeholder={isSale ? '— выберите покупателя —' : '— выберите поставщика —'} />
               </div>
               {!isSale && !creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
               {isSale && !creating && (
                 <div><label style={lbl}>ПОСТАВЩИК (у кого взят товар)</label>
-                  <select style={inp} value={f.supplierId || ''} onChange={e => setF({ ...f, supplierId: e.target.value })} title="Центр-Склад бывает и поставщиком, и просто транзитным складом — выберите вручную; пусто = определить по закупу">
-                    <option value="">— по закупу{data.supplier ? `: ${data.supplier}` : ''} —</option>
-                    {cags.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <ContragentPicker contragents={cagList} value={f.supplierId || ''} onPick={(c: any) => setF({ ...f, supplierId: c?.id || '' })}
+                    placeholder={`— по закупу${data.supplier ? ': ' + data.supplier : ''} —`} />
                 </div>
               )}
               <div><label style={lbl}>СКЛАД</label>{creating
@@ -273,10 +276,8 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
               {creating && newType === 'purchase' && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>ПОЛУЧАТЕЛЬ <span style={{ fontWeight: 500, color: '#a09889' }}>(необязательно — товар сразу уйдёт ему этой же датой)</span></label>
-                  <select style={inp} value={recId} onChange={e => setRecId(e.target.value)}>
-                    <option value="">— остаётся на складе —</option>
-                    {cags.filter((c: any) => c.id !== f.contragentId).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <ContragentPicker contragents={cagList.filter((c: any) => c.id !== f.contragentId)} value={recId}
+                    onPick={(c: any) => setRecId(c?.id || '')} placeholder="— остаётся на складе —" />
                   {recId && (
                     <div style={{ marginTop: 6, fontSize: 12.5, color: '#2e8a5e', background: '#f2fbf6', border: '1px solid #cfe6d8', borderRadius: 8, padding: '7px 10px' }}>
                       📦 После проведения: приход на склад → расходная на «{cags.find((c: any) => c.id === recId)?.name}» той же датой
