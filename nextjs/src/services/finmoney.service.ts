@@ -357,3 +357,27 @@ export async function reviewClientPayment(orgId: string, paymentId: string, acce
   else await fin.deletePendingPayment(paymentId)
   return { ok: true as const, amount: p.amount, accepted: accept }
 }
+
+// ── Правка суммы авто-строки («Операции») ────────────────────────────────────
+// Правило владельца 13.11.2026: суммы авто-строк можно поправить руками, и правка должна
+// дойти до второй стороны. Меняем САМ ПЛАТЁЖ: деньги на счёте, долг контрагента, оплата по
+// накладной и зеркальная проводка второй орг (инкассация/возврат) двигаются вместе.
+export async function cellPayments(orgId: string, date: string, accountId: string, contragentId?: string | null) {
+  return fin.cellPayments(orgId, date, accountId, contragentId || null)
+}
+
+export async function editAutoPayment(orgId: string, paymentId: string, amount: number) {
+  const [p] = await fin.paymentAny(paymentId)
+  if (!p) return { ok: false as const, error: 'Платёж не найден' }
+  if (p.orgId !== orgId) return { ok: false as const, error: 'Платёж другой организации' }
+  const next = Math.round(Math.max(0, num(amount)) * 100) / 100
+  const prev = num(p.amount)
+  if (next === prev) return { ok: true as const, changed: false }
+  // Зеркало ищем ДО правки — пара находится по дате и сумме.
+  const [mirror] = await fin.mirrorPayment(p)
+  await fin.setPaymentAmount(paymentId, next)
+  // Оплата по накладной: двигаем «оплачено» документа на дельту (иначе долг разъедется).
+  if (p.docId) await fin.bumpPaidSum(p.docId, next - prev)
+  if (mirror) await fin.setPaymentAmount(mirror.id, next)
+  return { ok: true as const, changed: true, prev, next, mirror: mirror ? mirror.orgId : null }
+}

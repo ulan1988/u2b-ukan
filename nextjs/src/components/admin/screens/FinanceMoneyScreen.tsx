@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents, setAccountOpening } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
+import { finCellPayments, finEditPayment, finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
@@ -50,6 +50,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [view, setView] = useState<'sheet' | 'dds' | 'journal' | 'accounts' | 'balance'>('sheet')
   const [showComment, setShowComment] = useState(false)   // колонка «Комментарий» со шторкой
   const [confirmUndo, setConfirmUndo] = useState<string | null>(null)   // строка, ждущая подтверждения отмены
+  // Ячейка авто-строки: какие платежи в ней сидят (правим сумму самого платежа).
+  const [cell, setCell_] = useState<{ row: any; acc: any } | null>(null)
+  const [cellPays, setCellPays] = useState<any[]>([])
+  const [cellBusy, setCellBusy] = useState(false)
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
 
@@ -74,6 +78,21 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   for (const a of accounts) { closing[a.id] = opening[a.id] || 0; for (const r of rows) closing[a.id] += r.amt[a.id] || 0 }
   const drafts = rows.filter(r => r.status !== 'posted' && hasAmt(r)).length
   const posted = rows.filter(r => r.status === 'posted').length
+
+  async function openCell(r: any, a: any) {
+    setCell_({ row: r, acc: a }); setCellPays([])
+    const res: any = await finCellPayments(date, a.id, r.contragentId || null)
+    setCellPays((res?.data || []).filter((p: any) => Number(p.amount) !== 0))
+  }
+  async function saveCellPay(payId: string, val: string) {
+    const amount = parseCell(val)
+    setCellBusy(true)
+    const res: any = await finEditPayment(payId, amount)
+    setCellBusy(false)
+    if (res?.data?.ok === false) { show(res.data.error || 'Не вышло'); return }
+    show(res?.data?.mirror ? '✔ Сумма изменена — и у второй стороны' : '✔ Сумма изменена')
+    setCell_(null); await load()
+  }
 
   function payload(r: any) {
     return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, comment: r.comment || '', contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, alloc: r.alloc || [], amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
@@ -249,7 +268,14 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                     </td>
                     {accounts.map(a => {
                       const v = r.amt[a.id]
-                      if (isPosted) return <td key={a.id} style={{ ...tdNum, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td>
+                      if (isPosted) {
+                        // Авто-ячейка = платежи дня по этому счёту и контрагенту. Клик открывает
+                        // список: сумму можно поправить руками, правка идёт в сам платёж
+                        // (и в зеркальную проводку второй орг).
+                        const canEdit = r.auto && !!v
+                        return <td key={a.id} onClick={() => canEdit && openCell(r, a)} title={canEdit ? 'Поправить сумму (изменится и у второй стороны)' : undefined}
+                          style={{ ...tdNum, cursor: canEdit ? 'pointer' : undefined, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td>
+                      }
                       // Перемещение: выбор «от/к» + сумма прямо в колонке счёта.
                       if (r.type === 'mv') {
                         const dir = (v || 0) < 0 ? 'from' : (v || 0) > 0 ? 'to' : ''
@@ -316,6 +342,33 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
         </div>
       )}
 
+      {/* Платежи одной ячейки: сумму правим руками, меняется сам платёж (и вторая сторона) */}
+      {cell && (
+        <div onClick={() => setCell_(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto', padding: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>✎ {cell.row.contragent || cell.row.article} · {cell.acc.name}</div>
+            <div style={{ fontSize: 12.5, color: '#6b7280', margin: '4px 0 14px' }}>
+              Правка меняет сам платёж: касса, долг контрагента, оплата по накладной и парная проводка второй орг.
+            </div>
+            {cellPays.length === 0 && <div style={{ color: '#6b7280', fontSize: 13, padding: '8px 0' }}>Загрузка…</div>}
+            {cellPays.map((p: any) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f1efec' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5 }}>{p.direction === 'in' ? '↑ приход' : '↓ расход'}{p.docNumber ? ` · ${p.docNumber}` : ''}</div>
+                  <div style={{ fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.comment || '—'}</div>
+                </div>
+                <input defaultValue={p.amount} inputMode="decimal" id={`cp-${p.id}`}
+                  style={{ width: 140, padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'Consolas, monospace' }} />
+                <button disabled={cellBusy} onClick={() => saveCellPay(p.id, (document.getElementById(`cp-${p.id}`) as HTMLInputElement)?.value || '0')}
+                  style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: cellBusy ? '#a9c9b5' : '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: 13, cursor: cellBusy ? 'default' : 'pointer' }}>💾</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+              <button onClick={() => setCell_(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 13.5, cursor: 'pointer' }}>Закрыть</button>
+            </div>
+          </div>
+        </div>
+      )}
       {modalRow && <RowModal row={modalRow} accounts={accounts} cags={cags} orgId={orgId} date={date} defAcc={(data?.favorites || []).find((f: any) => f.code === modalRow.code)?.defaultAccountId || ''} onClose={() => setModalRow(null)} onSaved={async () => { setModalRow(null); await load() }} persist={persist} />}
       {favOpen && <FavModal favs={favs} setFavs={setFavs} cags={cags} onApply={applyFavs} onClose={async () => { await finFavSave(favs); setFavOpen(false); await load() }} />}
     </div>

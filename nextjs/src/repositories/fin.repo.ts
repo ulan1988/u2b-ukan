@@ -262,3 +262,34 @@ export const balanceByAccount = (orgId: string, date: string) =>
         where p.org_id=${orgId} and p.date <= ${date} and p.cash_account_id is not null and p.fin_row_id is null
           and p.date >= coalesce(ca3.opening_as_of, '0001-01-01'::date)
     ) t where acc is not null group by acc` as unknown as Promise<Array<{ id: string; amt: number }>>
+
+// ── Правка авто-строки (сам платёж) ──────────────────────────────────────────
+// Авто-строка листа «Операции» — это платежи (payments без fin_row_id). Правим НЕ картинку,
+// а сам платёж: тогда меняется и касса, и долг контрагента, и вторая сторона (зеркало).
+export const cellPayments = (orgId: string, date: string, accountId: string, contragentId?: string | null) =>
+  sqlClient`select p.id::text, p.date::text, p.direction, p.amount::float amount, p.comment,
+      p.contragent_id::text "contragentId", c.name contragent, p.document_id::text "docId", d.number "docNumber"
+    from payments p
+    left join contragents c on c.id=p.contragent_id
+    left join documents d on d.id=p.document_id
+    where p.org_id=${orgId} and p.fin_row_id is null and p.date=${date} and p.cash_account_id=${accountId}
+      and (${contragentId || null}::uuid is null or p.contragent_id=${contragentId || null})
+    order by p.id` as unknown as Promise<any[]>
+
+export const paymentAny = (id: string) =>
+  sqlClient`select id::text, org_id::text "orgId", contragent_id::text "contragentId", direction, amount::float amount,
+      date::text, cash_account_id::text "cashAccountId", comment, document_id::text "docId"
+    from payments where id=${id} limit 1` as unknown as Promise<any[]>
+
+// Зеркало меж-орг проводки: та же дата и сумма, противоположное направление, в ДРУГОЙ орг,
+// по мосту (контрагент со ссылкой org_ref_id). Пары создаёт инкассация/возврат головного.
+export const mirrorPayment = (p: any) =>
+  sqlClient`select p2.id::text, p2.org_id::text "orgId", p2.cash_account_id::text "cashAccountId"
+    from payments p2
+    join contragents c2 on c2.id=p2.contragent_id
+    where p2.org_id <> ${p.orgId} and p2.date=${p.date} and p2.amount=${String(p.amount)}
+      and p2.direction <> ${p.direction} and c2.org_ref_id is not null and p2.fin_row_id is null
+    limit 1` as unknown as Promise<any[]>
+
+export const setPaymentAmount = (id: string, amount: number) =>
+  sqlClient`update payments set amount=${String(amount)} where id=${id}`

@@ -1,5 +1,5 @@
 // Клиент листа «Деньги».
-import { getObj, post } from './http'
+import { getObj, post, patch } from './http'
 
 export const finDay = (date: string) => getObj<any>(`/api/finance/money?date=${date}`, null as any)
 export const finSaveRow = (row: any) => post('/api/finance/money', { action: 'save', row })
@@ -48,3 +48,8 @@ export const profitPost = (orgId: string, date: string) => post('/api/finance/pr
 export const profitUnpost = (orgId: string, date: string) => post('/api/finance/profit-day', { orgId, date, action: 'unpost' })
 // Бонусы дня (товар соседа): заработок магазина и доля головного.
 export const bonusDay = (orgId: string, date: string) => getObj<any>(`/api/finance/bonus-day?orgId=${orgId}&date=${date}`, null as any)
+
+// Платежи одной ячейки авто-строки + правка суммы платежа (двигает и вторую сторону).
+export const finCellPayments = (date: string, accountId: string, contragentId?: string | null) =>
+  getObj<any>(`/api/finance/payment?date=${date}&accountId=${accountId}${contragentId ? `&contragentId=${contragentId}` : ''}`, null as any)
+export const finEditPayment = (id: string, amount: number) => patch('/api/finance/payment', { id, amount })
