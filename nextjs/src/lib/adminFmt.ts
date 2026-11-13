@@ -35,6 +35,10 @@ const toUtc = (v: any): Date | null => {
   const d = new Date(s); return isNaN(d.getTime()) ? null : d
 }
 export const fmtDate = (d: any) => { const x = toUtc(d); return x ? x.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: TZ }) : '' }
+// Дата в формате ДД.ММ.ГГГГ (13.11.2023) — для накладных, где нужен полный числовой вид.
+export const fmtDMY = (d: any) => { const x = toUtc(d); return x ? x.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ }) : '' }
+// Ключ дня ГГГГ-ММ-ДД (по Астане) — чтобы сравнивать с <input type="date"> в фильтрах.
+export const ymdKey = (d: any) => { const x = toUtc(d); return x ? x.toLocaleDateString('en-CA', { timeZone: TZ }) : '' }
 // Время создания ЧЧ:ММ (напр. «14:28») — по Астане.
 export const fmtTime = (d: any) => { const x = toUtc(d); return x ? x.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '' }
 // Время создания карточки: сегодня — «17:24», раньше — с датой «23 окт 17:24».
