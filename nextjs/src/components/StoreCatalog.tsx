@@ -35,7 +35,11 @@ function StockTag({ qty, unit }: { qty: number | undefined; unit: string }) {
   </span>
 }
 
-export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (items: PickedPos[]) => void; onClose: () => void; orgId?: string }) {
+export default function StoreCatalog({ onPick, onClose, orgId, showStock = true }: {
+  onPick: (items: PickedPos[]) => void; onClose: () => void; orgId?: string
+  // Остаток склада видят СВОИ (админ, кабинет филиала — его склад). Внешнему клиенту — нет.
+  showStock?: boolean
+}) {
   const [products, setProducts] = useState<any[]>([])
   const [stock, setStock] = useState<Record<string, number>>({})   // остаток склада: productId → кол-во
   const [folder, setFolder] = useState(FOLDERS[0].key)
@@ -164,6 +168,12 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
   function done() { onPick(picked); onClose() }
 
   const colorlessName = (p: any) => activeFolder.build ? itemName({ name: p.name, color }) : p.name
+  // Остаток ищем по ИМЕНИ строки: в «Комплектующих» строка — базовый товар, а штуки лежат
+  // на собранном варианте с цветом («J - профиль» → «J - профиль 7024»). Нет варианта — остаток базового.
+  const stockOf = (p: any, nm: string) => {
+    const v = byName[norm(nm)]
+    return v ? stock[v.id] : stock[p.id]
+  }
 
   if (!mounted) return null
   // Портал в body + высокий z-index — чтобы каталог покрывал ВСЁ (шапку, плавающие кнопки),
@@ -269,7 +279,7 @@ export default function StoreCatalog({ onPick, onClose, orgId }: { onPick: (item
                   <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                   <div style={{ fontSize: 11.5, color: '#a09889', display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span>{izd ? 'выбор см и кол-ва →' : price > 0 ? `${money(price)} ₸/${p.unit || 'шт'}` : 'цена — впишите в чеке'}</span>
-                    {!izd && orgId && <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />}
+                    {!izd && orgId && showStock && <StockTag qty={stockOf(p, name1c)} unit={p.unit || 'шт'} />}
                   </div>
                 </div>
                 {izd ? (

@@ -183,7 +183,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
   return (
     <div style={{ minHeight: embedded ? undefined : '100vh', background: embedded ? 'transparent' : '#f1efec', fontFamily: "'Golos Text', system-ui, sans-serif" }}>
       {toast && <Toast msg={toast} onClose={() => setToast('')} />}
-      {addCatalogFor && <StoreCatalog orgId={user.orgId} onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
+      {addCatalogFor && <StoreCatalog orgId={user.orgId} showStock={false} onPick={items => addToOrder(addCatalogFor, items)} onClose={() => setAddCatalogFor(null)} />}
 
       {/* Встроенный режим (вкладка кассы продавца) — своя шапка/выход не нужны */}
       {!embedded && <div style={{ background: '#fff', borderBottom: '1px solid #e6e2dc', padding: '0 20px' }}>
@@ -353,7 +353,7 @@ export default function ClientApp({ user, viewAs, embedded }: { user: { id: stri
                     <button type="button" onClick={() => handleNewOrder('producer')} disabled={newLoading} style={{ flex: 1, padding: '13px 10px', background: '#7a3aaa', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: 14.5, cursor: newLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: newLoading ? 0.6 : 1, lineHeight: 1.15 }}>{newLoading ? '…' : <>🏭 Листогибу<div style={{ fontSize: 10.5, fontWeight: 600, opacity: .9 }}>Нипа · на производство</div></>}</button>
                   </div>
                 </div>
-                {showCatalog && <StoreCatalog orgId={user.orgId} onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
+                {showCatalog && <StoreCatalog orgId={user.orgId} showStock={false} onPick={items => setCatalogPos(prev => [...prev, ...items])} onClose={() => setShowCatalog(false)} />}
               </div>
             )}
           </div>
