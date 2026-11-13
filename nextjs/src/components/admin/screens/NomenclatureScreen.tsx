@@ -26,7 +26,7 @@ const INP: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRad
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#5f5952', marginBottom: 4, display: 'block', letterSpacing: '.04em' }
 
 export default function NomenclatureScreen() {
-  const { orgId, orgName } = useAdmin()   // цены продажи показываем/правим для выбранной орг
+  const { orgId, orgName, orgs, switchOrg, canSwitchOrg, orgColor } = useAdmin()   // цены продажи показываем/правим для выбранной орг
   const [items, setItems] = useState<NomItem[]>([])
   const [dragId, setDragId] = useState<string | null>(null)   // перетаскивание строки товара (упорядочить)
   const [loading, setLoading] = useState(false)
@@ -288,13 +288,28 @@ export default function NomenclatureScreen() {
   const ICO: React.CSSProperties = { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '0 3px', lineHeight: 1, color: '#5f5952' }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 130px)', overflow: 'hidden' }}>
+    /* Общая шапка админки на этом экране скрыта (AdminChrome) — номенклатура занимает всю высоту. */
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexShrink: 0, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: 20 }}>📦 Номенклатура</div>
         <span style={{ fontSize: 14, color: '#5f5952' }}>{visible.length} позиций{items.length !== visible.length ? ` · ${items.length - visible.length} в архиве` : ''}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Переключатель орг переехал сюда из общей шапки — цены продажи свои у каждой орг. */}
+          {orgs.length > 0 && (canSwitchOrg && orgs.length > 1 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 2px 8px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}` }}>
+              <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
+              <select value={orgId} onChange={e => switchOrg(e.target.value)} title="Организация / филиал — её цены продажи и её товары"
+                style={{ fontWeight: 700, cursor: 'pointer', border: 'none', background: 'transparent', color: orgColor, padding: '6px 4px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
+                {orgs.map(o => <option key={o.id} value={o.id} style={{ color: '#26231f' }}>🏢 {o.name}</option>)}
+              </select>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}`, color: orgColor, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>
+              <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />🏢 {orgName}
+            </div>
+          ))}
           <span title="Имя/дерево/закуп — общий шаблон. Розница/опт/спец — цены этой орг." style={{ fontSize: 12.5, fontWeight: 700, color: '#2a5aaa', background: '#eef3fb', border: '1px solid #d3e0f3', borderRadius: 8, padding: '6px 10px', whiteSpace: 'nowrap' }}>💰 цены: {orgName || 'орг не выбрана'}</span>
           <input style={{ ...INP, width: 240 }} placeholder="🔍 Поиск по названию..." value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) { setSelGroup(null); setSelCat(null); setSelSubgroup(null) } }} />
           <button onClick={() => setShowArchived(v => !v)} title="Показать/скрыть архивные" style={{ padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${showArchived ? '#d4613a' : '#e6e2dc'}`, background: showArchived ? '#fff0ea' : '#fff', color: showArchived ? '#c0532a' : '#5f5952', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', fontWeight: showArchived ? 700 : 500 }}>🗃 Архив</button>

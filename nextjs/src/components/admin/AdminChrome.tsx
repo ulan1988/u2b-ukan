@@ -43,7 +43,11 @@ export const NAV: NavItem[] = [
 interface Ctx {
   user: any; orders: any[]; visible: any[]; loading: boolean; orgId: string; orgName: string
   act: (id: string, action: string) => Promise<void>; reload: () => Promise<void>; openCard: (o: any) => void
+  // Орг-переключатель отдан экранам без общей шапки (Номенклатура и т.п.) — функция не теряется.
+  orgs: { id: string; name: string; kind?: string; color?: string }[]; switchOrg: (id: string) => void; canSwitchOrg: boolean; orgColor: string
 }
+// Экраны-«листы» без общей шапки: своя шапка/поиск, рабочая область на всю высоту.
+const BARE = ['money', 'accounting', 'calc', 'nomenclature']
 const AdminContext = createContext<Ctx | null>(null)
 export const useAdmin = () => useContext(AdminContext) as Ctx
 
@@ -152,7 +156,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   }, [isSellerOrg, isHqOrg, selKind, screen, orgId])
 
   const orgName = orgs.find(o => o.id === orgId)?.name || ''
-  const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard }
+  const ctx: Ctx = { user, orders, visible, loading, orgId, orgName, act, reload: load, openCard, orgs, switchOrg, canSwitchOrg, orgColor }
 
   return (
     <div className="adm-shell" style={{ display: 'flex', background: COLORS.bg, fontFamily: "'Golos Text', system-ui, sans-serif", overflow: 'hidden' }}>
@@ -171,12 +175,12 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         {/* Topbar скрыт на Финанс (money) и У-Канбан (accounting) — там своя шапка/поиск, старая мешает */}
         {/* На экранах со своей шапкой Topbar скрыт — даём отдельный бургер для телефона,
             иначе сайдбар (а в нём «Выйти») с телефона недоступен. */}
-        {(screen === 'money' || screen === 'accounting' || screen === 'calc') && (
+        {BARE.includes(screen) && (
           <button className="adm-burger" onClick={() => setSideOpen(true)} title="Меню"
             style={{ display: 'none', position: 'fixed', left: 10, bottom: 14, zIndex: 120, width: 46, height: 46, borderRadius: 14, border: 'none', background: COLORS.sidebar.bg, color: '#fff', fontSize: 20, alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(0,0,0,.28)', cursor: 'pointer', fontFamily: 'inherit' }}>☰</button>
         )}
         {/* «Расчёт» — лист на весь экран: шапку прячем, чтобы помещалось 15–18 позиций. */}
-        {screen !== 'money' && screen !== 'accounting' && screen !== 'calc' && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
+        {!BARE.includes(screen) && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
         <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
@@ -184,7 +188,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
       </div>
 
       {selectedId && <CardModal id={selectedId} myId={user.id} onClose={() => setSelectedId(null)} onAction={act} onReload={load} />}
-      {(screen === 'money' || screen === 'accounting') && <ChatWidget placement="top" myId={user.id} orgId={orgId} />}   {/* на экранах без общей шапки — плавающая сверху */}
+      {BARE.includes(screen) && screen !== 'calc' && <ChatWidget placement="top" myId={user.id} orgId={orgId} />}   {/* на экранах без общей шапки — плавающая сверху */}
       <AppBadge count={newCount} baseTitle="U2B ERP" />
       <PushSetup />
     </div>
