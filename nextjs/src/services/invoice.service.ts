@@ -178,6 +178,7 @@ async function ensureVariantProduct(name: string, orgId?: string, cost = 0): Pro
     id, name: nm, unit: base.unit || 'шт', category: base.category || 'goods',
     group: base.group || '', cat: base.cat || '', subgroup: base.subgroup || '',
     specTypeId: base.spec_type_id || null,
+    variant: true,   // собранный вариант: в общей номенклатуре-шаблоне не показывается
     // Себестоимость: доля листа из строки, иначе закуп базового товара (нужна для возврата по себестоимости).
     priceIn: String(cost > 0 ? cost : Number(base.price_in) || 0),
     ownerOrgId: await ownerOrgFor(orgId),

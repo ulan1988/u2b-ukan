@@ -113,7 +113,7 @@ export default function NomenclatureScreen() {
   const load = useCallback(async () => {
     if (!didInit.current) setLoading(true)
     try {
-      const data = await listProducts(orgId, true)
+      const data = await listProducts(orgId, true, true)   // только шаблон: собранные варианты живут на складе
       setItems((data as any[]).map(p => ({ ...p, priceIn: Number(p.priceIn), priceRetail: Number(p.priceRetail), priceOpt: Number(p.priceOpt), priceSpec: Number(p.priceSpec) })))
     } catch { showMsg('Ошибка загрузки') }
     finally { didInit.current = true; setLoading(false) }

@@ -5,8 +5,8 @@ import { getArray, getObj, post, patch, send } from './http'
 export const fetchRefs = (orgId?: string) => getObj(`/api/refs${orgId ? `?orgId=${orgId}` : ''}`)
 
 // orgId → цены продажи этой орг; all → включая архивные (для номенклатуры).
-export const listProducts = (orgId?: string, all = false) => {
-  const qs = [all ? 'all=1' : '', orgId ? `orgId=${orgId}` : ''].filter(Boolean).join('&')
+export const listProducts = (orgId?: string, all = false, templateOnly = false) => {
+  const qs = [all ? 'all=1' : '', orgId ? `orgId=${orgId}` : '', templateOnly ? 'template=1' : ''].filter(Boolean).join('&')
   return getArray(`/api/products${qs ? `?${qs}` : ''}`)
 }
 export const addProduct = (b: any) => post('/api/products', b)

@@ -76,6 +76,9 @@ export const products = pgTable('products', {
   // Владелец товара: NULL = общий (завёл головной — виден всем орг). Если товар завёл
   // ФИЛИАЛ, здесь его org_id — такой товар виден только этому филиалу (правило 10.11.2026).
   ownerOrgId: uuid('owner_org_id').references(() => organizations.id),
+  // Собранный вариант (база + цвет/см): НЕ шаблон. Общая номенклатура = только шаблон,
+  // а вариант живёт на складе той орг, куда он пришёл (правило владельца 13.11.2026).
+  variant: boolean('variant').notNull().default(false),
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name), byOwner: index('products_owner_idx').on(t.ownerOrgId) }))

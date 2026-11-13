@@ -10,7 +10,10 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams
   const all = sp.get('all')
   const orgId = sp.get('orgId') || undefined   // цены продажи этой орг (иначе шаблон без цен)
-  return NextResponse.json(all ? await listAllProducts(orgId) : await listProducts(orgId))
+  // template=1 — экран «Номенклатура»: общая номенклатура = ТОЛЬКО ШАБЛОН, без собранных
+  // вариантов (база + цвет/см). Каталоги выбора товара ходят без этого флага и видят всё.
+  const tpl = sp.get('template') === '1'
+  return NextResponse.json(all ? await listAllProducts(orgId, tpl) : await listProducts(orgId, tpl))
 }
 
 export async function POST(req: NextRequest) {

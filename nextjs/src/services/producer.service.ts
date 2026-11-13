@@ -62,7 +62,9 @@ export async function ensureProduct(name: string, orgId?: string): Promise<strin
   const id = randomUUID()
   // Владелец: завёл филиал — товар остаётся у него, завёл головной — общий.
   const { ownerOrgFor } = await import('../repositories/refs.repo')
-  await db.insert(products).values({ id, name: nm, unit: 'шт', category: 'goods', group: base?.group || 'Товары', cat: base?.cat || 'Комплектующие', ownerOrgId: await ownerOrgFor(orgId) } as any)
+  // variant: собранный товар (база + цвет/см) — не шаблон, в общей номенклатуре не показывается.
+  const isVariant = /[0-9]+s*см$/i.test(nm)
+  await db.insert(products).values({ id, name: nm, unit: 'шт', category: 'goods', group: base?.group || 'Товары', cat: base?.cat || 'Комплектующие', variant: isVariant, ownerOrgId: await ownerOrgFor(orgId) } as any)
   return id
 }
 

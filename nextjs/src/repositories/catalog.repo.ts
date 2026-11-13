@@ -26,9 +26,12 @@ export const updateContragent = (id: string, patch: Partial<typeof contragents.$
   db.update(contragents).set(patch).where(eq(contragents.id, id)).returning()
 
 // Управление справочником — включая архивные (для UI правки). С orgId — цены продажи этой орг.
-export const listAllProducts = async (orgId?: string) => {
+export const listAllProducts = async (orgId?: string, templateOnly = false) => {
+  // templateOnly — экран «Номенклатура»: только шаблон, без собранных вариантов.
   const rows = await db.select().from(products)
-    .where(orgId ? or(isNull(products.ownerOrgId), eq(products.ownerOrgId, orgId)) : undefined)
+    .where(and(
+      orgId ? or(isNull(products.ownerOrgId), eq(products.ownerOrgId, orgId)) : undefined,
+      templateOnly ? eq(products.variant, false) : undefined))
     .orderBy(asc(products.sortOrder), asc(products.name))
   if (!orgId) return rows
   const { productPrices } = await import('../db/schema')

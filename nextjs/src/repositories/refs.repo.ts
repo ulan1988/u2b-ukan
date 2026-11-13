@@ -30,12 +30,16 @@ export const centralWarehouse = async (orgId: string) => {
 // Товары для форм/пикеров + стандартный см и имя типа (спецификация) через join.
 // Товары для форм/пикеров. С orgId — цены ПРОДАЖИ (розница/опт/спец) берутся из product_prices
 // этой орг (нет строки → 0, цена другой орг не подставляется). Закуп (priceIn) — общий шаблон.
-export const listProducts = async (orgId?: string) => {
+export const listProducts = async (orgId?: string, templateOnly = false) => {
   // Владелец: общий товар (owner_org_id IS NULL — завёл головной) виден всем,
   // товар филиала — только своей орг (правило владельца 10.11.2026).
+  // templateOnly: ОБЩАЯ НОМЕНКЛАТУРА = ТОЛЬКО ШАБЛОН (правило владельца 13.11.2026) —
+  // собранные варианты (база + цвет/см) из неё убраны, они живут на складе своей орг.
+  // В каталогах выбора товара (касса, накладная) варианты остаются — иначе их не выбрать.
+  const tpl = templateOnly ? eq(products.variant, false) : undefined
   const rows = await db.select({ ...getTableColumns(products), stdWidthCm: specTypes.widthCm, typeName: specTypes.name })
     .from(products).leftJoin(specTypes, eq(products.specTypeId, specTypes.id))
-    .where(orgId ? and(eq(products.archived, false), or(isNull(products.ownerOrgId), eq(products.ownerOrgId, orgId))) : eq(products.archived, false))
+    .where(and(eq(products.archived, false), orgId ? or(isNull(products.ownerOrgId), eq(products.ownerOrgId, orgId)) : undefined, tpl))
     .orderBy(asc(products.sortOrder), asc(products.name))   // ручной порядок номенклатуры → во всех каталогах
   if (!orgId) return rows
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
