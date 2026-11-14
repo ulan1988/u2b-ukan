@@ -53,7 +53,7 @@ export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId
       {mode === 'invoices' && <InvoicesMode orgId={orgId} links={links} />}
       {mode === 'debts' && <DebtsMode orgId={orgId} onOpen={cid => { setRecCid(cid); setMode('reconcile') }} />}
       {mode === 'moves' && <StockMode orgId={orgId} links={links} />}
-      {mode === 'reconcile' && <ReconcileMode initialCid={recCid} links={links} />}
+      {mode === 'reconcile' && <ReconcileMode orgId={orgId} initialCid={recCid} links={links} />}
       {mode === 'finance' && <FinanceMode orgId={orgId} links={links} />}
       {mode !== 'invoices' && mode !== 'reconcile' && mode !== 'debts' && mode !== 'moves' && mode !== 'finance' && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }}>Режим в разработке — добавим на следующем этапе.</div>}
     </div>
@@ -244,7 +244,7 @@ const tdR: React.CSSProperties = { textAlign: 'right', padding: '7px 10px', whit
 const emptyBox: React.CSSProperties = { padding: 40, textAlign: 'center', color: COLORS.textMuted, background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc' }
 const dInp = (v: string): React.CSSProperties => ({ padding: '5px 8px', borderRadius: 8, border: `1.5px solid ${v ? COLORS.primary : '#e6e2dc'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none' })
 
-function ReconcileMode({ initialCid = '', links = false }: { initialCid?: string; links?: boolean }) {
+function ReconcileMode({ orgId, initialCid = '', links = false }: { orgId: string; initialCid?: string; links?: boolean }) {
   const [routeDoc, setRouteDoc] = useState<string | null>(null)   // «Связки»: дерево пути документа
   const [cags, setCags] = useState<any[]>([])
   const [cid, setCid] = useState(initialCid)
@@ -254,7 +254,8 @@ function ReconcileMode({ initialCid = '', links = false }: { initialCid?: string
   const [openDoc, setOpenDoc] = useState<string | null>(null)   // документ в правой панели
   const [refresh, setRefresh] = useState(0)
 
-  useEffect(() => { listContragents(true).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [])   // без архивных дублей
+  // Контрагенты ТОЛЬКО своей орг (правило владельца): чужие в книгу головного не лезут.
+  useEffect(() => { listContragents(false, orgId).then(r => setCags((r as any[]).filter(c => !c.archived))) }, [orgId])
   useEffect(() => { if (initialCid) setCid(initialCid) }, [initialCid])
   useEffect(() => {
     if (!cid) { setData(null); return }
