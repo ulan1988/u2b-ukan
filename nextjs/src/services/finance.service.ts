@@ -87,8 +87,13 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
   // ДАТА ОТСЕЧЕНИЯ орг: всё, что датировано раньше, уже сидит в начальном остатке
   // контрагента (перенос из 1С) — второй раз в акт сверки не берём, иначе долг задваивается.
   const { sqlClient } = await import('../lib/db')
-  const cutRows = await sqlClient`select opening_as_of::text d from organizations where id=${orgId}` as unknown as Array<{ d: string | null }>
+  const cutRows = await sqlClient`select opening_as_of::text d, kind from organizations where id=${orgId}` as unknown as Array<{ d: string | null; kind: string }>
   const cutoff = cutRows[0]?.d || null
+  // ОДНА СТРОКА НА ДЕНЬ ПО ФИЛИАЛУ (правило владельца 14.11.2026): головной сдаёт филиал
+  // одной инкассацией — десятки мелких платежей филиала в его акте не нужны. Детализация
+  // остаётся в книге самого филиала (там он их и видит по одному).
+  const bridgeRows = await sqlClient`select org_ref_id::text ref, name from contragents where id=${contragentId}` as unknown as Array<{ ref: string | null; name: string }>
+  const foldPays = cutRows[0]?.kind === 'hq' && !!bridgeRows[0]?.ref
   const [docs, pays, opening0, projTurn, projPaid] = await Promise.all([
     finRepo.contragentDocs(orgId, contragentId),
     finRepo.contragentPayments(orgId, contragentId),
@@ -102,6 +107,20 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
   for (const p of projPaid) { const e = projMap.get(p.projectId) || { projectId: p.projectId, name: p.name, total: 0, paid: 0, cnt: 0 }; e.paid = Number(p.paid) || 0; projMap.set(p.projectId, e) }
   const byProject = Array.from(projMap.values()).map(e => ({ ...e, balance: e.total - e.paid })).sort((a, b) => b.total - a.total)
   const docTitle: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
+  // Платежи строками; по филиалу — свёрнуты в одну строку на день и направление.
+  const payTitle = (p: any) => (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику')
+  const payRows = pays.map((p: any) => ({ date: p.date, title: payTitle(p), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0, n: 1 }))
+  const foldedPays = !foldPays ? payRows : Array.from(payRows.reduce((m, r) => {
+    const k = r.date + '|' + (r.inc > 0 ? 'out' : 'in')
+    const e = m.get(k); if (e) { e.inc += r.inc; e.dec += r.dec; e.n++ } else m.set(k, { ...r })
+    return m
+  }, new Map<string, any>()).values()).map(r => ({
+    ...r,
+    // Свёрнутая строка — это сдача денег филиалом за день, а не конкретный платёж.
+    title: r.n > 1
+      ? `${r.inc > 0 ? 'Выдано филиалу' : 'Инкассация от «' + (bridgeRows[0]?.name || 'филиал') + '»'} за день · ${r.n} платежей`
+      : r.title,
+  }))
   const inc = (t: string) => t === 'sale' || t === 'return_out'
   // Транзит-закуп (поставщику) не входит в акт сверки — отдельно (инфо «сквозной агент»).
   // Транзит-продажа заказчику остаётся в акте (реальный долг покупателя).
@@ -111,7 +130,7 @@ export async function contragentReconciliation(orgId: string, contragentId: stri
   const transitAgent = Array.from(new Set(transitDocs.map(d => d.transitAgent).filter(Boolean))).join(', ')
   const mv = [
     ...realDocs.map((d: any) => ({ date: d.date, title: `${docTitle[d.type] || d.type} ${d.number}`, inc: inc(d.type) ? d.total : 0, dec: inc(d.type) ? 0 : d.total, docId: d.id as string | null, type: d.type })),
-    ...pays.map(p => ({ date: p.date, title: (p.comment || '').replace('Импорт из 1С · ', '') || (p.direction === 'in' ? 'Оплата от клиента' : 'Оплата поставщику'), inc: p.direction === 'out' ? p.amount : 0, dec: p.direction === 'in' ? p.amount : 0, docId: null as string | null, type: 'pay' })),
+    ...foldedPays.map(p => ({ date: p.date, title: p.title, inc: p.inc, dec: p.dec, docId: null as string | null, type: 'pay' })),
   ].filter(m => !cutoff || String(m.date) >= cutoff)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
