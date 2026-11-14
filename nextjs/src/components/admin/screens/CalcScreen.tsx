@@ -33,6 +33,8 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   // покупатель, код чека, скидка, СМЕШАННАЯ оплата по счетам и сдача.
   const [sellContact, setSellContact] = useState('')
   const [sellCode, setSellCode] = useState('')
+  // РАБОЧАЯ ДАТА: чек ляжет на этот день (задним числом — «забыли пробить»). Дефолт сегодня.
+  const [workDate, setWorkDate] = useState(() => { const x = new Date(); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` })
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', debt: '' })   // суммы по способам — можно смешивать
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })
   const [given, setGiven] = useState('')
@@ -345,6 +347,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     commit(brands, next)
   }
 
+  const todayYmd = () => { const x = new Date(); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
+  const backdated = workDate !== todayYmd()
+  const wd = () => (backdated ? workDate : undefined)
   // ── ПРОДАЖА ИЗ РАСЧЁТА: тот же механизм, что касса магазина (sellCheck → cashier.sellDirect) ──
   // Берём строки, где есть количество и цена; цена — из «нашей» фирмы, иначе из своей колонки,
   // иначе из первой видимой фирмы (то, что менеджер реально показал клиенту).
@@ -392,7 +397,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     const body = incMode
       ? { cash: incAcc === 'cash' ? money : 0, kaspi: incAcc === 'kaspi' ? money : 0, qr: incAcc === 'qr' ? money : 0 }
       : { cash: pCash, kaspi: pKaspi, qr: pQr }
-    const r: any = await otherIncome({ contactId: sellContact || undefined, ...body, comment: incNote, seller: emp?.name })
+    const r: any = await otherIncome({ contactId: sellContact || undefined, ...body, comment: incNote, seller: emp?.name, date: wd() })
     setSelling(false)
     if (!r.ok) { setSellMsg('⚠ ' + (r.error || 'не удалось')); return }
     setSellMsg(`✓ прочий доход ${fmt(r.sum || money)} ₸ · вам ${fmt(r.ourShare || 0)} · Адал Строй 2 ${fmt(r.hqShare || 0)}`)
@@ -411,7 +416,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     // Долг отдельным полем не шлём: в кассе он считается как итог − нал − каспи − QR.
     // Сдача уменьшает реально внесённый нал (см. cashier.payCard), поэтому шлём «дали налом».
     const r: any = await sellCheck({
-      contactId: sellContact || undefined, clientCode: sellCode,
+      contactId: sellContact || undefined, clientCode: sellCode, date: wd(),
       sellerId: emp?.id, seller: emp?.name,
       cash: pCash + change, kaspi: pKaspi, qr: pQr, change, changeFrom: '',
       discountSum: discSum, discountPct: discPctN,
@@ -805,6 +810,14 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: COLORS.textMuted, width: 62, flex: 'none' }}>Код чека</span>
           <input value={sellCode} inputMode="numeric" onChange={e => setSellCode(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="последние 4 цифры телефона" style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, fontSize: 13.5, fontFamily: 'inherit', fontWeight: 700 }} />
+        </div>
+
+        {/* Рабочая дата чека: можно пробить задним числом (деньги и склад уйдут в тот день). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: COLORS.textMuted, width: 62, flex: 'none' }}>Дата</span>
+          <input type="date" value={workDate} max={todayYmd()} onChange={e => setWorkDate(e.target.value || todayYmd())}
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 9, border: backdated ? '1.5px solid #d4613a' : `1.5px solid ${COLORS.border}`, background: backdated ? '#fff3ec' : '#fff', fontSize: 13.5, fontFamily: 'inherit', fontWeight: 700 }} />
+          {backdated && <button onClick={() => setWorkDate(todayYmd())} title="Вернуть на сегодня" style={{ border: 'none', background: '#d4613a', color: '#fff', borderRadius: 20, padding: '4px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap' }}>задн. ✕</button>}
         </div>
 
         {/* Скидка по чеку: ₸ или % — к оплате = позиции − скидка. */}

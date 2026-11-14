@@ -97,6 +97,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [accounts, setAccounts] = useState<any[]>([])
   const [hqBridge, setHqBridge] = useState<any>(null)   // контрагент-мост «Адал Строй» (головной) — для «долга на головного»
   // Журнал чеков: фильтр по дню (по умолчанию сегодня) + возврат чека/позиций.
+  // РАБОЧАЯ ДАТА КАССЫ: чек/возврат/прочий доход лягут на этот день (можно задним числом —
+  // «забыли пробить»). Дефолт — сегодня; журнал чеков следует за ней.
+  const [workDate, setWorkDate] = useState(localDay())
   const [checksDay, setChecksDay] = useState(localDay())
   const [oiDay, setOiDay] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 })   // прочий доход за день
   const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
@@ -168,7 +171,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const r = await otherIncome({
       uid: user.id, contactId: contactId || undefined,
       cash: incAcc === 'cash' ? sum : 0, kaspi: incAcc === 'kaspi' ? sum : 0, qr: incAcc === 'qr' ? sum : 0,
-      comment: incNote, seller: seller?.name,
+      comment: incNote, seller: seller?.name, date: wd(),
     })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
@@ -238,6 +241,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     const on = () => setWide(mq.matches); on()
     mq.addEventListener('change', on); return () => mq.removeEventListener('change', on)
   }, [])
+
+  // Работаем задним числом? Тогда все операции кассы уходят этой датой (wd()), а журнал
+  // и погашение долга показывают тот же день — чтобы кассир видел, что пробил.
+  const backdated = workDate !== localDay()
+  const wd = () => (backdated ? workDate : undefined)
+  const ddmm = (d: string) => { const [y, m, dd] = (d || '').split('-'); return y ? dd + '.' + m : d }
+  function pickWorkDate(d: string) { const v = d || localDay(); setWorkDate(v); setChecksDay(v); setRepayDate(v) }
 
   const load = useCallback(async () => { setChecks(await branchOrders(user.id)) }, [user.id])
   // Прочий доход (деньги без товара) живёт не в накладных, а в платежах — тянем отдельно.
@@ -520,7 +530,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (badBonus) { showMsg(`⚠ ${badBonus.name1c}: укажите цену соседа и у кого взяли`); return }
     setBusy(true)
     const r = await sellCheck({
-      uid: user.id, contactId: contactId || undefined,
+      uid: user.id, contactId: contactId || undefined, date: wd(),
       sellerId: seller?.id, seller: seller?.name, clientCode,
       discountSum: discSum, discountPct: discPctN,
       ...body,
@@ -541,7 +551,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!hqBridge) { showMsg('⚠ Контрагент «Адал Строй» (головной) не найден'); return }
     setBusy(true)
     const r = await sellCheck({
-      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name, clientCode,
+      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name, clientCode, date: wd(),
       discountSum: discSum, discountPct: discPctN, cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '',
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm, bonusCost: x.bonusCost || undefined, bonusAgentId: x.bonusAgentId || undefined })),
     })
@@ -618,7 +628,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       .filter(i => i.qty > 0)
     if (items.length === 0) { showMsg('⚠ Отметьте позиции и кол-во к возврату'); return }
     setBusy(true)
-    const r = await returnSale({ uid: user.id, cardId: retFor.id, items, accountId: retAcc })
+    const r = await returnSale({ uid: user.id, cardId: retFor.id, items, accountId: retAcc, date: wd() })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setRetFor(null); await load(); loadStock()
@@ -739,6 +749,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const daySum = soldDay.reduce((s: number, o: any) => s + cardTotal(o), 0)
   const soldToday = sold.filter((o: any) => localDay(o.delivered || o.createdAt) === localDay())
   const todaySum = soldToday.reduce((s: number, o: any) => s + cardTotal(o), 0)
+  // В шапке — итог РАБОЧЕГО дня: при задней дате кассир должен видеть тот день, а не сегодня.
+  const headSum = backdated ? sold.filter((o: any) => localDay(o.delivered || o.createdAt) === workDate).reduce((s: number, o: any) => s + cardTotal(o), 0) : todaySum
 
   // Строки чека (для превью/текста/печати): имя, кол-во, цена, сумма, см (для изделий).
   function rLines(o: any) {
@@ -861,9 +873,15 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             <span style={{ color: '#b8b1a6', textDecoration: 'underline' }}>сменить</span>
           </button>
         </div>
+        {/* Рабочая дата кассы: чек/возврат/прочий доход лягут на этот день (задним числом). */}
+        <div title="Рабочая дата: чек, возврат и прочий доход лягут на этот день" style={{ display: 'flex', alignItems: 'center', gap: 5, background: backdated ? '#5a2c18' : '#2e2b27', border: backdated ? '1.5px solid #d4613a' : '1.5px solid #3a3630', borderRadius: 9, padding: '4px 7px', marginRight: 6 }}>
+          <span style={{ fontSize: 12 }}>🗓</span>
+          <input type="date" value={workDate} max={localDay()} onChange={e => pickWorkDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', colorScheme: 'dark', width: 118 }} />
+          {backdated && <button onClick={() => pickWorkDate(localDay())} title="Вернуть на сегодня" style={{ fontSize: 10.5, fontWeight: 800, color: '#ffd9c7', background: '#d4613a', border: 'none', borderRadius: 20, padding: '2px 7px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>задн. {ddmm(workDate)} ✕</button>}
+        </div>
         <div style={{ textAlign: 'right', marginRight: 6 }}>
-          <div style={{ fontSize: 10.5, color: '#b8b1a6' }}>сегодня</div>
-          <div style={{ fontSize: 13.5, fontWeight: 800 }}>{money(todaySum)} ₸</div>
+          <div style={{ fontSize: 10.5, color: backdated ? '#ffb48c' : '#b8b1a6' }}>{backdated ? ddmm(workDate) : 'сегодня'}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 800 }}>{money(headSum)} ₸</div>
         </div>
         {installPrompt && <button onClick={doInstall} title="Установить кассу как приложение" style={{ background: PRIMARY, border: 'none', color: '#fff', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, marginRight: 6, whiteSpace: 'nowrap' }}>📲 Установить</button>}
         <button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: '#3a3630', border: 'none', color: '#d8d2c8', borderRadius: 8, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Выйти</button>

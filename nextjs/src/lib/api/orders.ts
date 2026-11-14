@@ -40,7 +40,7 @@ export async function payDebt(body: { uid?: string; cardId: string; splits: { ac
 }
 // Возврат по чеку (касса магазина): позиции с кол-вом (пусто → весь чек), цена возврата
 // (пусто → себестоимость) + счёт возврата.
-export async function returnSale(body: { uid?: string; cardId: string; items?: { posId: string; qty: number; price?: number }[]; accountId?: string }) {
+export async function returnSale(body: { uid?: string; cardId: string; items?: { posId: string; qty: number; price?: number }[]; accountId?: string; date?: string }) {
   const r = await post('/api/branch/return', body)
   return {
     ok: r.ok, error: r.error as string | undefined,
@@ -139,7 +139,7 @@ export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(
 export async function sellCheck(body: {
   uid?: string; contactId?: string; sellerId?: string; seller?: string; comment?: string; clientCode?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
-  discountSum?: number; discountPct?: number
+  discountSum?: number; discountPct?: number; date?: string   // date — рабочая дата кассы (чек задним числом)
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number; bonusCost?: number; bonusAgentId?: string }[]
 }) {
   const r = await post('/api/branch/sell', body)
@@ -160,7 +160,7 @@ export async function editCheck(body: {
   uid?: string; cardId: string
   positions: { posId?: string; productId?: string; name1c: string; qty: number; unit?: string; price: number; widthCm?: number }[]
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
-  discountSum?: number; discountPct?: number; contactId?: string
+  discountSum?: number; discountPct?: number; contactId?: string; date?: string
 }) {
   const r = await post('/api/branch/check', body)
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, total: r.data?.total as number | undefined, debt: r.data?.debt as number | undefined }
@@ -169,7 +169,7 @@ export async function editCheck(body: {
 export const sendToHq = (cardId: string, date?: string) => post(`/api/orders/${cardId}/tohq`, date ? { date } : {})
 
 // «Прочий доход»: деньги без товара (приход по счетам + бонус 50/50 с головным).
-export async function otherIncome(body: { uid?: string; contactId?: string; cash?: number; kaspi?: number; qr?: number; comment?: string; seller?: string }) {
+export async function otherIncome(body: { uid?: string; contactId?: string; cash?: number; kaspi?: number; qr?: number; comment?: string; seller?: string; date?: string }) {
   const r = await post('/api/branch/other-income', body)
   return { ok: r.ok && r.data?.ok !== false, error: (r.data?.error || r.error) as string | undefined, sum: r.data?.sum as number | undefined, hqShare: r.data?.hqShare as number | undefined, ourShare: r.data?.ourShare as number | undefined }
 }

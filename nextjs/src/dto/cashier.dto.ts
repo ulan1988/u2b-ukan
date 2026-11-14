@@ -29,6 +29,8 @@ export const sellSchema = z.object({
   changeFrom: z.string().optional().default(''),
   discountSum: z.coerce.number().nonnegative().optional().default(0),   // скидка по чеку (₸)
   discountPct: z.coerce.number().nonnegative().optional().default(0),   // скидка по чеку (%), инфо
+  // Рабочая дата кассы: чек ляжет на этот день (можно задним числом — «забыли пробить»).
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   positions: z.array(sellPositionSchema).min(1),
 })
 
@@ -55,6 +57,8 @@ export const returnSchema = z.object({
   // price — цена возврата за единицу (у изделия — за см, как везде). Пусто → СЕБЕСТОИМОСТЬ
   // позиции (правило магазина: принимаем товар обратно по себестоимости), её можно изменить.
   items: z.array(z.object({ posId: z.string(), qty: z.coerce.number().positive(), price: z.coerce.number().min(0).optional() })).optional(), // пусто → весь чек
+  // Рабочая дата: возврат ляжет на этот день (деньги и склад — в тот же день).
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   accountId: z.string().uuid().optional(),        // счёт возврата (cash_accounts.id); пусто → «в долг» (без денег)
 })
 
@@ -89,6 +93,8 @@ export const editCheckSchema = z.object({
   discountSum: z.coerce.number().nonnegative().optional(),
   discountPct: z.coerce.number().nonnegative().optional(),
   contactId: z.string().uuid().optional(),
+  // День чека: пусто → остаётся день исходной накладной (правка не уводит выручку на сегодня).
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 // Погашение долга по чеку: смешанная оплата по счетам + день проведения

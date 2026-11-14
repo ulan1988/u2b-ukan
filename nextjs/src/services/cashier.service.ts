@@ -88,6 +88,15 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
 
 // date — рабочая дата (проведение задним числом): расходная + платежи лягут на этот день.
 // Пусто → today() (поведение магазина-продавца не меняется). Разрешена любая дата.
+// Отметка времени проводки: при РАБОЧЕЙ (задней) дате ставим тот день с текущим временем —
+// иначе журнал чеков и ленты дня показали бы чек сегодняшним днём, хотя накладная в прошлом.
+function stampOf(date?: string): Date {
+  const now = new Date()
+  const [y, m, d] = String(date || '').split('-').map(Number)
+  if (!y || !m || !d) return now
+  return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+}
+
 export interface PayInput { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean; finalize?: boolean; date?: string }
 
 export async function payCard(cardId: string, p: PayInput, actor?: Session | null) {
@@ -175,7 +184,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   const methods = [cash && 'Наличка', kaspi && 'Каспи', qr && 'QR'].filter(Boolean) as string[]
   const label = debt > 0 ? (methods.length ? 'Частично' : 'Долг') : (methods.length > 1 ? 'Смешанная' : methods[0] || 'Наличка')
   const change = Math.max(0, Number(p.change) || 0)
-  const base: any = { paidCash: String(cash), paidKaspi: String(kaspi), paidQr: String(qr), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, delivered: new Date() }
+  const base: any = { paidCash: String(cash), paidKaspi: String(kaspi), paidQr: String(qr), changeSum: String(change), changeFrom: p.changeFrom || '', payment: label, delivered: stampOf(p.date) }
   // Производитель: оплата не влияет на произв. статус — карточка ОСТАЁТСЯ «В работе» (не уходит
   // в ПРОДАНО/Бухгалтерию). Расход проведён (linkedDocId стоит), но этап/экран/статус возвращаем.
   // Остальные орг — как раньше: prodPhase='sold' (карточка продана).
@@ -212,7 +221,9 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
 // (return_in: товар +склад филиала, −долг заказчика), затем деньги — сначала ГАСИМ ДОЛГ по чеку,
 // оставшееся ВОЗВРАЩАЕМ со СЧЁТА ВОЗВРАТА (payment out). Исходная продажа остаётся (учёт цел),
 // возврат — отдельный документ. Повторный возврат тех же позиций не пробьётся (source_pos_id).
-export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number; price?: number }[]; accountId?: string }, actor?: Session | null) {
+export async function returnSale(cardId: string, opts: { items?: { posId: string; qty: number; price?: number }[]; accountId?: string; date?: string }, actor?: Session | null) {
+  // День возврата: рабочая дата кассы (можно задним числом) — склад и деньги уйдут в тот день.
+  const retDay = opts.date || today()
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Заявка не найдена' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
@@ -315,14 +326,14 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
       sourcePosId: x.pos.id,
     }
   })
-  const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines, date: today(), sourceOrderId: cardId, comment: `Возврат по чеку ${cardId}`, projectId: (order as any).specProjectId || null } as any, 'return_in')
+  const ret = await createReturn({ orgId: order.orgId, contragentId: order.contactId, warehouseId: wh.id, lines, date: retDay, sourceOrderId: cardId, comment: `Возврат по чеку ${cardId}`, projectId: (order as any).specProjectId || null } as any, 'return_in')
 
   // Деньги: остаток после гашения долга — со счёта возврата (payment out). Без счёта («в долг») —
   // деньги не возвращаем, остаток остаётся кредитом контрагента (отрицательной дебиторкой).
   const refundOut = opts.accountId ? refund : 0
   if (refundOut > 0) {
     try {
-      await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refundOut), date: today(), cashAccountId: opts.accountId as string, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
+      await payRepo.insertPayment({ id: randomUUID(), orgId: order.orgId, contragentId: order.contactId, direction: 'out', amount: String(refundOut), date: retDay, cashAccountId: opts.accountId as string, documentId: ret.id, projectId: (order as any).specProjectId || null, comment: `Возврат ${cardId}` })
     } catch (e) {
       // не удалось вернуть деньги → откатываем возвратную накладную, чтобы товар не вернулся на склад без выплаты
       await cancelDocument(ret.id).catch(() => {})
@@ -503,6 +514,7 @@ export interface SellInput {
   comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number     // скидка по чеку (₸ и/или % — инфо)
+  date?: string            // рабочая дата кассы (YYYY-MM-DD): чек ляжет на этот день, пусто → сегодня
   // bonusCost/bonusAgentId — бонусная позиция (товар соседа из папки «Долг товар»):
   // идёт мимо склада, себестоимости в чеке нет, бонус делится 50/50 с головным.
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number; bonusCost?: number; bonusAgentId?: string }[]
@@ -560,7 +572,7 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   const clientCode = (i.clientCode || '').replace(/\D/g, '').slice(-8)
   if (seller || i.sellerId || disc || dpct || clientCode) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null, discountSum: String(disc), discountPct: String(dpct), clientCode } as any)
 
-  const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
+  const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom, date: i.date }, actor)
   if (!res.ok) return res
   await repo.updateOrder(id, { status: 'Доставлено' })
   // Бонусные позиции (товар соседа): записать бонус и долг товара — не роняя продажу.
@@ -675,6 +687,7 @@ export interface EditCheckInput {
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number
   contactId?: string
+  date?: string            // день чека; пусто → остаётся день исходной накладной
 }
 export async function editCheck(cardId: string, i: EditCheckInput, actor?: Session | null) {
   const [order] = await repo.getOrder(cardId)
@@ -690,6 +703,14 @@ export async function editCheck(cardId: string, i: EditCheckInput, actor?: Sessi
     where type='return_in' and status<>'cancelled' and source_order_id=${cardId}
   ` as unknown as Array<any>
   if (Number(ret?.c) > 0) return { ok: false as const, error: 'По чеку был возврат — правка запрещена, отмените возврат' }
+
+  // День чека: правка НЕ должна уводить выручку на сегодня — проводим заново тем же днём,
+  // которым чек был пробит (или датой, заданной кассиром).
+  const [oldDoc] = await sqlClient`
+    select date::text d from documents where source_order_id=${cardId} and type='sale' and status<>'cancelled'
+    order by created_at desc limit 1
+  ` as unknown as Array<any>
+  const keepDate = i.date || oldDoc?.d || undefined
 
   // 1) сторно: документы чека + все оплаты по ним
   const docs = await db.select({ id: documents.id }).from(documents)
@@ -721,7 +742,7 @@ export async function editCheck(cardId: string, i: EditCheckInput, actor?: Sessi
   if (i.contactId) patchCard.contactId = i.contactId
   if (Object.keys(patchCard).length) await repo.updateOrder(cardId, patchCard)
 
-  const res = await payCard(cardId, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom }, actor)
+  const res = await payCard(cardId, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom, date: keepDate }, actor)
   if (!res.ok) return res
   await repo.updateOrder(cardId, { status: 'Доставлено' })
   await repo.insertHistory({ cardId, action: 'edit', detail: `Чек изменён: ${i.positions.length} поз., нал ${i.cash || 0}, каспи ${i.kaspi || 0}, QR ${i.qr || 0}`, userName: actor?.name || 'Система' })
