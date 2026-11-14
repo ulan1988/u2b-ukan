@@ -42,8 +42,10 @@ export default function AccountingScreen({ orders, orgId, onAction, onOpen }: {
   const list = useMemo(() => base.filter(o => {
     if (supplierId && !(o.positions || []).some((p: any) => p.supplierId === supplierId)) return false
     if (q.trim() && !matchWords(q, o.id, o.fromName, o.comment)) return false
+    // Одна дата «с» → только этот день; обе → промежуток.
+    const upTo = dateTo || dateFrom
     if (dateFrom && new Date(o.createdAt) < new Date(dateFrom)) return false
-    if (dateTo && new Date(o.createdAt) > new Date(dateTo + 'T23:59:59')) return false
+    if (upTo && new Date(o.createdAt) > new Date(upTo + 'T23:59:59')) return false
     return true
   }), [base, supplierId, q, dateFrom, dateTo])
 

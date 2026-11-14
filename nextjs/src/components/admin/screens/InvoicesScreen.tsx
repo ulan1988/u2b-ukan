@@ -46,8 +46,10 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   const parties = uniqNames(docs.map(partyOf))
   const filteredDocs = docs.filter(d => {
     const k = ymdKey(d.date)
+    // Выбрали только «с» → показываем ЭТОТ ДЕНЬ; добавили «по» → промежуток.
+    const upTo = dTo || dFrom
     if (dFrom && k && k < dFrom) return false
-    if (dTo && k && k > dTo) return false
+    if (upTo && k && k > upTo) return false
     // Подходит, если выбранное имя есть СРЕДИ поставщиков/покупателей накладной.
     if (fSup && !namesOf(supplierOf(d)).includes(fSup)) return false
     if (fParty && !namesOf(partyOf(d)).includes(fParty)) return false

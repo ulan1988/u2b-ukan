@@ -225,8 +225,10 @@ export default function FilterScreen({ orders, orgId, onOpen }: { orders: any[];
     if (statusFilter === 'incoming') base = base.filter(o => o.screen === 'incoming' && !o.toacc)
     if (statusFilter === 'inwork') base = base.filter(o => o.screen === 'outgoing' || o.screen === 'reception')
     if (statusFilter === 'delivered') base = base.filter(o => o.status === 'Доставлено' || o.toacc)
+    // Одна дата «с» → только этот день; обе → промежуток.
+    const upTo = dateTo || dateFrom
     if (dateFrom) base = base.filter(o => new Date(o.createdAt) >= new Date(dateFrom))
-    if (dateTo) base = base.filter(o => new Date(o.createdAt) <= new Date(dateTo + 'T23:59:59'))
+    if (upTo) base = base.filter(o => new Date(o.createdAt) <= new Date(upTo + 'T23:59:59'))
     return base
   }, [orders, statusFilter, dateFrom, dateTo])
 

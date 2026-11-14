@@ -613,7 +613,8 @@ function JournalMode({ cags, favs }: { cags: any[]; favs: any[] }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [openDoc, setOpenDoc] = useState<any | null>(null)
-  const load = useCallback(async () => { setLoading(true); const r: any = await finJournal(from || '2000-01-01', to || '2100-01-01'); setData(r?.data || { rows: [], accounts: [] }); setLoading(false) }, [from, to])
+  // Одна дата «от» → показываем этот день; обе — промежуток.
+  const load = useCallback(async () => { setLoading(true); const r: any = await finJournal(from || '2000-01-01', to || from || '2100-01-01'); setData(r?.data || { rows: [], accounts: [] }); setLoading(false) }, [from, to])
   useEffect(() => { load() }, [load])
   const accounts: any[] = data?.accounts || []
   const rows: any[] = data?.rows || []

@@ -66,8 +66,10 @@ function matchDate(dateStr: any, period: DPeriod, from: string, to: string): boo
   if (!dateStr) return period === 'all' && !from && !to
   const d = new Date(dateStr)
   if (from || to) {
+    // Одна дата «с» → только этот день; обе → промежуток.
+    const upTo = to || from
     if (from && d < new Date(from)) return false
-    if (to && d > new Date(to + 'T23:59:59')) return false
+    if (upTo && d > new Date(upTo + 'T23:59:59')) return false
     return true
   }
   if (period === 'all') return true
@@ -257,7 +259,8 @@ function ReconcileMode({ initialCid = '', links = false }: { initialCid?: string
   useEffect(() => {
     if (!cid) { setData(null); return }
     setLoading(true)
-    reconcile(cid, from || undefined, to || undefined).then(d => setData(d)).finally(() => setLoading(false))
+    // Одна дата «с» → этот день, обе → промежуток.
+    reconcile(cid, from || undefined, to || from || undefined).then(d => setData(d)).finally(() => setLoading(false))
   }, [cid, from, to, refresh])
 
   const cag = cags.find(c => c.id === cid)

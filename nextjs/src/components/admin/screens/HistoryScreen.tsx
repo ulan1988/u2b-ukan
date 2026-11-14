@@ -19,7 +19,8 @@ export default function HistoryScreen({ orgId, onOpen }: { orgId: string; onOpen
 
   const load = useCallback(async () => {
     setLoading(true)
-    setRows(await listHistory(orgId, { user: user || undefined, from: from || undefined, to: to || undefined }) as any)
+    // Выбрали только «с» → показываем ЭТОТ ДЕНЬ; добавили «по» → промежуток.
+    setRows(await listHistory(orgId, { user: user || undefined, from: from || undefined, to: to || from || undefined }) as any)
     setLoading(false)
   }, [orgId, user, from, to])
   useEffect(() => { load() }, [load])
