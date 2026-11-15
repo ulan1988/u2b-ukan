@@ -83,6 +83,9 @@ export const products = pgTable('products', {
   // Собранный вариант (база + цвет/см): НЕ шаблон. Общая номенклатура = только шаблон,
   // а вариант живёт на складе той орг, куда он пришёл (правило владельца 13.11.2026).
   variant: boolean('variant').notNull().default(false),
+  // Услуга/доход (например «Прочее доходы»): себестоимости нет по определению —
+  // такие строки не помечаются в отчётах как «без закупочной цены».
+  noCost: boolean('no_cost').notNull().default(false),
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({ byName: index('products_name_idx').on(t.name), byOwner: index('products_owner_idx').on(t.ownerOrgId) }))

@@ -45,7 +45,8 @@ export async function masterShift(orgId: string, date: string) {
   const costRows = ids.length ? await sqlClient`
     select p.card_id "cardId",
       coalesce(sum(p.qty * coalesce(nullif(p.cost_price,0), pr.price_in, 0)),0)::float cost,
-      count(*) filter (where coalesce(nullif(p.cost_price,0), pr.price_in, 0) = 0)::int nocost
+      count(*) filter (where coalesce(nullif(p.cost_price,0), pr.price_in, 0) = 0
+        and not coalesce(pr.no_cost,false))::int nocost
     from order_positions p left join products pr on pr.id = p.product_id
     where p.card_id = any(${ids}) group by p.card_id
   ` as unknown as Array<any> : []

@@ -13,7 +13,8 @@ export const dayPayments = (orgId: string, date: string) => sqlClient`
   with doc_cost as (
     select d.id,
       coalesce(sum(dl.qty * coalesce(nullif(op.cost_price,0), pr.price_in, 0)),0)::float cost,
-      count(*) filter (where coalesce(nullif(op.cost_price,0), pr.price_in, 0) = 0)::int nocost
+      count(*) filter (where coalesce(nullif(op.cost_price,0), pr.price_in, 0) = 0
+        and not coalesce(pr.no_cost,false))::int nocost
     from documents d
     join document_lines dl on dl.document_id = d.id
     left join order_positions op on op.id = dl.source_pos_id
