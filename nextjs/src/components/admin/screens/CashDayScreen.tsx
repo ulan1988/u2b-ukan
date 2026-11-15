@@ -205,6 +205,22 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           : <input type="month" value={ym} onChange={e => setYm(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontFamily: 'inherit' }} />}
         <button onClick={() => view === 'day' ? load() : loadMonth()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>Обновить</button>
         {loading && <span style={{ color: COLORS.textMuted }}>Загрузка…</span>}
+        {/* КОПИЛКА ДОЛИ МАГАЗИНА: наши 40% с каспи/QR и 50% с наличных копятся с начала месяца,
+            из них платится ЗП. Видно всегда — владелец следит, сколько ещё осталось. */}
+        {(data as any)?.share && (() => {
+          const sh = (data as any).share
+          const left = Math.round(Number(sh.left) || 0)
+          const neg = left < 0
+          return (
+            <div title={`Доля магазина с ${String(sh.from).slice(8)}.${String(sh.from).slice(5, 7)}: накоплено ${m(sh.earned)} ₸ (40% каспи/QR + 50% нал), выдано ЗП ${m(sh.zp)} ₸`}
+              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, background: neg ? '#fdeeea' : '#e8f5ee', border: `1.5px solid ${neg ? '#f0c4b8' : '#b7d9c6'}`, borderRadius: 10, padding: '6px 12px' }}>
+              <span style={{ fontSize: 12, color: COLORS.textMuted }}>💼 доля магазина за месяц</span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>накоплено <b style={{ color: COLORS.text }}>{m(sh.earned)}</b></span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>· ЗП <b style={{ color: COLORS.text }}>{m(sh.zp)}</b></span>
+              <span style={{ fontSize: 13.5, fontWeight: 800, color: neg ? '#b03020' : '#2e8a5e' }}>остаток {m(left)} ₸</span>
+            </div>
+          )
+        })()}
       </div>
 
       {view === 'month' ? (!month ? <div style={{ ...card, textAlign: 'center', color: COLORS.textMuted }}>Нет данных</div> : (() => {
@@ -761,7 +777,10 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   const noPct = data?.kind === 'producer_seller'   // листогиб: процентов нет, только оклад
                   // Пул ЗП: 40% маржи по чекам ПЛЮС доля магазина в прочем доходе дня — чеки
                   // пробиваются по себестоимости, и заработок приходит именно прочим доходом.
-                  const pool = Math.round((Number(data.report?.margin) || 0) * 0.4 + (Number((data as any).otherShare?.ours) || 0))
+                  // Пул на ЗП = что осталось в копилке доли магазина (40% каспи/QR + 50% нал)
+                  // за месяц; если копилки ещё нет — ориентир 40% маржи дня + доля этого дня.
+                  const left = Number((data as any).share?.left)
+                  const pool = Math.round(isFinite(left) ? left : (Number(data.report?.margin) || 0) * 0.4 + (Number((data as any).otherShare?.ours) || 0))
                   const paidSet = new Set<string>((data?.zpPaidWho || []).map((x: string) => String(x).trim().toLowerCase()))
                   const rows = marked.map((u: any) => { const oklad = wageDay(u); const bonus = bonusEff(u.id)
                     return { u, oklad, bonus, total: oklad + bonus, paid: paidSet.has(String(u.name || '').trim().toLowerCase()) } })

@@ -255,8 +255,21 @@ export async function masterShift(orgId: string, date: string) {
   ` as unknown as Array<any>)[0] || { ours: 0, total: 0 }
   const otherShare = { ours: num(oiShareRow.ours), total: num(oiShareRow.total) }
 
+  // КОПИЛКА ДОЛИ МАГАЗИНА (правило 15.11.2026): наши 40% с каспи/QR и 50% с наличных
+  // копятся, из них платится ЗП. Считаем С НАЧАЛА МЕСЯЦА по выбранный день: сколько
+  // накопилось, сколько уже ушло на ЗП и что осталось — видно постоянно в шапке.
+  const mFrom = date.slice(0, 8) + '01'
+  const shRow = (await sqlClient`
+    select
+      (select coalesce(sum(price - hq_share),0) from bonus_rows
+        where org_id = ${orgId} and date >= ${mFrom} and date <= ${date})::float earned,
+      (select coalesce(sum(abs(a.amount)),0) from fin_rows r join fin_row_amounts a on a.row_id = r.id
+        where r.org_id = ${orgId} and r.article = 'ЗП' and r.date >= ${mFrom} and r.date <= ${date})::float zp
+  ` as unknown as Array<any>)[0] || { earned: 0, zp: 0 }
+  const share = { from: mFrom, earned: num(shRow.earned), zp: num(shRow.zp), left: num(shRow.earned) - num(shRow.zp) }
+
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
