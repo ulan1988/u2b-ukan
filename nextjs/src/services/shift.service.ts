@@ -308,6 +308,17 @@ export async function cashReport(orgId: string, from: string, to: string) {
     where p.org_id=${orgId} and p.direction='in' and p.date between ${from} and ${to}
     group by p.date
   ` as unknown as Array<any>
+  // Прочий доход по счетам (платежи без документа): в «Кассе дня» и в 1С он входит в приход
+  // по счёту, значит и в месячном своде колонки КАССА должны его показывать.
+  const oiPayRows = await sqlClient`
+    select p.date::text as "day",
+      coalesce(sum(case when ca.name ilike '%kaspi%' or ca.name ilike '%каспи%' then p.amount else 0 end),0)::float kaspi,
+      coalesce(sum(case when ca.kind='bank' or ca.name ilike '%банк%' then p.amount else 0 end),0)::float qr,
+      coalesce(sum(case when not (ca.name ilike '%kaspi%' or ca.name ilike '%каспи%' or ca.kind='bank' or ca.name ilike '%банк%') then p.amount else 0 end),0)::float cash
+    from payments p join cash_accounts ca on ca.id=p.cash_account_id
+    where p.org_id=${orgId} and p.direction='in' and p.document_id is null and p.date between ${from} and ${to}
+    group by p.date
+  ` as unknown as Array<any>
   const exps = await sqlClient`
     with rr as (
       select r.date, r.article, (select coalesce(sum(a.amount),0) from fin_row_amounts a where a.row_id=r.id) tot
@@ -349,10 +360,12 @@ export async function cashReport(orgId: string, from: string, to: string) {
   const tabelByDay: Record<string, number> = {}; for (const t of tabel) tabelByDay[t.day] = num(t.zp)
 
   const byDay: Record<string, any> = {}
-  const ensure = (day: string) => (byDay[day] = byDay[day] || { day, cash: 0, kaspi: 0, qr: 0, sold: 0, cnt: 0, salary: 0, current: 0 })
+  const ensure = (day: string) => (byDay[day] = byDay[day] || { day, cash: 0, kaspi: 0, qr: 0, paidDoc: 0, sold: 0, cnt: 0, salary: 0, current: 0 })
   // sold/cnt — по дате продажи (документ). cash/kaspi/qr — по дате ОПЛАТЫ (incomeRows, вкл. погашения).
   for (const s of sales) { const r = ensure(s.day); r.sold = num(s.sold); r.cnt = num(s.cnt) }
-  for (const i of incomeRows) { const r = ensure(i.day); r.cash = num(i.cash); r.kaspi = num(i.kaspi); r.qr = num(i.qr) }
+  // По чекам (paidDoc) считается ДОЛГ, а колонки КАССА показывают весь приход по счёту.
+  for (const i of incomeRows) { const r = ensure(i.day); r.cash = num(i.cash); r.kaspi = num(i.kaspi); r.qr = num(i.qr); r.paidDoc = num(i.cash) + num(i.kaspi) + num(i.qr) }
+  for (const o of oiPayRows) { const r = ensure(o.day); r.cash += num(o.cash); r.kaspi += num(o.kaspi); r.qr += num(o.qr) }
   for (const e of exps) { const r = ensure(e.day); r.salary = num(e.salary); r.current = num(e.current) }
   // Строку дня создаём и для дней, где был ТОЛЬКО возврат (иначе возврат не показывается).
   for (const r of rets) ensure(r.day)
@@ -396,8 +409,9 @@ export async function cashReport(orgId: string, from: string, to: string) {
   const movDays = Object.keys(movByDay).sort()
 
   const days = Object.values(byDay).map((r: any) => {
-    const paid = r.cash + r.kaspi + r.qr                 // КАССА = Нал(осн.касса) + Каспи(GOLD) + QR(банк.счёт), вкл. погашения долга
-    const debt = r.sold - paid                           // Долг (может быть МИНУС — погашен долг прошлых дней «вчерашней торговли»)
+    const paid = r.cash + r.kaspi + r.qr                 // КАССА = весь приход по счетам за день (чеки + погашения + прочий доход)
+    const paidDoc = num(r.paidDoc)                       // из них по чекам — от этого считается долг
+    const debt = r.sold - paidDoc                        // Долг (может быть МИНУС — погашен долг прошлых дней «вчерашней торговли»)
     const cost = costByDay[r.day] || 0, ret = retByDay[r.day] || 0
     const otpusk = cost + debt - ret                     // отпуск = себестоимость + долг − возврат
     // НАЦЕНКА (100%) — то, что сверху себестоимости (правило владельца 15.11.2026): товарная
@@ -418,7 +432,7 @@ export async function cashReport(orgId: string, from: string, to: string) {
     const bal: Record<string, number> = { ...opening }
     for (const md of movDays) { if (md <= r.day) { const mm = movByDay[md]; for (const acc in mm) bal[acc] = (bal[acc] || 0) + mm[acc] } }
     const balTotal = accounts.reduce((s: number, a: any) => s + (bal[a.id] || 0), 0)
-    return { ...r, salary, paid, ret, cost, otpusk, margin, split60, split40, zpPlus40, bal, balTotal, debt, expense: salary + r.current, ok: Math.abs((paid + debt) - r.sold) < 1 }
+    return { ...r, salary, paid, paidDoc, ret, cost, otpusk, margin, split60, split40, zpPlus40, bal, balTotal, debt, expense: salary + r.current, ok: Math.abs((paidDoc + debt) - r.sold) < 1 }
   }).sort((a: any, b: any) => a.day.localeCompare(b.day))
 
   const totals = days.reduce((t: any, d: any) => ({
