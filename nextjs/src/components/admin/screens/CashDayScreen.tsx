@@ -796,7 +796,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       {/* Счета списания: птичка + сумма с каждого (пусто = остаток). Если на одном
                           счёте денег не хватает — отмечаем второй и делим сумму между ними. */}
                       <div style={{ background: '#fff', borderRadius: 8, padding: '6px 9px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
-                        <div style={{ fontSize: 11.5, color: COLORS.textLight, marginBottom: 4 }}>Снять со счетов (пусто = остаток):</div>
+                        <div style={{ fontSize: 11.5, color: COLORS.textLight, marginBottom: 4 }}>Снять со счетов (пусто = остаток) — <b>ЗП и проценты платим с наличных</b>:</div>
                         {accts.map((a: any) => {
                           const on = !!wpick[a.id]
                           const auto = (zpSplits(payTotal).find((x: any) => x.accountId === a.id) || { amount: 0 }).amount
