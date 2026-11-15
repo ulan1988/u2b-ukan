@@ -453,7 +453,7 @@ export async function exchangeSale(cardId: string, inp: { back: { posId: string;
 export async function payDebt(cardId: string, splits: { accountId: string; amount: number }[], actor?: Session | null, date?: string) {
   // date — рабочий день погашения: пусто → сегодня; прошедшая дата проводит деньги тем днём
   // (попадают в «Кассу дня» и остатки счетов за тот день).
-  const day = /^d{4}-d{2}-d{2}$/.test(String(date || '')) ? String(date) : today()
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : today()
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Чек не найден' }
   if (!order.linkedDocId) return { ok: false as const, error: 'Чек не проведён' }
