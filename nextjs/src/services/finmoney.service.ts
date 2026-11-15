@@ -59,9 +59,17 @@ export async function financeDay(orgId: string, date: string) {
     const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))
     // Контрагент слота известен ДО платежей (по имени) — иначе в пустую строку нельзя внести
     // сумму вручную: не к кому её отнести.
-    for (const c of await fin.contragentsByNames(orgId, SLOTS)) {
+    // Имя слота не всегда совпадает с именем контрагента в базе: «Базар Нипа (Жанар Базар)»
+    // — это контрагент «Базар Жанар». Ищем и по запасным именам, иначе в пустую строку
+    // нельзя внести сумму руками (а менеджер мог не отправить деньги из кабинета).
+    const ALIAS: Record<number, string[]> = { 3: ['Базар Жанар'] }
+    const lookup = [...SLOTS, ...Object.values(ALIAS).flat()]
+    for (const c of await fin.contragentsByNames(orgId, lookup)) {
       const i = SLOTS.indexOf(c.name)
-      if (i >= 0) slotCag[i].id = c.id
+      if (i >= 0) { slotCag[i].id = slotCag[i].id || c.id; continue }
+      for (const [k, names] of Object.entries(ALIAS)) {
+        if (names.includes(c.name)) { const j = Number(k); slotCag[j].id = slotCag[j].id || c.id }
+      }
     }
     const others = new Map<string, any>()
     for (const p of todayPays) {

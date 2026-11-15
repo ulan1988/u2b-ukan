@@ -55,6 +55,8 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [cellPays, setCellPays] = useState<any[]>([])
   const [cellBusy, setCellBusy] = useState(false)
   const [cellNew, setCellNew] = useState('')   // сумма, внесённая вручную
+  // Контрагент для ручного взноса, если у авто-строки он не определён (слот пустой).
+  const [cellCag, setCellCag] = useState<{ id: string; name: string } | null>(null)
   const timers = useRef<Record<string, any>>({})
   const didInit = useRef(false)
 
@@ -81,7 +83,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const posted = rows.filter(r => r.status === 'posted').length
 
   async function openCell(r: any, a: any) {
-    setCell_({ row: r, acc: a }); setCellPays([])
+    setCell_({ row: r, acc: a }); setCellPays([]); setCellCag(null); setCellNew('')
     const res: any = await finCellPayments(date, a.id, r.contragentId || null)
     setCellPays((res?.data || []).filter((p: any) => Number(p.amount) !== 0))
   }
@@ -99,11 +101,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const amount = parseCell(cellNew)
     if (!amount || !cell) { show('Укажите сумму'); return }
     setCellBusy(true)
-    const res: any = await finAddPayment({ date, accountId: cell.acc.id, contragentId: cell.row.contragentId, amount, direction: cell.row.type === 'out' ? 'out' : 'in' })
+    const cagId = cell.row.contragentId || cellCag?.id
+    if (!cagId) { show('Выберите контрагента'); return }
+    const res: any = await finAddPayment({ date, accountId: cell.acc.id, contragentId: cagId, amount, direction: cell.row.type === 'out' ? 'out' : 'in' })
     setCellBusy(false)
     if (res?.data?.ok === false) { show(res.data.error || 'Не вышло'); return }
     show(res?.data?.mirror ? '✔ Внесено — и списано у филиала' : '✔ Внесено')
-    setCellNew(''); setCell_(null); await load()
+    setCellNew(''); setCellCag(null); setCell_(null); await load()
   }
 
   function payload(r: any) {
@@ -294,7 +298,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                         // Авто-ячейка = платежи дня по этому счёту и контрагенту. Клик открывает
                         // список: сумму можно поправить руками, правка идёт в сам платёж
                         // (и в зеркальную проводку второй орг).
-                        const canEdit = r.auto && !!r.contragentId
+                        // Сумму в авто-строке вписываем руками ВСЕГДА (менеджер мог забыть
+                        // отправить деньги из кабинета). Контрагента, если он у слота не
+                        // определён, выбираем прямо в шторке.
+                        const canEdit = !!r.auto
                         return <td key={a.id} onClick={() => canEdit && openCell(r, a)} title={canEdit ? (v ? 'Поправить сумму' : 'Внести сумму вручную') : undefined}
                           style={{ ...tdNum, cursor: canEdit ? 'pointer' : undefined, color: v > 0 ? '#0f7b3d' : v < 0 ? '#b3261e' : undefined }}>{v ? fmt(v) : ''}</td>
                       }
@@ -385,6 +392,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                   style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: cellBusy ? '#a9c9b5' : '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: 13, cursor: cellBusy ? 'default' : 'pointer' }}>💾</button>
               </div>
             ))}
+            {/* Слот без контрагента (никто ещё не платил) — выбираем, на кого записать деньги. */}
+            {!cell.row.contragentId && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 5 }}>Кому записать: по этой строке платежей ещё не было, выберите контрагента</div>
+                <ContragentPicker contragents={cags} value={cellCag?.id || ''} onPick={(c: any) => setCellCag(c ? { id: c.id, name: c.name } : null)} placeholder={`— найти контрагента (${cell.row.contragent}) —`} />
+              </div>
+            )}
             {/* Контрагент сам денег не отправил — вписываем сумму руками */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, padding: '12px 0 0', borderTop: '1.5px dashed #e6e2dc' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#4a4640' }}>＋ Внести вручную</span>
