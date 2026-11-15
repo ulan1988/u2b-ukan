@@ -55,9 +55,9 @@ const localDay = (d?: any) => {
 }
 // Сумма чека из позиций (в orders нет поля total — считаем по строкам), минус скидка по чеку.
 const cardSubtotal = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
-const cardTotal = (o: any) => Math.max(0, cardSubtotal(o) - (Number(o.discountSum) || 0))
+const cardTotal = (o: any) => Math.max(0, Math.round((cardSubtotal(o) - (Number(o.discountSum) || 0)) * 100) / 100)
 // Остаток долга по чеку = итог(net) − всего оплачено (продажа + погашения).
-const checkDebt = (o: any) => Math.max(0, cardTotal(o) - (Number(o.paidTotal) || 0))
+const checkDebt = (o: any) => Math.max(0, Math.round((cardTotal(o) - (Number(o.paidTotal) || 0)) * 100) / 100)
 
 // Рабочие папки продавца — реальные категории базы (Водосток 87, Евро брус 72,
 // Комплектующие 35, Металлочерепица 48). «Комплектующие» — базы «Без цвета»:
@@ -509,10 +509,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // СУММУ СТРОКИ ВПИСЫВАЕМ РУКАМИ (как в накладной): вписал сумму → цена = сумма ÷ кол-во
   // (у изделия ещё ÷ см — цена там за см). Правишь кол-во/цену → сумма считается обратно.
   const r2 = (v: number) => Math.round(v * 100) / 100
+  // Цена из суммы — с 6 знаками (колонка price numeric(18,6)): 25 200 ÷ 24 ÷ 19 = 55,263158,
+  // и обратно сумма даёт ровно 25 200. С двумя знаками (55,26) выходило 25 198,56.
+  const r6 = (v: number) => Math.round(v * 1e6) / 1e6
   const priceFromAmt = (amount: number, qty: number, name: string, widthCm?: number | null) => {
     const cm = isIzdelie(name) && Number(widthCm) > 0 ? Number(widthCm) : 1
     const base = (Number(qty) || 0) * cm
-    return base > 0 ? r2(amount / base) : 0
+    return base > 0 ? r6(amount / base) : 0
   }
   // Что показать в поле суммы: пока кассир печатает — его ввод, иначе посчитанную сумму.
   const amtView = (draft: string | undefined, sum: number) => (draft !== undefined ? draft : String(r2(sum)))

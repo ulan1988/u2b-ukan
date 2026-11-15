@@ -7,6 +7,10 @@ import {
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2 })
 const qtyCol = (name: string) => numeric(name, { precision: 14, scale: 3 })
+// ЦЕНА — с запасом знаков (6), а не как деньги (2). Кассир вписывает СУММУ строки, цена
+// считается обратно (сумма ÷ кол-во ÷ см): 25 200 ÷ 24 ÷ 19 = 55,263158. С двумя знаками
+// (55,26) сумма возвращалась как 25 198,56 — чек не сходился с тем, что продали.
+const priceCol = (name: string) => numeric(name, { precision: 18, scale: 6 })
 
 // ─── Справочники ───────────────────────────────────────────────────────────
 
@@ -266,7 +270,7 @@ export const documentLines = pgTable('document_lines', {
   name: text('name'),
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),             // ед. изм. строки (снимок)
-  price: money('price').notNull().default('0'),
+  price: priceCol('price').notNull().default('0'),
   amount: money('amount').notNull().default('0'),         // qty×price ИЛИ area×rate×qty
   // Размерное ценообразование (производитель): см · м² · сумма
   lengthCm: qtyCol('length_cm'),
@@ -438,8 +442,8 @@ export const orderPositions = pgTable('order_positions', {
   oral: text('oral').notNull().default(''),               // имя со слов / с RAL
   qty: qtyCol('qty').notNull().default('0'),
   unit: text('unit').notNull().default('шт'),
-  price: money('price').notNull().default('0'),
-  costPrice: money('cost_price').notNull().default('0'),   // сквозная: закупочная цена (что платим поставщику); продажная = price
+  price: priceCol('price').notNull().default('0'),
+  costPrice: priceCol('cost_price').notNull().default('0'),   // сквозная: закупочная цена (что платим поставщику); продажная = price
   transit: boolean('transit').notNull().default(false),   // сквозная позиция (drop-ship, мимо склада) — на уровне позиции
   // БОНУСНАЯ ПРОДАЖА (группа «Долг товар»): товар взят у соседа, идёт мимо склада.
   // bonusCost — цена соседа за единицу (её вернём ему), bonusAgentId — у кого взяли.

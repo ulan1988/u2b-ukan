@@ -128,10 +128,13 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
     if (!pr.ok) return { ok: false as const, error: pr.error }
   }
   const { lineAmount } = await import('../lib/lineAmount')
-  const subtotal = positions.reduce((s: number, x: any) => s + lineAmount({ name: x.name1c || x.oral, qty: x.qty, price: x.price, widthCm: x.widthCm }), 0)
+  // Деньги считаем до КОПЕЕК: цена хранится с 6 знаками (кассир вписывает сумму строки), и без
+  // округления итог выходил 35 200,000007 — чек, оплаченный полностью, помечался «Частично».
+  const money2 = (v: number) => Math.round(v * 100) / 100
+  const subtotal = money2(positions.reduce((s: number, x: any) => s + lineAmount({ name: x.name1c || x.oral, qty: x.qty, price: x.price, widthCm: x.widthCm }), 0))
   // Скидка по чеку: итог = Σпозиций − скидка (хранится на заказе, попадает в накладную).
   const disc = Math.max(0, Math.min(Number((order as any).discountSum) || 0, subtotal))
-  const total = subtotal - disc
+  const total = money2(subtotal - disc)
   const cashRaw = Math.max(0, Number(p.cash) || 0), kaspiRaw = Math.max(0, Number(p.kaspi) || 0), qr = Math.max(0, Number(p.qr) || 0)
   // Сдача выдаётся с нала (по умолчанию) или каспи → в кассу реально попадает оплата МИНУС сдача.
   // Иначе при переплате (дал 100 000 за 97 750) в счёт писалось 100 000, а не чистые 97 750.
@@ -140,7 +143,7 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   let cash = cashRaw, kaspi = kaspiRaw, rem = changeAmt
   if (p.changeFrom === 'kaspi') { const a = Math.min(kaspi, rem); kaspi -= a; rem -= a; const b = Math.min(cash, rem); cash -= b; rem -= b }
   else { const a = Math.min(cash, rem); cash -= a; rem -= a; const b = Math.min(kaspi, rem); kaspi -= b; rem -= b }
-  const debt = Math.max(0, total - cash - kaspi - qr)
+  const debt = Math.max(0, money2(total - cash - kaspi - qr))
 
   // Контрагент: заказчик карточки, иначе мост на головной офис.
   const bridge = await hqBridgeContragent(order.orgId)
@@ -285,7 +288,7 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   if (!wh) return { ok: false as const, error: 'Склад филиала не найден' }
 
   // Текущий долг по чеку: всего(−скидка) − оплачено − уже применённый кредит возвратов.
-  const total = Math.max(0, positions.reduce((s: number, p: any) => s + amtOf(p, Number(p.qty)), 0) - (Number((order as any).discountSum) || 0))
+  const total = Math.max(0, Math.round((positions.reduce((s: number, p: any) => s + amtOf(p, Number(p.qty)), 0) - (Number((order as any).discountSum) || 0)) * 100) / 100)
   // Оплачено = ВСЕ приходы по документу чека (касса + погашение долга), а не только order.paid*
   // (продажа в долг оплачивается позже отдельным платежом «Погашение долга» — он тоже считается).
   const paid = Number((await sqlClient`
@@ -460,7 +463,7 @@ export async function payDebt(cardId: string, splits: { accountId: string; amoun
   const positions = await repo.positionsByCard(cardId)
   const { lineAmount } = await import('../lib/lineAmount')
   const subtotal = positions.reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
-  const net = Math.max(0, subtotal - (Number((order as any).discountSum) || 0))
+  const net = Math.max(0, Math.round((subtotal - (Number((order as any).discountSum) || 0)) * 100) / 100)
   const { sqlClient } = await import('../lib/db')
   const paidBefore = Number((await sqlClient`select coalesce(sum(amount),0)::float s from payments where direction='in' and document_id=${order.linkedDocId}` as unknown as Array<any>)[0]?.s) || 0
   const debt = Math.max(0, net - paidBefore)
