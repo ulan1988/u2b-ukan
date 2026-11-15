@@ -525,6 +525,9 @@ export interface SellInput {
 
 // Доля головного в бонусе: 50% (для бонусных позиций вместо обычной маржи 60/40).
 export const BONUS_HQ_SHARE = 0.5
+// Прочий доход: доля головного — 60% с каспи/QR (гасит долг филиала) и 50% с наличных.
+export const OTHER_HQ_CASHLESS = 0.6
+export const OTHER_HQ_CASH = 0.5
 
 export async function sellDirect(orgId: string, i: SellInput, actor?: Session | null) {
   if (!i.positions?.length) return { ok: false as const, error: 'Пустой чек' }
@@ -780,10 +783,14 @@ export async function otherIncome(orgId: string, i: {
   if (kaspi > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(kaspi), date: day, cashAccountId: acc.kaspi, documentId: null, docNumber, comment: `${label} · каспи` } as any)
   if (qr > 0) await payRepo.insertPayment({ id: randomUUID(), orgId, contragentId: contactId, direction: 'in', amount: String(qr), date: day, cashAccountId: acc.bank, documentId: null, docNumber, comment: `${label} · QR` } as any)
 
-  // Дележ 50/50 — тем же журналом, что бонус товара соседа (виден в «Кассе дня»).
+  // ДЕЛЁЖ ПРОЧЕГО ДОХОДА (правило владельца 15.11.2026): чеки магазина пробиваются ПО
+  // СЕБЕСТОИМОСТИ, а наценка вносится прочим доходом. Безналичная часть (каспи/QR) делится
+  // 60/40: 60% головному — так филиал постепенно гасит свой долг перед ним, 40% магазину
+  // (из этих 40% платится ЗП продавцам, другого источника нет). Наличная часть — пополам.
+  // Журнал тот же, что у бонуса товара соседа (виден в «Кассе дня»).
   const { db } = await import('../lib/db')
   const { bonusRows } = await import('../db/schema')
-  const hq = Math.round(sum * 0.5)
+  const hq = Math.round((kaspi + qr) * OTHER_HQ_CASHLESS + cash * OTHER_HQ_CASH)
   await db.insert(bonusRows).values({
     id: randomUUID(), orgId, date: day, cardId: null, posId: null, agentId: null,
     productName: note ? `Прочий доход · ${note}` : 'Прочий доход',
