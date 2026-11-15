@@ -72,7 +72,7 @@ const FOLDERS = [
   { key: 'cherep', label: 'Металлоч.', match: (p: any) => norm(p.cat) === 'металлочерепица', levels: ['subgroup'] },
 ]
 
-interface Row { key: string; name1c: string; oral: string; qty: number; unit: string; price: number; widthCm?: number; productId?: string; bonusCost?: number; bonusAgentId?: string }
+interface Row { key: string; name1c: string; oral: string; qty: number; unit: string; price: number; widthCm?: number; productId?: string; bonusCost?: number; bonusAgentId?: string; amt?: string }
 
 export default function SellerPortal({ user, orgName }: { user: { id: string; name: string; orgId: string; slug?: string }; orgName?: string }) {
   const [tab, setTab] = useState<Tab>('cash')
@@ -105,7 +105,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [viewChk, setViewChk] = useState<any>(null)      // чек, раскрытый шторкой (состав)
   // правка пробитого чека: строки, оплата, скидка
   const [editFor, setEditFor] = useState<any>(null)
-  const [editRows, setEditRows] = useState<{ posId?: string; productId?: string; name1c: string; qty: string; price: string; unit: string; widthCm?: number }[]>([])
+  const [editRows, setEditRows] = useState<{ posId?: string; productId?: string; name1c: string; qty: string; price: string; unit: string; widthCm?: number; amt?: string }[]>([])
   const [editPay, setEditPay] = useState({ cash: '', kaspi: '', qr: '' })
   const [editDisc, setEditDisc] = useState('')
   const [editCat, setEditCat] = useState(false)   // открыт каталог для добавления позиции в чек
@@ -506,6 +506,16 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const noPrice = rows.some(r => !r.price)
 
   function patchRow(key: string, patch: Partial<Row>) { setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r)) }
+  // СУММУ СТРОКИ ВПИСЫВАЕМ РУКАМИ (как в накладной): вписал сумму → цена = сумма ÷ кол-во
+  // (у изделия ещё ÷ см — цена там за см). Правишь кол-во/цену → сумма считается обратно.
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  const priceFromAmt = (amount: number, qty: number, name: string, widthCm?: number | null) => {
+    const cm = isIzdelie(name) && Number(widthCm) > 0 ? Number(widthCm) : 1
+    const base = (Number(qty) || 0) * cm
+    return base > 0 ? r2(amount / base) : 0
+  }
+  // Что показать в поле суммы: пока кассир печатает — его ввод, иначе посчитанную сумму.
+  const amtView = (draft: string | undefined, sum: number) => (draft !== undefined ? draft : String(r2(sum)))
 
   // Быстрая оплата в один тап: вся сумма выбранным способом (или в долг).
   async function quickPay(how: 'cash' | 'kaspi' | 'qr' | 'debt') {
@@ -1322,8 +1332,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <div key={r.key} style={{ display: 'flex', flexDirection: 'column', gap: 4, ...(bon ? { background: '#f4f1fb', borderRadius: 8, padding: '4px 6px', margin: '0 -6px' } : {}) }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#4a443c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name1c} · {r.qty}{r.widthCm ? `×${r.widthCm}см` : ''}</div>
-                    <input value={r.price ? String(r.price) : ''} inputMode="decimal" placeholder={perCm ? '₸/см' : '₸'} onChange={e => patchRow(r.key, { price: num(e.target.value.replace(/[^0-9.,]/g, '')) })} style={{ ...inp, width: 78, padding: '6px 8px', fontSize: 13, border: r.price ? '1.5px solid #e6e2dc' : `1.5px solid ${PRIMARY}` }} />
-                    <span style={{ fontSize: 13.5, fontWeight: 800, minWidth: 62, textAlign: 'right' }}>{money(sum)}</span>
+                    <input value={r.price ? String(r.price) : ''} inputMode="decimal" placeholder={perCm ? '₸/см' : '₸'} onChange={e => patchRow(r.key, { price: num(e.target.value.replace(/[^0-9.,]/g, '')), amt: undefined })} style={{ ...inp, width: 78, padding: '6px 8px', fontSize: 13, border: r.price ? '1.5px solid #e6e2dc' : `1.5px solid ${PRIMARY}` }} />
+                    <input value={amtView(r.amt, sum)} inputMode="decimal" title="сумма строки — можно вписать, цена пересчитается"
+                      onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); patchRow(r.key, { amt: v, price: priceFromAmt(num(v), r.qty, r.name1c, r.widthCm) }) }}
+                      onBlur={() => patchRow(r.key, { amt: undefined })}
+                      style={{ ...inp, width: 86, padding: '6px 8px', fontSize: 13, fontWeight: 800, textAlign: 'right' }} />
                     <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} style={{ border: 'none', background: 'none', color: '#c0532a', cursor: 'pointer', fontSize: 13, padding: '2px 2px' }}>✕</button>
                   </div>
                   {/* Бонусный товар («Долг товар»): цена соседа и у кого взяли — мелко и неярко,
@@ -1457,12 +1470,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <label style={{ fontSize: 11, color: '#8a8377' }}>кол-во
-                        <input value={r.qty} inputMode="decimal" onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, qty: v } : x)) }} style={{ ...inp, width: 78, marginTop: 3, textAlign: 'center' }} />
+                        <input value={r.qty} inputMode="decimal" onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, qty: v, amt: undefined } : x)) }} style={{ ...inp, width: 78, marginTop: 3, textAlign: 'center' }} />
                       </label>
                       <label style={{ fontSize: 11, color: '#8a8377' }}>{perCm ? 'цена ₸/см' : 'цена ₸'}
-                        <input value={r.price} inputMode="decimal" onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, price: v } : x)) }} style={{ ...inp, width: 96, marginTop: 3, textAlign: 'right' }} />
+                        <input value={r.price} inputMode="decimal" onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, price: v, amt: undefined } : x)) }} style={{ ...inp, width: 96, marginTop: 3, textAlign: 'right' }} />
                       </label>
-                      <span style={{ marginLeft: 'auto', fontSize: 14.5, fontWeight: 800 }}>{money(sum)} ₸</span>
+                      <label style={{ marginLeft: 'auto', fontSize: 11, color: '#8a8377', textAlign: 'right' }}>сумма ₸
+                        <input value={amtView(r.amt, sum)} inputMode="decimal" title="сумма строки — можно вписать, цена пересчитается"
+                          onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); setEditRows(rs => rs.map((x, j) => j === i ? { ...x, amt: v, price: String(priceFromAmt(num(v), num(x.qty), x.name1c, x.widthCm)) } : x)) }}
+                          onBlur={() => setEditRows(rs => rs.map((x, j) => j === i ? { ...x, amt: undefined } : x))}
+                          style={{ ...inp, width: 106, marginTop: 3, textAlign: 'right', fontWeight: 800 }} />
+                      </label>
                     </div>
                   </div>
                 )
