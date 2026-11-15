@@ -184,7 +184,11 @@ export async function masterShift(orgId: string, date: string) {
     left join products p on p.id=op.product_id
     where o.org_id=${orgId} and o.is_cancelled=false
   ` as unknown as Array<any>)[0] || { cost: 0 }
-  const margin = Math.max(0, total - num(costRow.cost))
+  // НАЦЕНКА ДНЯ (100%) = сверху себестоимости: товарная часть плюс прочий доход дня
+  // (чеки пробиваются по себестоимости, заработок приходит прочим доходом).
+  const oiDayRow = (await sqlClient`select coalesce(sum(price),0)::float s from bonus_rows
+    where org_id = ${orgId} and date = ${date}` as unknown as Array<any>)[0] || { s: 0 }
+  const margin = Math.max(0, total - num(costRow.cost) + num(oiDayRow.s))
   // Продавцы на смене = кто пробил чек в этот день (между ними делится 40% наценки).
   const sellersDay = await sqlClient`
     select coalesce(nullif(trim(o.seller),''),'—') name
@@ -332,6 +336,13 @@ export async function cashReport(orgId: string, from: string, to: string) {
   ` as unknown as Array<any>
   const costByDay: Record<string, number> = {}; for (const c of costs) costByDay[c.day] = num(c.cost)
   const retByDay: Record<string, number> = {}; for (const r of rets) retByDay[r.day] = num(r.ret)
+  // Прочий доход дня (и бонусы товара соседа): при схеме «чек по себестоимости» вся наценка
+  // приходит именно так, без него колонка 100% ушла бы в минус.
+  const oiRows = await sqlClient`
+    select date::text as "day", coalesce(sum(price),0)::float sum from bonus_rows
+    where org_id = ${orgId} and date between ${from} and ${to} group by date
+  ` as unknown as Array<any>
+  const otherByDay: Record<string, number> = {}; for (const r of oiRows) otherByDay[r.day] = num(r.sum)
   // ТАБЕЛЬ по дням: если за день есть отметки — колонка ЗП = Σ окладов отмеченных (начисление);
   // дня без отметок НЕТ в tabelByDay → fallback на fin_rows ЗП (salary), история не обнуляется.
   const tabel = await attendance.tabelSumByDay(orgId, from, to)
@@ -389,7 +400,9 @@ export async function cashReport(orgId: string, from: string, to: string) {
     const debt = r.sold - paid                           // Долг (может быть МИНУС — погашен долг прошлых дней «вчерашней торговли»)
     const cost = costByDay[r.day] || 0, ret = retByDay[r.day] || 0
     const otpusk = cost + debt - ret                     // отпуск = себестоимость + долг − возврат
-    const margin = paid - cost                           // маржа (100%) = КАССА − себестоимость (по образцу отчёта)
+    // НАЦЕНКА (100%) — то, что сверху себестоимости (правило владельца 15.11.2026): товарная
+    // часть (продано − возврат − себестоимость) ПЛЮС прочий доход дня. Из неё и идёт 60/40.
+    const margin = (r.sold - ret - cost) + (otherByDay[r.day] || 0)
     // Проценты от маржи (60/40 и бонус к ЗП) — только там, где они приняты. У листогиба
     // (producer_seller) процентов НЕТ: в отчёте остаются маржа, ЗП (оклад) и расходы.
     const pct = orgKind !== 'producer_seller'

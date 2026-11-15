@@ -253,7 +253,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   <th style={{ ...th, textAlign: 'left' }}>Дата</th>
                   <th style={th}>Себест.</th><th style={th}>Возврат</th><th style={th}>Долг</th><th style={th}>Отпуск</th><th style={{ ...th, textAlign: 'center' }}>прав/ложь</th>
                   <th style={th}>QR</th><th style={th}>Каспи</th><th style={th}>Нал</th>
-                  <th style={th}>Маржа</th><th style={th}>ЗП</th>
+                  <th style={th}>100%</th><th style={th}>ЗП</th>
                   <th style={th}>Расход</th>
                   {accts.map((a: any) => <th key={a.id} style={th} title={a.name}>{a.name}</th>)}
                   {accts.length > 0 && <th style={th}>ИТОГ</th>}
@@ -291,7 +291,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 {accts.length > 0 && <td style={{ ...cell, fontWeight: 800 }}>{m(month.endBalTotal || 0)}</td>}
               </tr></tfoot>
             </table>
-            {accts.length > 0 && <div style={{ padding: '8px 14px', fontSize: 12, color: COLORS.textLight, borderTop: `1px solid ${COLORS.borderLight}` }}>Старт остатков на 1-е число (из истории): {accts.map((a: any) => `${a.name} ${m((month.opening || {})[a.id] || 0)}`).join(' · ')} · Себест. = Σ(кол-во × приходная цена) · Отпуск = себест+долг−возврат · Маржа = КАССА−себест · ЗП = оклад по табелю.</div>}
+            {accts.length > 0 && <div style={{ padding: '8px 14px', fontSize: 12, color: COLORS.textLight, borderTop: `1px solid ${COLORS.borderLight}` }}>Старт остатков на 1-е число (из истории): {accts.map((a: any) => `${a.name} ${m((month.opening || {})[a.id] || 0)}`).join(' · ')} · Себест. = Σ(кол-во × приходная цена) · Отпуск = себест+долг−возврат · 100% = наценка сверху себестоимости (продано−возврат−себест + прочий доход), из неё 60% головному и 40% магазину · ЗП = оклад по табелю.</div>}
           </div>
         }
         return <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
@@ -310,7 +310,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <th style={{ ...th, textAlign: 'left' }}>Дата</th>
                 <th style={th}>Себест.</th><th style={th}>Возврат</th><th style={th}>Долг</th><th style={th}>Отпуск</th><th style={{ ...th, textAlign: 'center' }}>✓</th>
                 <th style={th}>Наличка</th><th style={th}>Каспи</th><th style={th}>QR</th>
-                <th style={th}>Маржа</th><th style={th}>60%</th><th style={th}>40%</th>
+                <th style={th}>100%</th><th style={th}>60%</th><th style={th}>40%</th>
                 <th style={th}>ЗП</th><th style={th}>ЗП+40</th>
                 <th style={th}>Расход</th>
                 {accts.map((a: any) => <th key={a.id} style={th} title={a.name}>{a.name}</th>)}
@@ -366,7 +366,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                 <div>
                   <div style={sub}>ПРОДАЖА</div>
                   <div style={line}><span>Продано</span><b>{m(r.sold)} ₸</b></div>
-                  <div style={line}><span>Наценка</span><b style={{ color: '#2e8a5e' }}>{m(r.margin)} ₸ · {Math.round((r.marginPct || 0) * 100)}%</b></div>
+                  <div style={line} title="Сверху себестоимости (100%): товар плюс прочий доход. Из неё 60% головному, 40% магазину"><span>Наценка (100%)</span><b style={{ color: '#2e8a5e' }}>{m(r.margin)} ₸ · {Math.round((r.marginPct || 0) * 100)}%</b></div>
                   <div style={line}><span>Долг</span><b style={{ color: COLORS.primaryDark }}>{m(r.debt)} ₸</b></div>
                   {/* Возврат: товар принят обратно по себестоимости; из кассы ушли деньги (минус). */}
                   {(Number(r.ret) > 0 || Number(r.refund) > 0) && (
