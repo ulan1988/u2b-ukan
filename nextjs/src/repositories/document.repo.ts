@@ -122,6 +122,9 @@ export function listInvoices(orgId: string, type: string | string[]) {
       status: documents.status, operation: documents.operation, reviewed: documents.reviewed,
       contragentAccepted: documents.contragentAccepted, contragentId: documents.contragentId, contragent: contragents.name,
       sourceOrderId: documents.sourceOrderId,   // карточка-основание → из неё строится дерево ЗКП → ПРД
+      // Строки без цены (сумма 0): по такому товару себестоимость и прибыль посчитать нельзя —
+      // в списке накладная помечается знаком ⚠, чтобы головной вписал цену.
+      noPrice: sql<number>`(select count(*) from ${documentLines} dl where dl.document_id = ${documents.id} and dl.role = 'main' and coalesce(dl.amount,0) = 0)::int`,
       // Названия товаров документа — для поиска по номенклатуре.
       items: sql<string>`(select string_agg(p.name, ' | ') from ${documentLines} dl join ${products} p on p.id = dl.product_id where dl.document_id = ${documents.id})`,
       // Себестоимость ПРОДАЖИ = стоимость из СВЯЗАННЫХ приходных (doc_links, реально оплачено)

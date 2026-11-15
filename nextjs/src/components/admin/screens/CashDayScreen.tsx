@@ -2,14 +2,15 @@
 // Касса дня (десктоп-финанс): дневная сверка филиала — доходы по способам (нал/каспи/QR/долг),
 // проверка «оплаты+долг=продано», счета за день, остаток KASPI GOLD + перевод в банк,
 // расходы (ЗП/текущие через «Деньги»), производство в запас, закрытие смены. Орг — из селектора.
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { Fragment, useState, useCallback, useEffect, useRef } from 'react'
 import { COLORS } from '@/lib/colors'
 import { useLiveData } from '@/lib/live'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import ModalShell from '@/components/admin/accDocs/ModalShell'
+import InvoiceForm from '@/components/admin/InvoiceForm'
 import { payDebt } from '@/lib/api/orders'
 import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashTabelWage, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
-import { fmtTime } from '@/lib/adminFmt'
+import { fmtTime, fmtDMY } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
@@ -17,6 +18,9 @@ const m = (n: any) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
 export default function CashDayScreen({ orgId }: { orgId: string }) {
   const orgName = (useAdmin() as any)?.orgName || ''   // чьи счета — подпись в дропдаунах (не путать с головным)
   const [view, setView] = useState<'day' | 'month'>('day')
+  // Прибыль дня: раскрытая строка «⚠ без цены» (по платежу) и открытая приходная для правки цены.
+  const [noOpen, setNoOpen] = useState('')
+  const [openDocId, setOpenDocId] = useState<string | null>(null)
   const [date, setDate] = useState(todayStr())
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
@@ -553,14 +557,35 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       <b style={{ marginLeft: 'auto', color: '#2e8a5e' }}>прочие доходы {m(a.profit)} ₸</b>
                     </div>
                     {profit.lines.filter((l: any) => (l.accountId || 'none') === (a.accountId || 'none')).map((l: any) => (
-                      <div key={l.paymentId} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '2px 0' }}>
+                      <Fragment key={l.paymentId}>
+                      <div style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '2px 0' }}>
                         <span style={{ fontFamily: 'monospace' }}>{l.docNumber || l.cardId}</span>
                         {l.kind === 'return' && <span style={{ color: COLORS.primaryDark }}>возврат</span>}
-                        {l.nocost > 0 && <span style={{ color: COLORS.primaryDark }}>⚠ без цены</span>}
+                        {l.nocost > 0 && <button onClick={() => setNoOpen(k => k === l.paymentId ? '' : l.paymentId)}
+                          title="Показать, по каким товарам нет закупочной цены"
+                          style={{ border: 'none', background: '#ffe3dc', color: '#b03020', borderRadius: 20, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800 }}>⚠ без цены · {l.nocost}</button>}
                         <span style={{ marginLeft: 'auto' }}>{m(l.paid)}</span>
                         <span style={{ width: 92, textAlign: 'right' }}>себест {m(l.cost)}</span>
                         <span style={{ width: 92, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>{m(l.profit)}</span>
                       </div>
+                      {noOpen === l.paymentId && (
+                        <div style={{ background: '#fff6f3', border: '1px solid #f3cfc5', borderRadius: 9, padding: '7px 10px', margin: '2px 0 6px' }}>
+                          <div style={{ fontSize: 11.5, color: '#8a4b3a', marginBottom: 4 }}>Нет закупочной цены по товарам — впишите цену в приходной, затем «Сформировать прибыль» заново:</div>
+                          {(l.noItems || []).map((it: any, k: number) => (
+                            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, padding: '2px 0' }}>
+                              <b style={{ color: COLORS.text }}>{it.name}</b>
+                              <span style={{ color: COLORS.textLight }}>{it.qty} шт</span>
+                              {it.docs.length === 0
+                                ? <span style={{ color: '#8a6f00' }}>приход без цены не найден — цена берётся из карточки товара (закуп)</span>
+                                : it.docs.map((dd: any) => (
+                                  <button key={dd.id} onClick={() => setOpenDocId(dd.id)} title="Открыть приходную и вписать цену"
+                                    style={{ border: `1.5px solid ${COLORS.border}`, background: COLORS.white, color: COLORS.primary, borderRadius: 7, padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>📄 {dd.number} · {fmtDMY(dd.date)}</button>
+                                ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      </Fragment>
                     ))}
                   </div>
                 ))}
@@ -579,7 +604,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           )}
         </div>
 
-        {/* 🎁 БОНУС ДНЯ — товар соседа («Сосед товар»): мимо склада, себестоимости нет,
+        {openDocId && <InvoiceForm id={openDocId} drawer onClose={() => setOpenDocId(null)} onSaved={() => { setOpenDocId(null); calcProfit() }} />}
+
+      {/* 🎁 БОНУС ДНЯ — товар соседа («Сосед товар»): мимо склада, себестоимости нет,
             бонус делится 50/50 с головным, деньги соседа возвращаются ему. */}
         {bonus && bonus.rows?.length > 0 && (
           <div style={{ ...card, marginBottom: 16 }}>

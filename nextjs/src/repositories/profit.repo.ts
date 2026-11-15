@@ -50,3 +50,25 @@ export const postedByPayment = (orgId: string, date: string) => sqlClient`
   from profit_rows where org_id = ${orgId} and date = ${date} and status = 'posted' and payment_id is not null
   group by payment_id
 ` as unknown as Promise<Array<any>>
+
+// Позиции дня БЕЗ закупочной цены: по ним себестоимость 0, прибыль завышена.
+// Кассиру и головному нужно знать не «накладная без цены», а ЧТО именно без цены.
+export const zeroCostLines = (docIds: string[]) => docIds.length ? sqlClient`
+  select d.id::text "docId", d.number "docNumber",
+    coalesce(nullif(dl.name,''), pr.name) name, dl.product_id::text "productId", dl.qty::float qty
+  from documents d join document_lines dl on dl.document_id = d.id
+  left join order_positions op on op.id = dl.source_pos_id
+  left join products pr on pr.id = dl.product_id
+  where d.id = any(${docIds}) and dl.role = 'main'
+    and coalesce(nullif(op.cost_price,0), pr.price_in, 0) = 0
+  order by name
+` as unknown as Promise<Array<any>> : Promise.resolve([] as any[])
+
+// Приходные ЭТОЙ орг, где товар пришёл без цены (сумма строки 0) — туда головной впишет закуп.
+export const zeroPricePurchases = (orgId: string, productIds: string[]) => productIds.length ? sqlClient`
+  select dl.product_id::text "productId", d.id::text id, d.number, d.date::text date
+  from documents d join document_lines dl on dl.document_id = d.id
+  where d.org_id = ${orgId} and d.type = 'purchase' and d.status <> 'cancelled'
+    and dl.product_id = any(${productIds}) and coalesce(dl.amount,0) = 0
+  order by d.date desc
+` as unknown as Promise<Array<any>> : Promise.resolve([] as any[])

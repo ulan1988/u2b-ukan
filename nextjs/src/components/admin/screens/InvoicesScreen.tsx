@@ -118,9 +118,13 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
               <tbody>
                 {filteredDocs.map(d => {
                   const notReviewed = d.status !== 'cancelled' && !d.reviewed
+                  // В накладной есть строки без цены (сумма 0): себестоимость по этому товару
+                  // посчитать нечем — прибыль магазина по нему выходит завышенной.
+                  const noPrice = d.status !== 'cancelled' && Number((d as any).noPrice || 0) > 0
                   return (
-                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', background: d.transit ? '#fff4ea' : notReviewed ? '#fff8e1' : 'transparent' }} title={d.transit ? 'Сквозная — товар мимо склада' : notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
-                    <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}</td>
+                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', background: noPrice ? '#fdeeea' : d.transit ? '#fff4ea' : notReviewed ? '#fff8e1' : 'transparent' }} title={noPrice ? 'В накладной есть строки без цены — впишите цену, иначе себестоимость и прибыль считаются неверно' : d.transit ? 'Сквозная — товар мимо склада' : notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
+                    <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}
+                      {noPrice && <span title={`${(d as any).noPrice} строк(и) без цены — откройте и впишите`} style={{ fontSize: 11, fontWeight: 800, color: '#b03020', background: '#ffe3dc', padding: '1px 7px', borderRadius: 20, marginLeft: 4, whiteSpace: 'nowrap' }}>⚠ без цены · {(d as any).noPrice}</span>}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{fmtDMY(d.date)}</td>
                     <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
                     {/* Приход: заказчик (для кого закупали). Расход: поставщик (у кого этот товар куплен). */}

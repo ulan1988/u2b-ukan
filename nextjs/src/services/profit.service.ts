@@ -18,6 +18,8 @@ export interface ProfitLine {
   kind: 'sale' | 'return'; contragent: string
   accountId: string | null; accountName: string
   paid: number; docTotal: number; docCost: number; nocost: number
+  // Позиции без закупочной цены и приходные, где её нужно вписать (⚠ в экране).
+  noItems?: { name: string; qty: number; productId: string | null; docs: { id: string; number: string; date: string }[] }[]
   cost: number; profit: number
 }
 
@@ -51,7 +53,25 @@ export async function profitDay(orgId: string, date: string) {
   const totals = lines.reduce((s, l) => ({
     paid: r2(s.paid + l.paid), cost: r2(s.cost + l.cost), profit: r2(s.profit + l.profit),
   }), { paid: 0, cost: 0, profit: 0 })
+  // Что именно без цены: товары строки + приходные, в которых их завели без суммы.
   const nocostLines = lines.filter(l => l.nocost > 0)
+  if (nocostLines.length) {
+    const zl = await repo.zeroCostLines(nocostLines.map(l => l.docId))
+    const pids = Array.from(new Set(zl.map((z: any) => z.productId).filter(Boolean))) as string[]
+    const src = await repo.zeroPricePurchases(orgId, pids)
+    const byProd = new Map<string, any[]>()
+    for (const r of src) {
+      const arr = byProd.get(r.productId) || []
+      if (!arr.some(x => x.id === r.id)) arr.push({ id: r.id, number: r.number, date: r.date })
+      byProd.set(r.productId, arr)
+    }
+    for (const l of nocostLines) {
+      l.noItems = zl.filter((z: any) => z.docId === l.docId).map((z: any) => ({
+        name: z.name || '—', qty: num(z.qty), productId: z.productId || null,
+        docs: (z.productId ? byProd.get(z.productId) : []) || [],
+      }))
+    }
+  }
   return {
     date, lines, byAccount: Array.from(byAcc.values()), totals,
     posted: posted.length > 0,
