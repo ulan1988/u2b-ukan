@@ -8,6 +8,7 @@ import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDateTime } from '@/lib/adminFmt'
 import { RalDot, extractRal } from '@/lib/ral'
 import { docChain } from '@/lib/api/docs'
+import InvoiceForm from '@/components/admin/InvoiceForm'
 
 const COLW = 240, ROWH = 92, NW = 190, NH = 54
 // Компактная цепочка: узлы ниже и ближе друг к другу (граф «Путь» остаётся на своих размерах).
@@ -39,6 +40,8 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
   const CNW = cw > 1100 ? 230 : 176
   const CCOLW = Math.max(250, Math.min(520, (cw - 14 - CNW - 10) / 2))
   const [selCh, setSelCh] = useState<string | null>(null)
+  // Накладная узла, открытая шторкой справа (двойной клик по узлу цепочки).
+  const [openDoc, setOpenDoc] = useState<string | null>(null)
   const [selP, setSelP] = useState<number | null>(null)
 
   useEffect(() => { docChain(docId).then((d: any) => { setData(d); const cur = (d?.nodes || []).find((n: any) => n.state === 'current'); setSelP(cur ? cur.id : (d?.nodes?.[0]?.id ?? null)); setSelCh(null); if (!(d?.chain?.nodes || []).length) setTab('path') }) }, [docId])
@@ -180,7 +183,9 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                       {chEdges.map((e, i) => ({ e, i })).sort((x, y) => (selCh ? Number(chEdgeOn.has(x.i)) - Number(chEdgeOn.has(y.i)) : 0)).map(({ e, i }) => { const a = chNodes.find(n => n.id === e.from), b = chNodes.find(n => n.id === e.to); if (!a || !b) return null; const pa = chPos(a), pb = chPos(b); const on = !selCh || chEdgeOn.has(i); const col = !selCh ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : on ? (prodColor[a.kind === 'product' ? a.id : b.id] || '#7a3aaa') : '#c9d0d8'; return <path key={i} d={chPaths[i] || ''} fill="none" stroke={col} strokeLinecap="round" strokeLinejoin="round" strokeWidth={selCh ? (on ? 3.4 : 1.2) : 2} opacity={on ? 0.95 : 0.6} style={{ transition: 'stroke .15s, opacity .15s' }} /> })}
                     </svg>
                     {chNodes.map(n => { const p = chPos(n), c = KIND[n.kind], on = chComp.has(n.id), isSel = n.id === selCh; return (
-                      <div key={n.id} onClick={e => { e.stopPropagation(); setSelCh(selCh === n.id ? null : n.id) }} title={n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: CNW, height: CNH, borderRadius: 10, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', transition: 'opacity .15s, border-color .15s' }}>
+                      <div key={n.id} onClick={e => { e.stopPropagation(); setSelCh(selCh === n.id ? null : n.id) }}
+                        onDoubleClick={e => { e.stopPropagation(); const d = (n.docs || [])[0]; if (d) { setSelCh(n.id); setOpenDoc(d.id) } else setSelCh(n.id) }}
+                        title={(n.docs || []).length ? `${n.label} · двойной клик — открыть ${n.docs[0].number}` : n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: CNW, height: CNH, borderRadius: 10, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', transition: 'opacity .15s, border-color .15s' }}>
                         {n.kind === 'product' && <RalDot code={extractRal(n.label)} size={12} />}
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: c.line, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: CNW - 28, lineHeight: 1.2 }}>{n.label}</div>
@@ -213,6 +218,19 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                 <div style={{ fontWeight: 700, fontSize: 15, color: KIND[chSel.kind].line, marginBottom: 4 }}>{chSel.label}</div>
                 {chSel.sub && <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>{chSel.sub}</div>}
                 <div style={{ fontSize: 12.5, color: '#3a4048', marginTop: 8 }}>Связано узлов в цепочке: <b>{chComp.size}</b></div>
+                {/* Накладные узла: клик открывает документ шторкой справа (двойной клик по узлу — первую). */}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, color: '#8b94a0', marginBottom: 5 }}>НАКЛАДНЫЕ</div>
+                  {((chSel.docs || []).length === 0)
+                    ? <div style={{ fontSize: 12.5, color: '#8b94a0' }}>нет проведённых документов</div>
+                    : (chSel.docs || []).map((d: any) => (
+                      <button key={d.id} onClick={() => setOpenDoc(d.id)} title="Открыть накладную"
+                        style={{ display: 'block', width: '100%', textAlign: 'left', border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 8, padding: '6px 9px', marginBottom: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.primary, fontFamily: "'JetBrains Mono', monospace" }}>📄 {d.number}</div>
+                        <div style={{ fontSize: 11, color: '#8b94a0' }}>{d.type === 'purchase' ? 'приход' : d.type === 'return_in' ? 'возврат' : 'расход'} · {String(d.date || '').split('-').reverse().join('.')}{d.contragent ? ' · ' + d.contragent : ''}</div>
+                      </button>
+                    ))}
+                </div>
                 <div style={{ fontSize: 12, color: '#8b94a0', marginTop: 12, lineHeight: 1.5 }}>Клик по любому узлу подсвечивает его цепочку: поставщик → товар → заказчик.</div>
               </>
             ) : <div style={{ color: COLORS.textMuted, fontSize: 14 }}>Выберите узел цепочки</div>)
@@ -230,7 +248,8 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
           </div>
         </div>
 
-        <div style={{ padding: '10px 18px', borderTop: '1px solid #eef0f3', fontSize: 12.5, color: '#8b94a0' }}>{tab === 'chain' ? 'Цепочка: нажми на поставщика/товар/заказчика — подсветится связанный путь. Через Центр-Склад.' : 'Путь документа. Нажми на этап — подсветится путь до него.'}</div>
+        {openDoc && <InvoiceForm id={openDoc} drawer onClose={() => setOpenDoc(null)} />}
+        <div style={{ padding: '10px 18px', borderTop: '1px solid #eef0f3', fontSize: 12.5, color: '#8b94a0' }}>{tab === 'chain' ? 'Цепочка: клик — подсветить путь, двойной клик — открыть накладную узла. Через Центр-Склад.' : 'Путь документа. Нажми на этап — подсветится путь до него.'}</div>
       </div>
     </div>
   )

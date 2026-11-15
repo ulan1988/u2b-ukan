@@ -896,6 +896,30 @@ export async function cardRoute(cardId: string) {
     }
   } catch { /* цепочка не критична */ }
 
+  // НАКЛАДНЫЕ УЗЛА: из «Связок» нужно попадать в сам документ (двойной клик по узлу).
+  // Товар → документы, где эта позиция стала строкой; поставщик/заказчик → документы
+  // их товаров (свои, по контрагенту, идут первыми).
+  try {
+    const { sqlClient } = await import('../lib/db')
+    const posIds = positions.map((p: any) => p.id)
+    const docRows: any[] = posIds.length ? await sqlClient`
+      select dl.source_pos_id pid, d.id::text id, d.number, d.date::text date, d.type, coalesce(c.name,'') contragent
+      from document_lines dl join documents d on d.id = dl.document_id
+      left join contragents c on c.id = d.contragent_id
+      where dl.source_pos_id = any(${posIds}) and d.status <> 'cancelled'
+      order by d.date, d.created_at` as unknown as any[] : []
+    const byPos: Record<string, any[]> = {}
+    for (const r of docRows) (byPos[r.pid] ||= []).push({ id: r.id, number: r.number, date: r.date, type: r.type, contragent: r.contragent })
+    positions.forEach((p: any, i: number) => { const n = chNodes.find((x: any) => x.id === 'T' + i); if (n) (n as any).docs = byPos[p.id] || [] })
+    for (const n of chNodes.filter((x: any) => x.kind !== 'product')) {
+      const tids = chEdges.filter((e: any) => e.from === n.id || e.to === n.id).map((e: any) => (e.from === n.id ? e.to : e.from))
+      const seen = new Set<string>(); const list: any[] = []
+      for (const t of tids) for (const d of (((chNodes.find((x: any) => x.id === t) as any)?.docs) || [])) if (!seen.has(d.id)) { seen.add(d.id); list.push(d) }
+      const mine = list.filter(d => (d.contragent || '').trim().toLowerCase() === String(n.label || '').trim().toLowerCase())
+      ;(n as any).docs = [...mine, ...list.filter(d => !mine.includes(d))]
+    }
+  } catch { /* документы узлов не критичны */ }
+
   return {
     document: { no: o.id, kind: purchase ? 'Закуп' : 'Продажа', title: (positions[0]?.name1c || positions[0]?.oral || '') + (positions.length > 1 ? ` +${positions.length - 1}` : ''), sum, contragent: o.fromName || '—', supplier: (!purchase && isTransit(supplier)) ? (chNodes.filter(n => n.kind === 'supplier').map(n => n.label).join(', ') || supplier) : supplier, buyer, status: o.status },
     nodes, edges,
