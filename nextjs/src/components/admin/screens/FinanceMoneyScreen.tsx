@@ -159,8 +159,10 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const draftRows = rows.filter(r => r.status !== 'posted' && hasAmt(r))
     const res: any = await finPost(date, draftRows.map(r => payload(r)))
     const err = res?.error || res?.data?.error
-    if (err) { show('⚠ ' + err); await load(); return }   // касса ушла бы в минус — не провели ничего
-    show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}`); await load()
+    if (err) { show('⚠ ' + err); await load(); return }
+    // Минус по счёту не запрещаем — проводим и просто предупреждаем (решение владельца).
+    const warn = res?.data?.warn
+    show(`✓ Проведено строк: ${res?.data?.posted || 0}, платежей: ${res?.data?.payments || 0}` + (warn ? ` · ⚠ ${warn}` : '')); await load()
   }
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }

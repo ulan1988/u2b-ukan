@@ -246,9 +246,17 @@ export async function masterShift(orgId: string, date: string) {
   // Прочие доходы дня (деньги без товара, 50/50) — отдельной строкой в журнале чеков.
   const { listOtherIncome } = await import('./cashier.service')
   const otherIncome = await listOtherIncome(orgId, date)
+  // ДОЛЯ МАГАЗИНА В ПРОЧЕМ ДОХОДЕ — источник ЗП (чеки пробиты по себестоимости, вся наценка
+  // идёт прочим доходом: каспи/QR 60% головному + 40% нам, нал пополам). Пул «ЗП+40%»
+  // берётся отсюда, иначе он всегда 0 — маржи по чекам нет.
+  const oiShareRow = (await sqlClient`
+    select coalesce(sum(price - hq_share),0)::float ours, coalesce(sum(price),0)::float total
+    from bonus_rows where org_id = ${orgId} and date = ${date} and product_name like 'Прочий доход%'
+  ` as unknown as Array<any>)[0] || { ours: 0, total: 0 }
+  const otherShare = { ours: num(oiShareRow.ours), total: num(oiShareRow.total) }
 
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,

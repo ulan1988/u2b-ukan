@@ -163,9 +163,9 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
   const rows = await fin.rowsForDay(orgId, date)
   const drafts = rows.filter(r => r.status !== 'posted' && sumAmounts(r.amounts) !== 0)
 
-  // Касса не уходит в минус: по каждому счёту остаток (проведённое + платежи ≤ дата) плюс
-  // то, что собираемся провести, должен быть ≥ 0. Минус хотя бы на одном счёте — не проводим
-  // НИЧЕГО (иначе половина строк пройдёт, и день придётся разбирать вручную).
+  // МИНУС ПО СЧЁТУ НЕ ЗАПРЕЩАЕМ (решение владельца: «пусть минус, выровняю постепенно»):
+  // расход проводится всегда, а про нехватку на счёте просто ПРЕДУПРЕЖДАЕМ в ответе (warn).
+  // Раньше это была блокировка, и день с пустым счётом нельзя было закрыть.
   const [accts, bal] = await Promise.all([fin.accounts(orgId), fin.balanceByAccount(orgId, date)])
   const left: Record<string, number> = {}
   for (const b of bal) left[b.id] = b.amt
@@ -177,16 +177,16 @@ export async function postFinDay(orgId: string, date: string, actorId?: string) 
   const short = Object.keys(spend)
     .map(id => ({ id, after: (left[id] || 0) + spend[id] }))
     .filter(x => x.after < -0.005)
+  let warn: string | undefined
   if (short.length) {
     const name = (id: string) => accts.find(a => a.id === id)?.name || 'счёт'
-    const text = short.map(x => `${name(x.id)}: на счёте ${Math.round(left[x.id] || 0).toLocaleString('ru-RU')} ₸, списывается ${Math.round(Math.abs(spend[x.id])).toLocaleString('ru-RU')} ₸ — не хватает ${Math.round(Math.abs(x.after)).toLocaleString('ru-RU')} ₸`).join('; ')
-    return { ok: false as const, error: `Нельзя провести: касса уйдёт в минус. ${text}`, posted: 0, payments: 0 }
+    warn = 'Счёт уходит в минус: ' + short.map(x => `${name(x.id)} → ${Math.round(x.after).toLocaleString('ru-RU')} ₸`).join('; ')
   }
 
   let paid = 0
   for (const r of drafts) paid += await applyRowPayments(orgId, r, date, actorId)
   await fin.setPosted(drafts.map(r => r.id))
-  return { ok: true, posted: drafts.length, payments: paid }
+  return { ok: true, posted: drafts.length, payments: paid, warn }
 }
 
 // ── Отмена проведения строки листа (сторно) ──────────────────────────────────

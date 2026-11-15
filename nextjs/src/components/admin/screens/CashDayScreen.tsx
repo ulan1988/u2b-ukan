@@ -168,7 +168,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   async function close() {
     if (!confirm('Закрыть смену? Расходы будут проведены.')) return
     const r: any = await cashCloseShift(orgId, date)
-    if (r.ok) { toast('✓ Смена закрыта'); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    if (r.ok) { toast(r.warn ? '✓ Смена закрыта · ⚠ ' + r.warn : '✓ Смена закрыта'); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
 
   const inc = data?.income || { cash: 0, kaspi: 0, qr: 0, debt: 0, total: 0 }
@@ -759,7 +759,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   const marked = (data.staff || []).filter((u: any) => wsel[u.id])
                   const N = marked.length
                   const noPct = data?.kind === 'producer_seller'   // листогиб: процентов нет, только оклад
-                  const pool = Math.round((Number(data.report?.margin) || 0) * 0.4)   // ориентир: доступный пул 40% маржи
+                  // Пул ЗП: 40% маржи по чекам ПЛЮС доля магазина в прочем доходе дня — чеки
+                  // пробиваются по себестоимости, и заработок приходит именно прочим доходом.
+                  const pool = Math.round((Number(data.report?.margin) || 0) * 0.4 + (Number((data as any).otherShare?.ours) || 0))
                   const paidSet = new Set<string>((data?.zpPaidWho || []).map((x: string) => String(x).trim().toLowerCase()))
                   const rows = marked.map((u: any) => { const oklad = wageDay(u); const bonus = bonusEff(u.id)
                     return { u, oklad, bonus, total: oklad + bonus, paid: paidSet.has(String(u.name || '').trim().toLowerCase()) } })
@@ -770,7 +772,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     <div style={{ marginTop: 12, background: '#eef7f1', borderRadius: 10, padding: '10px 12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, fontWeight: 800, color: '#2e8a5e', letterSpacing: '.03em' }}>{noPct ? '💵 ВЫДАТЬ ЗП' : '💵 ВЫДАТЬ ЗП+40%'}</span>
-                        {!noPct && <span style={{ fontSize: 11.5, color: COLORS.textLight }}>пул 40% маржи: <b style={{ color: '#2e8a5e' }}>{m(pool)}</b> · роздано {m(bonusSum)}</span>}
+                        {!noPct && <span style={{ fontSize: 11.5, color: COLORS.textLight }}>пул на ЗП: <b style={{ color: '#2e8a5e' }}>{m(pool)}</b> · роздано {m(bonusSum)}</span>}
                       </div>
                       {/* Счета списания: птичка + сумма с каждого (пусто = остаток). Если на одном
                           счёте денег не хватает — отмечаем второй и делим сумму между ними. */}
