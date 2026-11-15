@@ -66,7 +66,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     // Нет РУЧНЫХ строк (авто-слоты не считаем) + есть избранное → подставляем статьи из избранного.
     // Иначе шаблон статей (Доходы/Оплата поставщикам/займы…) не появлялся из-за авто-строк.
     if ((d?.rows || []).filter((r: any) => !r.auto).length === 0 && (d?.favorites || []).length > 0) { await finFavApply(date); d = await finDay(date) }
-    setData(d); setRows((d?.rows || []).map(mapRow)); setFavs(d?.favorites || [])
+    setData(d); setRows(applyAutoOrder((d?.rows || []).map(mapRow))); setFavs(d?.favorites || [])
     didInit.current = true; setLoading(false)
   }, [date])
   useEffect(() => { load() }, [load])
@@ -127,9 +127,29 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   }
   async function removeRow(i: number) { const r = rows[i]; if (r.id) await finDeleteRow(r.id); await load() }
   // Поменять местами строки (вверх/вниз) + сохранить порядок.
+  // ПОРЯДОК АВТО-СТРОК (слоты инкассаций/оплат): их нет в fin_rows, sort_order писать некуда,
+  // поэтому порядок помним на устройстве — владелец раскладывает строки как ему удобно.
+  const autoOrderKey = `u2b_fin_autoorder_${orgId}`
+  function applyAutoOrder(list: any[]) {
+    try {
+      const raw = localStorage.getItem(autoOrderKey); if (!raw) return list
+      const ord: string[] = JSON.parse(raw); if (!Array.isArray(ord) || !ord.length) return list
+      const auto = list.filter(r => r.auto), rest = list.filter(r => !r.auto)
+      const at = (r: any) => { const k = ord.indexOf(String(r.id)); return k < 0 ? 1e6 : k }
+      auto.sort((a, b) => at(a) - at(b))
+      return [...auto, ...rest]
+    } catch { return list }
+  }
+  function saveAutoOrder(list: any[]) {
+    try { localStorage.setItem(autoOrderKey, JSON.stringify(list.filter(r => r.auto).map(r => String(r.id)))) } catch { /* приватный режим */ }
+  }
   async function moveRow(i: number, dir: number) {
     const j = i + dir; if (j < 0 || j >= rows.length) return
+    // Авто-строки двигаются только среди авто-строк, ручные — среди ручных: иначе порядок
+    // групп (сначала слоты, потом лист) развалится при следующей загрузке.
+    if (!!rows[i].auto !== !!rows[j].auto) return
     const nr = [...rows];[nr[i], nr[j]] = [nr[j], nr[i]]; setRows(nr)
+    if (nr[i].auto) { saveAutoOrder(nr); return }
     const ids = nr.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); if (ids.length) await finReorder(ids)
   }
   async function revertRow(r: any) { r.status = 'draft'; setRows(p => [...p]); await persist(r); await load() }
@@ -333,7 +353,12 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                             <button onClick={() => reviewPay(r, false)} title="Отказать — платёж будет удалён" style={{ border: '1.5px solid #e6c7c3', background: '#fff', color: '#b3261e', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>✕ Отказать</button>
                           </div>
                         : <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                            <span title="Авто-строка: инкассация/оплата из кабинета (не редактируется)" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span>
+                            {/* Перестановка слотов: порядок запоминается на этом устройстве. */}
+                            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+                              <button onClick={() => moveRow(i, -1)} title="Выше" style={arrowBtn}>▲</button>
+                              <button onClick={() => moveRow(i, 1)} title="Ниже" style={arrowBtn}>▼</button>
+                            </div>
+                            <span title="Авто-строка: инкассация/оплата из кабинета; сумму можно вписать руками" style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: '#eef2ff', color: '#4f46e5' }}>🔗 авто</span>
                             {r.payId && !/^Касса /i.test(String(r.comment || '')) && (
                               confirmUndo === r.payId
                                 ? <button onClick={() => undoRow(r)} title="Подтвердить отмену" style={{ border: 'none', background: '#b3261e', color: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Точно отменить?</button>
