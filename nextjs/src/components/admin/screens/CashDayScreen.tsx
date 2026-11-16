@@ -42,6 +42,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [debtFor, setDebtFor] = useState<any>(null)
   const [debtsOpen, setDebtsOpen] = useState(false)   // долги свёрнуты по умолчанию — разворачиваем кнопкой
   const [remitAmt, setRemitAmt] = useState<Record<string, string>>({})   // инкассация: сумма по каждому счёту филиала
+  const [remitTo, setRemitTo] = useState<Record<string, string>>({})     // …и счёт-получатель у головного (по умолчанию — по правилу)
   const [debtAcc, setDebtAcc] = useState('')
   const [debtSum, setDebtSum] = useState('')
   const [debtBusy, setDebtBusy] = useState(false)
@@ -145,7 +146,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   // Сдача головному ПО КАЖДОМУ СЧЁТУ: сколько ушло с Осн.кассы, с KASPI GOLD, с банка —
   // у каждого свой счёт-получатель у головного (каспи-голд не валится в банк).
   async function doRemit() {
-    const splits = Object.entries(remitAmt).map(([accountId, v]) => ({ accountId, amount: Number(String(v).replace(',', '.')) || 0 })).filter(x => x.amount > 0)
+    const splits = Object.entries(remitAmt).map(([accountId, v]) => ({ accountId, amount: Number(String(v).replace(',', '.')) || 0, toAccountId: remitTo[accountId] || undefined })).filter(x => x.amount > 0)
     if (!splits.length) { toast('Укажите сумму хотя бы по одному счёту'); return }
     const r: any = await cashRemit(orgId, 0, 0, date, splits)
     if (r.ok) { toast(`🏢 Сдано головному: ${m(splits.reduce((s, x) => s + x.amount, 0))} ₸`); setRemitAmt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
@@ -719,7 +720,12 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                         <input value={remitAmt[a.id] || ''} inputMode="decimal" placeholder="0"
                           onChange={e => setRemitAmt(x => ({ ...x, [a.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
                           style={{ display: 'block', width: '100%', padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                        <div style={{ fontSize: 11, color: '#2a5aaa', marginTop: 5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`у головного: ${a.to || '—'}`}>↓ ГО · {a.to || '—'}</div>
+                        <div style={{ fontSize: 10.5, color: '#2a5aaa', marginTop: 6, fontWeight: 700 }}>↓ У ГОЛОВНОГО</div>
+                        <select value={remitTo[a.id] || a.toId || ''} onChange={e => setRemitTo(x => ({ ...x, [a.id]: e.target.value }))}
+                          title="Куда лягут деньги у головного"
+                          style={{ width: '100%', marginTop: 2, padding: '6px 8px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: '#2a5aaa', fontWeight: 700 }}>
+                          {(data.remit?.hqAccounts || []).map((h: any) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                        </select>
                       </div>
                     ))}
                   </div>
