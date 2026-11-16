@@ -235,13 +235,16 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
 
   // Создать накладную (та же форма, только вместо «Сохранить» — проведение).
   async function createDoc() {
-    if (!f.contragentId) { setFlash('⚠ Выберите ' + (newType === 'sale' ? 'покупателя' : 'поставщика')); return }
+    // Долг к головному: покупатель — мост «Адал Строй 2», выбирать его не нужно.
+    const buyerId = (newType === 'sale' && debtHq && hqBridgeId) ? hqBridgeId : f.contragentId
+    if (!buyerId) { setFlash('⚠ Выберите ' + (newType === 'sale' ? 'покупателя' : 'поставщика')); return }
+    if (newType === 'sale' && debtHq && !recId) { setFlash('⚠ Укажите заказчика — кому головной отгрузит товар'); return }
     if (!whId) { setFlash('⚠ Нет склада'); return }
     const good = lines.filter(l => (Number(l.qty) || 0) > 0)
     if (!good.length) { setFlash('⚠ Добавьте хотя бы одну позицию'); return }
     setBusy(true)
     const body: any = {
-      orgId: newOrgId, contragentId: f.contragentId, warehouseId: whId, date: f.date || undefined,
+      orgId: newOrgId, contragentId: buyerId, warehouseId: whId, date: f.date || undefined,
       number: f.number || undefined, comment: f.comment || '', inNumber: f.inNumber || undefined, inDate: f.inDate || undefined,
       operation: f.operation, paidSum: Number(f.paidSum) || 0,
       [discMode === 'pct' ? 'discountPct' : 'discountSum']: Number(discMode === 'pct' ? f.discountPct : f.discountSum) || 0,
@@ -332,8 +335,12 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
               <div><label style={lbl}>{isSale ? 'ДАТА (день отгрузки)' : 'ДАТА (день приёмки)'}</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
               {/* Контрагент можно переназначить — иногда при проведении выбирают не того. */}
               <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label>
-                <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => { setF({ ...f, contragentId: c?.id || '' }); repriceFor(c?.id || '') }}
-                  placeholder={isSale ? '— выберите покупателя —' : '— выберите поставщика —'} />
+                {creating && isSale && debtHq && hqBridgeId
+                  ? <div style={{ ...inp, background: '#f3eeff', border: '1.5px solid #e0d4f2', color: '#7a3aaa', fontWeight: 700, display: 'flex', alignItems: 'center' }}>
+                      🏢 {cagList.find((c: any) => c.id === hqBridgeId)?.name || 'Адал Строй 2'} <span style={{ fontWeight: 500, color: '#9b8fb5', marginLeft: 6 }}>· долг к головному</span>
+                    </div>
+                  : <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => { setF({ ...f, contragentId: c?.id || '' }); repriceFor(c?.id || '') }}
+                  placeholder={isSale ? '— выберите покупателя —' : '— выберите поставщика —'} />}
               </div>
               {!isSale && !creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
               {isSale && !creating && (
