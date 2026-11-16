@@ -212,6 +212,8 @@ export async function getDocument(id: string) {
     const orderRepo = await import('../repositories/order.repo')
     const [ord] = await orderRepo.getOrder(doc.sourceOrderId)
     if (ord?.contactId) { const [c] = await docRepo.contragentById(ord.contactId); customer = c?.name || null }
+    // Ручная расходная «в долг головному»: заказчика берём из цепочки у ГО.
+    if (!customer) customer = (await docRepo.chainRecipient(id)) || null
   } else if (doc.type === 'purchase') {
     // Приходная: заказчик(и) = клиенты продаж, под которые закуплено (doc_links).
     customer = (await docRepo.linkedSaleCustomers(id)) || null

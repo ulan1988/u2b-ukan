@@ -163,7 +163,10 @@ export function listInvoices(orgId: string, type: string | string[]) {
       supplier: sql<string>`(case when ${documents.type} = 'sale' then coalesce(
         (select case when oo.kind <> 'hq' then
             case when exists (select 1 from ${contragents} cb join organizations ob on ob.id = cb.org_ref_id and ob.kind = 'hq' where cb.id = ${documents.contragentId})
-                   and coalesce((select o9.contact_id from ${orders} o9 where o9.id = ${documents.sourceOrderId}), ${documents.contragentId}) <> ${documents.contragentId}
+                   and (coalesce((select o9.contact_id from ${orders} o9 where o9.id = ${documents.sourceOrderId}), ${documents.contragentId}) <> ${documents.contragentId}
+                     -- ручная накладная «в долг головному»: заказчика видно по цепочке у ГО
+                     or exists (select 1 from ${documents} m2 join ${documents} s2 on s2.origin_doc_id = m2.id and s2.type = 'sale' and s2.status <> 'cancelled'
+                                 where m2.parent_doc_id = ${documents.id} and m2.status <> 'cancelled'))
                  then (select oh.name from organizations oh where oh.kind = 'hq' order by oh.created_at limit 1)
                  else oo.name
             end end
@@ -177,7 +180,13 @@ export function listInvoices(orgId: string, type: string | string[]) {
         (select w2.name from ${warehouses} w2 where w2.id = ${documents.warehouseId})
       ) end)`,
       customer: sql<string>`(case when ${documents.type} = 'sale'
-        then (select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId})
+        then coalesce(
+          (select c2.name from ${orders} o2 join ${contragents} c2 on c2.id = o2.contact_id where o2.id = ${documents.sourceOrderId}),
+          -- Ручная расходная «в долг головному»: заказчик виден у ГО — зеркало → отгрузка получателю.
+          (select c6.name from ${documents} m join ${documents} sh on sh.origin_doc_id = m.id and sh.type = 'sale' and sh.status <> 'cancelled'
+             join ${contragents} c6 on c6.id = sh.contragent_id
+           where m.parent_doc_id = ${documents.id} and m.status <> 'cancelled' limit 1)
+        )
         else coalesce(
           (select c5.name from ${orders} o5 join ${contragents} c5 on c5.id = o5.contact_id where o5.id = ${documents.sourceOrderId} and o5.kind = 'sale'),
           (select string_agg(distinct c3.name, ', ') from doc_links dl join documents sd on sd.id = dl.sale_doc_id join contragents c3 on c3.id = sd.contragent_id where dl.purchase_doc_id = ${documents.id}),
@@ -291,6 +300,19 @@ export async function saleSupplierFallback(docId: string): Promise<string> {
       (select w.name from warehouses w where w.id = d.warehouse_id)
     ) as name
     from documents d where d.id = ${docId}` as unknown as Array<{ name: string | null }>
+  return r[0]?.name || ''
+}
+
+// ЗАКАЗЧИК ИЗ ЦЕПОЧКИ «ДОЛГ К ГОЛОВНОМУ»: расходная филиала выписана на мост, а кому товар
+// ушёл на самом деле — видно у головного: зеркало (parent_doc_id) → его отгрузка получателю
+// (origin_doc_id). Без этого в накладной филиала заказчик «терялся».
+export async function chainRecipient(docId: string): Promise<string> {
+  const r = await sqlClient`
+    select c.name from documents m
+    join documents s on s.origin_doc_id = m.id and s.type = 'sale' and s.status <> 'cancelled'
+    join contragents c on c.id = s.contragent_id
+    where m.parent_doc_id = ${docId} and m.status <> 'cancelled' limit 1
+  ` as unknown as Array<{ name: string }>
   return r[0]?.name || ''
 }
 

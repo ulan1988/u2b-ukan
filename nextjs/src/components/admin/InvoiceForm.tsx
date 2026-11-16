@@ -342,7 +342,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                   : <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => { setF({ ...f, contragentId: c?.id || '' }); repriceFor(c?.id || '') }}
                   placeholder={isSale ? '— выберите покупателя —' : '— выберите поставщика —'} />}
               </div>
-              {!isSale && !creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
+              {!creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (кому товар / на кого долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
               {isSale && !creating && (
                 <div><label style={lbl}>ПОСТАВЩИК (у кого взят товар)</label>
                   <ContragentPicker contragents={cagList} value={f.supplierId || ''} onPick={(c: any) => setF({ ...f, supplierId: c?.id || '' })}
