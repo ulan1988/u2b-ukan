@@ -10,7 +10,7 @@ import NomPicker, { PickedPos } from '@/components/NomPicker'
 import { extractRal, RalDot, ralOrdered } from '@/lib/ral'
 import { overlayFor, NomItem } from '@/lib/nomTree'
 import { updatePosition, addPosition, deletePosition, orderAction, createClientOrder, produceStock, updateCard } from '@/lib/api/orders'
-import { listProjectsByClient } from '@/lib/api/refs'
+import { listProjectsByClient, autoPrices } from '@/lib/api/refs'
 import { itemName } from '@/lib/itemName'
 import { lineAmount, isIzdelie, priceForClient as priceByType } from '@/lib/lineAmount'
 
@@ -22,8 +22,8 @@ function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
 }
 
-export default function ProductionWorkbench({ order, uid, contragents, products, specProjects = [], onDone, showMsg, stockMode = false, editOnly = false, onCancel }: {
-  order: any | null; uid?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void; stockMode?: boolean
+export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, products, specProjects = [], onDone, showMsg, stockMode = false, editOnly = false, onCancel }: {
+  order: any | null; uid?: string; hqOrgId?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void; stockMode?: boolean
   editOnly?: boolean; onCancel?: () => void   // editOnly: правка карточки на месте (этап не меняется), без «В работу»
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
@@ -31,8 +31,41 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
   const [specProjectId, setSpecProjectId] = useState(order?.specProjectId || '')   // проект заказчика (spec_projects)
   const [clientProjs, setClientProjs] = useState<any[]>([])              // проекты выбранного заказчика
   const [priceCm, setPriceCm] = useState('')
+  // ДОЛГ К ГОЛОВНОМУ: заказ уходит в долг Адал Строй 2, поэтому и цены берём ЕГО —
+  // по прайсу головного и типу цены заказчика (розница/опт/спец), а не по прайсу филиала.
+  const [debtHq, setDebtHq] = useState(!!order?.pendingDebtHead)
+  const [hqPrices, setHqPrices] = useState<Record<string, number>>({})
   useEffect(() => { if (cid) listProjectsByClient(cid).then(setClientProjs).catch(() => setClientProjs([])); else setClientProjs([]) }, [cid])
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
+  // Цены головного под этого заказчика: по id товара и по имени (у изделия — цена за см).
+  const askHqPrices = async (rs: Row[]) => {
+    if (!debtHq || !hqOrgId || !cid) return {} as Record<string, number>
+    const ids = Array.from(new Set(rs.map(r => r.productId).filter(Boolean))) as string[]
+    const names = Array.from(new Set(rs.map(r => rowName(r)).filter(Boolean)))
+    if (!ids.length && !names.length) return {} as Record<string, number>
+    try { const m: any = await autoPrices(ids, cid, names, hqOrgId); return (m && typeof m === 'object' ? m : {}) as Record<string, number> } catch { return {} as Record<string, number> }
+  }
+  // Включили «долг к головному» или сменили заказчика — переставляем цены по прайсу ГО.
+  useEffect(() => {
+    if (!debtHq || !hqOrgId || !cid) { setHqPrices({}); return }
+    setRows(rs => { askHqPrices(rs).then(m => {
+      if (!Object.keys(m).length) return
+      setHqPrices(m)
+      setRows(cur => cur.map(r => { const p = m[r.productId] ?? m[rowName(r)]; return p > 0 ? { ...r, price: String(p) } : r }))
+    }); return rs })
+  }, [debtHq, cid, hqOrgId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Добавили позицию — цену ей тоже берём у головного, уже вписанные руками не трогаем.
+  useEffect(() => {
+    if (!debtHq || !hqOrgId || !cid) return
+    const need = rows.filter(r => (r.productId || rowName(r)) && !(Number(r.price) > 0))
+    if (!need.length) return
+    askHqPrices(need).then(m => {
+      if (!Object.keys(m).length) return
+      setHqPrices(p => ({ ...p, ...m }))
+      setRows(rs => rs.map(r => { if (Number(r.price) > 0) return r; const p = m[r.productId] ?? m[rowName(r)]; return p > 0 ? { ...r, price: String(p) } : r }))
+    })
+  }, [rows.map(r => `${r.productId}|${rowName(r)}`).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false)
   const [catalog, setCatalog] = useState(false)
   const [qColor, setQColor] = useState('')                 // наружная моделька: выбранный цвет
@@ -161,7 +194,7 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         // Правка на месте: позиции/цены/кол-во + заказчик, комментарий, проект. Этап карточки (Принял/В работе/…) не меняем.
         await syncPositions(order.id)
         const LABEL = 'Прямой заказ на производство'
-        await updateCard(order.id, { contactId: cid || undefined, specProjectId: specProjectId || '', comment: note.trim() || (order.comment === LABEL ? LABEL : '') })
+        await updateCard(order.id, { contactId: cid || undefined, specProjectId: specProjectId || '', comment: note.trim() || (order.comment === LABEL ? LABEL : ''), debtHead: debtHq })
         showMsg('✓ Изменения сохранены')
       }
       else if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
@@ -169,6 +202,9 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
         const res: any = await createClientOrder({ comment: note.trim() || 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
+        // Долг к головному: помечаем карточку — расходная-цепочка проведётся на доставке логистом.
+        const newId = res?.data?.id || res?.id
+        if (debtHq && newId) { try { await updateCard(newId, { debtHead: true }) } catch { /* пометка не критична */ } }
         if (res?.ok && res.data?.id) {
           // Если приём не прошёл — карточка осталась с пустым prod_phase. Она видна во вкладке
           // «Заказы на производство» (leg=1), мастер примет её вручную; молчать нельзя.
@@ -201,6 +237,15 @@ export default function ProductionWorkbench({ order, uid, contragents, products,
             <ContragentPicker contragents={contragents} value={cid} onPick={(c: any) => { setCid(c.id); setSpecProjectId(''); const pt = c.priceType || 'retail'; setRows(rs => rs.map(r => { const pr = r.productId ? priceForClient(products.find((x: any) => x.id === r.productId), pt) : 0; return pr > 0 ? { ...r, price: String(pr) } : r })) }} placeholder="— выберите заказчика —" />
           </div>
           {needCustomer && !cid && <div style={{ fontSize: 11, color: '#c1121c', marginTop: 3 }}>Обязательно — без заказчика карточку не создать</div>}
+          {/* Долг к головному: цены считаются по прайсу Адал Строй 2 под тип цены заказчика. */}
+          {hqOrgId && (
+            <button type="button" onClick={() => setDebtHq(v => !v)}
+              title="Заказ уходит в долг головному: цена берётся из прайса Адал Строй 2 по типу цены заказчика"
+              style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 7, border: `1.5px solid ${debtHq ? '#7a3aaa' : '#e6e2dc'}`, background: debtHq ? '#f3eeff' : '#fff', color: debtHq ? '#7a3aaa' : '#5f5952', borderRadius: 9, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}>
+              <span style={{ width: 16, height: 16, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff', background: debtHq ? '#7a3aaa' : 'transparent', boxShadow: `inset 0 0 0 2px ${debtHq ? '#7a3aaa' : '#cfc8bf'}` }}>{debtHq ? '✓' : ''}</span>
+              🏢 Долг к головному{debtHq && <span style={{ fontWeight: 500, color: '#8a7fa8' }}>· цены Адал Строй 2</span>}
+            </button>
+          )}
         </div>
         {/* Проекты заказчика — появляются при выборе клиента, если у него есть проекты */}
         {cid && clientProjs.length > 0 && (

@@ -103,5 +103,7 @@ export const archiveEmployee = (id: string) => send(`/api/employees?id=${id}`, '
 export const saveItemPrice = (name: string, price: number, priceType?: string) => post('/api/pricing', { name, price, priceType })
 // Копировать цены с цвета-источника на другие цвета (подгруппы) той же категории.
 export const copyColorPrices = (b: { orgId?: string; sourceSub: string; targetSubs: string[]; cols: { priceIn?: boolean; retail?: boolean; opt?: boolean; spec?: boolean } }) => post('/api/pricing/copy-color', b)
-export const autoPrices = (productIds: string[], contragentId?: string, names?: string[]) =>
-  getObj(`/api/pricing?productIds=${productIds.join(',')}${names && names.length ? `&names=${encodeURIComponent(names.join('|'))}` : ''}${contragentId ? `&contragentId=${contragentId}` : ''}`, {})
+// orgId — чьи цены продажи брать (по умолчанию орг сессии). Нужен прямому заказу филиала:
+// при «долге к головному» цена считается так, как ГОЛОВНОЙ продаёт этому заказчику.
+export const autoPrices = (productIds: string[], contragentId?: string, names?: string[], orgId?: string) =>
+  getObj(`/api/pricing?productIds=${productIds.join(',')}${names && names.length ? `&names=${encodeURIComponent(names.join('|'))}` : ''}${contragentId ? `&contragentId=${contragentId}` : ''}${orgId ? `&orgId=${orgId}` : ''}`, {})

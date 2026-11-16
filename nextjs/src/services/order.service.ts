@@ -705,6 +705,9 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
   if (patch.transit !== undefined) set.transit = !!patch.transit
   if (patch.transitAgent !== undefined) set.transitAgent = String(patch.transitAgent || '')
   if (patch.payment !== undefined) set.payment = patch.payment || ''
+  // Долг к головному: карточка помечается, расходная-цепочка проведётся на доставке логистом
+  // (см. [[debt-to-head-on-delivery]]). Цены в такой карточке — по прайсу головного.
+  if (patch.debtHead !== undefined) { set.pendingDebtHead = !!patch.debtHead; if (patch.debtHead) set.payment = 'Долг' }
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)
   await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })
   // Оповещение об изменении карточки: комментарий / срок (в чат + логисту).
