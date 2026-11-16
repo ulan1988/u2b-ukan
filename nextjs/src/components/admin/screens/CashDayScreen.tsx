@@ -41,6 +41,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   // Погашение долга прямо из блока «ДОЛГИ»: счёт + сумма, деньги приходят сегодняшним днём.
   const [debtFor, setDebtFor] = useState<any>(null)
   const [debtsOpen, setDebtsOpen] = useState(false)   // долги свёрнуты по умолчанию — разворачиваем кнопкой
+  const [remitAmt, setRemitAmt] = useState<Record<string, string>>({})   // инкассация: сумма по каждому счёту филиала
   const [debtAcc, setDebtAcc] = useState('')
   const [debtSum, setDebtSum] = useState('')
   const [debtBusy, setDebtBusy] = useState(false)
@@ -141,11 +142,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     if (r.ok) { toast(`✓ Выдано ${data?.kind === 'producer_seller' ? 'ЗП' : 'ЗП+40%'}: ${r.count} чел · ${m(r.total)}`); setWbonus({}); setWamt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Инкассация Нипа → головной СО СПЛИТОМ: нал → ГО Осн.касса, каспи(GOLD) → ГО Банковский счёт.
+  // Сдача головному ПО КАЖДОМУ СЧЁТУ: сколько ушло с Осн.кассы, с KASPI GOLD, с банка —
+  // у каждого свой счёт-получатель у головного (каспи-голд не валится в банк).
   async function doRemit() {
-    const cash = Number((incas.cash || '').replace(',', '.')) || 0, kaspi = Number((incas.kaspi || '').replace(',', '.')) || 0
-    if (cash + kaspi <= 0) { toast('Укажите сумму (нал и/или каспи)'); return }
-    const r: any = await cashRemit(orgId, cash, kaspi, date)
-    if (r.ok) { toast(`🏢 Сдано головному: нал ${m(cash)} · каспи ${m(kaspi)}`); setIncas({ cash: '', kaspi: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+    const splits = Object.entries(remitAmt).map(([accountId, v]) => ({ accountId, amount: Number(String(v).replace(',', '.')) || 0 })).filter(x => x.amount > 0)
+    if (!splits.length) { toast('Укажите сумму хотя бы по одному счёту'); return }
+    const r: any = await cashRemit(orgId, 0, 0, date, splits)
+    if (r.ok) { toast(`🏢 Сдано головному: ${m(splits.reduce((s, x) => s + x.amount, 0))} ₸`); setRemitAmt({}); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Отмена сдачи за день: убирает обе проводки пары (у филиала и у головного).
   async function undoRemit() {
@@ -707,11 +710,20 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     <span style={{ fontSize: 12, color: COLORS.textLight }}>Наличка {m(L.masterCash)} · KASPI GOLD {m(L.masterGold)}</span>
                     <b style={{ fontSize: 16, marginLeft: 'auto', color: '#8a6f00' }}>{m(L.master)} ₸</b>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <label style={{ flex: 1, fontSize: 10.5, color: COLORS.textLight }}>нал → ГО Осн.касса<input value={incas.cash} inputMode="decimal" onChange={e => setIncas(x => ({ ...x, cash: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ display: 'block', width: '100%', marginTop: 3, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} /></label>
-                    <label style={{ flex: 1, fontSize: 10.5, color: COLORS.textLight }}>каспи GOLD → ГО Банк<input value={incas.kaspi} inputMode="decimal" onChange={e => setIncas(x => ({ ...x, kaspi: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="0" style={{ display: 'block', width: '100%', marginTop: 3, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} /></label>
+                  {/* По счёту на колонку: сверху СВОЙ счёт, снизу — куда уйдёт у головного. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(150px, 1fr))`, gap: 8, marginTop: 10 }}>
+                    {(data.remit?.map || data.accounts || []).map((a: any) => (
+                      <div key={a.id} style={{ border: `1.5px solid ${COLORS.border}`, borderRadius: 9, padding: '8px 9px', background: '#fff' }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
+                        <div style={{ fontSize: 11, color: COLORS.textLight, marginBottom: 5 }}>остаток {m((data.remit?.accounts || []).find((x: any) => x.id === a.id)?.end || 0)} ₸</div>
+                        <input value={remitAmt[a.id] || ''} inputMode="decimal" placeholder="0"
+                          onChange={e => setRemitAmt(x => ({ ...x, [a.id]: e.target.value.replace(/[^0-9.,]/g, '') }))}
+                          style={{ display: 'block', width: '100%', padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                        <div style={{ fontSize: 11, color: '#2a5aaa', marginTop: 5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`у головного: ${a.to || '—'}`}>↓ ГО · {a.to || '—'}</div>
+                      </div>
+                    ))}
                   </div>
-                  <button onClick={doRemit} style={{ marginTop: 8, width: '100%', border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Сдать головному ↓ (нал → касса · каспи → банк)</button>
+                  <button onClick={doRemit} style={{ marginTop: 8, width: '100%', border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Сдать головному ↓ (каждый счёт — на свой)</button>
                   <button onClick={undoRemit} style={{ marginTop: 6, width: '100%', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: '#b03020', borderRadius: 7, padding: '8px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить сдачу за этот день</button>
                 </div>
                 {/* Возврат ОТ головного: денег на ЗП не хватает — ГО возвращает на счёт филиала (1 действие) */}

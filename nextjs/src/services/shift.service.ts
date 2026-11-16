@@ -187,8 +187,12 @@ export async function masterShift(orgId: string, date: string) {
   for (const a of (fd.accounts || [])) {
     remitAccounts.push({ id: a.id, name: a.name, day: (payMap[a.id] || 0) + (finMap[a.id] || 0), remit: remitByAcc[a.name] || 0, end: await balAt(a.id) })
   }
+  // Куда уйдёт инкассация с каждого счёта филиала (экран рисует «сверху свой счёт — снизу счёт ГО»).
+  const hqAccList = bridge ? (await sqlClient`select ca.id::text id, ca.name from cash_accounts ca
+    join organizations o on o.id=ca.org_id and o.kind='hq' where ca.archived=false order by ca.sort_order, ca.name` as unknown as Array<any>) : []
+  const remitMap = (fd.accounts || []).map((a: any) => ({ id: a.id, name: a.name, to: hqAccountFor(a.name, hqAccList)?.name || '—' }))
   const remit = { rows: remitRows.map((r: any) => ({ direction: r.direction, amount: num(r.amount), account: r.acc, comment: r.comment })),
-    out: remitOut, in: remitIn, accounts: remitAccounts }
+    out: remitOut, in: remitIn, accounts: remitAccounts, map: remitMap }
 
   // Сотрудники филиала (справочник) — для табеля, с дневным окладом.
   const staff = await sqlClient`select id::text, name, position, daily_wage::float "dailyWage" from employees where org_id=${orgId} and archived=false order by name` as unknown as Array<any>
@@ -624,9 +628,23 @@ export async function incassate(orgId: string, cash: number, kaspi: number, date
 //  • каспи GOLD (KASPI GOLD Нипы) → Банковский счёт ГОЛОВНОГО
 // У Нипы деньги уходят (payments out на мост → гасят долг перед головным), у головного приходят
 // (payments in от обратного моста на его счета). Так деньги делятся между счетами Нипа↔головной.
-export async function remitToHQ(orgId: string, cash: number, kaspi: number, date: string, actor?: Session | null) {
+// КУДА ЛОЖИТСЯ ИНКАССАЦИЯ: у каждого счёта филиала СВОЙ счёт у головного.
+// Наличка → «Наличные» (Осн.касса) ГО · KASPI GOLD → «Каспи голд» ГО (не в банк!) ·
+// Банковский счёт (QR) → «Банковский счет» ГО. Раньше каспи и QR валились в один банк,
+// и у головного каспи-голд не пополнялся.
+export function hqAccountFor(branchAccName: string, hqAccounts: Array<any>) {
+  const n = (branchAccName || '').toLowerCase()
+  if (/gold|голд/.test(n)) return findAcc(hqAccounts, 'голд') || findAcc(hqAccounts, 'gold') || findAcc(hqAccounts, 'Банковский счет')
+  if (/банк|qr|кюар/.test(n)) return findAcc(hqAccounts, 'Банковский счет')
+  return findAcc(hqAccounts, 'Наличные') || findAcc(hqAccounts, 'Основная касса')
+}
+
+// splits — сумма по КАЖДОМУ счёту филиала (новая форма «3 счёта сверху → 3 снизу»).
+// cash/kaspi оставлены для старых вызовов (нал + каспи GOLD).
+export async function remitToHQ(orgId: string, cash: number, kaspi: number, date: string, actor?: Session | null, splits?: Array<{ accountId: string; amount: number }>) {
   const c = Math.max(0, num(cash)), k = Math.max(0, num(kaspi))
-  if (c + k <= 0) return { ok: false as const, error: 'Укажите сумму (нал и/или каспи)' }
+  const splitSum = (splits || []).reduce((s, x) => s + Math.max(0, num(x.amount)), 0)
+  if (c + k + splitSum <= 0) return { ok: false as const, error: 'Укажите сумму' }
   const bridge = (await sqlClient`select c.id::text id, o.id::text hq from contragents c join organizations o on o.id=c.org_ref_id and o.kind='hq' where c.org_id=${orgId} limit 1` as unknown as Array<any>)[0]
   if (!bridge) return { ok: false as const, error: 'Не найден контрагент-головной' }
   const hqId = bridge.hq as string
@@ -640,13 +658,27 @@ export async function remitToHQ(orgId: string, cash: number, kaspi: number, date
   const mk = (oid: string, cid: string, dir: string, amt: number, accId: string | null, comment: string) =>
     payRepo.insertPayment({ id: randomUUID(), orgId: oid, contragentId: cid, direction: dir, amount: String(amt), date, cashAccountId: accId || null, comment } as any)
   const who = actor?.name ? ' · ' + actor.name : ''
-  // Нипа: уходит нал (с Осн.кассы) и каспи (с KASPI GOLD) → мост (гасит долг перед головным).
+  // НОВАЯ ФОРМА: по строке на каждый счёт филиала, получатель — его счёт у головного.
+  const list = (splits || []).map(x => ({ accountId: String(x.accountId || ''), amount: Math.max(0, num(x.amount)) })).filter(x => x.accountId && x.amount > 0)
+  if (list.length) {
+    let total = 0
+    for (const sp of list) {
+      const from = npAcc.find((a: any) => String(a.id) === sp.accountId)
+      if (!from) continue
+      const to = hqAccountFor(from.name, hqAcc)
+      await mk(orgId, bridge.id, 'out', sp.amount, from.id, `Инкассация головному · ${from.name}${who}`)
+      if (back) await mk(hqId, back.id, 'in', sp.amount, to?.id || null, `Инкассация от «${orgId}» · ${from.name} → ${to?.name || '—'}`)
+      total += sp.amount
+    }
+    if (!total) return { ok: false as const, error: 'Укажите сумму хотя бы по одному счёту' }
+    return { ok: true as const, total }
+  }
+  // Старая форма (нал + каспи GOLD) — оставлена для совместимости.
   if (c > 0) await mk(orgId, bridge.id, 'out', c, npCash?.id || null, `Инкассация головному · нал${who}`)
   if (k > 0) await mk(orgId, bridge.id, 'out', k, npGold?.id || null, `Инкассация головному · каспи${who}`)
-  // Головной: приходит нал → Осн.касса ГО, каспи → Банковский счёт ГО (от обратного моста).
   if (back) {
-    if (c > 0) await mk(hqId, back.id, 'in', c, hqCash?.id || null, `Инкассация от «${orgId}» · нал`)
-    if (k > 0) await mk(hqId, back.id, 'in', k, hqBank?.id || null, `Инкассация от «${orgId}» · каспи`)
+    if (c > 0) await mk(hqId, back.id, 'in', c, (hqAccountFor(npCash?.name || 'Наличные', hqAcc))?.id || hqCash?.id || null, `Инкассация от «${orgId}» · нал`)
+    if (k > 0) await mk(hqId, back.id, 'in', k, (hqAccountFor(npGold?.name || 'KASPI GOLD', hqAcc))?.id || hqBank?.id || null, `Инкассация от «${orgId}» · каспи`)
   }
   return { ok: true as const, cash: c, kaspi: k }
 }

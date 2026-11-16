@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   let res: any
   if (b?.action === 'close') res = await closeMasterShift(t.orgId, date, s)
   else if (b?.action === 'incassate') res = await incassate(t.orgId, Number(b?.cash), Number(b?.kaspi), date, s)
-  else if (b?.action === 'remit') res = await remitToHQ(t.orgId, Number(b?.cash), Number(b?.kaspi), date, s)
+  else if (b?.action === 'remit') res = await remitToHQ(t.orgId, Number(b?.cash), Number(b?.kaspi), date, s, Array.isArray(b?.splits) ? b.splits : undefined)
   else if (b?.action === 'remitUndo') res = await remitUndo(t.orgId, date, s)
   else if (b?.action === 'returnHQ') {
     const p = returnFromHqSchema.safeParse(b)

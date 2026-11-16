@@ -24,7 +24,8 @@ export const finExpSave = (items: any[]) => post('/api/finance/money', { action:
 export const cashDay = (orgId: string, date: string) => getObj<any>(`/api/finance/shift?orgId=${orgId}&date=${date}`, null as any)
 export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; who?: string; article?: string; expenseArticleId?: string; accountId: string; amount: number; date: string }) => post('/api/finance/shift', { orgId, ...body })
 export const cashIncassate = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'incassate', cash, kaspi, date })
-export const cashRemit = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'remit', cash, kaspi, date })
+export const cashRemit = (orgId: string, cash: number, kaspi: number, date: string, splits?: Array<{ accountId: string; amount: number }>) =>
+  post('/api/finance/shift', { orgId, action: 'remit', cash, kaspi, date, splits })
 export const cashRemitUndo = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'remitUndo', date })
 // Оплата из кабинета клиента: принять / отказать (отказ удаляет платёж).
 export const reviewClientPayment = (paymentId: string, accept: boolean) => post('/api/finance/money', { action: 'payReview', paymentId, accept })
