@@ -70,7 +70,6 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const [seq, setSeq] = useState(1)               // локальная нумерация новых строк
   // ЗАМЕНА ТОВАРА в проведённой строке (ошиблись номенклатурой при приёмке).
   const [swapFor, setSwapFor] = useState('')      // id строки, у которой открыт выбор товара
-  const [swapQ, setSwapQ] = useState('')
   const origProd = useRef<Record<string, string>>({})   // товар строки на момент загрузки
 
   function reload() { return getDocument(id as string).then((d: any) => {
@@ -221,27 +220,43 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     })
     setSeq(x => x + 1); setQ('')
   }
+  // Выбранная в каталоге позиция → товар номенклатуры (общий подбор для «добавить» и «заменить»).
+  // Собрали с цветом («J - профиль дерево»), а в номенклатуре товар БЕЗ ЦВЕТА («J - профиль»):
+  // по правилу цвет в номенклатуру не оседает. Берём базовый товар, чьё имя — начало собранного
+  // (самый длинный), цвет остаётся в имени строки накладной.
+  function resolvePicked(it: PickedPos) {
+    const raw = it.name1c || it.oral || ''
+    const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm: it.widthCm != null ? String(it.widthCm) : '' }) : raw
+    const norm = (x: string) => String(x || '').trim().toLowerCase().replace(/ё/g, 'е')
+    let pr = products.find((x: any) => norm(x.name) === norm(nm)) || ((it as any).productId ? products.find((x: any) => x.id === (it as any).productId) : null)
+    if (!pr) {
+      pr = products.filter((x: any) => norm(x.name).length >= 3 && norm(nm).startsWith(norm(x.name) + ' '))
+        .sort((a: any, b: any) => norm(b.name).length - norm(a.name).length)[0]
+    }
+    return { pr, nm }
+  }
   // Единый каталог кассы: папки → цвет → см → кол-во.
   function addFromCatalog(items: PickedPos[]) {
     const skipped: string[] = []
     for (const it of items) {
-      const raw = it.name1c || it.oral || ''
-      const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm: it.widthCm != null ? String(it.widthCm) : '' }) : raw
-      const norm = (x: string) => String(x || '').trim().toLowerCase().replace(/ё/g, 'е')
-      let pr = products.find((x: any) => norm(x.name) === norm(nm)) || ((it as any).productId ? products.find((x: any) => x.id === (it as any).productId) : null)
-      // Собрали с цветом («J - профиль дерево»), а в номенклатуре товар БЕЗ ЦВЕТА («J - профиль»):
-      // по правилу цвет в номенклатуру не оседает. Берём базовый товар, чьё имя — начало
-      // собранного (самый длинный), цвет остаётся в имени строки накладной.
-      if (!pr) {
-        const base = products.filter((x: any) => norm(x.name).length >= 3 && norm(nm).startsWith(norm(x.name) + ' '))
-          .sort((a: any, b: any) => norm(b.name).length - norm(a.name).length)[0]
-        if (base) pr = base
-      }
+      const { pr, nm } = resolvePicked(it)
       if (!pr) { skipped.push(nm); continue }
       addProduct(pr, Number(it.qty) || 1, it.widthCm != null ? Number(it.widthCm) : null, nm)
     }
     setShowCatalog(false)
     if (skipped.length) { setFlash('⚠ Нет в номенклатуре: ' + skipped.join(', ')); setTimeout(() => setFlash(''), 4000) }
+  }
+  // ЗАМЕНА ТОВАРА в строке — через ТОТ ЖЕ каталог, что и добавление (ошиблись номенклатурой).
+  function swapFromCatalog(items: PickedPos[]) {
+    const it = items[0]; const lid = swapFor
+    setSwapFor('')
+    if (!it || !lid) return
+    const { pr, nm } = resolvePicked(it)
+    if (!pr) { setFlash('⚠ Нет в номенклатуре: ' + nm); setTimeout(() => setFlash(''), 4000); return }
+    const patch: any = { productId: pr.id, name: nm || pr.name }
+    if (it.widthCm != null) patch.widthCm = Number(it.widthCm)
+    if (Number(it.qty) > 0) patch.qty = Number(it.qty)
+    updLine(lid, patch)
   }
   // Ошибочный документ — стереть совсем: движения склада, FIFO-связи, оплаты и зеркала
   // филиалов уходят вместе с ним, карточка-заявка отвязывается и снова ждёт проведения.
@@ -367,6 +382,8 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
         : { width: 980, maxWidth: '100%', maxHeight: 'calc(100vh - 64px)', overflowY: 'auto', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)' }}>
         {!data ? <div style={{ padding: 48, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
           <>
+            {/* Замена товара строки — тот же каталог, что и при добавлении. */}
+            {swapFor && <StoreCatalog orgId={data?.doc?.orgId || newOrgId} onPick={swapFromCatalog} onClose={() => setSwapFor('')} />}
             {/* Шапка */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: '#fff', zIndex: 6 }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>{isSale ? 'Расходная накладная' : 'Приходная накладная'}</span>
@@ -538,24 +555,11 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                               <td style={{ padding: '6px 8px', fontWeight: 500, position: 'relative', minWidth: 190 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                   <span>{cleanNm(l.name)}</span>
-                                  {!creating && <button type="button" onClick={() => { setSwapFor(swapFor === l.id ? '' : l.id); setSwapQ('') }}
+                                  {!creating && <button type="button" onClick={() => setSwapFor(l.id)}
                                     title="Заменить товар — ошиблись номенклатурой. Склад, себестоимость и связанные накладные переставятся"
                                     style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#7a3aaa', fontSize: 13, lineHeight: 1, padding: 0 }}>✎</button>}
                                 </div>
                                 {(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}
-                                {swapFor === l.id && (
-                                  <div style={{ position: 'absolute', zIndex: 40, left: 8, top: '100%', width: 360, background: '#fff', border: '1.5px solid #e6e2dc', borderRadius: 10, boxShadow: '0 10px 26px rgba(0,0,0,.14)', padding: 8 }}>
-                                    <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginBottom: 6 }}>Заменить на другой товар:</div>
-                                    <input autoFocus value={swapQ} onChange={e => setSwapQ(e.target.value)} placeholder="поиск по словам…" style={{ ...inp, padding: '6px 8px' }} />
-                                    <div style={{ maxHeight: 230, overflowY: 'auto', marginTop: 6 }}>
-                                      {products.filter((pr: any) => pr.id !== l.productId && matchWords(swapQ, pr.name, pr.alias)).slice(0, 40).map((pr: any) => (
-                                        <div key={pr.id} onClick={() => { updLine(l.id, { productId: pr.id, name: pr.name }); setSwapFor('') }}
-                                          style={{ padding: '7px 8px', cursor: 'pointer', borderBottom: '1px solid #f3f1ee', fontSize: 13 }}>{cleanNm(pr.name)}</div>
-                                      ))}
-                                    </div>
-                                    <button type="button" onClick={() => setSwapFor('')} style={{ marginTop: 6, border: 'none', background: 'none', color: COLORS.textMuted, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>отмена</button>
-                                  </div>
-                                )}
                               </td>
                               <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>
                                 <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0"
