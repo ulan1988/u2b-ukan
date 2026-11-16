@@ -9,7 +9,7 @@ import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import StoreCatalog from '@/components/StoreCatalog'
 import type { PickedPos } from '@/components/NomPicker'
-import { lineAmount, isIzdelie } from '@/lib/lineAmount'
+import { lineAmount, isIzdelie, priceForClient as priceByType } from '@/lib/lineAmount'
 import ReturnModal from '@/components/admin/ReturnModal'
 import ContragentPicker from '@/components/ContragentPicker'
 import { fetchRefs } from '@/lib/api/refs'
@@ -164,8 +164,21 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const setAmountL = (lid: string, amount: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, amount: r2(amount), price: Number(x.qty) > 0 ? r2(amount / Number(x.qty)) : x.price } : x))
   const dropLine = (lid: string) => setLines(ls => ls.filter(x => x.id !== lid))
   // Цена по умолчанию: приход — закуп товара, расход — розница.
-  const priceOf = (pr: any) => (newType === 'purchase' ? Number(pr.priceIn) || 0 : Number(pr.priceRetail) || Number(pr.priceIn) || 0)
+  // Цена продажи — по ТИПУ ЦЕНЫ ПОКУПАТЕЛЯ (спец/опт/розница) из прайса своей орг: у моста
+  // «Адал Строй 2» стоит спец, значит при продаже головному подставляется спец-цена.
+  const buyerPT = (cags.find((c: any) => c.id === f.contragentId)?.priceType) || 'retail'
+  const priceOf = (pr: any) => (newType === 'purchase' ? Number(pr.priceIn) || 0 : (priceByType(pr, buyerPT) || Number(pr.priceRetail) || Number(pr.priceIn) || 0))
   // label — имя строки, если оно отличается от имени товара (комплектующее с цветом → базовый товар).
+  // Сменили покупателя при создании — цены строк переставляются под его тип цены.
+  function repriceFor(cid: string) {
+    const pt = (cags.find((c: any) => c.id === cid)?.priceType) || 'retail'
+    if (newType !== 'sale' || !creating) return
+    setLines(ls => ls.map(l => {
+      const pr = products.find((p: any) => p.id === l.productId); if (!pr) return l
+      const v = priceByType(pr, pt) || 0; if (!(v > 0)) return l
+      return { ...l, price: v, amount: r2(Number(l.qty) * v) }
+    }))
+  }
   function addProduct(pr: any, qty = 1, widthCm?: number | null, label?: string) {
     setLines(ls => {
       const i = ls.findIndex(x => x.productId === pr.id && String(x.widthCm || '') === String(widthCm || ''))
@@ -319,7 +332,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
               <div><label style={lbl}>{isSale ? 'ДАТА (день отгрузки)' : 'ДАТА (день приёмки)'}</label><input style={inp} type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
               {/* Контрагент можно переназначить — иногда при проведении выбирают не того. */}
               <div><label style={lbl}>{isSale ? 'ПОКУПАТЕЛЬ' : 'ПОСТАВЩИК'}</label>
-                <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => setF({ ...f, contragentId: c?.id || '' })}
+                <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => { setF({ ...f, contragentId: c?.id || '' }); repriceFor(c?.id || '') }}
                   placeholder={isSale ? '— выберите покупателя —' : '— выберите поставщика —'} />
               </div>
               {!isSale && !creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (для кого / долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}

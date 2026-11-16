@@ -38,8 +38,11 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
   useEffect(() => { if (cid) listProjectsByClient(cid).then(setClientProjs).catch(() => setClientProjs([])); else setClientProjs([]) }, [cid])
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
   // Цены головного под этого заказчика: по id товара и по имени (у изделия — цена за см).
+  // Заказчик — сам головной (мост)? Тогда это продажа ЕМУ: цены наши, по его типу цены
+  // (у моста «Адал Строй 2» стоит спец), прайс головного тут ни при чём.
+  const sellingToHq = !!contragents.find((c: any) => c.id === cid)?.orgRefId
   const askHqPrices = async (rs: Row[]) => {
-    if (!debtHq || !hqOrgId || !cid) return {} as Record<string, number>
+    if (!debtHq || !hqOrgId || !cid || sellingToHq) return {} as Record<string, number>
     const ids = Array.from(new Set(rs.map(r => r.productId).filter(Boolean))) as string[]
     const names = Array.from(new Set(rs.map(r => rowName(r)).filter(Boolean)))
     if (!ids.length && !names.length) return {} as Record<string, number>
