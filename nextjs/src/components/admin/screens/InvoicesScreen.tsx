@@ -114,7 +114,9 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         : (
           <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{(kind === 'in' ? ['Номер', 'Дата', 'Поставщик', 'Заказчик', 'Сумма', 'Статус'] : ['Номер', 'Дата', 'Покупатель', 'Поставщик', 'Себест.', 'Сумма', 'Статус']).map((h, i) => <th key={h} style={{ textAlign: i >= 4 ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
+              {/* Расход: движение трёхстороннее — «Накладная на» (на кого выписана),
+                  «Заказчик» (кому товар) и «Поставщик» (от кого он для заказчика). */}
+              <thead><tr style={{ color: COLORS.textMuted, fontSize: 11, background: '#faf8f6' }}>{(kind === 'in' ? ['Номер', 'Дата', 'Поставщик', 'Заказчик', 'Сумма', 'Статус'] : ['Номер', 'Дата', 'Накладная на', 'Заказчик', 'Поставщик', 'Себест.', 'Сумма', 'Статус']).map((h, i) => <th key={h} style={{ textAlign: (kind === 'in' ? i >= 4 : i >= 5) ? 'right' : 'left', padding: '8px 16px' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {filteredDocs.map(d => {
                   const notReviewed = d.status !== 'cancelled' && !d.reviewed
@@ -126,13 +128,10 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
                     <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}
                       {noPrice && <span title={`${(d as any).noPrice} строк(и) без цены — откройте и впишите`} style={{ fontSize: 11, fontWeight: 800, color: '#b03020', background: '#ffe3dc', padding: '1px 7px', borderRadius: 20, marginLeft: 4, whiteSpace: 'nowrap' }}>⚠ без цены · {(d as any).noPrice}</span>}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{fmtDMY(d.date)}</td>
-                    {/* ПОКУПАТЕЛЬ = кому назначен товар. У расходной в долг к головному
-                        накладная выписана на мост («Адал Строй 2»), а заказчик в карточке
-                        другой — показываем его, иначе строка выглядела «Адал Строй 2 → Адал Строй 2». */}
-                    <td style={{ padding: '8px 16px' }} title={kind === 'out' && d.customer && d.customer !== d.contragent ? `Накладная выписана на «${d.contragent}» (в долг головному)` : undefined}>
-                      {(kind === 'out' ? (d.customer || d.contragent) : d.contragent) || '—'}</td>
+                    <td style={{ padding: '8px 16px' }} title={kind === 'out' ? 'На кого выписана накладная: клиент (продали сами) или мост головного (в долг к нему)' : undefined}>{d.contragent || '—'}</td>
+                    {kind === 'out' && <td style={{ padding: '8px 16px' }} title="Заказчик: кому назначен товар">{d.customer || d.contragent || '—'}</td>}
                     {/* Приход: заказчик (для кого закупали). Расход: поставщик (у кого этот товар куплен). */}
-                    <td style={{ padding: '8px 16px' }} title={kind === 'in' ? 'Заказчик (конечный клиент) из карточки-основания — для кого / на кого долг' : 'Поставщик проданного товара — из связанного закупа'}>{(kind === 'in' ? d.customer : (d as any).supplier) || '—'}</td>
+                    <td style={{ padding: '8px 16px' }} title={kind === 'in' ? 'Заказчик (конечный клиент) из карточки-основания — для кого / на кого долг' : 'Поставщик для заказчика: головной, если продано в долг к нему, иначе сам филиал'}>{(kind === 'in' ? d.customer : (d as any).supplier) || '—'}</td>
                     {kind === 'out' && <td style={{ padding: '8px 16px', textAlign: 'right', color: COLORS.textMuted }} title="Себестоимость = Σ(кол-во × приходная цена)">{fmtMoney(Number(d.cost || 0))} ₸</td>}
                     <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(Number(d.total))} ₸</td>
                     <td style={{ padding: '8px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
