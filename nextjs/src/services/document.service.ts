@@ -239,32 +239,62 @@ export async function getDocument(id: string) {
 // (сквозная накладная) — update просто не находит строк, ничего не создаём.
 async function syncMovements(docId: string) {
   const { sqlClient } = await import('../lib/db')
-  const [d] = await sqlClient`select type from documents where id=${docId}` as unknown as Array<any>
-  if (!d) return
+  const [d] = await sqlClient`select type, org_id, warehouse_id, date::text as date from documents where id=${docId}` as unknown as Array<any>
+  if (!d || !d.warehouse_id) return
+  // Движений нет — накладная сквозная (товар мимо склада): ничего не создаём.
+  const [has] = await sqlClient`select count(*)::int n from stock_movements where document_id=${docId} and kind='move'` as unknown as Array<any>
+  if (!has || !has.n) return
   const sign = (d.type === 'sale' || d.type === 'return_out') ? -1 : 1
-  const rows = await sqlClient`select product_id, sum(qty)::float q from document_lines where document_id=${docId} group by product_id` as unknown as Array<any>
-  for (const r of rows) await sqlClient`update stock_movements set qty=${String(sign * r.q)} where document_id=${docId} and product_id=${r.product_id}`
+  const rows = await sqlClient`select product_id, sum(qty)::float q from document_lines where document_id=${docId} and role='main' group by product_id` as unknown as Array<any>
+  await sqlClient`delete from stock_movements where document_id=${docId} and kind='move'`
+  for (const r of rows) {
+    await sqlClient`insert into stock_movements (id, org_id, warehouse_id, product_id, qty, kind, document_id, date)
+      values (gen_random_uuid(), ${d.org_id}, ${d.warehouse_id}, ${r.product_id}, ${String(sign * r.q)}, 'move', ${docId}, ${d.date})`
+  }
+}
+
+// Смена товара в строке рвёт связки себестоимости (FIFO) по старому и новому товару —
+// иначе продажа осталась бы «покрыта» партией другого товара. Чистим, непокрытое уйдёт
+// в отчётах на закуп товара (price_in).
+async function dropStaleLinks(docId: string, productIds: string[]) {
+  if (!productIds.length) return
+  const { sqlClient } = await import('../lib/db')
+  for (const pid of productIds) {
+    await sqlClient`delete from doc_links where product_id=${pid} and (sale_doc_id=${docId} or purchase_doc_id=${docId})`
+  }
 }
 
 // Кол-во строки документа → кол-во позиции карточки-основания (отчёты по order_positions).
 async function syncCardPositions(docId: string) {
   const { sqlClient } = await import('../lib/db')
-  await sqlClient`update order_positions op set qty = dl.qty, updated_at = now()
-     from document_lines dl where dl.source_pos_id = op.id and dl.document_id = ${docId} and op.qty <> dl.qty`
+  await sqlClient`update order_positions op set qty = dl.qty, product_id = dl.product_id,
+       name1c = coalesce(dl.name, pr.name), oral = coalesce(dl.name, pr.name), updated_at = now()
+     from document_lines dl join products pr on pr.id = dl.product_id
+     where dl.source_pos_id = op.id and dl.document_id = ${docId}
+       and (op.qty <> dl.qty or op.product_id is distinct from dl.product_id)`
 }
 
 // 🁢 ДОМИНО КОЛИЧЕСТВА. Кол-во — это движение склада, поэтому новое кол-во идёт по ВСЕЙ
 // связанной цепочке: зеркальная накладная филиала (parent_doc_id) и отгрузка получателю
 // из приходной (origin_doc_id). У каждого звена СВОЯ цена — сумму пересчитываем по ней.
 // Если в звене несколько строк одного товара — не угадываем, пропускаем и пишем в ответ.
-async function applyQtyToChain(docId: string, qtyByProduct: Map<string, number>, actor?: { name?: string } | null) {
+async function applyQtyToChain(docId: string, qtyByProduct: Map<string, number>, swaps: Array<{ from: string; to: string }>, actor?: { name?: string } | null) {
   const { sqlClient } = await import('../lib/db')
   const moved: string[] = []; const skipped: string[] = []
   for (const ch of await chainDocs(docId)) {
     const [cd] = await sqlClient`select status from documents where id=${ch.id}` as unknown as Array<any>
     if (!cd || cd.status === 'cancelled') continue
-    const lines = await sqlClient`select id, product_id, qty::float q, price::float p, name, width_cm::float cm from document_lines where document_id=${ch.id}` as unknown as Array<any>
+    let lines = await sqlClient`select id, product_id, qty::float q, price::float p, name, width_cm::float cm from document_lines where document_id=${ch.id}` as unknown as Array<any>
     let changed = false
+    // Сначала замена товара (ошиблись номенклатурой) — потом кол-во уже по новому товару.
+    for (const sw of swaps) {
+      const same = lines.filter((l: any) => String(l.product_id) === String(sw.from))
+      if (same.length !== 1) { if (same.length) skipped.push(ch.number); continue }
+      await sqlClient`update document_lines set product_id=${sw.to}, name=null where id=${same[0].id}`
+      await dropStaleLinks(ch.id, [sw.from, sw.to])
+      changed = true
+    }
+    if (changed) lines = await sqlClient`select id, product_id, qty::float q, price::float p, name, width_cm::float cm from document_lines where document_id=${ch.id}` as unknown as Array<any>
     for (const [pid, qty] of Array.from(qtyByProduct.entries())) {
       const same = lines.filter((l: any) => String(l.product_id) === String(pid))
       if (!same.length) continue
@@ -297,6 +327,10 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
       const set: any = {}
       // КОЛ-ВО проведённой накладной: разрешено (ошиблись при приёмке). Склад, итог,
       // позиция карточки и вся цепочка пересчитываются ниже — см. applyQtyToChain.
+      // ТОВАР строки: ошиблись номенклатурой при приёмке. Склад, связки себестоимости,
+      // позиция карточки и цепочка переставляются ниже.
+      if (l.productId !== undefined && String(l.productId || '')) set.productId = String(l.productId)
+      if (l.name !== undefined) set.name = l.name ? String(l.name) : null
       if (l.qty !== undefined && Number(l.qty) > 0) set.qty = String(Number(l.qty))
       if (l.price !== undefined) set.price = String(Number(l.price) || 0)
       if (l.unit !== undefined) set.unit = l.unit
@@ -322,15 +356,28 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   // Кол-во изменилось → движения склада, позиции карточки и ЦЕПОЧКА (зеркало филиала,
   // отгрузка получателю) едут следом. Правило домино: одно кол-во валит все костяшки.
   const qtyChanged = new Map<string, number>()
+  const swaps: Array<{ from: string; to: string }> = []
+  {
+    // Смена товара в строке: собираем пары «было → стало» (для склада, связок и цепочки).
+    const wasP = new Map(before.map(l => [l.id, String((l as any).productId || '')]))
+    for (const ln of lines) {
+      const from = wasP.get(ln.id) || ''; const to = String((ln as any).productId || '')
+      if (from && to && from !== to) swaps.push({ from, to })
+    }
+  }
   {
     const wasQ = new Map(before.map(l => [l.id, Number(l.qty)]))
     const prodChanged = new Set<string>()
     for (const ln of lines) if (Math.abs(Number(ln.qty) - Number(wasQ.get(ln.id) ?? ln.qty)) > 0.0001) prodChanged.add(String((ln as any).productId))
-    if (prodChanged.size) {
-      for (const p of Array.from(prodChanged)) {
-        const sum = lines.filter(l => String((l as any).productId) === p).reduce((s, l) => s + Number(l.qty), 0)
-        qtyChanged.set(p, sum)
-      }
+    for (const p of Array.from(prodChanged)) {
+      const sum = lines.filter(l => String((l as any).productId) === p).reduce((s, l) => s + Number(l.qty), 0)
+      qtyChanged.set(p, sum)
+    }
+    if (swaps.length) {
+      await dropStaleLinks(id, Array.from(new Set(swaps.flatMap(s => [s.from, s.to]))))
+      for (const sw of swaps) { const sum = lines.filter(l => String((l as any).productId) === sw.to).reduce((s, l) => s + Number(l.qty), 0); qtyChanged.set(sw.to, sum) }
+    }
+    if (prodChanged.size || swaps.length) {
       await syncMovements(id)
       await syncCardPositions(id)
     }
@@ -358,7 +405,7 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   // Поставщик расходной (у кого взят товар). Пусто → очищаем, снова выводится из связей.
   if (patch.supplierId !== undefined) head.supplierId = patch.supplierId ? String(patch.supplierId) : null
   if (patch.reviewed !== undefined) head.reviewed = !!patch.reviewed
-  else if (qtyChanged.size) head.reviewed = false   // кол-во поехало — накладную надо перепроверить
+  else if (qtyChanged.size || swaps.length) head.reviewed = false   // кол-во/товар поехали — накладную надо перепроверить
   if (patch.comment !== undefined) head.comment = patch.comment
   if (patch.paidSum !== undefined) head.paidSum = String(Number(patch.paidSum) || 0)
   // Скидка: приоритет у процента (считаем сумму), иначе берём сумму (считаем процент).
@@ -377,7 +424,7 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   // ДОМИНО ДАТЫ: день накладной тянет за собой её движения склада И зеркальные накладные
   // филиалов. Головной перенёс документ задним числом — филиал должен приходовать тем же
   // днём, иначе остатки и отчёты двух орг разъедутся по дням.
-  const qtyMoved = qtyChanged.size ? await applyQtyToChain(id, qtyChanged, actor) : { moved: [] as string[], skipped: [] as string[] }
+  const qtyMoved = (qtyChanged.size || swaps.length) ? await applyQtyToChain(id, qtyChanged, swaps, actor) : { moved: [] as string[], skipped: [] as string[] }
   const dateMoved: string[] = []
   if (head.date && headBefore && String(head.date) !== String(headBefore.date).slice(0, 10)) {
     await docRepo.setMovementsDate(id, head.date)
@@ -395,6 +442,7 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   const was = new Map(before.map(l => [l.id, l]))
   for (const l of after) {
     const b = was.get(l.id); if (!b) { changes.push(`+ ${(l as any).name}`); continue }
+    if (String((b as any).productId || '') !== String((l as any).productId || '')) changes.push(`товар: ${(b as any).name} → ${(l as any).name}`)
     if (String(b.qty) !== String(l.qty)) changes.push(`${(l as any).name}: кол-во ${Number(b.qty)} → ${Number(l.qty)}`)
     if (String(b.price) !== String(l.price)) changes.push(`${(l as any).name}: цена ${Number(b.price)} → ${Number(l.price)}`)
   }

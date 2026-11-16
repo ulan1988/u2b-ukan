@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument } from '@/lib/api/docs'
@@ -68,6 +68,10 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const [q, setQ] = useState('')
   const [showCatalog, setShowCatalog] = useState(false)
   const [seq, setSeq] = useState(1)               // локальная нумерация новых строк
+  // ЗАМЕНА ТОВАРА в проведённой строке (ошиблись номенклатурой при приёмке).
+  const [swapFor, setSwapFor] = useState('')      // id строки, у которой открыт выбор товара
+  const [swapQ, setSwapQ] = useState('')
+  const origProd = useRef<Record<string, string>>({})   // товар строки на момент загрузки
 
   function reload() { return getDocument(id as string).then((d: any) => {
     if (!d) return
@@ -75,6 +79,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), contragentId: d.doc.contragentId || '', supplierId: d.doc.supplierId || '', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
     const mapped = (d.lines || []).map((l: any, i: number) => ({ ...l, price: Number(l.price), qty: Number(l.qty), block: l.block || '', sortOrder: l.sortOrder != null ? Number(l.sortOrder) : i }))
     setLines(mapped)
+    origProd.current = Object.fromEntries(mapped.map((l: any) => [l.id, String(l.productId || '')]))
     setBlocks(Array.from(new Set(mapped.map((l: any) => l.block).filter(Boolean))) as string[])
     const izd = mapped.find((l: any) => isIzdelie(l.name) && Number(l.price) > 0)   // цена за см (общая) — из первой изделия
     setPriceCm(izd ? String(Number(izd.price)) : '')
@@ -317,7 +322,12 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
       contragentId: f.contragentId || undefined, supplierId: f.supplierId ?? null,
-      lines: lines.map((l, i) => ({ id: l.id, qty: Number(l.qty) || 0, price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
+      lines: lines.map((l, i) => ({
+        id: l.id, qty: Number(l.qty) || 0, price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit, comment: l.comment,
+        block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i,
+        // товар шлём ТОЛЬКО если строку переставили на другую номенклатуру
+        ...(origProd.current[l.id] && origProd.current[l.id] !== String(l.productId || '') ? { productId: l.productId, name: l.name } : {}),
+      })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
     else patch.discountSum = Number(f.discountSum) || 0
@@ -525,7 +535,28 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                               style={{ borderTop: '1px solid #efece8', opacity: dragId === l.id ? 0.4 : 1, background: dragId === l.id ? '#f5eefc' : undefined }}>
                               <td style={{ padding: '6px 4px', color: '#c9c2b8', cursor: 'grab', textAlign: 'center' }} title="Перетащить">⠿</td>
                               <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : '' : ''}</td>
-                              <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
+                              <td style={{ padding: '6px 8px', fontWeight: 500, position: 'relative' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span>{cleanNm(l.name)}</span>
+                                  {!creating && <button type="button" onClick={() => { setSwapFor(swapFor === l.id ? '' : l.id); setSwapQ('') }}
+                                    title="Заменить товар — ошиблись номенклатурой. Склад, себестоимость и связанные накладные переставятся"
+                                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#7a3aaa', fontSize: 13, lineHeight: 1, padding: 0 }}>✎</button>}
+                                </div>
+                                {(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}
+                                {swapFor === l.id && (
+                                  <div style={{ position: 'absolute', zIndex: 40, left: 8, top: '100%', width: 360, background: '#fff', border: '1.5px solid #e6e2dc', borderRadius: 10, boxShadow: '0 10px 26px rgba(0,0,0,.14)', padding: 8 }}>
+                                    <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginBottom: 6 }}>Заменить на другой товар:</div>
+                                    <input autoFocus value={swapQ} onChange={e => setSwapQ(e.target.value)} placeholder="поиск по словам…" style={{ ...inp, padding: '6px 8px' }} />
+                                    <div style={{ maxHeight: 230, overflowY: 'auto', marginTop: 6 }}>
+                                      {products.filter((pr: any) => pr.id !== l.productId && matchWords(swapQ, pr.name, pr.alias)).slice(0, 40).map((pr: any) => (
+                                        <div key={pr.id} onClick={() => { updLine(l.id, { productId: pr.id, name: pr.name }); setSwapFor('') }}
+                                          style={{ padding: '7px 8px', cursor: 'pointer', borderBottom: '1px solid #f3f1ee', fontSize: 13 }}>{cleanNm(pr.name)}</div>
+                                      ))}
+                                    </div>
+                                    <button type="button" onClick={() => setSwapFor('')} style={{ marginTop: 6, border: 'none', background: 'none', color: COLORS.textMuted, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>отмена</button>
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>
                                 <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0"
                                   title={creating ? 'кол-во' : 'кол-во · при сохранении пересчитается склад, итог и связанные накладные'}
@@ -551,7 +582,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                 })}
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>{creating
                   ? 'Сумму строки можно вписать руками — цена пересчитается сама (накладная завода даётся суммами). Блоки — перетаскивай строки за ⠿.'
-                  : <>Кол-во и сумму строки можно править — сумму вписывай как в накладной поставщика, цена пересчитается назад (копейки не теряются). При сохранении едут склад, итог, позиция карточки и <b>связанные накладные</b> (зеркало филиала, отгрузка получателю). Склад менять нельзя. Ошибочную позицию можно убрать 🗑 (товар вернётся на склад). Блоки — перетаскивай строки за ⠿.</>}</div>
+                  : <>Можно править <b>товар</b> (✎ у названия — если ошиблись номенклатурой), кол-во и сумму (сумму вписывай как в накладной поставщика, цена пересчитается назад — копейки не теряются). При сохранении едут склад, связки себестоимости, итог, позиция карточки и <b>связанные накладные</b> (зеркало филиала, отгрузка получателю). Склад менять нельзя. Ошибочную позицию можно убрать 🗑 (товар вернётся на склад). Блоки — перетаскивай строки за ⠿.</>}</div>
               </div>
             ) : (
               <div style={{ padding: 20, background: '#faf8f6' }}>
