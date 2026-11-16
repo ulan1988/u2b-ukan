@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { COLORS } from '@/lib/colors'
-import { fmtMoney, fmtDate } from '@/lib/adminFmt'
+import { fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument } from '@/lib/api/docs'
 import { listProducts, autoPrices } from '@/lib/api/refs'
 import { finance } from '@/lib/api/finance'
@@ -19,6 +19,7 @@ import { fetchRefs } from '@/lib/api/refs'
 const cleanNm = (s: string) => String(s || '').replace(/(\d+)\.0+(\s*см)/gi, '$1$2')
 const cmOf = (l: any) => { const n = Number(l?.widthCm); return n > 0 ? String(n) : '' }
 const r2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100
+const r6 = (v: any) => Math.round((Number(v) || 0) * 1e6) / 1e6
 // Сумма строки: вписанная руками (накладная поставщика даётся суммами) или кол-во×цена.
 const amtOf = (l: any) => (l.amount != null && l.amount !== '' ? r2(l.amount) : lineAmount({ name: l.name, qty: Number(l.qty) || 0, price: Number(l.price) || 0, widthCm: l.widthCm }))
 const m2 = (v: number) => (Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -182,8 +183,12 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     : x))
   // Создание: кол-во/цена пересчитывают сумму, вписанная сумма — обратно цену.
   const setQtyL = (lid: string, qty: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, qty, amount: r2(lineAmount({ name: x.name, qty, price: Number(x.price) || 0, widthCm: x.widthCm })) } : x))
-  const setPriceL = (lid: string, price: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, price, amount: r2(Number(x.qty) * price) } : x))
-  const setAmountL = (lid: string, amount: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, amount: r2(amount), price: Number(x.qty) > 0 ? r2(amount / Number(x.qty)) : x.price } : x))
+  const setPriceL = (lid: string, price: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, price, amount: r2(lineAmount({ name: x.name, qty: Number(x.qty) || 0, price, widthCm: x.widthCm })) } : x))
+  const setAmountL = (lid: string, amount: number) => setLines(ls => ls.map(x => {
+    if (x.id !== lid) return x
+    const div = (Number(x.qty) || 0) * (Number(x.widthCm) > 0 ? Number(x.widthCm) : 1)
+    return { ...x, amount: r2(amount), price: div > 0 ? r6(amount / div) : x.price }
+  }))
   const dropLine = (lid: string) => setLines(ls => ls.filter(x => x.id !== lid))
   // Цена по умолчанию: приход — закуп товара, расход — розница.
   // Цена продажи — по ТИПУ ЦЕНЫ ПОКУПАТЕЛЯ (спец/опт/розница) из прайса своей орг: у моста
@@ -384,7 +389,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                     <button type="button" onClick={() => { window.open(`/admin/accounting?org=${org}&mode=reconcile&cid=${cid}`, '_blank') }}
                       title="Открыть акт сверки по этому контрагенту"
                       style={{ marginTop: 5, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: net > 0 ? '#b03020' : '#2e8a5e', textDecoration: 'underline' }}>
-                      {net > 0 ? `должен ${fmtMoney(Math.round(net))} ₸` : `мы должны ${fmtMoney(Math.round(-net))} ₸`} · акт сверки →
+                      {net > 0 ? `должен ${m2(net)} ₸` : `мы должны ${m2(-net)} ₸`} · акт сверки →
                     </button>
                   )
                 })()}
@@ -507,7 +512,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                           {named
                             ? <input value={bn} onChange={e => renameBlock(bn, e.target.value)} style={{ ...inp, width: 220, fontWeight: 700, padding: '5px 8px', borderColor: '#d8c4ec' }} />
                             : <span style={{ fontWeight: 700, fontSize: 13, color: COLORS.textMuted }}>📄 Без блока</span>}
-                          <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: '#7a3aaa' }}>Σ {fmtMoney(sub)} ₸</span>
+                          <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: '#7a3aaa' }}>Σ {m2(sub)} ₸</span>
                           {named && <button onClick={() => deleteBlock(bn)} title="Удалить блок (строки → Без блока)" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>✕</button>}
                         </div>
                       )}
@@ -528,12 +533,13 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                               <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => updLine(l.id, { unit: e.target.value })} /></td>
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
                               <td style={{ padding: '6px 4px', width: 96 }}>{izd && !creating
-                                ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{fmtMoney((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
-                                : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="0.01" value={l.price || ''} onChange={e => creating ? setPriceL(l.id, Number(e.target.value)) : updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
+                                ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{m2((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
+                                : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.price || ''} onChange={e => setPriceL(l.id, Number(e.target.value))} placeholder="0" title="цена за единицу (до 6 знаков) — сумма пересчитается" />}</td>
                               {/* СУММУ при создании вписываем сами (как в накладной завода) — цена пересчитается. */}
-                              <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', width: creating ? 120 : undefined }}>{creating
-                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l) || ''} placeholder="0" onChange={e => setAmountL(l.id, Number(e.target.value))} title="сумма строки из накладной поставщика" />
-                                : fmtMoney(amtOf(l))}</td>
+                              <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', width: 130 }}>
+                                <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l) || ''} placeholder="0"
+                                  title="сумма строки как в накладной поставщика — цена пересчитается назад (6 знаков), копейки не теряются"
+                                  onChange={e => setAmountL(l.id, Number(e.target.value))} /></td>
                               <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
                               <td style={{ padding: '6px 4px', width: 34, textAlign: 'center' }}><button type="button" onClick={() => creating ? dropLine(l.id) : delLine(l)} title="Убрать ошибочную позицию (товар вернётся на склад)" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b03020', fontSize: 15, lineHeight: 1 }}>🗑</button></td>
                             </tr>
@@ -545,14 +551,14 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                 })}
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>{creating
                   ? 'Сумму строки можно вписать руками — цена пересчитается сама (накладная завода даётся суммами). Блоки — перетаскивай строки за ⠿.'
-                  : <>Кол-во можно править — при сохранении пересчитаются склад, итог, позиция карточки и <b>связанные накладные</b> (зеркало филиала, отгрузка получателю). Склад менять нельзя. Ошибочную позицию можно убрать 🗑 (товар вернётся на склад). Блоки — перетаскивай строки за ⠿.</>}</div>
+                  : <>Кол-во и сумму строки можно править — сумму вписывай как в накладной поставщика, цена пересчитается назад (копейки не теряются). При сохранении едут склад, итог, позиция карточки и <b>связанные накладные</b> (зеркало филиала, отгрузка получателю). Склад менять нельзя. Ошибочную позицию можно убрать 🗑 (товар вернётся на склад). Блоки — перетаскивай строки за ⠿.</>}</div>
               </div>
             ) : (
               <div style={{ padding: 20, background: '#faf8f6' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, maxWidth: 520 }}>
-                  <div><label style={lbl}>ВСЕГО К ОПЛАТЕ</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700 }} value={fmtMoney(total) + ' ₸'} disabled /></div>
+                  <div><label style={lbl}>ВСЕГО К ОПЛАТЕ</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700 }} value={m2(total) + ' ₸'} disabled /></div>
                   <div><label style={lbl}>ОПЛАЧЕНО</label><input style={inp} type="number" value={f.paidSum || ''} onChange={e => setF({ ...f, paidSum: e.target.value })} placeholder="0" /></div>
-                  <div><label style={lbl}>ОСТАТОК</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700, color: remain > 0.001 ? '#b03020' : '#2e8a5e' }} value={fmtMoney(remain) + ' ₸'} disabled /></div>
+                  <div><label style={lbl}>ОСТАТОК</label><input style={{ ...inp, background: '#f6f3f0', fontWeight: 700, color: remain > 0.001 ? '#b03020' : '#2e8a5e' }} value={m2(remain) + ' ₸'} disabled /></div>
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>Свяжется с финмодулем ({isSale ? 'долг заказчика' : 'долг перед поставщиком'}) на следующем этапе.</div>
               </div>
@@ -561,15 +567,15 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
             {/* Продажа / себестоимость / маржа (только расходная) */}
             {isSale && (
               <div style={{ padding: '10px 20px', borderTop: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', background: '#faf8f6', fontSize: 13 }}>
-                <span style={{ color: COLORS.textMuted }}>Сумма продажи: <b style={{ color: COLORS.text }}>{fmtMoney(subtotal)} ₸</b></span>
-                <span style={{ color: COLORS.textMuted }}>Себестоимость: <b style={{ color: COLORS.text }}>{fmtMoney(totalCost)} ₸</b></span>
-                <span style={{ marginLeft: 'auto', color: '#2e8a5e', fontWeight: 700 }}>Маржа: {fmtMoney(subtotal - totalCost)} ₸{subtotal > 0 ? ` · ${Math.round((subtotal - totalCost) / subtotal * 100)}%` : ''}</span>
+                <span style={{ color: COLORS.textMuted }}>Сумма продажи: <b style={{ color: COLORS.text }}>{m2(subtotal)} ₸</b></span>
+                <span style={{ color: COLORS.textMuted }}>Себестоимость: <b style={{ color: COLORS.text }}>{m2(totalCost)} ₸</b></span>
+                <span style={{ marginLeft: 'auto', color: '#2e8a5e', fontWeight: 700 }}>Маржа: {m2(subtotal - totalCost)} ₸{subtotal > 0 ? ` · ${Math.round((subtotal - totalCost) / subtotal * 100)}%` : ''}</span>
               </div>
             )}
 
             {/* Итоги + скидка */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, color: COLORS.textMuted }}>Подытог: <b style={{ color: COLORS.text }}>{fmtMoney(subtotal)} ₸</b></span>
+              <span style={{ fontSize: 13, color: COLORS.textMuted }}>Подытог: <b style={{ color: COLORS.text }}>{m2(subtotal)} ₸</b></span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 13, color: COLORS.textMuted }}>Скидка:</span>
                 <input style={{ ...inp, width: 70, padding: '4px 6px', textAlign: 'right' }} type="number" value={(discMode === 'pct' ? f.discountPct : f.discountSum) || ''} placeholder="0"
@@ -577,9 +583,9 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                 <select style={{ ...inp, width: 60, padding: '4px 6px' }} value={discMode} onChange={e => setDiscMode(e.target.value as any)}>
                   <option value="pct">%</option><option value="sum">₸</option>
                 </select>
-                <span style={{ fontSize: 13, color: COLORS.textMuted }}>= {fmtMoney(discountSum)} ₸</span>
+                <span style={{ fontSize: 13, color: COLORS.textMuted }}>= {m2(discountSum)} ₸</span>
               </div>
-              <span style={{ marginLeft: 'auto', fontSize: 15, fontWeight: 800 }}>Всего: {fmtMoney(total)} ₸</span>
+              <span style={{ marginLeft: 'auto', fontSize: 15, fontWeight: 800 }}>Всего: {m2(total)} ₸</span>
             </div>
 
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
