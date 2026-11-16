@@ -181,7 +181,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     ? { ...x, ...patch, ...(patch.price !== undefined ? { amount: undefined } : {}) }
     : x))
   // Создание: кол-во/цена пересчитывают сумму, вписанная сумма — обратно цену.
-  const setQtyL = (lid: string, qty: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, qty, amount: r2(qty * Number(x.price)) } : x))
+  const setQtyL = (lid: string, qty: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, qty, amount: r2(lineAmount({ name: x.name, qty, price: Number(x.price) || 0, widthCm: x.widthCm })) } : x))
   const setPriceL = (lid: string, price: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, price, amount: r2(Number(x.qty) * price) } : x))
   const setAmountL = (lid: string, amount: number) => setLines(ls => ls.map(x => x.id === lid ? { ...x, amount: r2(amount), price: Number(x.qty) > 0 ? r2(amount / Number(x.qty)) : x.price } : x))
   const dropLine = (lid: string) => setLines(ls => ls.filter(x => x.id !== lid))
@@ -312,14 +312,24 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     const patch: any = {
       number: f.number, date: f.date || undefined, inNumber: f.inNumber, inDate: f.inDate || null, operation: f.operation, comment: f.comment, paidSum: Number(f.paidSum) || 0,
       contragentId: f.contragentId || undefined, supplierId: f.supplierId ?? null,
-      lines: lines.map((l, i) => ({ id: l.id, price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
+      lines: lines.map((l, i) => ({ id: l.id, qty: Number(l.qty) || 0, price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit, comment: l.comment, block: l.block || '', sortOrder: l.sortOrder != null ? l.sortOrder : i })),
     }
     if (discMode === 'pct') patch.discountPct = Number(f.discountPct) || 0
     else patch.discountSum = Number(f.discountSum) || 0
     if (markReviewed) patch.reviewed = true
     const r: any = await updateDocument(id as string, patch)
     setBusy(false)
-    if (r.ok !== false) { if (markReviewed) setF((p: any) => ({ ...p, reviewed: true })); setFlash(markReviewed ? '✓ Проверено и сохранено' : '✓ Сохранено'); setTimeout(() => setFlash(''), 1500); onSaved?.() }
+    if (r.ok !== false) {
+      if (markReviewed) setF((p: any) => ({ ...p, reviewed: true }))
+      // Правило домино: показываем, какие связанные накладные поехали за кол-вом/датой.
+      const tail = [
+        r.qtyMoved?.length ? `кол-во по цепочке: ${r.qtyMoved.join(', ')}` : '',
+        r.qtySkipped?.length ? `⚠ не применено (несколько строк одного товара): ${r.qtySkipped.join(', ')}` : '',
+        r.dateMoved?.length ? `дата: ${r.dateMoved.join(', ')}` : '',
+      ].filter(Boolean).join(' · ')
+      setFlash((markReviewed ? '✓ Проверено и сохранено' : '✓ Сохранено') + (tail ? ' · ' + tail : ''))
+      setTimeout(() => setFlash(''), tail ? 6000 : 1500); await reload(); onSaved?.()
+    }
     else setFlash('⚠ ' + (r.error || 'Ошибка'))
   }
 
@@ -511,9 +521,10 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                               <td style={{ padding: '6px 4px', color: '#c9c2b8', cursor: 'grab', textAlign: 'center' }} title="Перетащить">⠿</td>
                               <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : '' : ''}</td>
                               <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
-                              <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>{creating
-                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0" onChange={e => setQtyL(l.id, Number(e.target.value))} />
-                                : Number(l.qty)}</td>
+                              <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>
+                                <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0"
+                                  title={creating ? 'кол-во' : 'кол-во · при сохранении пересчитается склад, итог и связанные накладные'}
+                                  onChange={e => setQtyL(l.id, Number(e.target.value))} /></td>
                               <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => updLine(l.id, { unit: e.target.value })} /></td>
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
                               <td style={{ padding: '6px 4px', width: 96 }}>{izd && !creating
@@ -534,7 +545,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                 })}
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>{creating
                   ? 'Сумму строки можно вписать руками — цена пересчитается сама (накладная завода даётся суммами). Блоки — перетаскивай строки за ⠿.'
-                  : <>Кол-во и склад менять нельзя (движение склада). Ошибочную позицию можно убрать 🗑 (товар вернётся на склад, итог пересчитается). Блоки — перетаскивай строки за ⠿.</>}</div>
+                  : <>Кол-во можно править — при сохранении пересчитаются склад, итог, позиция карточки и <b>связанные накладные</b> (зеркало филиала, отгрузка получателю). Склад менять нельзя. Ошибочную позицию можно убрать 🗑 (товар вернётся на склад). Блоки — перетаскивай строки за ⠿.</>}</div>
               </div>
             ) : (
               <div style={{ padding: 20, background: '#faf8f6' }}>

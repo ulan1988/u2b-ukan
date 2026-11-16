@@ -234,6 +234,59 @@ export async function getDocument(id: string) {
 
 // Правка накладной: «бумажные» поля шапки + цена/ед./коммент строк (кол-во/склад — отдельно).
 // Пересчитывает суммы строк, подытог, скидку (по % или сумме) и итог.
+// Пересчитать движения склада документа ПО ЕГО СТРОКАМ: кол-во строки изменилось —
+// остаток обязан поехать следом (приход +Σ, расход −Σ по каждому товару). Движений нет
+// (сквозная накладная) — update просто не находит строк, ничего не создаём.
+async function syncMovements(docId: string) {
+  const { sqlClient } = await import('../lib/db')
+  const [d] = await sqlClient`select type from documents where id=${docId}` as unknown as Array<any>
+  if (!d) return
+  const sign = (d.type === 'sale' || d.type === 'return_out') ? -1 : 1
+  const rows = await sqlClient`select product_id, sum(qty)::float q from document_lines where document_id=${docId} group by product_id` as unknown as Array<any>
+  for (const r of rows) await sqlClient`update stock_movements set qty=${String(sign * r.q)} where document_id=${docId} and product_id=${r.product_id}`
+}
+
+// Кол-во строки документа → кол-во позиции карточки-основания (отчёты по order_positions).
+async function syncCardPositions(docId: string) {
+  const { sqlClient } = await import('../lib/db')
+  await sqlClient`update order_positions op set qty = dl.qty, updated_at = now()
+     from document_lines dl where dl.source_pos_id = op.id and dl.document_id = ${docId} and op.qty <> dl.qty`
+}
+
+// 🁢 ДОМИНО КОЛИЧЕСТВА. Кол-во — это движение склада, поэтому новое кол-во идёт по ВСЕЙ
+// связанной цепочке: зеркальная накладная филиала (parent_doc_id) и отгрузка получателю
+// из приходной (origin_doc_id). У каждого звена СВОЯ цена — сумму пересчитываем по ней.
+// Если в звене несколько строк одного товара — не угадываем, пропускаем и пишем в ответ.
+async function applyQtyToChain(docId: string, qtyByProduct: Map<string, number>, actor?: { name?: string } | null) {
+  const { sqlClient } = await import('../lib/db')
+  const moved: string[] = []; const skipped: string[] = []
+  for (const ch of await chainDocs(docId)) {
+    const [cd] = await sqlClient`select status from documents where id=${ch.id}` as unknown as Array<any>
+    if (!cd || cd.status === 'cancelled') continue
+    const lines = await sqlClient`select id, product_id, qty::float q, price::float p, name, width_cm::float cm from document_lines where document_id=${ch.id}` as unknown as Array<any>
+    let changed = false
+    for (const [pid, qty] of Array.from(qtyByProduct.entries())) {
+      const same = lines.filter((l: any) => String(l.product_id) === String(pid))
+      if (!same.length) continue
+      if (same.length > 1) { skipped.push(ch.number); continue }
+      const l = same[0]
+      if (Math.abs(Number(l.q) - qty) < 0.0001) continue
+      const amount = lineAmount({ name: l.name, qty, price: Number(l.p), widthCm: l.cm })
+      await sqlClient`update document_lines set qty=${String(qty)}, amount=${String(amount)} where id=${l.id}`
+      changed = true
+    }
+    if (!changed) continue
+    await syncMovements(ch.id)
+    await syncCardPositions(ch.id)
+    const [s] = await sqlClient`select coalesce(sum(amount),0)::float s from document_lines where document_id=${ch.id}` as unknown as Array<any>
+    const [h] = await sqlClient`select coalesce(discount_sum,0)::float ds from documents where id=${ch.id}` as unknown as Array<any>
+    await sqlClient`update documents set total=${String(Math.max(0, Number(s.s) - Number(h?.ds || 0)))}, reviewed=false, updated_at=now() where id=${ch.id}`
+    await docRepo.insertDocHistory({ documentId: ch.id, action: 'edit', detail: 'кол-во по цепочке (правка связанной накладной)', userName: actor?.name || 'Система' } as any)
+    moved.push(ch.number)
+  }
+  return { moved, skipped: Array.from(new Set(skipped)) }
+}
+
 export async function updateDocument(id: string, patch: any, actor?: { name?: string } | null) {
   // «Было» для журнала правок — снимаем ДО изменений (строки и шапка).
   const before = await docRepo.linesWithProduct(id)
@@ -242,6 +295,9 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
     for (const l of patch.lines) {
       if (!l.id) continue
       const set: any = {}
+      // КОЛ-ВО проведённой накладной: разрешено (ошиблись при приёмке). Склад, итог,
+      // позиция карточки и вся цепочка пересчитываются ниже — см. applyQtyToChain.
+      if (l.qty !== undefined && Number(l.qty) > 0) set.qty = String(Number(l.qty))
       if (l.price !== undefined) set.price = String(Number(l.price) || 0)
       if (l.unit !== undefined) set.unit = l.unit
       if (l.comment !== undefined) set.comment = l.comment
@@ -263,6 +319,23 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
     if (String(amount) !== String(ln.amount)) await docRepo.updateLine(ln.id, { amount: String(amount) })
     subtotal += amount
   }
+  // Кол-во изменилось → движения склада, позиции карточки и ЦЕПОЧКА (зеркало филиала,
+  // отгрузка получателю) едут следом. Правило домино: одно кол-во валит все костяшки.
+  const qtyChanged = new Map<string, number>()
+  {
+    const wasQ = new Map(before.map(l => [l.id, Number(l.qty)]))
+    const prodChanged = new Set<string>()
+    for (const ln of lines) if (Math.abs(Number(ln.qty) - Number(wasQ.get(ln.id) ?? ln.qty)) > 0.0001) prodChanged.add(String((ln as any).productId))
+    if (prodChanged.size) {
+      for (const p of Array.from(prodChanged)) {
+        const sum = lines.filter(l => String((l as any).productId) === p).reduce((s, l) => s + Number(l.qty), 0)
+        qtyChanged.set(p, sum)
+      }
+      await syncMovements(id)
+      await syncCardPositions(id)
+    }
+  }
+
   // Шапка.
   const head: any = {}
   if (patch.number !== undefined && String(patch.number).trim()) head.number = String(patch.number).trim()
@@ -285,6 +358,7 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   // Поставщик расходной (у кого взят товар). Пусто → очищаем, снова выводится из связей.
   if (patch.supplierId !== undefined) head.supplierId = patch.supplierId ? String(patch.supplierId) : null
   if (patch.reviewed !== undefined) head.reviewed = !!patch.reviewed
+  else if (qtyChanged.size) head.reviewed = false   // кол-во поехало — накладную надо перепроверить
   if (patch.comment !== undefined) head.comment = patch.comment
   if (patch.paidSum !== undefined) head.paidSum = String(Number(patch.paidSum) || 0)
   // Скидка: приоритет у процента (считаем сумму), иначе берём сумму (считаем процент).
@@ -303,6 +377,7 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   // ДОМИНО ДАТЫ: день накладной тянет за собой её движения склада И зеркальные накладные
   // филиалов. Головной перенёс документ задним числом — филиал должен приходовать тем же
   // днём, иначе остатки и отчёты двух орг разъедутся по дням.
+  const qtyMoved = qtyChanged.size ? await applyQtyToChain(id, qtyChanged, actor) : { moved: [] as string[], skipped: [] as string[] }
   const dateMoved: string[] = []
   if (head.date && headBefore && String(head.date) !== String(headBefore.date).slice(0, 10)) {
     await docRepo.setMovementsDate(id, head.date)
@@ -332,9 +407,11 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
     if (head.date && String(head.date) !== String(headBefore.date).slice(0, 10)) changes.push(`дата ${String(headBefore.date).slice(0, 10)} → ${head.date}`)
   }
   if (dateMoved.length) changes.push(`дата перенесена и у филиалов: ${dateMoved.join(', ')}`)
+  if (qtyMoved.moved.length) changes.push(`кол-во по цепочке: ${qtyMoved.moved.join(', ')}`)
+  if (qtyMoved.skipped.length) changes.push(`кол-во НЕ применено (несколько строк одного товара): ${qtyMoved.skipped.join(', ')}`)
   if (rolledBack.length) changes.push(`откат цепочки головного: ${rolledBack.join(', ')}`)
   if (changes.length) await docRepo.insertDocHistory({ documentId: id, action: 'edit', detail: changes.join(' · '), userName: actor?.name || 'Система' } as any)
-  return { ok: true, subtotal, discountSum, total: subtotal - discountSum, rolledBack, dateMoved }
+  return { ok: true, subtotal, discountSum, total: subtotal - discountSum, rolledBack, dateMoved, qtyMoved: qtyMoved.moved, qtySkipped: qtyMoved.skipped }
 }
 
 // Создать расходную накладную (продажа): проводка = документ + строки +

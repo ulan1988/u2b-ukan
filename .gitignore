@@ -15,3 +15,6 @@ drizzle/
 .DS_Store
 .vercel/
 *.tsbuildinfo
+
+# фото для каталога (чужие картинки, в публичный репо не кладём)
+catalog-photos/
