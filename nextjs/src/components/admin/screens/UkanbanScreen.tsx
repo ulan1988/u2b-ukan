@@ -26,6 +26,14 @@ const MODES = [
 export default function UkanbanScreen({ orgId, onOpen }: { orders?: any[]; orgId: string; onAction?: (id: string, a: string) => void; onOpen?: (o: any) => void }) {
   const [mode, setMode] = useState('invoices')
   const [recCid, setRecCid] = useState('')   // предвыбранный контрагент для акта сверки (клик из «Долги»)
+  // …и по ссылке из накладной: кликнули на долг покупателя — попали сразу в его акт сверки.
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search)
+      const cid = p.get('cid'), m = p.get('mode')
+      if (m === 'reconcile') { setMode('reconcile'); if (cid) setRecCid(cid) }
+    } catch { /* не критично */ }
+  }, [])
   // «Связки» — глобальный переключатель сверху: при включении клик по ЛЮБОЙ накладной (в любой вкладке)
   // открывает дерево «откуда → как → куда». Не пропадает при смене вкладки, запоминается на устройстве.
   const [links, setLinksState] = useState(false)

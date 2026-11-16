@@ -4,6 +4,7 @@ import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDate } from '@/lib/adminFmt'
 import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument } from '@/lib/api/docs'
 import { listProducts, autoPrices } from '@/lib/api/refs'
+import { finance } from '@/lib/api/finance'
 import { matchWords } from '@/lib/search'
 import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
@@ -59,6 +60,9 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   // а заказчик уходит дальше — у головного зеркальная приходная сразу отгружается ему.
   const [hqBridgeId, setHqBridgeId] = useState('')
   const [debtHq, setDebtHq] = useState(false)
+  // Долги контрагентов этой орг: рядом с покупателем сразу видно, сколько он должен,
+  // и по клику открывается его акт сверки в У-Канбане.
+  const [debts, setDebts] = useState<Record<string, { theyOwe: number; weOwe: number }>>({})
   const [recPrices, setRecPrices] = useState<Record<string, number>>({})
   const [q, setQ] = useState('')
   const [showCatalog, setShowCatalog] = useState(false)
@@ -130,6 +134,15 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     if (!creating || newType !== 'purchase' || !recId || !ids.length) { setRecPrices({}); return }
     autoPrices(ids, recId).then((m: any) => setRecPrices(m && typeof m === 'object' ? m : {})).catch(() => setRecPrices({}))
   }, [creating, newType, recId, lines.map(l => l.productId).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const org = data?.doc?.orgId || newOrgId; if (!org) return
+    finance(org).then((r: any) => {
+      const m: Record<string, { theyOwe: number; weOwe: number }> = {}
+      for (const c of ((r?.contragents || []) as any[])) m[c.id] = { theyOwe: Number(c.theyOwe) || 0, weOwe: Number(c.weOwe) || 0 }
+      setDebts(m)
+    }).catch(() => {})
+  }, [data?.doc?.orgId, newOrgId])
+
   // Контрагенты орг этой накладной — для выбора/правки покупателя-поставщика.
   useEffect(() => {
     const org = data?.doc?.orgId || newOrgId; if (!org) return
@@ -350,6 +363,21 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                     </div>
                   : <ContragentPicker contragents={cagList} value={f.contragentId || ''} onPick={(c: any) => { setF({ ...f, contragentId: c?.id || '' }); repriceFor(c?.id || '') }}
                   placeholder={isSale ? '— выберите покупателя —' : '— выберите поставщика —'} />}
+                {/* Долг выбранного контрагента: видно сразу при выборе, клик — его акт сверки. */}
+                {(() => {
+                  const cid = (creating && isSale && debtHq && hqBridgeId) ? hqBridgeId : f.contragentId
+                  const d = cid ? debts[cid] : null; if (!d) return null
+                  const net = (d.theyOwe || 0) - (d.weOwe || 0)
+                  if (!net) return <div style={{ marginTop: 5, fontSize: 12, color: '#8a8377' }}>долгов нет</div>
+                  const org = data?.doc?.orgId || newOrgId
+                  return (
+                    <button type="button" onClick={() => { window.location.href = `/admin/accounting?org=${org}&mode=reconcile&cid=${cid}` }}
+                      title="Открыть акт сверки по этому контрагенту"
+                      style={{ marginTop: 5, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: net > 0 ? '#b03020' : '#2e8a5e', textDecoration: 'underline' }}>
+                      {net > 0 ? `должен ${fmtMoney(Math.round(net))} ₸` : `мы должны ${fmtMoney(Math.round(-net))} ₸`} · акт сверки →
+                    </button>
+                  )
+                })()}
               </div>
               {!creating && data.customer && <div><label style={lbl}>ЗАКАЗЧИК (кому товар / на кого долг)</label><input style={{ ...inp, background: '#f6f3f0' }} value={data.customer} disabled /></div>}
               {isSale && !creating && (
