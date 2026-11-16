@@ -156,7 +156,7 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
 // Производство НА ЗАПАС (без карточки, без покупателя, без оплаты): мастер указывает что и
 // сколько сделано → выпуск прямо на склад Нипы. Материал списывается раскроем. В Кассе дня
 // попадает в «производство в запас» (docs type='production' output). Себестоимость — доля листа.
-export async function produceToStock(orgId: string, items: { name?: string; color?: string; cm?: number | string; qty: number | string; productId?: string | null }[], actor?: Session | null) {
+export async function produceToStock(orgId: string, items: { name?: string; color?: string; cm?: number | string; qty: number | string; productId?: string | null }[], actor?: Session | null, date?: string) {
   const wh = await refsRepo.centralWarehouse(orgId)
   if (!wh) return { ok: false as const, error: 'Не найден склад производителя' }
   const outputs: any[] = []
@@ -184,7 +184,7 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
   if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : 'Нет позиций для выпуска', skipped }
   let consumed: any = null
   try { const { consumeForCut } = await import('./material.service'); consumed = await consumeForCut(orgId, made) } catch { /* нехватка листов не роняет выпуск */ }
-  const doc = await createProduction({ orgId, warehouseId: wh.id, inputs: [], outputs, comment: 'Производство на запас (склад)' } as any)
+  const doc = await createProduction({ orgId, warehouseId: wh.id, inputs: [], outputs, comment: 'Производство на запас (склад)', date } as any)
   return { ok: true as const, number: doc.number, produced: outputs.length, created, skipped, consumed }
 }
 

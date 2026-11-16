@@ -22,9 +22,9 @@ function rowFromPos(p: any): Row {
   return { id: p.id, productId: p.productId || '', name: p.name1c || p.oral || '', color: extractRal(p.name1c || p.oral || ''), cm: p.widthCm ? String(p.widthCm) : '', qty: String(Number(p.qty) || 1), price: p.price != null ? String(Number(p.price)) : '' }
 }
 
-export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, products, specProjects = [], onDone, showMsg, stockMode = false, editOnly = false, onCancel }: {
+export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, products, specProjects = [], onDone, showMsg, stockMode = false, editOnly = false, onCancel, workDate }: {
   order: any | null; uid?: string; hqOrgId?: string; contragents: any[]; products: any[]; specProjects?: any[]; onDone: () => void; showMsg: (m: string) => void; stockMode?: boolean
-  editOnly?: boolean; onCancel?: () => void   // editOnly: правка карточки на месте (этап не меняется), без «В работу»
+  editOnly?: boolean; onCancel?: () => void; workDate?: string   // editOnly: правка карточки на месте (этап не меняется), без «В работу»
 }) {
   const [cid, setCid] = useState(order?.contactId || '')
   const [note, setNote] = useState(order?.comment && order.comment !== 'Прямой заказ на производство' ? order.comment : '')
@@ -37,6 +37,9 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
   const [hqPrices, setHqPrices] = useState<Record<string, number>>({})
   useEffect(() => { if (cid) listProjectsByClient(cid).then(setClientProjs).catch(() => setClientProjs([])); else setClientProjs([]) }, [cid])
   const [rows, setRows] = useState<Row[]>(() => order?.positions?.length ? order.positions.map(rowFromPos) : [blank()])
+  // Имя позиции (ручное либо собранное «вид цвет N см») — нужно уже здесь, в ценах головного.
+  const rowName = (r: Row) => r.name || itemName(r as any)
+  const rowsRef = useRef(rows); rowsRef.current = rows
   // Цены головного под этого заказчика: по id товара и по имени (у изделия — цена за см).
   // Заказчик — сам головной (мост)? Тогда это продажа ЕМУ: цены наши, по его типу цены
   // (у моста «Адал Строй 2» стоит спец), прайс головного тут ни при чём.
@@ -51,11 +54,11 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
   // Включили «долг к головному» или сменили заказчика — переставляем цены по прайсу ГО.
   useEffect(() => {
     if (!debtHq || !hqOrgId || !cid) { setHqPrices({}); return }
-    setRows(rs => { askHqPrices(rs).then(m => {
+    askHqPrices(rowsRef.current).then(m => {
       if (!Object.keys(m).length) return
       setHqPrices(m)
       setRows(cur => cur.map(r => { const p = m[r.productId] ?? m[rowName(r)]; return p > 0 ? { ...r, price: String(p) } : r }))
-    }); return rs })
+    })
   }, [debtHq, cid, hqOrgId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Добавили позицию — цену ей тоже берём у головного, уже вписанные руками не трогаем.
@@ -149,7 +152,6 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
   }
   // Единая цена позиции: изделие → цена ЗА СМ (из прайса клиента или ручная r.price,
   // иначе общая «цена/см» priceCm). Профиль/прочее → цена за штуку (r.price).
-  const rowName = (r: Row) => r.name || itemName(r as any)
   const unitPrice = (r: Row) => Number(r.price) || (isIzdelie(rowName(r)) ? (Number(priceCm) || 0) : 0)
   // сумма строки: изделие = qty×см×цена/см; иначе qty×цена
   const rowSum = (r: Row) => lineAmount({ name: rowName(r), qty: r.qty, price: unitPrice(r), widthCm: r.cm })
@@ -189,7 +191,7 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
       // Производство НА ЗАПАС: без покупателя/оплаты — просто выпуск на склад Нипы.
       if (stockMode) {
         const items = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => ({ name: rowName(r), color: r.color || undefined, cm: r.cm || undefined, qty: Number(r.qty), productId: r.productId || undefined }))
-        const res: any = await produceStock({ uid, items })
+        const res: any = await produceStock({ uid, items, date: workDate })
         showMsg(res?.ok ? `📦 Выпущено на склад: ${res.produced} поз.${res.number ? ` (${res.number})` : ''}` : `⚠ ${res?.error || 'Не удалось'}`)
         if (res?.ok === false) { setBusy(false); return }
       }

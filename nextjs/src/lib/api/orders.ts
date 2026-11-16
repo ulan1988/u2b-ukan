@@ -150,7 +150,7 @@ export async function sellCheck(body: {
   }
 }
 // Производство на запас: выпуск товаров/изделий прямо на склад Нипы (без покупателя и оплаты).
-export async function produceStock(body: { uid?: string; items: { name?: string; color?: string; cm?: number | string; qty: number | string; productId?: string | null }[] }) {
+export async function produceStock(body: { uid?: string; date?: string; items: { name?: string; color?: string; cm?: number | string; qty: number | string; productId?: string | null }[] }) {
   const r = await post('/api/branch/produce-stock', body)
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, produced: r.data?.produced as number | undefined }
 }
