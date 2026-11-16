@@ -169,7 +169,12 @@ export async function reorderDay(orderedIds: string[]) {
 // (кроме перемещения) создаётся оплата (payment) → отражается в акте сверки.
 export async function postFinDay(orgId: string, date: string, actorId?: string) {
   const rows = await fin.rowsForDay(orgId, date)
-  const drafts = rows.filter(r => r.status !== 'posted' && sumAmounts(r.amounts) !== 0)
+  // Проводим КАЖДУЮ заполненную черновую строку. Раньше фильтр отсекал строки с нулевой
+  // СУММОЙ — и вместе с пустыми выкидывал ПЕРЕМЕЩЕНИЕ между своими счетами (+900 000 / −900 000
+  // даёт ровно 0), поэтому такая строка навсегда оставалась черновиком и не переходила на
+  // следующий день. Пустой считаем строку, где все суммы нулевые.
+  const filled = (r: any) => (r.amounts || []).some((x: any) => Math.abs(num(x.amount)) > 0.004)
+  const drafts = rows.filter(r => r.status !== 'posted' && filled(r))
 
   // МИНУС ПО СЧЁТУ НЕ ЗАПРЕЩАЕМ (решение владельца: «пусть минус, выровняю постепенно»):
   // расход проводится всегда, а про нехватку на счёте просто ПРЕДУПРЕЖДАЕМ в ответе (warn).
