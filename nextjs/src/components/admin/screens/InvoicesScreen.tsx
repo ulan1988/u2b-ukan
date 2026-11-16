@@ -126,7 +126,11 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
                     <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}
                       {noPrice && <span title={`${(d as any).noPrice} строк(и) без цены — откройте и впишите`} style={{ fontSize: 11, fontWeight: 800, color: '#b03020', background: '#ffe3dc', padding: '1px 7px', borderRadius: 20, marginLeft: 4, whiteSpace: 'nowrap' }}>⚠ без цены · {(d as any).noPrice}</span>}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{fmtDMY(d.date)}</td>
-                    <td style={{ padding: '8px 16px' }}>{d.contragent || '—'}</td>
+                    {/* ПОКУПАТЕЛЬ = кому назначен товар. У расходной в долг к головному
+                        накладная выписана на мост («Адал Строй 2»), а заказчик в карточке
+                        другой — показываем его, иначе строка выглядела «Адал Строй 2 → Адал Строй 2». */}
+                    <td style={{ padding: '8px 16px' }} title={kind === 'out' && d.customer && d.customer !== d.contragent ? `Накладная выписана на «${d.contragent}» (в долг головному)` : undefined}>
+                      {(kind === 'out' ? (d.customer || d.contragent) : d.contragent) || '—'}</td>
                     {/* Приход: заказчик (для кого закупали). Расход: поставщик (у кого этот товар куплен). */}
                     <td style={{ padding: '8px 16px' }} title={kind === 'in' ? 'Заказчик (конечный клиент) из карточки-основания — для кого / на кого долг' : 'Поставщик проданного товара — из связанного закупа'}>{(kind === 'in' ? d.customer : (d as any).supplier) || '—'}</td>
                     {kind === 'out' && <td style={{ padding: '8px 16px', textAlign: 'right', color: COLORS.textMuted }} title="Себестоимость = Σ(кол-во × приходная цена)">{fmtMoney(Number(d.cost || 0))} ₸</td>}
