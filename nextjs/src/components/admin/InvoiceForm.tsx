@@ -371,7 +371,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                   if (!net) return <div style={{ marginTop: 5, fontSize: 12, color: '#8a8377' }}>долгов нет</div>
                   const org = data?.doc?.orgId || newOrgId
                   return (
-                    <button type="button" onClick={() => { window.location.href = `/admin/accounting?org=${org}&mode=reconcile&cid=${cid}` }}
+                    <button type="button" onClick={() => { window.open(`/admin/accounting?org=${org}&mode=reconcile&cid=${cid}`, '_blank') }}
                       title="Открыть акт сверки по этому контрагенту"
                       style={{ marginTop: 5, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: net > 0 ? '#b03020' : '#2e8a5e', textDecoration: 'underline' }}>
                       {net > 0 ? `должен ${fmtMoney(Math.round(net))} ₸` : `мы должны ${fmtMoney(Math.round(-net))} ₸`} · акт сверки →
