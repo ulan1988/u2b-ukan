@@ -403,7 +403,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
                               <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : '' : ''}</td>
                               <td style={{ padding: '6px 8px', fontWeight: 500 }}>{cleanNm(l.name)}{(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}</td>
                               <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>{creating
-                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty} onChange={e => setQtyL(l.id, Number(e.target.value))} />
+                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0" onChange={e => setQtyL(l.id, Number(e.target.value))} />
                                 : Number(l.qty)}</td>
                               <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => updLine(l.id, { unit: e.target.value })} /></td>
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
@@ -412,7 +412,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, onClose, 
                                 : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="0.01" value={l.price || ''} onChange={e => creating ? setPriceL(l.id, Number(e.target.value)) : updLine(l.id, { price: e.target.value })} placeholder="0" title="цена за единицу" />}</td>
                               {/* СУММУ при создании вписываем сами (как в накладной завода) — цена пересчитается. */}
                               <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', width: creating ? 120 : undefined }}>{creating
-                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l)} onChange={e => setAmountL(l.id, Number(e.target.value))} title="сумма строки из накладной поставщика" />
+                                ? <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l) || ''} placeholder="0" onChange={e => setAmountL(l.id, Number(e.target.value))} title="сумма строки из накладной поставщика" />
                                 : fmtMoney(amtOf(l))}</td>
                               <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
                               <td style={{ padding: '6px 4px', width: 34, textAlign: 'center' }}><button type="button" onClick={() => creating ? dropLine(l.id) : delLine(l)} title="Убрать ошибочную позицию (товар вернётся на склад)" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b03020', fontSize: 15, lineHeight: 1 }}>🗑</button></td>
