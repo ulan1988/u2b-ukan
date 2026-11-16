@@ -77,8 +77,16 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const show = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2200) }
   const rowTotal = (r: any) => accounts.reduce((s, a) => s + (r.amt[a.id] || 0), 0)
   const hasAmt = (r: any) => accounts.some(a => (r.amt[a.id] || 0) !== 0)
-  const closing: Record<string, number> = {}
-  for (const a of accounts) { closing[a.id] = opening[a.id] || 0; for (const r of rows) closing[a.id] += r.amt[a.id] || 0 }
+  const closing: Record<string, number> = {}        // конец дня по ПРОВЕДЁННЫМ — ровно то, что перейдёт на завтра
+  const draftDelta: Record<string, number> = {}     // черновики дня (на завтра НЕ переходят)
+  for (const a of accounts) {
+    closing[a.id] = opening[a.id] || 0; draftDelta[a.id] = 0
+    for (const r of rows) {
+      const v = r.amt[a.id] || 0
+      if (r.status === 'posted') closing[a.id] += v; else draftDelta[a.id] += v
+    }
+  }
+  const hasDrafts = accounts.some(a => Math.abs(draftDelta[a.id] || 0) > 0.004)
   const drafts = rows.filter(r => r.status !== 'posted' && hasAmt(r)).length
   const posted = rows.filter(r => r.status === 'posted').length
 
@@ -383,10 +391,24 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                 )
               })}
               <tr style={{ background: '#ffe94d', fontWeight: 700 }}>
-                <td style={td}></td><td style={td} colSpan={2}>На конец дня (расчёт)</td><td style={td}></td>
+                <td style={td}></td><td style={td} colSpan={2} title="Только проведённые строки — ровно это число станет остатком на начало следующего дня">На конец дня (проведено) → завтра</td><td style={td}></td>
                 {accounts.map(a => <td key={a.id} style={tdNum}>{fmt(closing[a.id] || 0)}</td>)}
                 <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (closing[a.id] || 0), 0))}</td>{showComment && <td style={td}></td>}<td style={td}></td>
               </tr>
+              {/* Черновики дня не проводятся → на завтра не переходят. Показываем отдельно,
+                  иначе «конец дня» не сходился с началом следующего (разрыв цепочки). */}
+              {hasDrafts && <>
+                <tr style={{ background: '#fff7e0', color: '#8a6f00', fontWeight: 600 }}>
+                  <td style={td}></td><td style={td} colSpan={2} title="Эти строки ещё не проведены — нажмите «Провести», иначе они не попадут в остаток завтрашнего дня">в т.ч. черновик (не перейдёт)</td><td style={td}></td>
+                  {accounts.map(a => <td key={a.id} style={tdNum}>{(draftDelta[a.id] || 0) ? fmt(draftDelta[a.id]) : ''}</td>)}
+                  <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (draftDelta[a.id] || 0), 0))}</td>{showComment && <td style={td}></td>}<td style={td}></td>
+                </tr>
+                <tr style={{ background: '#f4f5f7', fontWeight: 700 }}>
+                  <td style={td}></td><td style={td} colSpan={2}>с учётом черновиков</td><td style={td}></td>
+                  {accounts.map(a => <td key={a.id} style={tdNum}>{fmt((closing[a.id] || 0) + (draftDelta[a.id] || 0))}</td>)}
+                  <td style={tdNum}>{fmt(accounts.reduce((s, a) => s + (closing[a.id] || 0) + (draftDelta[a.id] || 0), 0))}</td>{showComment && <td style={td}></td>}<td style={td}></td>
+                </tr>
+              </>}
             </tbody>
           </table>
           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
