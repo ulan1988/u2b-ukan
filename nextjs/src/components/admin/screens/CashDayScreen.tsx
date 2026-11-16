@@ -392,6 +392,31 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   <div style={line}><span>− Расходы</span><span>{m(r.shopExp)}</span></div>
                   <div style={{ ...line, fontWeight: 800, fontSize: 18, color: '#2e8a5e', borderTop: `1px solid #cfe6d8`, marginTop: 4, paddingTop: 8 }}><span>Итого</span><span>{m(r.result)} ₸</span></div>
                 </div>
+                {/* ИНКАССАЦИЯ: сдавали ли выручку головному, с какого счёта, и остаток счетов
+                    на конец дня (уже с учётом сдачи). Раньше отчёт об этом молчал. */}
+                {data.remit && (
+                  <div>
+                    <div style={sub}>ИНКАССАЦИЯ</div>
+                    {(data.remit.rows || []).length === 0
+                      ? <div style={{ ...line, color: COLORS.textLight, fontSize: 12.5 }}><span>за этот день не сдавали</span></div>
+                      : (data.remit.rows || []).map((x: any, i: number) => (
+                        <div key={i} style={{ ...line, fontSize: 12.5 }}>
+                          <span>{x.direction === 'out' ? '🏦 головному' : '↩ от головного'} · <span style={{ color: COLORS.textLight }}>{x.account}</span></span>
+                          <b style={{ color: x.direction === 'out' ? COLORS.primaryDark : '#2e8a5e' }}>{x.direction === 'out' ? '−' : '+'}{m(x.amount)}</b>
+                        </div>
+                      ))}
+                    {Number(data.remit.out) > 0 && (
+                      <div style={{ ...line, fontWeight: 800, borderTop: `1px solid ${COLORS.borderLight}`, marginTop: 2, paddingTop: 6 }}><span>Сдано всего</span><b>{m(data.remit.out)} ₸</b></div>
+                    )}
+                    <div style={{ ...sub, marginTop: 10 }}>ОСТАТОК НА КОНЕЦ ДНЯ</div>
+                    {(data.remit.accounts || []).map((a: any) => (
+                      <div key={a.id} style={{ ...line, fontSize: 12.5 }}>
+                        <span>{a.name}{Number(a.remit) > 0 ? <span style={{ color: COLORS.textLight }}> · сдано {m(a.remit)}</span> : null}</span>
+                        <b style={{ color: Number(a.end) < 0 ? '#b03020' : COLORS.text }}>{m(a.end)} ₸</b>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )

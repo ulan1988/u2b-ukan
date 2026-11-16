@@ -160,6 +160,36 @@ export async function masterShift(orgId: string, date: string) {
     debtHQ = num(pur.v) - remittedHQ
   }
 
+  // ИНКАССАЦИЯ ДНЯ: ушло головному / вернулось от него — с какого счёта и сколько.
+  // Раньше отчёт дня про это молчал: было непонятно, сдавали выручку или нет.
+  const remitRows = bridge ? (await sqlClient`
+    select p.direction, p.amount::float amount, coalesce(ca.name, '— без счёта —') acc, coalesce(p.comment,'') comment
+    from payments p left join cash_accounts ca on ca.id = p.cash_account_id
+    where p.org_id=${orgId} and p.date=${date} and p.contragent_id=${bridge.id}
+    order by p.created_at` as unknown as Array<any>) : []
+  const remitOut = remitRows.filter((r: any) => r.direction === 'out').reduce((s: number, r: any) => s + num(r.amount), 0)
+  const remitIn = remitRows.filter((r: any) => r.direction === 'in').reduce((s: number, r: any) => s + num(r.amount), 0)
+
+  // Остаток КАЖДОГО счёта на конец выбранного дня (нач. остаток + движения по этот день
+  // включительно) и «сколько было бы без инкассации» — чтобы видеть, что ушло.
+  const balAt = async (accId: string) => {
+    const o = (await sqlClient`select opening_balance::float v, opening_as_of::text d from cash_accounts where id=${accId}` as unknown as Array<any>)[0]
+    const since = o?.d || '0001-01-01'
+    const p = (await sqlClient`select coalesce(sum(case when direction='in' then amount else -amount end),0)::float v
+      from payments where org_id=${orgId} and cash_account_id=${accId} and date >= ${since} and date <= ${date}` as unknown as Array<any>)[0]
+    const f = (await sqlClient`select coalesce(sum(a.amount),0)::float v from fin_row_amounts a join fin_rows r on r.id=a.row_id
+      where r.org_id=${orgId} and r.status='posted' and a.account_id=${accId} and r.date >= ${since} and r.date <= ${date}` as unknown as Array<any>)[0]
+    return num(o?.v || 0) + num(p.v) + num(f.v)
+  }
+  const remitByAcc: Record<string, number> = {}
+  for (const r of remitRows as any[]) remitByAcc[r.acc] = (remitByAcc[r.acc] || 0) + (r.direction === 'out' ? num(r.amount) : -num(r.amount))
+  const remitAccounts: Array<{ id: string; name: string; day: number; remit: number; end: number }> = []
+  for (const a of (fd.accounts || [])) {
+    remitAccounts.push({ id: a.id, name: a.name, day: (payMap[a.id] || 0) + (finMap[a.id] || 0), remit: remitByAcc[a.name] || 0, end: await balAt(a.id) })
+  }
+  const remit = { rows: remitRows.map((r: any) => ({ direction: r.direction, amount: num(r.amount), account: r.acc, comment: r.comment })),
+    out: remitOut, in: remitIn, accounts: remitAccounts }
+
   // Сотрудники филиала (справочник) — для табеля, с дневным окладом.
   const staff = await sqlClient`select id::text, name, position, daily_wage::float "dailyWage" from employees where org_id=${orgId} and archived=false order by name` as unknown as Array<any>
   // Табель дня: кто отмечен на смене (начисление ЗП). Отметка есть → колонка ЗП = Σ окладов отмеченных.
@@ -273,7 +303,7 @@ export async function masterShift(orgId: string, date: string) {
   const share = { from: mFrom, earned: num(shRow.earned), zp: num(shRow.zp), left: num(shRow.earned) - num(shRow.zp) }
 
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, remit, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
