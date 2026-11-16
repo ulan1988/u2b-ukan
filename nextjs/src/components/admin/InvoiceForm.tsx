@@ -364,11 +364,11 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
       : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 16px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} className="anim-pop" style={drawer
         ? { width: 580, maxWidth: '100%', height: '100vh', background: '#fff', boxShadow: '-12px 0 48px rgba(0,0,0,.25)', overflowY: 'auto' }
-        : { width: 820, maxWidth: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+        : { width: 980, maxWidth: '100%', maxHeight: 'calc(100vh - 64px)', overflowY: 'auto', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)' }}>
         {!data ? <div style={{ padding: 48, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
           <>
             {/* Шапка */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: '#fff', zIndex: 6 }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>{isSale ? 'Расходная накладная' : 'Приходная накладная'}</span>
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{creating ? 'новая' : o.number}</span>
               {!creating && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>}
@@ -516,7 +516,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                   const named = bn !== ''
                   return (
                     <div key={bn || '__none'} onDragOver={e => e.preventDefault()} onDrop={e => { if (dragId) moveLine(dragId, bn, null) }}
-                      style={{ marginBottom: 12, border: `1.5px solid ${named ? '#e0cef0' : '#efece8'}`, borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+                      style={{ marginBottom: 12, border: `1.5px solid ${named ? '#e0cef0' : '#efece8'}`, borderRadius: 10, background: '#fff', overflowX: 'auto' }}>
                       {(named || blocks.length > 0) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: named ? '#f5eefc' : '#f8f6f3', borderBottom: '1px solid #efece8' }}>
                           {named
@@ -526,7 +526,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                           {named && <button onClick={() => deleteBlock(bn)} title="Удалить блок (строки → Без блока)" style={{ border: 'none', background: 'none', color: '#c1121c', fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>✕</button>}
                         </div>
                       )}
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead><tr style={{ color: COLORS.textMuted, fontSize: 11 }}>{['', '№', 'Номенклатура', 'Кол-во', 'Ед.', 'СМ', '₸/шт', 'Сумма', 'Коммент', ''].map((h, i) => <th key={i} style={{ textAlign: i >= 3 && i <= 7 ? 'right' : 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                         <tbody>
                           {gl.length === 0 && <tr><td colSpan={10} style={{ padding: '14px 8px', textAlign: 'center', color: '#b8b1a6', fontSize: 12 }}>— перетащи строку сюда —</td></tr>}
@@ -535,7 +535,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                               style={{ borderTop: '1px solid #efece8', opacity: dragId === l.id ? 0.4 : 1, background: dragId === l.id ? '#f5eefc' : undefined }}>
                               <td style={{ padding: '6px 4px', color: '#c9c2b8', cursor: 'grab', textAlign: 'center' }} title="Перетащить">⠿</td>
                               <td style={{ padding: '6px 8px', color: COLORS.textMuted }}>{(l as any).sourcePosId ? String((l as any).sourcePosId).split('-P')[1] ? 'P' + String((l as any).sourcePosId).split('-P')[1] : '' : ''}</td>
-                              <td style={{ padding: '6px 8px', fontWeight: 500, position: 'relative' }}>
+                              <td style={{ padding: '6px 8px', fontWeight: 500, position: 'relative', minWidth: 190 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                   <span>{cleanNm(l.name)}</span>
                                   {!creating && <button type="button" onClick={() => { setSwapFor(swapFor === l.id ? '' : l.id); setSwapQ('') }}
@@ -619,7 +619,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
               <span style={{ marginLeft: 'auto', fontSize: 15, fontWeight: 800 }}>Всего: {m2(total)} ₸</span>
             </div>
 
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', position: 'sticky', bottom: 0, background: '#fff', zIndex: 6 }}>
               {flash && <span style={{ marginRight: 'auto', fontSize: 13, color: flash.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{flash}</span>}
               {!creating && o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
               {!creating && <button onClick={purgeDoc} disabled={busy} title="Ошибочный документ: снять движения склада и стереть его совсем"
