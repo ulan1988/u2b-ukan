@@ -18,6 +18,8 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   // Выделенная строка: с неё делаем копию («+» = та же шапка) или «на основании» (+ строки).
   const [picked, setPicked] = useState<string | null>(null)
   const [copyFrom, setCopyFrom] = useState<{ id: string; lines: boolean } | null>(null)
+  // «Продать этот приход»: новая расходная с теми же товарами, покупателя выбираем сами.
+  const [sellFrom, setSellFrom] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   // Фильтры проведённых накладных: по дате (с/по), поставщику и заказчику/покупателю.
   const [dFrom, setDFrom] = useState('')
@@ -81,6 +83,9 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
         <button onClick={() => picked && setCopyFrom({ id: picked, lines: true })} disabled={!picked}
           title={picked ? 'Новая накладная с той же шапкой И строками' : 'Выделите строку в списке'}
           style={{ padding: '8px 14px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, background: picked ? COLORS.white : '#f7f5f2', color: picked ? COLORS.text : '#b3aca3', fontSize: 13.5, fontWeight: 600, cursor: picked ? 'pointer' : 'default', fontFamily: 'inherit' }}>📄 На основании</button>
+        {kind === 'in' && <button onClick={() => picked && setSellFrom(picked)} disabled={!picked}
+          title={picked ? 'Создать расходную с товаром этого прихода — продать его дальше' : 'Выделите приходную в списке'}
+          style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: picked ? '#2e8a5e' : '#cfe0d6', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: picked ? 'pointer' : 'default', fontFamily: 'inherit' }}>➡ Продать</button>}
         <button onClick={() => setCreating(true)} style={{ padding: '8px 16px', border: 'none', borderRadius: 9, background: COLORS.primary, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
           + Создать {kind === 'in' ? 'приход' : 'расход'}
         </button>
@@ -160,6 +165,8 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
 
       {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={loadDocs} />}
       {creating && <InvoiceForm createKind={kind === 'in' ? 'purchase' : 'sale'} orgId={orgId} onClose={() => setCreating(false)} onSaved={() => { loadDocs(); setMsg('✅ Накладная создана') }} />}
+      {sellFrom && <InvoiceForm createKind="sale" orgId={orgId} fromId={sellFrom} linesOnly
+        onClose={() => setSellFrom(null)} onSaved={() => { setSellFrom(null); loadDocs(); setMsg('✅ Расходная создана на основании прихода') }} />}
       {copyFrom && <InvoiceForm createKind={kind === 'in' ? 'purchase' : 'sale'} orgId={orgId} fromId={copyFrom.id} withLines={copyFrom.lines}
         onClose={() => setCopyFrom(null)} onSaved={() => { setCopyFrom(null); loadDocs(); setMsg(copyFrom.lines ? '✅ Накладная создана на основании' : '✅ Копия создана') }} />}
     </div>

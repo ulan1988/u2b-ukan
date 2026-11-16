@@ -35,7 +35,7 @@ const OPS_OUT = [{ v: 'shipment', l: 'Продажа покупателю' }, { 
 // блоки, строки, скидка и оплата — один в один как у проведённой, плюс каталог и поиск.
 // fromId — создать копией выделенной накладной: подставляем её шапку (контрагент, склад,
 // операция), а с withLines — ещё и строки («создать на основании»).
-export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, withLines, onClose, onSaved, drawer = false }: { id?: string; createKind?: 'purchase' | 'sale'; orgId?: string; fromId?: string; withLines?: boolean; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
+export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, withLines, linesOnly, onClose, onSaved, drawer = false }: { id?: string; createKind?: 'purchase' | 'sale'; orgId?: string; fromId?: string; withLines?: boolean; linesOnly?: boolean; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
   const creating = !id && !!createKind
   const newType = createKind === 'sale' ? 'sale' : 'purchase'
   const [data, setData] = useState<any>(null)
@@ -88,18 +88,27 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     if (!creating || !fromId) return
     getDocument(fromId).then((d: any) => {
       if (!d) return
-      setF((p: any) => ({ ...p, contragentId: d.doc.contragentId || '', supplierId: d.doc.supplierId || '', operation: d.doc.operation || p.operation, comment: d.doc.comment || '' }))
+      // linesOnly — «продать этот приход»: берём только товар, покупателя и операцию выбирает
+      // пользователь, цены ставим ПРОДАЖНЫЕ (под тип цены покупателя, пока он не выбран — розница).
+      if (!linesOnly) {
+        setF((p: any) => ({ ...p, contragentId: d.doc.contragentId || '', supplierId: d.doc.supplierId || '', operation: d.doc.operation || p.operation, comment: d.doc.comment || '' }))
+      }
       if (d.doc.warehouseId) setWhId(d.doc.warehouseId)
-      if (!withLines) return
+      if (!withLines && !linesOnly) return
       const mapped = (d.lines || []).map((l: any, i: number) => ({
         id: 'new-' + (i + 1), productId: l.productId, name: l.name, qty: Number(l.qty) || 0,
         unit: l.unit || 'шт', price: Number(l.price) || 0, amount: r2((Number(l.qty) || 0) * (Number(l.price) || 0)),
-        widthCm: l.widthCm != null ? Number(l.widthCm) : null, comment: l.comment || '', block: l.block || '', sortOrder: i,
-      }))
+        widthCm: l.widthCm != null ? Number(l.widthCm) : null, comment: l.comment || '', block: linesOnly ? '' : (l.block || ''), sortOrder: i,
+      })).map((l: any) => {
+        if (!linesOnly) return l
+        const pr = products.find((p: any) => p.id === l.productId)
+        const sale = pr ? (priceByType(pr, 'retail') || Number(pr.priceRetail) || 0) : 0
+        return sale > 0 ? { ...l, price: sale, amount: r2(Number(l.qty) * sale) } : l
+      })
       setLines(mapped); setSeq(mapped.length + 1)
       setBlocks(Array.from(new Set(mapped.map((l: any) => l.block).filter(Boolean))) as string[])
     }).catch(() => {})
-  }, [creating, fromId, withLines]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [creating, fromId, withLines, linesOnly, products.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Справочники для создания: товары (поиск/каталог) и склады орг.
   useEffect(() => {
