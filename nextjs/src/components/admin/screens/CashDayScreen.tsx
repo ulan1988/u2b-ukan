@@ -40,6 +40,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [profitBusy, setProfitBusy] = useState(false)
   // Погашение долга прямо из блока «ДОЛГИ»: счёт + сумма, деньги приходят сегодняшним днём.
   const [debtFor, setDebtFor] = useState<any>(null)
+  const [debtsOpen, setDebtsOpen] = useState(false)   // долги свёрнуты по умолчанию — разворачиваем кнопкой
   const [debtAcc, setDebtAcc] = useState('')
   const [debtSum, setDebtSum] = useState('')
   const [debtBusy, setDebtBusy] = useState(false)
@@ -425,12 +426,17 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
         {/* ДОЛГИ (дебиторка) — непогашенные чеки орг (не по дню) */}
         {(data.debts || []).length > 0 && (
           <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden', borderLeft: `4px solid ${COLORS.primaryDark}` }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px 10px' }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.primaryDark, letterSpacing: '.04em' }}>💳 ДОЛГИ</span>
-              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{(data.debts || []).length} чек.</span>
-              <b style={{ marginLeft: 'auto', fontSize: 16, color: COLORS.primaryDark }}>{m(data.debtTotal)} ₸</b>
-            </div>
-            {(data.debts || []).map((x: any) => (
+            <button onClick={() => setDebtsOpen(v => !v)}
+              title={debtsOpen ? 'Свернуть список долгов' : 'Показать все непогашенные чеки'}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', border: 'none',
+                background: debtsOpen ? '#fff6f3' : '#fff', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.primaryDark, letterSpacing: '.04em' }}>💳 ДОЛГИ</span>
+              <span style={{ fontSize: 13, color: COLORS.textLight }}>{(data.debts || []).length} чек.</span>
+              <b style={{ marginLeft: 'auto', fontSize: 17, color: COLORS.primaryDark }}>{m(data.debtTotal)} ₸</b>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.primaryDark, background: '#fde3d0', borderRadius: 20, padding: '5px 14px', whiteSpace: 'nowrap' }}>
+                {debtsOpen ? '▲ Свернуть' : '▼ Показать'}</span>
+            </button>
+            {debtsOpen && (data.debts || []).map((x: any) => (
               <div key={x.id} className="cd-row" style={{ padding: '9px 16px', borderTop: `1px solid ${COLORS.borderLight}` }}>
                 <span style={{ fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{x.customer || 'Розница'}</span>
                 <span style={{ fontFamily: 'monospace', fontSize: 12.5, color: '#2e8a5e', width: 150 }}>{x.docNumber || x.id}</span>
@@ -440,7 +446,7 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   style={{ marginLeft: 10, border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>💵 Вернуть долг</button>
               </div>
             ))}
-            <div style={{ padding: '6px 16px 10px', fontSize: 11.5, color: COLORS.textLight }}>Клиент принёс деньги — «💵 Вернуть долг»: приход сегодняшним днём на выбранный счёт.</div>
+            {debtsOpen && <div style={{ padding: '6px 16px 10px', fontSize: 11.5, color: COLORS.textLight }}>Клиент принёс деньги — «💵 Вернуть долг»: приход сегодняшним днём на выбранный счёт.</div>}
           </div>
         )}
 
