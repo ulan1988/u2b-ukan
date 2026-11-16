@@ -55,6 +55,10 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const [whs, setWhs] = useState<any[]>([])
   const [whId, setWhId] = useState('')
   const [recId, setRecId] = useState('')          // получатель прихода (товар сразу уйдёт ему)
+  // ДОЛГ К ГОЛОВНОМУ в расходной филиала: накладная выписывается на мост «Адал Строй 2»,
+  // а заказчик уходит дальше — у головного зеркальная приходная сразу отгружается ему.
+  const [hqBridgeId, setHqBridgeId] = useState('')
+  const [debtHq, setDebtHq] = useState(false)
   const [recPrices, setRecPrices] = useState<Record<string, number>>({})
   const [q, setQ] = useState('')
   const [showCatalog, setShowCatalog] = useState(false)
@@ -104,6 +108,10 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     fetchRefs(newOrgId).then((r: any) => {
       const w = ((r.warehouses || []) as any[]).filter(x => x.orgId === newOrgId)
       setWhs(w); setWhId((w.find((x: any) => x.isCentral) || w[0])?.id || '')
+      const me = ((r.organizations || []) as any[]).find(o => o.id === newOrgId)
+      const hq = ((r.organizations || []) as any[]).find(o => o.kind === 'hq')
+      // Мост на головного есть только у филиала — у самого ГО кнопки «долг к головному» нет.
+      if (hq && me && me.kind !== 'hq') setHqBridgeId((((r.contragents || []) as any[]).find(c => c.orgId === newOrgId && c.orgRefId === hq.id && !c.archived) || {}).id || '')
     }).catch(() => {})
   }, [creating, newOrgId])
 
@@ -227,6 +235,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
       lines: good.map((l, i) => ({ productId: l.productId, name: l.name, qty: Number(l.qty), price: Number(l.price) || 0, amount: amtOf(l), unit: l.unit || 'шт', widthCm: l.widthCm != null ? Number(l.widthCm) : undefined, comment: l.comment || '', block: l.block || '' })),
     }
     if (newType === 'purchase' && recId) body.recipientId = recId
+    if (newType === 'sale' && debtHq && recId) body.recipientId = recId   // заказчик для цепочки у головного
     const r: any = newType === 'purchase' ? await createPurchase(body) : await createSale(body)
     setBusy(false)
     if (r?.error || r?.ok === false) { setFlash('⚠ ' + (r.error || 'Ошибка сохранения')); return }
@@ -323,6 +332,29 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
               <div><label style={lbl}>СКЛАД</label>{creating
                 ? <select style={inp} value={whId} onChange={e => setWhId(e.target.value)}>{whs.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
                 : <input style={{ ...inp, background: '#f6f3f0' }} value={data.warehouse?.name || '—'} disabled />}</div>
+              {/* ДОЛГ К ГОЛОВНОМУ (расходная филиала): накладная на мост «Адал Строй 2»,
+                  заказчик указывается отдельно — у головного приходная-зеркало сразу уходит
+                  ему расходной, и долг ложится на заказчика. */}
+              {creating && isSale && hqBridgeId && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <button type="button" onClick={() => { const v = !debtHq; setDebtHq(v); if (v) setF((p: any) => ({ ...p, contragentId: hqBridgeId })) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1.5px solid ${debtHq ? '#7a3aaa' : '#e6e2dc'}`, background: debtHq ? '#f3eeff' : '#fff', color: debtHq ? '#7a3aaa' : '#5f5952', borderRadius: 9, padding: '7px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff', background: debtHq ? '#7a3aaa' : 'transparent', boxShadow: `inset 0 0 0 2px ${debtHq ? '#7a3aaa' : '#cfc8bf'}` }}>{debtHq ? '✓' : ''}</span>
+                    🏢 Долг к головному
+                  </button>
+                  {debtHq && (
+                    <div style={{ marginTop: 8 }}>
+                      <label style={lbl}>ЗАКАЗЧИК <span style={{ fontWeight: 500, color: '#a09889' }}>(кому головной отгрузит товар — на него ляжет долг)</span></label>
+                      <ContragentPicker contragents={cagList.filter((c: any) => c.id !== hqBridgeId)} value={recId}
+                        onPick={(c: any) => setRecId(c?.id || '')} placeholder="— выберите заказчика —" />
+                      <div style={{ marginTop: 6, fontSize: 12.5, color: '#7a3aaa', background: '#f8f5ff', border: '1px solid #e0d4f2', borderRadius: 8, padding: '7px 10px' }}>
+                        После проведения: расходная на «Адал Строй 2» (ваш долг перед ним уменьшится) → у него приходная той же датой
+                        {recId ? ` → его расходная на «${cagList.find((c: any) => c.id === recId)?.name}» по его ценам` : ' → укажите заказчика, иначе товар останется на складе головного'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* ПОЛУЧАТЕЛЬ прихода: товар сразу уйдёт ему расходной этой же датой (его цены). */}
               {creating && newType === 'purchase' && (
                 <div style={{ gridColumn: '1 / -1' }}>

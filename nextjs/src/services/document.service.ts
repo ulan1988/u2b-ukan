@@ -128,6 +128,10 @@ async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }
       // с базой) и отнимаем 2 секунды, чтобы отгрузка всегда шла первой.
       comment: `Зеркало ${kind === 'purchase' ? 'прихода' : 'расхода'} ${doc.number}`,
     }
+    // ДОЛГ К ГОЛОВНОМУ одной накладной: филиал отгрузил на мост ГО и указал ЗАКАЗЧИКА —
+    // у головного приходная-зеркало сразу уходит этому заказчику расходной той же датой
+    // (его цены), и долг ложится на него, а не на филиал. Домино идёт дальше само.
+    if (kind === 'sale' && (input as any).recipientId) minput.recipientId = (input as any).recipientId
     // Приход у нас → расход у них, и наоборот.
     const mdoc = kind === 'purchase' ? await createSale(minput) : await createPurchase(minput)
     // Порядок по времени: сначала отгрузил ЦЕНТРАЛЬНЫЙ склад, потом принял филиал.
