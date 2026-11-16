@@ -37,7 +37,7 @@ const OPS_OUT = [{ v: 'shipment', l: 'Продажа покупателю' }, { 
 // блоки, строки, скидка и оплата — один в один как у проведённой, плюс каталог и поиск.
 // fromId — создать копией выделенной накладной: подставляем её шапку (контрагент, склад,
 // операция), а с withLines — ещё и строки («создать на основании»).
-export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, withLines, linesOnly, onClose, onSaved, drawer = false }: { id?: string; createKind?: 'purchase' | 'sale'; orgId?: string; fromId?: string; withLines?: boolean; linesOnly?: boolean; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
+export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, withLines, linesOnly, opening, onClose, onSaved, drawer = false }: { id?: string; createKind?: 'purchase' | 'sale'; orgId?: string; fromId?: string; withLines?: boolean; linesOnly?: boolean; opening?: boolean; onClose: () => void; onSaved?: () => void; drawer?: boolean }) {
   const creating = !id && !!createKind
   const newType = createKind === 'sale' ? 'sale' : 'purchase'
   const [data, setData] = useState<any>(null)
@@ -147,6 +147,14 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
       setDebts(m)
     }).catch(() => {})
   }, [data?.doc?.orgId, newOrgId])
+
+  // НАЧАЛЬНЫЙ ОСТАТОК: тот же приход, только контрагент — технический «Начальный остаток»,
+  // а дату ставит сам пользователь в календаре шапки (обычно 31.10.2026 — день переноса).
+  useEffect(() => {
+    if (!opening || !creating || !cags.length) return
+    const op = cags.find((c: any) => /начальн/i.test(String(c.name || '')))
+    setF((p: any) => ({ ...p, contragentId: p.contragentId || op?.id || '', comment: p.comment || 'Начальный остаток' }))
+  }, [opening, creating, cags.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Контрагенты орг этой накладной — для выбора/правки покупателя-поставщика.
   useEffect(() => {
@@ -386,7 +394,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
             {swapFor && <StoreCatalog orgId={data?.doc?.orgId || newOrgId} onPick={swapFromCatalog} onClose={() => setSwapFor('')} />}
             {/* Шапка */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: '#fff', zIndex: 6 }}>
-              <span style={{ fontWeight: 800, fontSize: 17 }}>{isSale ? 'Расходная накладная' : 'Приходная накладная'}</span>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>{opening && creating ? '⚖ Начальный остаток' : (isSale ? 'Расходная накладная' : 'Приходная накладная')}</span>
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.primary }}>{creating ? 'новая' : o.number}</span>
               {!creating && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>}
               {!creating && o.status !== 'cancelled' && !f.reviewed && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#fff3cd', color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>}

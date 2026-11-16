@@ -6,6 +6,7 @@ import { COLORS } from '@/lib/colors'
 import { stockOverview, stockMovements, stockIncome, fetchRefs, listFolders } from '@/lib/api/refs'
 import { createTransfer } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
+import InvoiceForm from '@/components/admin/InvoiceForm'
 import { matchWords } from '@/lib/search'
 
 interface StockItem { id: string; name: string; unit: string; qty: number; reserved: number; cat?: string }
@@ -123,6 +124,7 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   const [movTab, setMovTab] = useState<MovTab>('all')
   const [search, setSearch] = useState('')
   const [showIncome, setShowIncome] = useState(false)
+  const [showOpening, setShowOpening] = useState(false)   // ввод начального остатка (дата — в календаре формы)
   const [showTransfer, setShowTransfer] = useState(false)
   const [whs, setWhs] = useState<any[]>([])
   const [orgs, setOrgs] = useState<any[]>([])
@@ -194,6 +196,8 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
     <div className="anim-fade">
       {toast && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, whiteSpace: 'nowrap' }}>{toast}</div>}
       {showIncome && <IncomeModal products={products} onClose={() => setShowIncome(false)} onSubmit={handleIncome} />}
+      {/* Начальный остаток — та же форма прихода: каталог, кол-во, суммы, дата в календаре шапки. */}
+      {showOpening && <InvoiceForm createKind="purchase" orgId={orgId} opening onClose={() => setShowOpening(false)} onSaved={() => { setShowOpening(false); load() }} />}
       {showTransfer && srcWh && <TransferModal srcWh={srcWh} dests={dests} orgs={orgs} products={products} stock={stock} onClose={() => setShowTransfer(false)} onDone={msg => { showMsg(msg); load() }} />}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
@@ -204,6 +208,8 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={load} style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳ Обновить</button>
           {dests.length > 0 && srcWh && <button onClick={() => setShowTransfer(true)} style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить филиалу</button>}
+          <button onClick={() => setShowOpening(true)} title="Ввести остатки на выбранную дату (например 31.10.2026) — товар ляжет на склад этим днём"
+            style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px solid #cbb6e8', background: '#faf5ff', color: '#7a3aaa', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>⚖ Начальный остаток</button>
           <button onClick={() => setShowIncome(true)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>+ Приход</button>
         </div>
       </div>
