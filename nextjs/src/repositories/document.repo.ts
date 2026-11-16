@@ -153,16 +153,19 @@ export function listInvoices(orgId: string, type: string | string[]) {
       // (doc_links), иначе поставщики строк закупа, собранного под эту продажу (автозакуп).
       // На расходной «Заказчик» = сам покупатель, поэтому вместо него показываем поставщика.
       // Закупа не было (товар со своего склада) — показываем склад отгрузки («Центр-Склад»).
-      // ПОСТАВЩИК ДЛЯ ПОКУПАТЕЛЯ (правило владельца 16.11.2026): у ФИЛИАЛА товар покупателю
-      // формально идёт от ГОЛОВНОГО — заказчик остаётся должен Адал Строй 2, а филиал этой же
-      // накладной гасит свой долг перед ним (он продал головному свой товар). Если покупатель
-      // и есть головной (мост), поставщик — сам филиал. У головного логика прежняя: у кого куплено.
+      // ПОСТАВЩИК ДЛЯ ПОКУПАТЕЛЯ (правило владельца 16.11.2026). У ФИЛИАЛА смотрим, В ДОЛГ ЛИ
+      // К ГОЛОВНОМУ ушла продажа — это видно по контрагенту накладной:
+      //  • накладная выписана на МОСТ головного, а заказчик в карточке другой → товар покупателю
+      //    поставляет Адал Строй 2 (заказчик должен ему), филиал этой же накладной гасит свой долг;
+      //  • накладная на мост и заказчик тот же (продажа самому головному) → поставщик сам филиал;
+      //  • накладная прямо на клиента (продал сам, за деньги) → поставщик тоже сам филиал.
+      // У головного логика прежняя: у кого куплен проданный товар.
       supplier: sql<string>`(case when ${documents.type} = 'sale' then coalesce(
         (select case when oo.kind <> 'hq' then
-            case when exists (select 1 from ${contragents} cb join organizations ob on ob.id = cb.org_ref_id and ob.kind = 'hq'
-                   where cb.id = coalesce((select o9.contact_id from ${orders} o9 where o9.id = ${documents.sourceOrderId}), ${documents.contragentId}))
-                 then oo.name
-                 else (select oh.name from organizations oh where oh.kind = 'hq' order by oh.created_at limit 1)
+            case when exists (select 1 from ${contragents} cb join organizations ob on ob.id = cb.org_ref_id and ob.kind = 'hq' where cb.id = ${documents.contragentId})
+                   and coalesce((select o9.contact_id from ${orders} o9 where o9.id = ${documents.sourceOrderId}), ${documents.contragentId}) <> ${documents.contragentId}
+                 then (select oh.name from organizations oh where oh.kind = 'hq' order by oh.created_at limit 1)
+                 else oo.name
             end end
           from organizations oo where oo.id = ${documents.orgId}),
         (select sc0.name from ${contragents} sc0 where sc0.id = ${documents.supplierId}),
@@ -272,10 +275,10 @@ export async function saleSupplierFallback(docId: string): Promise<string> {
     select coalesce(
       -- Филиал: поставщик для покупателя — головной (у головного ветка пропускается).
       (select case when oo.kind <> 'hq' then
-          case when exists (select 1 from contragents cb join organizations ob on ob.id = cb.org_ref_id and ob.kind = 'hq'
-                 where cb.id = coalesce((select o9.contact_id from orders o9 where o9.id = d.source_order_id), d.contragent_id))
-               then oo.name
-               else (select oh.name from organizations oh where oh.kind = 'hq' order by oh.created_at limit 1)
+          case when exists (select 1 from contragents cb join organizations ob on ob.id = cb.org_ref_id and ob.kind = 'hq' where cb.id = d.contragent_id)
+                 and coalesce((select o9.contact_id from orders o9 where o9.id = d.source_order_id), d.contragent_id) <> d.contragent_id
+               then (select oh.name from organizations oh where oh.kind = 'hq' order by oh.created_at limit 1)
+               else oo.name
           end end
         from organizations oo where oo.id = d.org_id),
       (select string_agg(distinct pc.name, ', ') from doc_links dl join documents pd on pd.id = dl.purchase_doc_id
