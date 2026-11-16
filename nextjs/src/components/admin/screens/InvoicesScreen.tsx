@@ -15,6 +15,9 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   const [docs, setDocs] = useState<any[]>([])
   const [msg, setMsg] = useState('')
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  // Выделенная строка: с неё делаем копию («+» = та же шапка) или «на основании» (+ строки).
+  const [picked, setPicked] = useState<string | null>(null)
+  const [copyFrom, setCopyFrom] = useState<{ id: string; lines: boolean } | null>(null)
   const [creating, setCreating] = useState(false)
   // Фильтры проведённых накладных: по дате (с/по), поставщику и заказчику/покупателю.
   const [dFrom, setDFrom] = useState('')
@@ -70,6 +73,14 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <div style={{ fontWeight: 700, fontSize: 20 }}>{title}</div>
+        {/* Выделили строку мышкой → делаем новую накладную с той же шапкой («копия»)
+            или вместе со строками («на основании»), как в 1С. */}
+        <button onClick={() => picked && setCopyFrom({ id: picked, lines: false })} disabled={!picked}
+          title={picked ? 'Новая накладная с тем же поставщиком и складом' : 'Выделите строку в списке'}
+          style={{ padding: '8px 14px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, background: picked ? COLORS.white : '#f7f5f2', color: picked ? COLORS.text : '#b3aca3', fontSize: 13.5, fontWeight: 600, cursor: picked ? 'pointer' : 'default', fontFamily: 'inherit' }}>⧉ Копия</button>
+        <button onClick={() => picked && setCopyFrom({ id: picked, lines: true })} disabled={!picked}
+          title={picked ? 'Новая накладная с той же шапкой И строками' : 'Выделите строку в списке'}
+          style={{ padding: '8px 14px', borderRadius: 9, border: `1.5px solid ${COLORS.border}`, background: picked ? COLORS.white : '#f7f5f2', color: picked ? COLORS.text : '#b3aca3', fontSize: 13.5, fontWeight: 600, cursor: picked ? 'pointer' : 'default', fontFamily: 'inherit' }}>📄 На основании</button>
         <button onClick={() => setCreating(true)} style={{ padding: '8px 16px', border: 'none', borderRadius: 9, background: COLORS.primary, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
           + Создать {kind === 'in' ? 'приход' : 'расход'}
         </button>
@@ -124,8 +135,9 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
                   // посчитать нечем — прибыль магазина по нему выходит завышенной.
                   const noPrice = d.status !== 'cancelled' && Number((d as any).noPrice || 0) > 0
                   return (
-                  <tr key={d.id} onClick={() => setOpenDocId(d.id)} style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', background: noPrice ? '#fdeeea' : d.transit ? '#fff4ea' : notReviewed ? '#fff8e1' : 'transparent' }} title={noPrice ? 'В накладной есть строки без цены — впишите цену, иначе себестоимость и прибыль считаются неверно' : d.transit ? 'Сквозная — товар мимо склада' : notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
-                    <td style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}
+                  <tr key={d.id} onClick={() => setPicked(p => p === d.id ? null : d.id)} onDoubleClick={() => setOpenDocId(d.id)}
+                    style={{ borderTop: '1px solid #f1efec', cursor: 'pointer', outline: picked === d.id ? `2px solid ${COLORS.primary}` : 'none', outlineOffset: '-2px', background: picked === d.id ? '#eef5ff' : noPrice ? '#fdeeea' : d.transit ? '#fff4ea' : notReviewed ? '#fff8e1' : 'transparent' }} title={noPrice ? 'В накладной есть строки без цены — впишите цену, иначе себестоимость и прибыль считаются неверно' : d.transit ? 'Сквозная — товар мимо склада' : notReviewed ? 'Не проверено — откройте и проверьте цены/кол-во' : ''}>
+                    <td onClick={e => { e.stopPropagation(); setOpenDocId(d.id) }} title="Открыть накладную (по строке — выделить)" style={{ padding: '8px 16px', fontWeight: 600, color: COLORS.primary, textDecoration: 'underline' }}>{d.number} {d.transit && <span style={{ fontSize: 11, fontWeight: 700, color: '#c2570f', background: '#ffe8d6', padding: '1px 7px', borderRadius: 20 }}>🔀 сквозная</span>}
                       {noPrice && <span title={`${(d as any).noPrice} строк(и) без цены — откройте и впишите`} style={{ fontSize: 11, fontWeight: 800, color: '#b03020', background: '#ffe3dc', padding: '1px 7px', borderRadius: 20, marginLeft: 4, whiteSpace: 'nowrap' }}>⚠ без цены · {(d as any).noPrice}</span>}</td>
                     <td style={{ padding: '8px 16px', color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{fmtDMY(d.date)}</td>
                     <td style={{ padding: '8px 16px' }} title={kind === 'out' ? 'На кого выписана накладная: клиент (продали сами) или мост головного (в долг к нему)' : undefined}>{d.contragent || '—'}</td>
@@ -148,6 +160,8 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
 
       {openDocId && <InvoiceForm id={openDocId} onClose={() => setOpenDocId(null)} onSaved={loadDocs} />}
       {creating && <InvoiceForm createKind={kind === 'in' ? 'purchase' : 'sale'} orgId={orgId} onClose={() => setCreating(false)} onSaved={() => { loadDocs(); setMsg('✅ Накладная создана') }} />}
+      {copyFrom && <InvoiceForm createKind={kind === 'in' ? 'purchase' : 'sale'} orgId={orgId} fromId={copyFrom.id} withLines={copyFrom.lines}
+        onClose={() => setCopyFrom(null)} onSaved={() => { setCopyFrom(null); loadDocs(); setMsg(copyFrom.lines ? '✅ Накладная создана на основании' : '✅ Копия создана') }} />}
     </div>
   )
 }
