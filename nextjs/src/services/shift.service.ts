@@ -8,6 +8,9 @@ import type { Session } from '../lib/auth'
 
 const num = (n: any) => Number(n) || 0
 const findAcc = (accts: any[], nm: string) => accts.find((a: any) => (a.name || '').trim().toLowerCase() === nm.toLowerCase())
+// Поиск счёта ПО ЧАСТИ ИМЕНИ: у головного счёт называется «Каспи голд Берик», и точное
+// совпадение по «голд» не находило его — инкассация магазина валилась в банк.
+const findAccLike = (accts: any[], nm: string) => accts.find((a: any) => (a.name || '').toLowerCase().includes(nm.toLowerCase()))
 
 export async function masterShift(orgId: string, date: string) {
   // Вид орг: у листогиба (producer_seller) процентов от маржи нет — экран прячет пул 40%.
@@ -641,7 +644,7 @@ export function hqAccountFor(branchAccName: string, hqAccounts: Array<any>, orgK
   // он приходит банком. Магазин сдаёт голд напрямую на «Каспи голд» головного.
   if (/gold|голд/.test(n)) return orgKind === 'producer_seller'
     ? findAcc(hqAccounts, 'Банковский счет')
-    : (findAcc(hqAccounts, 'голд') || findAcc(hqAccounts, 'gold') || findAcc(hqAccounts, 'Банковский счет'))
+    : (findAccLike(hqAccounts, 'голд') || findAccLike(hqAccounts, 'gold') || findAcc(hqAccounts, 'Банковский счет'))
   if (/банк|qr|кюар/.test(n)) return findAcc(hqAccounts, 'Банковский счет')
   return findAcc(hqAccounts, 'Наличные') || findAcc(hqAccounts, 'Основная касса')
 }
