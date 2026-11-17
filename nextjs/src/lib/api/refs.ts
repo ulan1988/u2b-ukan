@@ -84,6 +84,9 @@ export const reviseSheet = (b: any) => post('/api/material', b)   // ревиз�
 export const produceToStock = (items: any[]) => post('/api/material/produce', { items })   // «В запас» (листогиб → свой склад)
 // Остаток склада на конец выбранного дня (отчёт «Остаток по дням»).
 export const stockOnDate = (orgId: string, date: string) => getObj(`/api/stock?orgId=${orgId}&onDate=${date}`)
+// Ревизия на дату: шлём ФАКТ по позициям, бэкенд проводит разницу одним документом.
+export const stockRevision = (orgId: string, date: string, rows: Array<{ productId: string; qty: number }>) =>
+  post('/api/stock', { action: 'revision', orgId, date, rows })
 // Кабинет-передатчик листов: остатки по цветам + списание «взял N».
 export const sheetsByColor = (orgId: string) => getArray(`/api/material/sheets?orgId=${orgId}`)
 export const sheetsAll = () => getArray('/api/material/sheets?all=1')   // все орг (для дашборда)

@@ -52,6 +52,42 @@ export async function stockOnDate(orgId: string, date: string) {
   return { items: rows, warehouse: wh.name }
 }
 
+// РЕВИЗИЯ НА ДАТУ: пришёл список «сколько по факту», считаем учётный остаток на этот день
+// и проводим РАЗНИЦУ одним документом (контрагент — технический «Начальный остаток»,
+// комментарий «Ревизия ДД.ММ.ГГГГ»). Плюс — приход, минус — списание: в строке отрицательное
+// кол-во, движение склада уходит в минус. Отдельных сущностей не заводим.
+export async function applyRevision(orgId: string, date: string, rows: Array<{ productId: string; qty: number }>, actor?: any) {
+  const wh = await central(orgId)
+  if (!wh) return { ok: false as const, error: 'Не найден склад' }
+  const { sqlClient } = await import('../lib/db')
+  const ids = rows.map(r => String(r.productId)).filter(Boolean)
+  if (!ids.length) return { ok: false as const, error: 'Нет позиций' }
+  const cur = await sqlClient`select product_id::text id, coalesce(sum(qty),0)::float q from stock_movements
+    where org_id=${orgId} and warehouse_id=${wh.id} and kind='move' and date <= ${date} and product_id = any(${ids}::uuid[])
+    group by product_id` as unknown as Array<any>
+  const byId: Record<string, number> = {}; for (const c of cur) byId[c.id] = Number(c.q)
+  const prods = await sqlClient`select id::text id, name, unit, coalesce(price_in,0)::float price from products where id = any(${ids}::uuid[])` as unknown as Array<any>
+  const pById: Record<string, any> = {}; for (const p of prods) pById[p.id] = p
+  const lines: any[] = []
+  for (const r of rows) {
+    const id = String(r.productId); const p = pById[id]; if (!p) continue
+    const diff = Math.round(((Number(r.qty) || 0) - (byId[id] || 0)) * 1000) / 1000
+    if (Math.abs(diff) < 0.0001) continue
+    lines.push({ productId: id, qty: diff, price: Number(p.price) || 0, unit: p.unit || 'шт', name: p.name })
+  }
+  if (!lines.length) return { ok: false as const, error: 'Расхождений нет — всё сходится' }
+  const [cg] = await sqlClient`select id::text id from contragents where org_id=${orgId} and archived=false
+    and name ilike '%начальн%' limit 1` as unknown as Array<any>
+  if (!cg) return { ok: false as const, error: 'Нет технического контрагента «Начальный остаток» — заведите его' }
+  const docSvc = await import('./document.service')
+  const doc: any = await docSvc.createPurchase({
+    orgId, contragentId: cg.id, warehouseId: wh.id, date, lines,
+    comment: `Ревизия ${date.split('-').reverse().join('.')}`,
+  } as any)
+  const plus = lines.filter(l => l.qty > 0).length, minus = lines.length - plus
+  return { ok: true as const, number: doc.number, changed: lines.length, plus, minus }
+}
+
 // Движения (последние). type: income | reserve | expense.
 export async function movements(orgId: string, limit = 100) {
   const rows = await db.select().from(stockMovements).where(eq(stockMovements.orgId, orgId)).orderBy(desc(stockMovements.date), desc(stockMovements.id)).limit(limit)
