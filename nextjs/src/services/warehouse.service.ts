@@ -31,6 +31,27 @@ export async function stockOverview(orgId: string) {
   return { items, warehouseId: wh.id }
 }
 
+// ОСТАТОК НА ДАТУ (ревизия): на начало дня, приход и расход за день, остаток на конец.
+// Считаем по движениям склада (kind=move), резервы не трогаем.
+export async function stockOnDate(orgId: string, date: string) {
+  const wh = await central(orgId)
+  if (!wh) return { items: [], warehouse: null }
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`
+    select p.id::text id, p.name, p.unit,
+      coalesce(sum(m.qty) filter (where m.date < ${date}), 0)::float start,
+      coalesce(sum(m.qty) filter (where m.date = ${date} and m.qty > 0), 0)::float "in",
+      coalesce(-sum(m.qty) filter (where m.date = ${date} and m.qty < 0), 0)::float "out",
+      coalesce(sum(m.qty) filter (where m.date <= ${date}), 0)::float "end"
+    from stock_movements m join products p on p.id = m.product_id
+    where m.org_id = ${orgId} and m.warehouse_id = ${wh.id} and m.kind = 'move' and m.date <= ${date}
+    group by p.id, p.name, p.unit
+    having coalesce(sum(m.qty) filter (where m.date <= ${date}), 0) <> 0
+        or coalesce(sum(m.qty) filter (where m.date = ${date}), 0) <> 0
+    order by p.name` as unknown as Array<any>
+  return { items: rows, warehouse: wh.name }
+}
+
 // Движения (последние). type: income | reserve | expense.
 export async function movements(orgId: string, limit = 100) {
   const rows = await db.select().from(stockMovements).where(eq(stockMovements.orgId, orgId)).orderBy(desc(stockMovements.date), desc(stockMovements.id)).limit(limit)

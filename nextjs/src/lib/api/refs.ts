@@ -82,6 +82,8 @@ export const editSpecType = (id: string, b: any) => patch(`/api/spec-types/${id}
 export const materialStock = (orgId: string) => getArray(`/api/material?orgId=${orgId}`)
 export const reviseSheet = (b: any) => post('/api/material', b)   // ревизия склада материала (факт кол-ва)
 export const produceToStock = (items: any[]) => post('/api/material/produce', { items })   // «В запас» (листогиб → свой склад)
+// Остаток склада на конец выбранного дня (отчёт «Остаток по дням»).
+export const stockOnDate = (orgId: string, date: string) => getObj(`/api/stock?orgId=${orgId}&onDate=${date}`)
 // Кабинет-передатчик листов: остатки по цветам + списание «взял N».
 export const sheetsByColor = (orgId: string) => getArray(`/api/material/sheets?orgId=${orgId}`)
 export const sheetsAll = () => getArray('/api/material/sheets?all=1')   // все орг (для дашборда)

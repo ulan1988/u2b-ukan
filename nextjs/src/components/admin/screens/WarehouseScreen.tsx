@@ -207,27 +207,15 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={load} style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳ Обновить</button>
-          {dests.length > 0 && srcWh && <button onClick={() => setShowTransfer(true)} style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>🚚 Отправить филиалу</button>}
+          <button onClick={() => window.open(`/admin/stockday?org=${orgId}`, '_blank')}
+            title="Остаток склада на выбранный день — для ревизии (откроется в новой вкладке)"
+            style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>📅 Остаток по дням</button>
           <button onClick={() => setShowOpening(true)} title="Ввести остатки на выбранную дату (например 31.10.2026) — товар ляжет на склад этим днём"
             style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px solid #cbb6e8', background: '#faf5ff', color: '#7a3aaa', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>⚖ Начальный остаток</button>
           <button onClick={() => setShowIncome(true)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>+ Приход</button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-        {[
-          { label: 'Позиций', val: totalItems, sub: 'наименований', color: '#211f1c', bg: '#fff' },
-          { label: 'В резерве', val: reservedCount, sub: 'товаров заморожено', color: '#4a5aaa', bg: '#eef2ff' },
-          { label: 'Приходов', val: incomeCount, sub: 'операций всего', color: '#2e8a5e', bg: '#e8f5ee' },
-          { label: 'Расходов', val: expenseCount, sub: 'операций всего', color: '#b03020', bg: '#faeaea' },
-        ].map(({ label, val, sub, color, bg }) => (
-          <div key={label} style={{ background: bg, borderRadius: 12, padding: '16px 18px', boxShadow: '0 0 0 1.5px #e6e2dc' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#5f5952', marginBottom: 4, letterSpacing: '.04em' }}>{label.toUpperCase()}</div>
-            <div style={{ fontWeight: 700, fontSize: 28, color, lineHeight: 1 }}>{loading ? '—' : val}</div>
-            <div style={{ fontSize: 12, color: '#5f5952', marginTop: 4 }}>{sub}</div>
-          </div>
-        ))}
-      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: 16, alignItems: 'start' }}>
         {/* Дерево номенклатуры (те же папки, что в номенклатуре) */}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stockByWarehouse } from '@/repositories/document.repo'
-import { stockOverview } from '@/services/warehouse.service'
+import { stockOverview, stockOnDate } from '@/services/warehouse.service'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +10,9 @@ export async function GET(req: NextRequest) {
   const p = new URL(req.url).searchParams
   const orgId = p.get('orgId')
   if (!orgId) return NextResponse.json({ error: 'orgId обязателен' }, { status: 400 })
+  // Остаток на конкретный день (отчёт «Остаток по дням», ревизия).
+  const onDate = p.get('onDate')
+  if (onDate && /^\d{4}-\d{2}-\d{2}$/.test(onDate)) return NextResponse.json(await stockOnDate(orgId, onDate))
   if (p.get('overview')) {
     const r = await stockOverview(orgId)
     return NextResponse.json(r.items)

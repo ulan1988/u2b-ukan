@@ -17,6 +17,7 @@ import EmployeesScreen from '@/components/admin/screens/EmployeesScreen'
 import DdsArticlesScreen from '@/components/admin/screens/DdsArticlesScreen'
 import InvoicesScreen from '@/components/admin/screens/InvoicesScreen'
 import WarehouseScreen from '@/components/admin/screens/WarehouseScreen'
+import StockDayScreen from '@/components/admin/screens/StockDayScreen'
 import ProductionScreen from '@/components/admin/screens/ProductionScreen'
 import NomenclatureScreen from '@/components/admin/screens/NomenclatureScreen'
 import ProjectsScreen from '@/components/admin/screens/ProjectsScreen'
@@ -47,6 +48,7 @@ export default function AdminScreenPage() {
     case 'invoice_out': return <InvoicesScreen kind="out" orders={a.orders} orgId={a.orgId} onReload={a.reload} onOpen={a.openCard} />
     case 'archive': return <ArchiveScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
     case 'warehouse': return <WarehouseScreen orgId={a.orgId} onOpenCard={id => a.openCard({ id })} />
+    case 'stockday': return <StockDayScreen orgId={a.orgId} />
     case 'production': return <ProductionScreen orgId={a.orgId} />
     case 'nomenclature': return <NomenclatureScreen />
     case 'projects': return <ProjectsScreen orgId={a.orgId} onOpen={a.openCard} onReload={a.reload} />
