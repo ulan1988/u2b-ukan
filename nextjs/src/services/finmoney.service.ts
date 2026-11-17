@@ -53,7 +53,11 @@ export async function financeDay(orgId: string, date: string) {
       if (n.includes('еркебулан')) return 4
       if (n.includes('жаркын') || n.includes('туркист') || n.includes('туркест')) return 5
       if (n.includes('абай') || n.includes('нурмахан')) return 6
-      if (n.includes('базар') || n.includes('жанар')) return 2
+      // ЖАНАР БАЗАР — ВТОРАЯ ТОЧКА, СВОЯ СТРОКА. Проверяем «жанар» ДО общего «базар»:
+      // иначе «Базар Жанар» (и клиенты «… Жанар базар») падали в строку «Базар Нипа»,
+      // две точки складывались в одну сумму и сверить их было нельзя.
+      if (n.includes('жанар') && n.includes('базар')) return 3
+      if (n.includes('базар')) return 2
       return -1 }
     const slotAmt: Array<Record<string, number>> = SLOTS.map(() => ({}))
     const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))

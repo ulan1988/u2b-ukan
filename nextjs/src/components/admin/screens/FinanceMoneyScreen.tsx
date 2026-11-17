@@ -55,6 +55,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const [cellPays, setCellPays] = useState<any[]>([])
   const [cellBusy, setCellBusy] = useState(false)
   const [cellNew, setCellNew] = useState('')   // сумма, внесённая вручную
+  const [cellLoad, setCellLoad] = useState(false)   // идёт загрузка платежей ячейки
   // Контрагент для ручного взноса, если у авто-строки он не определён (слот пустой).
   const [cellCag, setCellCag] = useState<{ id: string; name: string } | null>(null)
   const timers = useRef<Record<string, any>>({})
@@ -83,9 +84,9 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   const posted = rows.filter(r => r.status === 'posted').length
 
   async function openCell(r: any, a: any) {
-    setCell_({ row: r, acc: a }); setCellPays([]); setCellCag(null); setCellNew('')
+    setCell_({ row: r, acc: a }); setCellPays([]); setCellCag(null); setCellNew(''); setCellLoad(true)
     const res: any = await finCellPayments(date, a.id, r.contragentId || null)
-    setCellPays((res?.data || []).filter((p: any) => Number(p.amount) !== 0))
+    setCellPays((res?.data || []).filter((p: any) => Number(p.amount) !== 0)); setCellLoad(false)
   }
   async function saveCellPay(payId: string, val: string) {
     const amount = parseCell(val)
@@ -404,7 +405,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
             <div style={{ fontSize: 12.5, color: '#6b7280', margin: '4px 0 14px' }}>
               Правка меняет сам платёж: касса, долг контрагента, оплата по накладной и парная проводка второй орг.
             </div>
-            {cellPays.length === 0 && <div style={{ color: '#6b7280', fontSize: 13, padding: '8px 0' }}>Загрузка…</div>}
+            {cellPays.length === 0 && <div style={{ color: '#6b7280', fontSize: 13, padding: '8px 0' }}>{cellLoad ? 'Загрузка…' : 'Платежей по этой ячейке за день нет — внесите сумму вручную ниже.'}</div>}
             {cellPays.map((p: any) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f1efec' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
