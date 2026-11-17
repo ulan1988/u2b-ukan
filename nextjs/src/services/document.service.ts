@@ -283,11 +283,11 @@ async function dropStaleLinks(docId: string, productIds: string[]) {
 // Кол-во строки документа → кол-во позиции карточки-основания (отчёты по order_positions).
 async function syncCardPositions(docId: string) {
   const { sqlClient } = await import('../lib/db')
-  await sqlClient`update order_positions op set qty = dl.qty, product_id = dl.product_id,
+  await sqlClient`update order_positions op set qty = dl.qty, product_id = dl.product_id, price = dl.price,
        name1c = coalesce(dl.name, pr.name), oral = coalesce(dl.name, pr.name), updated_at = now()
      from document_lines dl join products pr on pr.id = dl.product_id
      where dl.source_pos_id = op.id and dl.document_id = ${docId}
-       and (op.qty <> dl.qty or op.product_id is distinct from dl.product_id)`
+       and (op.qty <> dl.qty or op.price <> dl.price or op.product_id is distinct from dl.product_id)`
 }
 
 // 🁢 ДОМИНО КОЛИЧЕСТВА. Кол-во — это движение склада, поэтому новое кол-во идёт по ВСЕЙ
@@ -373,6 +373,11 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   // отгрузка получателю) едут следом. Правило домино: одно кол-во валит все костяшки.
   const qtyChanged = new Map<string, number>()
   const swaps: Array<{ from: string; to: string }> = []
+  // Цена строки изменилась — карточку-основание тоже нужно обновить (чек показывал старую).
+  const priceChanged = (() => {
+    const wasP = new Map(before.map(l => [l.id, Number(l.price)]))
+    return lines.some(l => Math.abs(Number(l.price) - Number(wasP.get(l.id) ?? l.price)) > 0.0000005)
+  })()
   {
     // Смена товара в строке: собираем пары «было → стало» (для склада, связок и цепочки).
     const wasP = new Map(before.map(l => [l.id, String((l as any).productId || '')]))
@@ -396,7 +401,7 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
     if (prodChanged.size || swaps.length) {
       await syncMovements(id)
       await syncCardPositions(id)
-    }
+    } else if (priceChanged) await syncCardPositions(id)   // только цена — склад не трогаем
   }
 
   // Шапка.
