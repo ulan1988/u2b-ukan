@@ -70,11 +70,11 @@ export async function countByKind(orgId: string, kind: string) {
 
 // Свободный id документа (ЗП/ПР): нумерация по орг, НО id — глобальный PK, поэтому проверяем
 // занятость и бампим при коллизии (две орг в один день давали одинаковый номер → duplicate key).
-export async function nextFreeOrderId(orgId: string, kind: string): Promise<string> {
+export async function nextFreeOrderId(orgId: string, kind: string, ymd?: string): Promise<string> {
   const { docNumber } = await import('../lib/num')
   let count = await countByKind(orgId, kind)
   for (let i = 0; i < 20000; i++) {
-    const id = docNumber(kind, count)
+    const id = docNumber(kind, count, ymd)
     const [ex] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, id)).limit(1)
     if (!ex) return id
     count++
@@ -84,13 +84,13 @@ export async function nextFreeOrderId(orgId: string, kind: string): Promise<stri
 
 // Свободный номер по виду документа из lib/num (ЗКП — прямой заказ, ПРД — он же после
 // прихода на склад). Счётчик — по уже выданным номерам этого префикса, id проверяем на занятость.
-export async function nextFreeByKind(kind: string): Promise<string> {
+export async function nextFreeByKind(kind: string, ymd?: string): Promise<string> {
   const { docNumber } = await import('../lib/num')
   const prefix = docNumber(kind, 0).split('-')[0]
   const rows = await db.select({ id: orders.id }).from(orders).where(sql`${orders.id} LIKE ${prefix + '-%'}`)
   let count = rows.length
   for (let i = 0; i < 20000; i++) {
-    const id = docNumber(kind, count)
+    const id = docNumber(kind, count, ymd)
     const [ex] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, id)).limit(1)
     if (!ex) return id
     count++

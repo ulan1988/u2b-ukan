@@ -1,5 +1,9 @@
 // Номер документа: раздельные счётчики по типу + дата. ЗП-0001-DDMMYY (закуп),
 // ПР-0001-DDMMYY (продажа) и т.д. count передаётся снаружи (по своему типу).
+// РАБОЧАЯ (ЗАДНЯЯ) ДАТА: кабинет может оформлять вчерашним днём — тогда и НОМЕР выписывается
+// тем днём, иначе карточка с датой 16.11 носила бы номер …171126 и путала журнал.
+const dayOf = (ymd?: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date() }
+
 const PREFIX: Record<string, string> = {
   purchase: 'ЗП', sale: 'ПР', production: 'ПРЗ', transfer: 'ПМ', act: 'АКТ', opening: 'НО',
   return_in: 'ВП', return_out: 'ВС',   // возврат от покупателя / поставщику
@@ -10,17 +14,17 @@ const PREFIX: Record<string, string> = {
 
 // Код заказа мастера производства: ЗК-NN-DDMMYY. seq — продолжающийся номер (01, 02…),
 // дата — сегодняшняя. Показываем как «ЗК 01 140826».
-export function prodOrderNumber(seq: number): string {
-  const d = new Date()
+export function prodOrderNumber(seq: number, ymd?: string): string {
+  const d = dayOf(ymd)
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yy = String(d.getFullYear()).slice(-2)
   return `ЗК-${String(seq).padStart(2, '0')}-${dd}${mm}${yy}`
 }
 
-export function docNumber(type: string, count: number): string {
+export function docNumber(type: string, count: number, ymd?: string): string {
   const p = PREFIX[type] || 'ДК'
-  const d = new Date()
+  const d = dayOf(ymd)
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yy = String(d.getFullYear()).slice(-2)

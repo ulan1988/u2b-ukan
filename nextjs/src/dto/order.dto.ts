@@ -36,6 +36,9 @@ export const createOrderSchema = z.object({
   deadline: z.string().optional(),
   prodOrder: z.boolean().optional(),                       // заказ мастера производства → код ЗК-NN-DDMMYY
   directOrder: z.boolean().optional(),                     // прямой заказ админа → код ЗКП-0001-DDMMYY, сразу логисту
+  // РАБОЧАЯ ДАТА КАБИНЕТА: карточка оформляется этим днём (задним числом) — им же она
+  // попадает в списки и журнал. Пусто → сегодня. Вперёд нельзя (проверка в createOrder).
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   positions: z.array(orderPositionInput).default([]),
 })
 

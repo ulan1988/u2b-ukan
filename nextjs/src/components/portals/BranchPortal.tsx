@@ -155,6 +155,9 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   }
 
   const inDate = (o: any) => inPeriod(o.createdAt, period, day)
+  // НЕЗАВЕРШЁННУЮ РАБОТУ ПО ДАТЕ НЕ ПРЯЧЕМ: день применяется только там, где он закрывается
+  // (касса, отправлено). Иначе карточка, заведённая задним числом или вчера, пропадала со
+  // стола мастера — её нельзя было ни принять, ни оплатить.
   // Заказ на производство: карточка с позицией плеча-1 (филиал = изготовитель/поставщик), ещё не переданная логисту.
   const isProd = (o: any) => (o.positions || []).some((p: any) => Number(p.leg) === 1)
   const notClosed = (o: any) => !['bookkeeping', 'archive'].includes(o.screen)
@@ -171,16 +174,16 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   // головного) + прямые ЗК, пока лежат на входных экранах. Без второго условия ЗК с пустой
   // фазой не попадала НИ В ОДНУ вкладку кабинета и терялась для мастера.
   const awaitingZK = (o: any) => isZK(o) && ['incoming', 'reception'].includes(o.screen)
-  const production = orders.filter(o => (isProd(o) || awaitingZK(o)) && !o.isCancelled && notClosed(o) && phase(o) === '' && inDate(o))
+  const production = orders.filter(o => (isProd(o) || awaitingZK(o)) && !o.isCancelled && notClosed(o) && phase(o) === '')
   // Стол мастера по этапам.
   // Активные этапы — только ещё НЕ проданные и НЕ «долг головному» (те уходят в свои разделы).
   const notDisposed = (o: any) => !o.pendingDebtHead && !o.linkedDocId
-  const accepted = orders.filter(o => prodBase(o) && phase(o) === 'accepted' && notDisposed(o) && inDate(o))
-  const working = orders.filter(o => prodBase(o) && phase(o) === 'working' && notDisposed(o) && inDate(o))
-  const ready = orders.filter(o => prodBase(o) && phase(o) === 'ready' && notDisposed(o) && inDate(o))
+  const accepted = orders.filter(o => prodBase(o) && phase(o) === 'accepted' && notDisposed(o))
+  const working = orders.filter(o => prodBase(o) && phase(o) === 'working' && notDisposed(o))
+  const ready = orders.filter(o => prodBase(o) && phase(o) === 'ready' && notDisposed(o))
   const inWork = [...accepted, ...working, ...ready]
   // 🏢 Долг головному — помечены «Долг к головному», ждут отправки логисту.
-  const headDebt = orders.filter(o => prodBase(o) && !!o.pendingDebtHead && inDate(o)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  const headDebt = orders.filter(o => prodBase(o) && !!o.pendingDebtHead).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   // 💵 Касса Нипы — внутренняя продажа (расходная проведена), НЕ долг головному. Делим: оплачено / забрано (в долг).
   const cardSum = (o: any) => (o.positions || []).reduce((s: number, p: any) => s + lineAmount({ name: p.name1c || p.oral, qty: p.qty, price: p.price, widthCm: p.widthCm }), 0)
   const cardDebt = (o: any) => Math.max(0, Math.round(cardSum(o) - (Number(o.paidCash || 0) + Number(o.paidKaspi || 0) + Number(o.paidQr || 0))))
@@ -193,12 +196,12 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   const sentOut = orders.filter(o => (isProd(o) || isZK(o)) && !o.isCancelled && phase(o) === 'sent' && inDate(o))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const sold = [...kassaDone, ...sentOut]   // совместимость: пустой экран — когда нет ни работы, ни продаж
-  const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o) && inDate(o))
+  const incoming = orders.filter(o => ['incoming', 'reception'].includes(o.screen) && !o.isCancelled && !isProd(o) && !isZK(o))
   // Для филиала входящее = заказы на производство: объединяем в одну вкладку (без дубля «Входящие»).
   const prodQueue = [...production, ...incoming].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   // Исходящие филиала — только НЕ плечо-производство (leg 1). Полностью отправленная карточка (все
   // позиции → логисту, leg=2, screen=outgoing) сюда попадает; частично-отправленная — ещё в «Производстве».
-  const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && !isProd(o) && inDate(o))
+  const outgoing = orders.filter(o => ['outgoing', 'accounting', 'bookkeeping'].includes(o.screen) && !o.isCancelled && !isProd(o))
   // Бейдж PWA: входящие + заказы на производство + производство (без фильтра по дате).
   const badgeCount = orders.filter(o => !o.isCancelled && ((isProd(o) && notClosed(o)) || ['incoming', 'reception'].includes(o.screen))).length
 

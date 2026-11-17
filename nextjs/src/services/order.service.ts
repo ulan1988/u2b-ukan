@@ -9,6 +9,15 @@ import type { createOrderSchema } from '../dto/order.dto'
 import type { Session } from '../lib/auth'
 import { legForSupplier, legForSuppliers } from '../lib/legDetect'
 
+// Рабочая (задняя) дата → отметка времени: тот день, время текущее. Тот же приём, что в кассе
+// (cashier.stampOf): иначе карточка/запись журнала легли бы сегодняшним днём.
+function stampOf(ymd: string): Date {
+  const now = new Date()
+  const [y, m, d] = String(ymd).split('-').map(Number)
+  if (!y || !m || !d) return now
+  return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+}
+
 // Авто-строка смены логиста при доставке позиции (как updatePos в Улкане):
 // upsert по posId в СЕГОДНЯШНИЙ черновик смены логиста-ответственного.
 async function addDeliveryToShift(orgId: string, pos: any, order: any) {
@@ -93,9 +102,12 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // Заказ мастера производства → продолжающийся код ЗК-NN-DDMMYY; иначе ЗП-/ПР-0001-DDMMYY.
   // Прямой заказ админа → ЗКП-0001-DDMMYY (закуп к логисту), заказ мастера → ЗК-NN,
   // остальное — ЗП-/ПР-0001-DDMMYY. Все id глобально уникальны (меж орг не коллизят).
-  const id = i.directOrder ? await repo.nextFreeByKind('direct')
-    : i.prodOrder ? prodOrderNumber(await repo.nextProdSeq())
-    : await repo.nextFreeOrderId(orgId, i.kind)
+  // РАБОЧАЯ ДАТА КАБИНЕТА (задним числом): карточка оформляется выбранным днём — им же
+  // выписывается номер и им же она ложится в списки/журнал. Вперёд нельзя.
+  const wd = i.date && i.date <= today() ? i.date : undefined
+  const id = i.directOrder ? await repo.nextFreeByKind('direct', wd)
+    : i.prodOrder ? prodOrderNumber(await repo.nextProdSeq(), wd)
+    : await repo.nextFreeOrderId(orgId, i.kind, wd)
 
   // «От имени заказчика»: продажа на контрагента, у которого есть кабинет → привязываем fromId
   // к его кабинет-юзеру, чтобы карточка появилась в его «Кабинете заказчика» как будто он сам создал.
@@ -116,6 +128,9 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
+    // Задний день: время текущее, дата — рабочая (как stampOf в кассе), иначе карточка
+    // легла бы сегодняшним числом и во вкладке своего дня её не видно.
+    ...(wd ? { createdAt: stampOf(wd), updatedAt: stampOf(wd) } : {}),
   }
   // Плечо позиции по поставщику: поставщик-филиал → leg 1 (через филиал), иначе → 2.
   // Прямой заказ мастера (prodOrder) поставщика не имеет — филиал сам изготовитель, поэтому
@@ -148,6 +163,7 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     cardId: id, action: 'create',
     detail: `${i.kind === 'purchase' ? 'Закуп' : 'Продажа'} создан (${positions.length} поз.)`,
     userName: actor?.name || 'Система',
+    ...(wd ? { createdAt: stampOf(wd) } : {}),
   }
   await repo.insertOrderPosting(order, positions, history)
   // Новая заявка из кабинета/сайта → уведомить админов.

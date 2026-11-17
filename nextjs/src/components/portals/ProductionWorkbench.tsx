@@ -206,7 +206,7 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
-        const res: any = await createClientOrder({ comment: note.trim() || 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions }, uid)
+        const res: any = await createClientOrder({ comment: note.trim() || 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions, date: workDate }, uid)
         // Долг к головному: помечаем карточку — расходная-цепочка проведётся на доставке логистом.
         const newId = res?.data?.id || res?.id
         if (debtHq && newId) { try { await updateCard(newId, { debtHead: true }) } catch { /* пометка не критична */ } }
