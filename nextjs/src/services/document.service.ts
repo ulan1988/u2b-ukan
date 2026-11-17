@@ -89,11 +89,13 @@ async function shipToRecipient(input: any, doc: { id: string; number: string }) 
     const prods = await refsRepo.productsWithOrgPrices(input.orgId, ids)
     const byId = new Map(prods.map((p: any) => [p.id, p]))
     const { priceForClient } = await import('../lib/lineAmount')
-    const lines = (input.lines || []).map((l: any) => {
+    // Услуги и «прочий доход» получателю не отгружаем — это не товар (см. onlyGoodsLines).
+    const lines = await onlyGoodsLines((input.lines || []).map((l: any) => {
       const p = l.productId ? byId.get(l.productId) : null
       const sale = p ? priceForClient(p, priceType) : 0
       return { ...l, sourcePosId: null, price: sale > 0 ? sale : Number(l.price) || 0 }
-    })
+    }))
+    if (!lines.length) return
     await createSale({
       orgId: input.orgId, contragentId: recipientId, warehouseId: input.warehouseId,
       lines, date: input.date, comment: `Отгрузка получателю по приходной ${doc.number}`,
@@ -107,6 +109,19 @@ async function shipToRecipient(input: any, doc: { id: string; number: string }) 
 // Значит это движение МЕЖДУ нашими орг: у второй стороны заводим противоположную
 // накладную ТОЙ ЖЕ ДАТОЙ (приход у филиала ⇄ расход у головного), чтобы задним числом
 // сошлись обе книги и отчёты. Зеркало не зеркалит само себя (noMirror).
+// МЕЖДУ ОРГ ХОДИТ ТОЛЬКО ТОВАР. Услуги и «прочий доход» (products.no_cost) — это деньги
+// своей орг, а не поставка: в зеркальную накладную и в отгрузку получателю они не идут.
+// Иначе чек магазина «Прочее доходы», пробитый на мост, рождал у головного приход материала.
+export async function onlyGoodsLines(lines: any[]): Promise<any[]> {
+  const ids = Array.from(new Set((lines || []).map((l: any) => l.productId).filter(Boolean)))
+  if (!ids.length) return lines || []
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`select id::text id from products where id = any(${ids}::uuid[]) and no_cost = true` as unknown as Array<any>
+  if (!rows.length) return lines
+  const skip = new Set(rows.map((r: any) => String(r.id)))
+  return (lines || []).filter((l: any) => !skip.has(String(l.productId)))
+}
+
 async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }, kind: 'purchase' | 'sale') {
   // Накладная из КАРТОЧКИ (sourceOrderId) зеркалится своим механизмом в invoice.service —
   // второй раз здесь нельзя, иначе у второй орг будет две накладные.
@@ -119,7 +134,8 @@ async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }
     const mwh = await refsRepo.centralWarehouse(refOrg)
     const [back] = await docRepo.contragentByOrgRef(refOrg, input.orgId)   // в книге второй орг — контрагент «наша орг»
     if (!mwh || !back) return
-    const mlines = (input.lines || []).map((l: any) => ({ ...l, sourcePosId: null }))
+    const mlines = await onlyGoodsLines((input.lines || []).map((l: any) => ({ ...l, sourcePosId: null })))
+    if (!mlines.length) return   // в накладной только услуги/прочий доход — зеркалить нечего
     const minput: any = {
       orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines,
       date: input.date, parentDocId: doc.id, noMirror: true,

@@ -103,7 +103,9 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
       const mwh = await refsRepo.centralWarehouse(refOrg)
       const [back] = await docRepo.contragentByOrgRef(refOrg, o.orgId)   // в книге refOrg — контрагент «наша орг»
       if (!mwh || !back) continue
-      const mlines = g.pos.map(p => mkLine(p, Number(p.price) || 0, false))
+      // Услуги и «прочий доход» между орг не передаём — только товар (см. onlyGoodsLines).
+      const mlines = await docSvc.onlyGoodsLines(g.pos.map(p => mkLine(p, Number(p.price) || 0, false)))
+      if (!mlines.length) continue
       const minput: any = { orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines, date: acceptDate, sourceOrderId: o.id, projectId, parentDocId: mainDoc.id, comment: `${isPurchase ? 'Продажа головному' : 'Приход материала'} · заявка ${o.id}` }
       const mdoc = isPurchase ? await docSvc.createSale(minput) : await docSvc.createPurchase(minput)   // HQ закуп→у него расход; HQ продажа→у него приход
       await orderRepo.insertHistory({ cardId, action: 'invoiceMirror', detail: `Зеркальная ${isPurchase ? 'расходная' : 'приходная'} у «${cp.name}»: ${mdoc.number}`, userName: actor?.name || 'Система' })
