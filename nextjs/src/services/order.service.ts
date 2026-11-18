@@ -711,6 +711,7 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
     recipientId: (p as any).recipientId ?? null,           // получатель строки едет вместе с ней
+    salePrice: String((p as any).salePrice ?? 0),
     specItemId: p.specItemId ?? null, leg: p.leg ?? 1, status: p.status || 'В работе',
   }))
   const history = { cardId: newId, action: 'split', detail: `Создана из ${cardId} (${move.length} поз.)`, userName: actor?.name || 'Система' }

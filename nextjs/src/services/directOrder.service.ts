@@ -52,7 +52,9 @@ export async function createSaleFromPurchase(cardId: string, actor?: Session | n
     name1c: p.name1c, oral: p.oral || p.name1c, qty: p.qty, unit: p.unit || 'шт',
     widthCm: p.widthCm ?? null, leg: 2, status: 'В работе',
     respUserId: p.respUserId ?? null, supplierId: null,
-    price: String(p.productId && byId[p.productId] ? priceForClient(byId[p.productId], priceType) : 0),
+    // Цена продажи: если админ вписал её в строке закупа (колонка «Продажа»), берём её —
+    // иначе прайс по типу цены клиента.
+    price: String(Number(p.salePrice) > 0 ? Number(p.salePrice) : (p.productId && byId[p.productId] ? priceForClient(byId[p.productId], priceType) : 0)),
   }))
   await repo.insertOrderPosting(child, childPositions, {
     id: randomUUID(), cardId: id, action: 'create',

@@ -460,6 +460,11 @@ export const orderPositions = pgTable('order_positions', {
   unit: text('unit').notNull().default('шт'),
   price: priceCol('price').notNull().default('0'),
   costPrice: priceCol('cost_price').notNull().default('0'),   // сквозная: закупочная цена (что платим поставщику); продажная = price
+  // ЦЕНА ПРОДАЖИ строки ЗАКУПА (правило владельца 18.11.2026): в закупе `price` — цена
+  // ЗАКУПА (уходит в приходную), а `sale_price` — цена, по которой товар уйдёт получателю
+  // (расходная). По умолчанию тянется из прайса по типу цены получателя. У продажи не
+  // используется — там `price` и есть продажная.
+  salePrice: priceCol('sale_price').notNull().default('0'),
   transit: boolean('transit').notNull().default(false),   // сквозная позиция (drop-ship, мимо склада) — на уровне позиции
   // БОНУСНАЯ ПРОДАЖА (группа «Долг товар»): товар взят у соседа, идёт мимо склада.
   // bonusCost — цена соседа за единицу (её вернём ему), bonusAgentId — у кого взяли.

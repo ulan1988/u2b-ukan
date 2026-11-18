@@ -22,7 +22,7 @@ import ProcessingCard from './reception/ProcessingCard'
 import AutoProcure from './reception/AutoProcure'
 
 const CENTER = '🏬 Центр-Склад'
-const emptyPos = () => ({ productId: '', name1c: '', widthCm: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '', recipientId: '', deadline: '', payment: '' })
+const emptyPos = () => ({ productId: '', name1c: '', widthCm: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '', recipientId: '', salePrice: '', deadline: '', payment: '' })
 
 export default function ReceptionScreen({ orders, orgId, onAction, onReload, onOpen }: {
   orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void
@@ -79,11 +79,49 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const setRow = (i: number, patch: any) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   // Тип цены заказчика (розница/опт/спец) для автоподстановки. Для изделий это цена ЗА СМ.
   const clientPT = () => (allCags.find((c: any) => c.id === contactId)?.priceType) || 'retail'
-  function pickProduct(i: number, p: any) { const pr = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0); const cost = Number(p.priceRetail) || 0; const rt = transit || !!rows[i]?.transit; setRow(i, { productId: p.id, name1c: p.name, unit: p.unit || 'шт', ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}), price: pr > 0 ? String(pr) : '', ...(rt && cost > 0 ? { costPrice: String(cost) } : {}) }) }
+  // Тип цены ПОЛУЧАТЕЛЯ строки закупа (розница/опт/спец) — по нему подставляется цена продажи;
+  // получателя в строке нет → берём заказчика карточки, иначе розницу.
+  const rowPT = (r: any) => (allCags.find((c: any) => c.id === r?.recipientId)?.priceType) || clientPT()
+  const salePriceOf = (p: any, r: any) => (p ? priceForClient(p, rowPT(r)) : 0)
+  function pickProduct(i: number, p: any) {
+    const pr = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0)
+    const cost = Number(p.priceRetail) || 0
+    const rt = transit || !!rows[i]?.transit
+    // В ЗАКУПЕ две цены: price — закуп (в приходную), salePrice — продажа получателю (в расходную).
+    const sale = kind === 'purchase' ? salePriceOf(p, rows[i]) : 0
+    setRow(i, {
+      productId: p.id, name1c: p.name, unit: p.unit || 'шт',
+      ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}),
+      price: pr > 0 ? String(pr) : '',
+      ...(kind === 'purchase' ? { salePrice: sale > 0 ? String(sale) : '' } : {}),
+      ...(rt && cost > 0 ? { costPrice: String(cost) } : {}),
+    })
+  }
+  // Сменили получателя строки — цена продажи пересчитывается по его типу цены.
+  function pickRowRecipient(i: number, cid: string) {
+    const r = { ...rows[i], recipientId: cid }
+    const prod = r.productId ? products.find((p: any) => p.id === r.productId) : null
+    const sale = prod ? salePriceOf(prod, r) : 0
+    setRow(i, { recipientId: cid, ...(sale > 0 ? { salePrice: String(sale) } : {}) })
+  }
   const assignAllLogist = (uid: string) => uid && setRows(rs => rs.map(r => ({ ...r, respUserId: uid })))
   const assignAllSupplier = (sid: string) => sid && setRows(rs => rs.map(r => ({ ...r, supplierId: sid })))
 
   async function pullPrices() {
+    // ЗАКУП: обе колонки сразу — закуп из карточки товара (price_in), продажа из прайса по
+    // типу цены получателя строки (иначе заказчика карточки). Продажа считается локально,
+    // по уже загруженной номенклатуре своей орг.
+    if (kind === 'purchase') {
+      setRows(rs => rs.map(r => {
+        const p = r.productId ? products.find((x: any) => x.id === r.productId) : null
+        if (!p) return r
+        const buy = Number(p.priceIn) || 0
+        const sale = salePriceOf(p, r)
+        return { ...r, ...(buy > 0 ? { price: String(buy) } : {}), ...(sale > 0 ? { salePrice: String(sale) } : {}) }
+      }))
+      toast('Цены подтянуты: закуп и продажа')
+      return
+    }
     const ids = rows.map(r => r.productId).filter(Boolean)
     // Изделия часто без товара 1С — подтягиваем цену и ПО ИМЕНИ (спец/опт/розница = цена за см).
     const names = rows.filter(r => !r.productId && (r.name1c || '').trim()).map(r => (r.name1c || '').trim())
@@ -120,6 +158,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       price: Number(r.price) || 0, transit: tr, costPrice: tr ? (Number(r.costPrice) || 0) : undefined,
       respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
       recipientId: r.recipientId || undefined,   // кому эта позиция закупа
+      salePrice: kind === 'purchase' ? (Number(r.salePrice) || 0) : undefined,   // цена продажи строки
       deadline: r.deadline || undefined, payment: r.payment || '',
     }) })
     // Карточка «целиком сквозная» только если ВСЕ строки сквозные — тогда orders.transit=true и она
@@ -244,7 +283,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
                 {/* У закупа один поставщик, а получатели у строк разные — отдельная колонка. */}
-                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', 'ПОСТАВЩИК', ...(kind === 'purchase' ? ['ПОЛУЧАТЕЛЬ'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', ...(kind === 'purchase' ? ['ЗАКУП ₸', 'ПРОДАЖА ₸'] : ['ЦЕНА ПРОДАЖИ ₸']), 'ЛОГИСТ', 'ПОСТАВЩИК', ...(kind === 'purchase' ? ['ПОЛУЧАТЕЛЬ'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r, i) => { const rt = !!(r.transit || transit); return (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec', background: rt ? '#faf7ff' : undefined }}>
@@ -257,20 +296,30 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 64 }}><input style={inpSm} type="number" placeholder="см" value={r.widthCm} onChange={e => { const cm = e.target.value; setRow(i, { widthCm: cm, name1c: isIzdelie(r.name1c) ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm }) : r.name1c }) }} /></td>
                       <td style={{ padding: '6px 4px', width: 70 }}><input data-qty style={inpSm} type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
+                      {/* ЗАКУП: price — цена закупа (уйдёт в приходную). ПРОДАЖА: цена для получателя
+                          строки (уйдёт в расходную), подставляется из прайса по его типу цены. */}
                       <td style={{ padding: '6px 4px', width: rt ? 150 : 100 }}>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isIzdelie(r.name1c) ? 'за см' : 'прод.'} title={isIzdelie(r.name1c) ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'продажная цена (заказчику)'} />
+                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })}
+                            placeholder={kind === 'purchase' ? 'закуп' : (isIzdelie(r.name1c) ? 'за см' : 'прод.')}
+                            title={kind === 'purchase' ? 'цена ЗАКУПА — по ней проводится приходная' : (isIzdelie(r.name1c) ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'продажная цена (заказчику)')} />
                           {rt && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику) — по умолчанию розничная из каталога" />}
                         </div>
                         {isIzdelie(r.name1c) && <div style={{ fontSize: 9.5, color: '#7a3aaa', textAlign: 'right', marginTop: 1 }}>за см</div>}
                       </td>
+                      {kind === 'purchase' && (
+                        <td style={{ padding: '6px 4px', width: 100 }}>
+                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600, color: '#2e8a5e' }} type="number" value={r.salePrice || ''} onChange={e => setRow(i, { salePrice: e.target.value })}
+                            placeholder="прод." title="цена ПРОДАЖИ получателю — по ней пойдёт расходная; подставляется из прайса по типу цены получателя" />
+                        </td>
+                      )}
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => setRow(i, { supplierId: c.id })} placeholder={kind === 'purchase' ? '— поставщик —' : '— производитель —'} style={{ fontSize: 13 }} /></td>
                       {/* КОМУ ЭТА ПОЗИЦИЯ: закуп один, получатели у строк разные. Пусто → как раньше
                           (заказчик карточки / заявки автозакупа / склад). */}
                       {kind === 'purchase' && (
                         <td style={{ padding: '6px 4px', width: 150 }}>
-                          <ContragentPicker contragents={allCags} value={r.recipientId} onPick={c => setRow(i, { recipientId: c.id })} placeholder="— получатель —" style={{ fontSize: 13 }} />
+                          <ContragentPicker contragents={allCags} value={r.recipientId} onPick={c => pickRowRecipient(i, c.id)} placeholder="— получатель —" style={{ fontSize: 13 }} />
                         </td>
                       )}
                       <td style={{ padding: '6px 4px', width: 120 }}><input style={inpSm} type="date" value={r.deadline} onChange={e => setRow(i, { deadline: e.target.value })} /></td>
