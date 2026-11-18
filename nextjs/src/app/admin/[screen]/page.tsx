@@ -7,6 +7,7 @@ import IncomingScreen from '@/components/admin/screens/IncomingScreen'
 import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
+import MovementsScreen from '@/components/admin/screens/MovementsScreen'
 import FilterScreen from '@/components/admin/screens/FilterScreen'
 import ArchiveScreen from '@/components/admin/screens/ArchiveScreen'
 import UkanbanScreen from '@/components/admin/screens/UkanbanScreen'
@@ -37,6 +38,7 @@ export default function AdminScreenPage() {
     case 'reception': return <ReceptionScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
     case 'outgoing': return <OutgoingScreen orders={a.visible} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
     case 'procurement': return <ProcurementScreen orgId={a.orgId} />
+    case 'movements': return <MovementsScreen orgId={a.orgId} onOpenCard={id => a.openCard({ id })} />
     case 'filter': return <FilterScreen orders={a.orders} orgId={a.orgId} onOpen={a.openCard} />
     case 'accounting': return <UkanbanScreen orders={a.orders} orgId={a.orgId} onAction={a.act} onOpen={a.openCard} />
     case 'bookkeeping': return <BookkeepingScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />

@@ -34,3 +34,6 @@ export const purgeDocument = (id: string) => send(`/api/documents/${id}/purge`, 
 // число одно на организацию, изделие = ширина_см × ₸/см.
 export const getCostPerCm = (orgId: string) => getObj(`/api/production/cost?orgId=${orgId}`, { costPerCm: 0, sheetPrice: 0, updatedAt: null } as any)
 export const saveCostPerCm = (b: { orgId: string; sheetPrice?: number; m2Price?: number; perCm?: number }) => post('/api/production/cost', b)
+
+// «Документ движений»: четыре полосы одной страницы (только чтение).
+export const movementBoard = (orgId: string, date?: string) => getObj(`/api/movements?orgId=${orgId}${date ? `&date=${date}` : ''}`, null as any)

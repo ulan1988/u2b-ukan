@@ -21,6 +21,8 @@ export const NAV: NavItem[] = [
   { key: 'reception', label: 'Приёмка', icon: '🔄' },
   { key: 'outgoing', label: 'Исходящие', icon: '📤' },
   { key: 'procurement', label: 'Закуп-отчёт', icon: '🛒' },
+  // Воронка одной страницей: заказы → заказы поставщикам → приход → расход. Только показ.
+  { key: 'movements', label: 'Документ движений', icon: '🔽' },
   { key: 'filter', label: 'Фильтр', icon: '🔍' },
   { key: 'accounting', label: 'У-Канбан', icon: '🗂' },
   { key: 'bookkeeping', label: 'Бухгалтерия', icon: '📒' },
@@ -137,7 +139,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const selKind = orgs.find(o => o.id === orgId)?.kind
   const isBranchOrg = !!selKind && selKind !== 'hq'
   const isSellerOrg = selKind === 'seller'
-  const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement']
+  const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement', 'movements']
   // Магазин (как в 1С): документы (приход/расход), ДДС, склад, касса. Карточные экраны убраны, кроме У-Канбан («всевидящее око»).
   const SELLER_HIDE = ['production', 'material', 'projects', 'dashboard', 'history', 'filter', 'bookkeeping', 'archive']
   // Головной (Адал Строй 2) не производит: без кабинета мастера, Производства, Материала и Расчёта.
