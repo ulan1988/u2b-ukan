@@ -69,8 +69,9 @@ export async function produceToBase(cardId: string, date?: string) {
   const r = await post(`/api/orders/${cardId}/tobase`, date ? { date } : {})
   return { ok: r.ok, error: r.error as string | undefined, number: r.data?.number as string | undefined, produced: r.data?.produced as number | undefined }
 }
-export async function setPosStatus(cardId: string, status: string, posId?: string) {
-  const r = await post(`/api/orders/${cardId}/pos`, { posId, status })
+// date — рабочая дата логиста: доставка и накладная лягут этим днём (пусто → сегодня).
+export async function setPosStatus(cardId: string, status: string, posId?: string, date?: string) {
+  const r = await post(`/api/orders/${cardId}/pos`, { posId, status, ...(date ? { date } : {}) })
   return { ok: r.ok }
 }
 export async function postInvoice(cardId: string) {

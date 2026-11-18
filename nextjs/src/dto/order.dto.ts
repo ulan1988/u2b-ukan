@@ -49,6 +49,9 @@ export const assignSchema = z.object({
 export const posStatusSchema = z.object({
   posId: z.string().optional(),                          // нет posId → применить ко всем позициям
   status: z.enum(['В работе', 'В пути', 'Доставлено']),
+  // РАБОЧАЯ ДАТА ЛОГИСТА: доставка оформляется прошедшим днём — этим же днём проводится
+  // накладная (и цепочка долга к головному). Пусто → сегодня.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 export const actionSchema = z.object({

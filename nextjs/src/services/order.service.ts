@@ -452,7 +452,11 @@ export async function assignLogist(cardId: string, respUserId: string, actor?: S
 
 // Обновить статус позиции (или всех). Логист возит: В работе→В пути→Доставлено.
 // Когда все позиции доставлены — карточка готова к учёту (toacc), иначе — «В работе».
-export async function setPositions(cardId: string, posId: string | undefined, status: string, actor?: Session | null) {
+export async function setPositions(cardId: string, posId: string | undefined, status: string, actor?: Session | null, date?: string) {
+  // РАБОЧАЯ ДАТА: логист отмечает доставку прошедшим днём — этим же днём ложится отметка
+  // «доставлено» и проводится накладная/цепочка (правило владельца 18.11.2026).
+  const wd = date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today() ? date : undefined
+  const deliveredAt = wd ? stampOf(wd) : new Date()
   if (posId) await repo.updatePosition(posId, { status })
   else await repo.updatePositionsByCard(cardId, { status })
 
@@ -480,17 +484,17 @@ export async function setPositions(cardId: string, posId: string | undefined, st
         // (расходная производителя → зеркало головного → продажа головного клиенту + долг)
         // с ФИНАЛЬНЫМИ кол-вами (правки логиста уже в позициях).
         try {
-          await repo.updateOrder(cardId, { delivered: new Date(), pendingDebtHead: false } as any)
+          await repo.updateOrder(cardId, { delivered: deliveredAt, pendingDebtHead: false } as any)
           const { payCard } = await import('./cashier.service')
-          const r = await payCard(cardId, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', finalize: true } as any, actor)
+          const r = await payCard(cardId, { cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '', finalize: true, date: wd } as any, actor)
           posted = !!(r && r.ok)
         } catch (e) { console.error('deliver chain', cardId, e) }
       } else {
-        try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor); posted = !!(r && r.ok) } catch (e) { console.error('deliver post', cardId, e) }
+        try { const { postOrderInvoice } = await import('./invoice.service'); const r = await postOrderInvoice(cardId, actor, wd); posted = !!(r && r.ok) } catch (e) { console.error('deliver post', cardId, e) }
       }
     }
     // Провести не удалось (нет 1С-товара/поставщика) → карточка видна в «К учёту» как мост-просмотр.
-    if (!posted) await repo.updateOrder(cardId, { screen: 'accounting', status: 'К учёту', toacc: true, delivered: new Date() })
+    if (!posted) await repo.updateOrder(cardId, { screen: 'accounting', status: 'К учёту', toacc: true, delivered: deliveredAt })
   } else {
     // Откат авто-доставленной карточки — обратно в Исходящие.
     await repo.updateOrder(cardId, { delivered: null, toacc: false, status: 'В работе',

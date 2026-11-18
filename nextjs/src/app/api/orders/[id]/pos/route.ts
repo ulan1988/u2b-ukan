@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const s = await sessionFromRequest(req)
   const parsed = posStatusSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Неверный статус' }, { status: 400 })
-  const res = await setPositions(params.id, parsed.data.posId, parsed.data.status, s)
+  const res = await setPositions(params.id, parsed.data.posId, parsed.data.status, s, parsed.data.date)
   await pushSignal()
   return NextResponse.json(res)
 }

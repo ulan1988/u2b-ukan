@@ -9,6 +9,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { type PickedPos } from '@/components/NomPicker'
 import StoreCatalog from '@/components/StoreCatalog'
 import { extractRal } from '@/lib/ral'
+import { today as todayYMD } from '@/lib/num'
 import { itemName } from '@/lib/itemName'
 import { priceForClient, isIzdelie } from '@/lib/lineAmount'
 import { COLORS } from '@/lib/colors'
@@ -41,6 +42,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [specId, setSpecId] = useState('')
   const [phone, setPhone] = useState('')
   const [deadline, setDeadline] = useState('')
+  // Рабочая дата карточки: по умолчанию сегодня, можно оформить прошедшим днём.
+  const [workDate, setWorkDate] = useState(todayYMD())
   const [comment, setComment] = useState('')
   const [rows, setRows] = useState<any[]>([emptyPos()])
   const [showCatalog, setShowCatalog] = useState(false)
@@ -132,6 +135,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       orgId, kind, comment, phone, deadline: deadline || undefined, positions,
       specProjectId: specId || undefined, transit: allTransit, transitAgent: transitAgent || undefined,
       screen: dest.screen, block: dest.block, isDraft: asDraft,
+      // Рабочая дата: карточка (и её номер) лягут этим днём — правка прошлых дней.
+      ...(workDate && workDate !== todayYMD() ? { date: workDate } : {}),
     }
     // Прямой заказ: та же собранная заявка, но живёт ЗАКУПОМ ЗКП и сразу уходит логисту
     // (стол приёмки и автозакуп не нужны — поставщик уже выбран в строках).
@@ -217,6 +222,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               </div>
               <div><label style={LBL}>ТЕЛЕФОН</label><input style={INP} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 700 000 00 00" /></div>
               <div><label style={LBL}>СРОК</label><input style={INP} type="date" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
+              {/* РАБОЧАЯ ДАТА: карточка оформляется этим днём (можно прошлым) — им же она ложится
+                  в списки, журнал и номер. Вперёд нельзя (правило владельца 18.11.2026). */}
+              <div>
+                <label style={LBL} title="День, которым оформляется карточка — для правки прошлых дней">ДАТА ЗАКАЗА</label>
+                <input style={{ ...INP, background: workDate !== todayYMD() ? '#fff0ea' : undefined, fontWeight: workDate !== todayYMD() ? 700 : 400 }}
+                  type="date" max={todayYMD()} value={workDate} onChange={e => setWorkDate(e.target.value || todayYMD())} />
+              </div>
               <div style={{ gridColumn: '1 / -1' }}><label style={LBL}>КОММЕНТАРИЙ</label><textarea style={{ ...INP, minHeight: 56, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Дополнительные пожелания..." /></div>
             </div>
 

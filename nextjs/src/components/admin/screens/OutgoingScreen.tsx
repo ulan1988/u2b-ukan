@@ -5,6 +5,8 @@ import { cardSum, cardProgress, posPct, barColor, fmtMoney, fmtDate, isOverdue, 
 import { RalDot, extractRal } from '@/lib/ral'
 import { setPosStatus } from '@/lib/adminApi'
 
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+
 const POS_STATUSES = ['В работе', 'Готово к отгрузке', 'В пути', 'Доставлено', 'Принято филиалом']
 
 function ProgressBar({ pct, height = 5 }: { pct: number; height?: number }) {
@@ -30,7 +32,13 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
   const pct = cardProgress(order)
   const overdue = isOverdue(order)
   const ps = order.positions || []
-  async function setPos(posId: string, status: string) { await setPosStatus(order.id, status, posId); onReload() }
+  // РАБОЧАЯ ДАТА ДОСТАВКИ: отметку «Доставлено» можно поставить прошедшим днём — этим же
+  // днём ложится накладная и цепочка долга к головному (правило владельца 18.11.2026).
+  const [delivDay, setDelivDay] = useState(todayStr())
+  async function setPos(posId: string, status: string) {
+    await setPosStatus(order.id, status, posId, delivDay !== todayStr() ? delivDay : undefined)
+    onReload()
+  }
 
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', marginBottom: 12 }}>
@@ -85,6 +93,10 @@ function OutgoingCard({ order, onAction, onReload, onOpen, toast }: {
         <div className="og-btns">
           {onOpen && <Btn onClick={() => onOpen(order)}>Открыть</Btn>}
           <Btn onClick={() => { navigator.clipboard.writeText(order.trackingLink); toast('Ссылка скопирована!') }}>📎 Ссылка клиенту</Btn>
+          <label title="День доставки: накладная проведётся этим днём" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#5f5952' }}>🗓
+            <input type="date" value={delivDay} max={todayStr()} onChange={e => setDelivDay(e.target.value || todayStr())}
+              style={{ padding: '4px 7px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 12, fontFamily: 'inherit', background: delivDay !== todayStr() ? '#fff0ea' : '#fff' }} />
+          </label>
           <Btn onClick={() => onAction(order.id, 'returnOut')}>← Вернуть</Btn>
           <Btn onClick={() => onAction(order.id, 'returnToReception')}>← На стол приёмки</Btn>
           {/* Доставку отмечает ЛОГИСТ — у админа этой кнопки нет (иначе ломается порядок

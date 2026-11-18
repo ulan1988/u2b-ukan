@@ -117,13 +117,15 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
   // Логист правит кол-во / убирает позицию перед доставкой (недовоз, брак, ошибка).
   async function savePosQty(cardId: string, posId: string) { await updatePosition(cardId, posId, { qty: Number(qtyVal.replace(',', '.')) || 0 }); showMsg('✓ Кол-во изменено'); setQtyEditPos(null); setQtyVal(''); load() }
   async function removePos(cardId: string, posId: string) { setConfDelPos(null); const r = await deletePosition(cardId, posId); if (r.ok) { showMsg('✓ Позиция убрана'); load() } else showMsg('⚠ Не удалось убрать') }
+  // РАБОЧАЯ ДАТА ЛОГИСТА: открыта прошлая смена («Смена за ДД.ММ») → доставка и накладная
+  // проводятся ТЕМ днём, а не сегодня. Обычный день — как было (editingDate пустой).
   // Весь заказ доставлен одним действием: позиции по очереди → «Доставлено» (за рулём — 2 тапа вместо N).
   async function deliverAll(order: any, poss: any[]) {
     setConfAllId(null); setUpdating(order.id)
-    for (const p of poss) { if (p.status !== 'Доставлено') await setPosStatus(order.id, 'Доставлено', p.id) }
+    for (const p of poss) { if (p.status !== 'Доставлено') await setPosStatus(order.id, 'Доставлено', p.id, editingDate || undefined) }
     showMsg(`✓ ${isPurchase(order) ? 'Закуплено' : 'Доставлено'}: ${poss.filter((p: any) => p.status !== 'Доставлено').length} поз`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null)
   }
-  async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
+  async function handleStatus(cardId: string, posId: string, status: string) { setUpdating(posId); await setPosStatus(cardId, status, posId, editingDate || undefined); showMsg(`✓ ${status}`); await load(); if (!editingDate) await loadDraft(null); setUpdating(null) }
   // Логист принимает готовую продажу со стола Приёмки → уходит в Исходящие.
   async function handleAccept(cardId: string) { setUpdating(cardId); const r = await orderAction(cardId, 'logistAccept'); if (r.ok) { showMsg('✓ Продажа принята → в работу'); await load() } else showMsg('⚠ ' + (r.error || 'Не удалось принять')); setUpdating(null) }
   // Правка после доставки: открыть карточку (сторно цепочки) → поправить → подтвердить (переподнять).
