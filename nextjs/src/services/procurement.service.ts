@@ -160,6 +160,9 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
     const [created] = await repo.insertDraft({
       id, orgId, kind: 'purchase', screen: 'incoming', block: '', status: 'В ожидании',
       source: 'admin_manual', isDraft: true, fromName: actor?.name || 'Автозакуп', trackingLink: encodeURIComponent(id),
+      // Закуп делается ПОД заявки — но их может быть несколько, поэтому материнским номером
+      // ставим сам закуп; конкретные заявки видны через procurement_links («Документ движений»).
+      rootCardId: id,
     })
     draft = created
   }

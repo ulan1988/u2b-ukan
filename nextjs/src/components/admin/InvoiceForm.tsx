@@ -399,6 +399,12 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
               {!creating && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: o.status === 'cancelled' ? '#faeaea' : '#e8f5ee', color: o.status === 'cancelled' ? '#b03020' : '#2e8a5e', fontWeight: 700 }}>{o.status === 'cancelled' ? 'отменён' : 'проведён'}</span>}
               {!creating && o.status !== 'cancelled' && !f.reviewed && <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#fff3cd', color: '#8a6f00', fontWeight: 700 }}>⚠ не проверено</span>}
               {o.transit && <span title="Сквозная продажа — товар шёл мимо склада (drop-ship)" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#ffe8d6', color: '#c2570f', fontWeight: 700 }}>🔀 Сквозная · мимо склада</span>}
+              {/* ОСНОВАНИЕ: карточка, с которой началась цепочка в нашей книге («Документ движений»). */}
+              {!creating && (o.rootCardId || o.sourceOrderId) && (
+                <span title="Начало цепочки — карточка-основание в книге этой организации" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 20, background: '#f3f0fb', color: '#7a3aaa', fontWeight: 700 }}>
+                  основание {o.rootCardId || o.sourceOrderId}
+                </span>
+              )}
               <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: COLORS.textMuted }}>✕</button>
             </div>
 

@@ -83,7 +83,13 @@ async function createHqSaleToClient(clientId: string, positions: any[], cardId: 
   // производителя). Так дерево идёт сплошняком: Нипа расходная → ГО приходная → ГО расходная.
   const docRepo = await import('../repositories/document.repo')
   const hqIn = await docRepo.docBySourceOrg(cardId, hq, 'purchase')
-  return docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: date || today(), sourceOrderId: cardId, projectId: projectId || null, parentDocId: hqIn?.id || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
+  const sale = await docSvc.createSale({ orgId: hq, contragentId: clientId, warehouseId: wh.id, lines, date: date || today(), sourceOrderId: cardId, projectId: projectId || null, parentDocId: hqIn?.id || null, comment: `Продажа клиенту через филиал · ${cardId}` } as any)
+  // НАЧАЛО ЦЕПОЧКИ У ГОЛОВНОГО: цепочку начал филиал, но в книге ГО у накладных должно быть
+  // основание. Заводим (или находим) карточку филиала у ГО и ставим её материнским номером
+  // обеих накладных — то же делает кнопка «Отправить к Адал Строй 2» (правило 18.11.2026).
+  try { const { ensureHqBranchOrder } = await import('./handover.service'); await ensureHqBranchOrder(cardId, hq, null, date) }
+  catch (e) { console.error('ensureHqBranchOrder', cardId, e) }
+  return sale
 }
 
 // date — рабочая дата (проведение задним числом): расходная + платежи лягут на этот день.

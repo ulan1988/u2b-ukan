@@ -49,6 +49,7 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
     id: docId, orgId: input.orgId, type: 'purchase', operation: 'receipt',
     number: input.number || autoNumber,                     // авто: 01-060826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,    // id карточки-основания (ЗП-…), чтобы связь не терялась
+    rootCardId: await rootCardFor(input),                   // материнский номер цепочки (справочно)
     parentDocId: (input as any).parentDocId || null,
     originDocId: (input as any).originDocId || null,   // накладная-основание (приход → отгрузка получателю)        // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
@@ -71,6 +72,28 @@ export async function createPurchase(input: CreatePurchaseInput & { number?: str
   // зеркалом (тем же днём, с ценой).
   if ((input as any).recipientId) await shipToRecipient(input, { id: docId, number: doc.number })
   return { id: docId, number: doc.number, total }
+}
+
+// МАТЕРИНСКИЙ НОМЕР ЦЕПОЧКИ («Документ движений»): с какой карточки началась цепочка в книге
+// ЭТОЙ орг. Берём, в порядке: явно переданный корень → карточка-основание (её корень, иначе
+// она сама) → накладная-мать/основание, но ТОЛЬКО своей орг (у зеркала филиала своя книга и
+// своего заказа может не быть — там корень пустой). Поле справочное: ни склад, ни деньги,
+// ни долги от него не зависят (правило 18.11.2026).
+async function rootCardFor(input: any): Promise<string | null> {
+  if ((input as any).rootCardId) return String((input as any).rootCardId)
+  const card = (input as any).sourceOrderId
+  if (card) {
+    const orderRepo = await import('../repositories/order.repo')
+    const [o] = await orderRepo.getOrder(String(card))
+    return ((o as any)?.rootCardId as string) || String(card)
+  }
+  for (const k of ['parentDocId', 'originDocId']) {
+    const id = (input as any)[k]
+    if (!id) continue
+    const [d] = await docRepo.getDoc(String(id))
+    if (d && String((d as any).orgId) === String(input.orgId)) return ((d as any).rootCardId as string) || null
+  }
+  return null
 }
 
 // Отгрузка получателю прямо из приходной (приход → расход одним действием).
@@ -559,6 +582,7 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
     id: docId, orgId: input.orgId, type: 'sale', operation: 'shipment',
     number: input.number || autoNumber,                    // авто: 01-080826 (порядковый-дата), редактируется в форме
     sourceOrderId: (input as any).sourceOrderId || null,   // id карточки-основания (ПР-…), чтобы связь не терялась
+    rootCardId: await rootCardFor(input),                  // материнский номер цепочки (справочно)
     parentDocId: (input as any).parentDocId || null,
     originDocId: (input as any).originDocId || null,   // накладная-основание (приход → отгрузка получателю)       // мать-накладная (зеркало филиала ← наша расходная)
     contragentId: input.contragentId, warehouseId: input.warehouseId,
@@ -645,6 +669,7 @@ export async function createReturn(input: CreateSaleInput & { sourceOrderId?: st
   const doc = {
     id: docId, orgId: input.orgId, type: kind, number,
     sourceOrderId: srcCard || null,   // связь возврата с исходной карточкой/накладной (для «Связок»)
+    rootCardId: await rootCardFor({ ...input, sourceOrderId: srcCard }),   // материнский номер цепочки
     contragentId: input.contragentId, warehouseId: input.warehouseId,
     date, status: 'posted', total: String(total), comment: input.comment || '', projectId: (input as any).projectId || null,
   }

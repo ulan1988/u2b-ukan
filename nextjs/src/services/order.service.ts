@@ -128,6 +128,9 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
+    // МАТЕРИНСКИЙ НОМЕР: самостоятельная заявка — корень сама себе. Дочерние карточки
+    // (ЗКП → ПРД, закуп автозакупа) корень получают там, где их создают.
+    rootCardId: id,
     // Задний день: время текущее, дата — рабочая (как stampOf в кассе), иначе карточка
     // легла бы сегодняшним числом и во вкладке своего дня её не видно.
     ...(wd ? { createdAt: stampOf(wd), updatedAt: stampOf(wd) } : {}),

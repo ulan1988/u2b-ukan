@@ -60,7 +60,8 @@ export async function movementBoard(orgId: string, day?: string) {
   }
 
   const orderItem = (o: any, open: boolean): MovementItem => {
-    const { root, more } = rootOf(String(o.id))
+    // Записанный корень важнее вычисленного: у новых карточек он уже проставлен при создании.
+    const { root, more } = o.rootCardId ? { root: String(o.rootCardId), more: 0 } : rootOf(String(o.id))
     return {
       id: String(o.id), number: String(o.id),
       title: o.contragent || o.fromName || '—',
@@ -74,7 +75,7 @@ export async function movementBoard(orgId: string, day?: string) {
   }
   const docItem = (x: any): MovementItem => {
     const card = String(x.sourceOrderId || '')
-    const { root, more } = card ? rootOf(card) : { root: '', more: 0 }
+    const { root, more } = x.rootCardId ? { root: String(x.rootCardId), more: 0 } : (card ? rootOf(card) : { root: '', more: 0 })
     return {
       id: String(x.id), number: x.number, title: x.contragent || '—', who: '',
       sum: num(x.total), root, rootMore: more, open: false,

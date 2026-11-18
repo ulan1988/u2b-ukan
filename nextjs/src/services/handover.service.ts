@@ -18,6 +18,68 @@ import type { Session } from '../lib/auth'
 
 const num = (n: any) => Number(n) || 0
 
+// КАРТОЧКА-ОСНОВАНИЕ У ГОЛОВНОГО (правило владельца 18.11.2026: «у цепочки должно быть
+// начало, даже когда её начинает листогиб»). Филиал продал в долг головному — у ГО рождаются
+// две накладные (приходная от филиала + расходная конечному заказчику), а карточки в его книге
+// не было, поэтому основание в накладной выглядело пустым. Заводим ОДНУ карточку (ту же, что
+// делала «Отправить к Адал Строй 2»: source='branch_done', экран «Входящие», статус
+// «Выполнено», кнопок нет, в автозакуп не идёт) и записываем её материнским номером обеих
+// накладных. Новых типов документов не вводим — иначе карточка полезла бы в приёмку и закуп.
+// Вызывается из двух путей: кнопка филиала (sendToHq) и доставка логистом (cashier.payCard).
+export async function ensureHqBranchOrder(
+  cardId: string, hqId: string, actor?: Session | null, date?: string,
+): Promise<string | null> {
+  const [order] = await repo.getOrder(cardId)
+  if (!order || !order.contactId) return null
+  const existing = (await repo.childrenOf(cardId)).find((c: any) => String(c.orgId) === String(hqId) && c.source === 'branch_done')
+  const docRepo = await import('../repositories/document.repo')
+  const hqIn = await docRepo.docBySourceOrg(cardId, hqId, 'purchase')     // приходная ГО (зеркало)
+  const hqOut = await docRepo.docBySourceOrg(cardId, hqId, 'sale')        // расходная ГО клиенту
+  const stampRoot = async (rootId: string) => {
+    for (const d of [hqIn, hqOut]) if (d && !(d as any).rootCardId) await docRepo.updateDoc((d as any).id, { rootCardId: rootId } as any)
+  }
+  if (existing) { await stampRoot(String(existing.id)); return String(existing.id) }
+
+  const org = await refsRepo.orgById(order.orgId)
+  const positions = await repo.positionsByCard(cardId)
+  const lines = hqOut ? await docRepo.linesWithProduct((hqOut as any).id) : []
+  const mirrorId = await repo.nextFreeByKind('sale', date)
+  const byPos = new Map(positions.map((p: any) => [String(p.id), p]))
+  const srcLines = lines.length ? lines : positions.map((p: any) => ({ productId: p.productId, name: p.name1c || p.oral, qty: p.qty, unit: p.unit, price: p.price, widthCm: p.widthCm, sourcePosId: p.id }))
+  const mirrorPositions = srcLines.map((l: any, i: number) => {
+    const src: any = l.sourcePosId ? byPos.get(String(l.sourcePosId)) : null
+    return {
+      id: `${mirrorId}-P${i + 1}`, cardId: mirrorId, productId: l.productId ?? null,
+      originPosId: l.sourcePosId ?? null,
+      name1c: l.name || src?.name1c || '', oral: l.name || src?.oral || '',
+      qty: String(num(l.qty)), unit: l.unit || 'шт', price: String(num(l.price)),
+      widthCm: l.widthCm != null ? String(num(l.widthCm)) : (src?.widthCm ?? null),
+      leg: 2, status: 'Доставлено', respUserId: null, supplierId: null,
+    }
+  })
+  const ts = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? (() => { const n = new Date(); const [y, m, dd] = date.split('-').map(Number); return new Date(y, m - 1, dd, n.getHours(), n.getMinutes(), n.getSeconds()) })()
+    : new Date()
+  await repo.insertOrderPosting(
+    {
+      id: mirrorId, orgId: hqId, kind: 'sale', screen: 'incoming', block: '', status: 'Выполнено',
+      source: 'branch_done', isDraft: false, parentCardId: cardId, rootCardId: mirrorId,
+      contactId: order.contactId, fromName: (org as any)?.name || 'Филиал',
+      comment: order.comment || '', phone: order.phone || '',
+      linkedDocId: (hqOut as any)?.id ?? null, delivered: ts, createdAt: ts, updatedAt: ts,
+      specProjectId: (order as any).specProjectId ?? null,
+    } as any,
+    mirrorPositions as any,
+    {
+      id: randomUUID(), cardId: mirrorId, action: 'branchDone', createdAt: ts,
+      detail: `Выполнено филиалом «${(org as any)?.name || ''}» · ${cardId}${hqIn ? ` · приходная ${(hqIn as any).number}` : ''}${hqOut ? ` · расходная ${(hqOut as any).number}` : ''}`,
+      userName: actor?.name || 'Система',
+    } as any,
+  )
+  await stampRoot(mirrorId)
+  return mirrorId
+}
+
 export async function sendToHq(cardId: string, actor?: Session | null, date?: string) {
   const [order] = await repo.getOrder(cardId)
   if (!order) return { ok: false as const, error: 'Карточка не найдена' }
@@ -42,43 +104,13 @@ export async function sendToHq(cardId: string, actor?: Session | null, date?: st
   // Карточка мастера закрыта: товар ушёл головному, у мастера он больше не числится.
   await repo.updateOrder(cardId, { prodPhase: 'sent', status: 'Отправлено', pendingDebtHead: false } as any)
 
-  // 4. Карточка-ознакомление у головного: что именно сделал филиал и по каким накладным.
+  // 4. Карточка-основание у головного (та же, что раньше звалась ознакомлением):
+  // общая функция — её же зовёт путь логиста, поэтому карточка не задваивается.
   const docRepo = await import('../repositories/document.repo')
-  const hqIn = await docRepo.docBySourceOrg(cardId, hq.id, 'purchase')     // приходная ГО (зеркало)
-  const hqOut = await docRepo.docBySourceOrg(cardId, hq.id, 'sale')        // расходная ГО клиенту
-  const lines = hqOut ? await docRepo.linesWithProduct(hqOut.id) : []
-
-  const mirrorId = await repo.nextFreeByKind('sale')
-  const byPos = new Map(positions.map((p: any) => [String(p.id), p]))
-  const srcLines = lines.length ? lines : positions.map((p: any) => ({ productId: p.productId, name: p.name1c || p.oral, qty: p.qty, unit: p.unit, price: p.price, widthCm: p.widthCm, sourcePosId: p.id }))
-  const mirrorPositions = srcLines.map((l: any, i: number) => {
-    const src = l.sourcePosId ? byPos.get(String(l.sourcePosId)) : null
-    return {
-      id: `${mirrorId}-P${i + 1}`, cardId: mirrorId, productId: l.productId ?? null,
-      originPosId: l.sourcePosId ?? null,
-      name1c: l.name || (src as any)?.name1c || '', oral: l.name || (src as any)?.oral || '',
-      qty: String(num(l.qty)), unit: l.unit || 'шт', price: String(num(l.price)),
-      widthCm: l.widthCm != null ? String(num(l.widthCm)) : ((src as any)?.widthCm ?? null),
-      leg: 2, status: 'Доставлено', respUserId: null, supplierId: null,
-    }
-  })
-
-  await repo.insertOrderPosting(
-    {
-      id: mirrorId, orgId: hq.id, kind: 'sale', screen: 'incoming', block: '', status: 'Выполнено',
-      source: 'branch_done', isDraft: false, parentCardId: cardId,
-      contactId: order.contactId, fromName: (org as any)?.name || 'Филиал',
-      comment: order.comment || '', phone: order.phone || '',
-      linkedDocId: hqOut?.id ?? null, delivered: new Date(),
-      specProjectId: (order as any).specProjectId ?? null,
-    } as any,
-    mirrorPositions as any,
-    {
-      id: randomUUID(), cardId: mirrorId, action: 'branchDone',
-      detail: `Выполнено филиалом «${(org as any)?.name || ''}» · ${cardId}${hqIn ? ` · приходная ${hqIn.number}` : ''}${hqOut ? ` · расходная ${hqOut.number}` : ''}`,
-      userName: actor?.name || 'Система',
-    } as any,
-  )
+  const hqIn = await docRepo.docBySourceOrg(cardId, hq.id, 'purchase')
+  const hqOut = await docRepo.docBySourceOrg(cardId, hq.id, 'sale')
+  const mirrorId = (await ensureHqBranchOrder(cardId, hq.id, actor, date)) || ''
+  const mirrorPositions = mirrorId ? await repo.positionsByCard(mirrorId) : []
 
   await repo.insertHistory({
     cardId, action: 'sendHq',

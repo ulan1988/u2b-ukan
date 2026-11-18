@@ -247,6 +247,11 @@ export const documents = pgTable('documents', {
   inDate: date('in_date'),                                // дата накладной поставщика
   operation: text('operation').notNull().default('receipt'), // receipt | return
   sourceOrderId: text('source_order_id').references((): any => orders.id, { onDelete: 'set null' }),   // карточка-основание (ЗП-0001-060826)
+  // МАТЕРИНСКИЙ НОМЕР ЦЕПОЧКИ («Документ движений»): карточка, с которой цепочка началась в
+  // книге ЭТОЙ орг. Заполняется при создании документа и наследуется по цепочке
+  // (карточка → приходная → расходная → зеркало). Пусто у старых документов — там номер
+  // по-прежнему вычисляется по связям (правило 18.11.2026).
+  rootCardId: text('root_card_id'),
   discountPct: money('discount_pct').notNull().default('0'),  // скидка руч., %
   discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
   paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
@@ -417,6 +422,10 @@ export const orders = pgTable('orders', {
   // Дерево карточек: у продажи ПРД здесь id материнского закупа ЗКП. Мать не переименовываем —
   // у неё остаются закуп, приходная и история; дочь везёт товар клиенту со своей расходной.
   parentCardId: text('parent_card_id').references((): any => orders.id, { onDelete: 'set null' }),
+  // МАТЕРИНСКИЙ НОМЕР ЦЕПОЧКИ («Документ движений»): карточка, с которой началась цепочка в
+  // книге этой орг. У самостоятельной заявки — она сама, у дочерней — корень дерева, у закупа
+  // автозакупа — заявка, под которую он сделан. Пусто у старых карточек (правило 18.11.2026).
+  rootCardId: text('root_card_id'),
   payment: text('payment').notNull().default(''),         // способ оплаты карточки: '' | Наличка | Каспи | Долг | Смешанная | Частично (ярлык)
   paidCash: money('paid_cash').notNull().default('0'),    // касса мастера: получено наличкой (→ Основная касса)
   paidKaspi: money('paid_kaspi').notNull().default('0'),  // получено каспи (→ KASPI GOLD, личный мастера)

@@ -14,7 +14,7 @@ const cardSum = sql<number>`(
 const orderCols = {
   id: orders.id, kind: orders.kind, screen: orders.screen, status: orders.status,
   source: orders.source, fromName: orders.fromName, contactId: orders.contactId,
-  parentCardId: orders.parentCardId, linkedDocId: orders.linkedDocId,
+  parentCardId: orders.parentCardId, linkedDocId: orders.linkedDocId, rootCardId: orders.rootCardId,
   prodPhase: orders.prodPhase, createdAt: orders.createdAt, toWarehouseId: orders.toWarehouseId,
   contragent: contragents.name, sum: cardSum,
   positions: sql<number>`(select count(*) from ${orderPositions} op2 where op2.card_id = ${orders.id})::int`,
@@ -42,6 +42,7 @@ export const docsOnDay = (orgId: string, types: string[], day: string) =>
   db.select({
     id: documents.id, number: documents.number, type: documents.type, date: documents.date,
     total: documents.total, status: documents.status, sourceOrderId: documents.sourceOrderId,
+    rootCardId: documents.rootCardId,
     warehouseId: documents.warehouseId, contragent: contragents.name,
   }).from(documents).leftJoin(contragents, eq(contragents.id, documents.contragentId))
     .where(and(eq(documents.orgId, orgId), inArray(documents.type, types), eq(documents.date, day)))
