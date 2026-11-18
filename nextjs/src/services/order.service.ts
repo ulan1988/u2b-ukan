@@ -555,6 +555,9 @@ export async function setPositions(cardId: string, posId: string | undefined, st
     }
     // Провести не удалось (нет 1С-товара/поставщика) → карточка видна в «К учёту» как мост-просмотр.
     if (!posted) await repo.updateOrder(cardId, { screen: 'accounting', status: 'К учёту', toacc: true, delivered: deliveredAt })
+    // Задним числом: отметка о доставке ставится тем же днём (иначе карточка проведена, а дня
+    // доставки у неё нет — отчёты и фильтры по дню её не видят).
+    else if (wd) await repo.updateOrder(cardId, { delivered: deliveredAt } as any)
   } else {
     // Откат авто-доставленной карточки — обратно в Исходящие.
     await repo.updateOrder(cardId, { delivered: null, toacc: false, status: 'В работе',
