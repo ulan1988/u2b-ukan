@@ -519,7 +519,13 @@ export async function updateDocument(id: string, patch: any, actor?: { name?: st
   if (qtyMoved.skipped.length) changes.push(`кол-во НЕ применено (несколько строк одного товара): ${qtyMoved.skipped.join(', ')}`)
   if (rolledBack.length) changes.push(`откат цепочки головного: ${rolledBack.join(', ')}`)
   if (changes.length) await docRepo.insertDocHistory({ documentId: id, action: 'edit', detail: changes.join(' · '), userName: actor?.name || 'Система' } as any)
-  return { ok: true, subtotal, discountSum, total: subtotal - discountSum, rolledBack, dateMoved, qtyMoved: qtyMoved.moved, qtySkipped: qtyMoved.skipped }
+  // ЖЁСТКОЕ ПРАВИЛО: расходная = приходная получателя (состав, кол-во, цены, суммы, скидка, день). Любая правка
+  // расходной сама доезжает до зеркальной приходной — без кнопки «Применить всем».
+  let mirrorSynced = 0; let mirrorWarnings: any[] = []
+  if (changes.length || head.date) {
+    try { const { applyToChildren } = await import('./docSync.service'); const r: any = await applyToChildren(id, actor as any, true); mirrorSynced = r.synced || 0; mirrorWarnings = r.warnings || [] } catch (e) { console.error('applyToChildren auto', id, e) }
+  }
+  return { ok: true, mirrorSynced, mirrorWarnings, subtotal, discountSum, total: subtotal - discountSum, rolledBack, dateMoved, qtyMoved: qtyMoved.moved, qtySkipped: qtyMoved.skipped }
 }
 
 // Создать расходную накладную (продажа): проводка = документ + строки +

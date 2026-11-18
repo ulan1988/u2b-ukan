@@ -14,14 +14,19 @@ const num = (n: any) => Number(n) || 0
 
 export type SyncWarning = { doc: string; product: string; left: number }
 
-export async function applyToChildren(docId: string, actor?: Session | null) {
+// auto=true — жёсткое правило «расход = приход получателя»: вызывается САМО после любой правки расходной.
+// Тогда обновляем только зеркальные ПРИХОДНЫЕ (отгрузку получателю — расходную со своими ценами — не трогаем).
+export async function applyToChildren(docId: string, actor?: Session | null, auto = false) {
   const [mother] = await docRepo.getDoc(docId)
   if (!mother) return { ok: false as const, error: 'Накладная не найдена' }
   if (mother.status === 'cancelled') return { ok: false as const, error: 'Накладная отменена' }
-  const children = await docRepo.childDocs(docId)
+  let children = await docRepo.childDocs(docId)
+  if (auto) children = mother.type === 'sale' ? children.filter(c => c.type === 'purchase') : []
+  if (auto && !children.length) return { ok: true as const, synced: 0, warnings: [] as SyncWarning[] }
   if (!children.length) return { ok: false as const, error: 'У этой накладной нет дочерних (филиальных) накладных' }
 
-  const src = await docRepo.linesWithProduct(docId)
+  let src = await docRepo.linesWithProduct(docId)
+  if (auto) { const { onlyGoodsLines } = await import('./document.service'); src = await onlyGoodsLines(src as any[]) as typeof src }   // услуги между орг не ходят
   const warnings: SyncWarning[] = []
   let synced = 0
 
@@ -35,7 +40,7 @@ export async function applyToChildren(docId: string, actor?: Session | null) {
     const newLines: any[] = []
     for (const l of src) {
       if (!l.productId) continue
-      const amount = lineAmount({ name: (l as any).name, qty: l.qty, price: l.price, widthCm: (l as any).widthCm })
+      const amount = auto ? num(l.amount) : lineAmount({ name: (l as any).name, qty: l.qty, price: l.price, widthCm: (l as any).widthCm })   // авто: сумма строки ровно как у расходной
       const ex = byProduct.get(l.productId)
       if (ex) {
         keep.add(ex.id)
@@ -66,10 +71,11 @@ export async function applyToChildren(docId: string, actor?: Session | null) {
     }
 
     // 5. Итог + сброс «проверено»: филиал должен заново подтвердить изменённый документ.
-    const total = after.reduce((s, l) => s + num(l.amount), 0)
+    const subtotal = after.reduce((s, l) => s + num(l.amount), 0)
+    const total = auto ? num(mother.total) : subtotal
     // День дочерней = день матери: головной провёл задним числом — филиал приходует тем же
     // днём (иначе остатки и отчёты двух орг разъедутся по дням).
-    await docRepo.updateDoc(child.id, { total: String(total), date: mother.date, reviewed: false, contragentAccepted: false } as any)
+    await docRepo.updateDoc(child.id, { total: String(total), ...(auto ? { discountSum: (mother as any).discountSum, discountPct: (mother as any).discountPct } : {}), date: mother.date, reviewed: false, contragentAccepted: false } as any)
     synced++
 
     await docRepo.insertDocHistory({ documentId: child.id, action: 'applied', detail: `Состав и цены получены от ${mother.number} · итог ${Math.round(total)} ₸`, userName: actor?.name || 'Система' } as any)
