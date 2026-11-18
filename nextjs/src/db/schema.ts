@@ -51,6 +51,10 @@ export const contragents = pgTable('contragents', {
   name: text('name').notNull(),
   kind: text('kind').notNull().default('client'),         // client | supplier | both
   orgRefId: uuid('org_ref_id').references(() => organizations.id), // если контрагент — наш филиал
+  // КОНТРАГЕНТ = НАШ СКЛАД (техничка «Центр-Склад»): контрагент закреплён за складом, которым
+  // мы владеем. Выбран получателем в приходной — значит товар остаётся у НАС: расходной на
+  // сторону быть не должно, а другой склад = перемещение, не продажа (правило 18.11.2026).
+  warehouseRefId: uuid('warehouse_ref_id'),
   priceType: text('price_type').notNull().default('retail'),       // retail | opt
   phone: text('phone'),
   bin: text('bin'),                                                 // БИН/ИИН — ключ сверки при импорте из 1С

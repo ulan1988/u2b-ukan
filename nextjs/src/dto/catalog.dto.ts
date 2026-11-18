@@ -51,6 +51,8 @@ export const updateContragentSchema = z.object({
   comment: z.string().optional(),
   favorite: z.boolean().optional(),
   archived: z.boolean().optional(),
+  // Контрагент закреплён за НАШИМ складом (техничка «Центр-Склад»): пусто → обычный контрагент.
+  warehouseRefId: z.string().uuid().nullable().optional(),
 })
 
 export const createWarehouseSchema = z.object({

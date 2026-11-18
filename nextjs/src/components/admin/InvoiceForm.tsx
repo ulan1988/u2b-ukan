@@ -468,12 +468,23 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                   <label style={lbl}>ПОЛУЧАТЕЛЬ <span style={{ fontWeight: 500, color: '#a09889' }}>(необязательно — товар сразу уйдёт ему этой же датой)</span></label>
                   <ContragentPicker contragents={cagList.filter((c: any) => c.id !== f.contragentId)} value={recId}
                     onPick={(c: any) => setRecId(c?.id || '')} placeholder="— остаётся на складе —" />
-                  {recId && (
-                    <div style={{ marginTop: 6, fontSize: 12.5, color: '#2e8a5e', background: '#f2fbf6', border: '1px solid #cfe6d8', borderRadius: 8, padding: '7px 10px' }}>
-                      📦 После проведения: приход на склад → расходная на «{cags.find((c: any) => c.id === recId)?.name}» той же датой
-                      {lines.length > 0 ? ` на ${m2(lines.reduce((sm, l) => sm + (Number(l.qty) || 0) * (recPrices[l.productId] || Number(l.price) || 0), 0))} ₸ (его цены)` : ''}
-                    </div>
-                  )}
+                  {recId && (() => {
+                    // ПОЛУЧАТЕЛЬ — НАШ СКЛАД (контрагент закреплён за складом): товар остаётся у нас,
+                    // расходной не будет. Другой наш склад → перемещение, а не продажа.
+                    const rc: any = cags.find((c: any) => c.id === recId)
+                    const ownWh = rc?.warehouseRefId
+                    const whName = ownWh ? (whs.find((w: any) => w.id === ownWh)?.name || rc?.name) : ''
+                    return (
+                      <div style={{ marginTop: 6, fontSize: 12.5, color: '#2e8a5e', background: '#f2fbf6', border: '1px solid #cfe6d8', borderRadius: 8, padding: '7px 10px' }}>
+                        {ownWh
+                          ? (String(ownWh) === String(whId)
+                            ? `🏠 «${rc?.name}» — это наш склад: товар просто останется на складе «${whName}», расходной не будет`
+                            : `🏠 «${rc?.name}» — это наш склад: после проведения товар перемещением уйдёт на склад «${whName}» (не продажа, долга не будет)`)
+                          : <>📦 После проведения: приход на склад → расходная на «{rc?.name}» той же датой
+                            {lines.length > 0 ? ` на ${m2(lines.reduce((sm, l) => sm + (Number(l.qty) || 0) * (recPrices[l.productId] || Number(l.price) || 0), 0))} ₸ (его цены)` : ''}</>}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
               {!isSale && <div><label style={lbl}>ВХ. НОМЕР</label><input style={inp} value={f.inNumber} onChange={e => setF({ ...f, inNumber: e.target.value })} placeholder="№ накладной поставщика" /></div>}

@@ -83,6 +83,22 @@ async function shipToRecipient(input: any, doc: { id: string; number: string }) 
     if (!recipientId || recipientId === input.contragentId) return
     const [rc] = await docRepo.contragentById(recipientId)
     if (!rc) return
+    // ПОЛУЧАТЕЛЬ — НАШ СКЛАД (контрагент закреплён за складом, `warehouse_ref_id`): товар
+    // никуда не продаётся. Тот же склад — он уже оприходован, делать нечего; другой наш
+    // склад — это ПЕРЕМЕЩЕНИЕ, а не расходная (иначе склад уходит в минус, а на техничке
+    // «Центр-Склад» копится несуществующий долг).
+    const ownWh = (rc as any).warehouseRefId as string | null | undefined
+    if (ownWh) {
+      if (String(ownWh) === String(input.warehouseId)) return
+      const moveLines = await onlyGoodsLines((input.lines || []).map((l: any) => ({ ...l, sourcePosId: null })))
+      if (!moveLines.length) return
+      await createTransfer({
+        fromWarehouseId: input.warehouseId, toWarehouseId: String(ownWh), date: input.date,
+        lines: moveLines.map((l: any) => ({ productId: l.productId, qty: Number(l.qty) || 0, unit: l.unit || 'шт', price: Number(l.price) || 0 })),
+        comment: `Перемещение по приходной ${doc.number} на «${(rc as any).name}»`,
+      } as any)
+      return
+    }
     const priceType = (rc as any).priceType || 'retail'
     const refsRepo = await import('../repositories/refs.repo')
     const ids = Array.from(new Set((input.lines || []).map((l: any) => l.productId).filter(Boolean))) as string[]

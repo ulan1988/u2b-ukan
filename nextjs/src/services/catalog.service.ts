@@ -125,6 +125,8 @@ export async function editContragent(id: string, i: z.infer<typeof updateContrag
   }
   if ((i as any).bin !== undefined) patch.bin = (i as any).bin || null
   if ((i as any).openingBalance !== undefined) patch.openingBalance = String((i as any).openingBalance || 0)
+  // Закрепить контрагента за нашим складом (или снять закрепление).
+  if ((i as any).warehouseRefId !== undefined) patch.warehouseRefId = (i as any).warehouseRefId || null
   const [c] = await repo.updateContragent(id, patch)
   return c
 }

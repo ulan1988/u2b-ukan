@@ -239,7 +239,8 @@ export const linesWithProduct = (docId: string) =>
 
 export const contragentById = (id: string) =>
   // priceType нужен отгрузке получателю из приходной: цена = спец/опт/розница этого контрагента.
-  db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId, priceType: contragents.priceType })
+  // warehouseRefId — контрагент это НАШ склад: получателю не продаём, товар остаётся у нас.
+  db.select({ id: contragents.id, name: contragents.name, orgRefId: contragents.orgRefId, priceType: contragents.priceType, warehouseRefId: contragents.warehouseRefId })
     .from(contragents).where(eq(contragents.id, id)).limit(1)
 // Контрагент-мост: в книге orgId запись, указывающая (orgRefId) на refOrgId. Нужен для
 // зеркальной накладной между орг (напр. в книге филиала контрагент «U2B головной»).
