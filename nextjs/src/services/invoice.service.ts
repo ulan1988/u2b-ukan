@@ -127,6 +127,14 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     detail: `${isPurchase ? 'Приходная' : 'Расходная'} накладная ${numbers.join(' + ')}`,
     userName: actor?.name || 'Система',
   })
+  // ЗАКУП С ПОЛУЧАТЕЛЯМИ В СТРОКАХ: товар не оседает на складе — тем же днём уходит расходной
+  // каждому получателю (а если получатель — наш склад, перемещением). Делаем это ЗДЕСЬ, на
+  // проводке, поэтому работает любой путь: доставка логистом, задним числом, ручная проводка.
+  // Повторная проводка не отгружает дважды (проверка по уже созданным расходным карточки).
+  if (isPurchase) {
+    try { const { shipPurchaseRecipients } = await import('./order.service'); await shipPurchaseRecipients(cardId, acceptDate, actor) }
+    catch (e) { console.error('shipPurchaseRecipients', cardId, e) }
+  }
   return { ok: true as const, number: numbers[0] }
 }
 
