@@ -171,11 +171,56 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     ...(wd ? { createdAt: stampOf(wd) } : {}),
   }
   await repo.insertOrderPosting(order, positions, history)
+  // ЗАДНИМ ЧИСЛОМ — ПРОВОДИМ СРАЗУ (правило владельца 18.11.2026). Прошедший день вводят,
+  // когда всё уже случилось: товар привезли, отдали. Карточке незачем ждать логиста и висеть
+  // на столе приёмки — сразу делаем документы ТЕМ ЖЕ ДНЁМ: закуп → приходная (и расходная
+  // получателю, если он указан в строке), продажа → расходная. Черновик не трогаем.
+  // Сегодняшние карточки идут прежним маршрутом (приёмка → логист → доставка).
+  if (wd && !order.isDraft) {
+    try {
+      await setPositions(id, undefined, 'Доставлено', actor, wd)
+      if (i.kind === 'purchase') await shipPurchaseRecipients(id, wd, actor)
+    } catch (e) { console.error('backdated autopost', id, e) }
+  }
   // Новая заявка из кабинета/сайта → уведомить админов.
   if (i.source === 'cabinet' || i.source === 'external') {
     try { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(orgId, `🆕 Новая заявка ${id} от ${fromName || 'клиента'}`, id) } catch {}
   }
   return { id }
+}
+
+// ЗАКУП С ПОЛУЧАТЕЛЯМИ В СТРОКАХ: товар не оседает на складе — тем же днём уходит расходной
+// каждому получателю. Цена — та, что вписана в строке («Продажа ₸»), иначе прайс своей орг по
+// типу цены получателя, иначе цена закупа (чтобы не отгрузить за 0).
+async function shipPurchaseRecipients(cardId: string, date: string, actor?: Session | null) {
+  const positions = await repo.positionsByCard(cardId)
+  const rows = positions.filter((p: any) => p.recipientId && p.productId)
+  if (!rows.length) return
+  const [o] = await repo.getOrder(cardId)
+  if (!o) return
+  const wh = o.toWarehouseId ? { id: o.toWarehouseId } : await refsRepo.centralWarehouse(o.orgId)
+  if (!wh) return
+  const docSvc = await import('./document.service')
+  const { priceForClient } = await import('../lib/lineAmount')
+  const byRecipient = new Map<string, any[]>()
+  for (const p of rows) { const k = String(p.recipientId); const a = byRecipient.get(k) || []; a.push(p); byRecipient.set(k, a) }
+  for (const [cid, ps] of Array.from(byRecipient.entries())) {
+    const [cag] = await refsRepo.contragentsByIds([cid])
+    const pt = (cag as any)?.priceType || 'retail'
+    const prods = await refsRepo.productsWithOrgPrices(o.orgId, Array.from(new Set(ps.map((p: any) => String(p.productId)))))
+    const byId: Record<string, any> = {}; for (const pr of prods) byId[(pr as any).id] = pr
+    const lines = ps.map((p: any) => {
+      const listPrice = byId[String(p.productId)] ? priceForClient(byId[String(p.productId)], pt) : 0
+      const price = Number(p.salePrice) > 0 ? Number(p.salePrice) : (listPrice > 0 ? listPrice : Number(p.price) || 0)
+      return { productId: String(p.productId), qty: Number(p.qty), price, unit: p.unit || 'шт', sourcePosId: p.id, name: p.name1c || p.oral, widthCm: p.widthCm }
+    })
+    const d: any = await docSvc.createSale({
+      orgId: o.orgId, contragentId: cid, warehouseId: wh.id, lines, date,
+      sourceOrderId: cardId, projectId: (o as any).specProjectId || null,
+      comment: `Отгрузка получателю по закупу ${cardId}`,
+    } as any)
+    await repo.insertHistory({ cardId, action: 'shipRecipient', detail: `Отгружено получателю «${(cag as any)?.name || ''}»: ${d?.number || ''}`, userName: actor?.name || 'Система' })
+  }
 }
 
 export const listByScreen = (orgId: string, screen: string) => repo.listByScreen(orgId, screen)

@@ -268,6 +268,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 <label style={LBL} title="День, которым оформляется карточка — для правки прошлых дней">ДАТА ЗАКАЗА</label>
                 <input style={{ ...INP, background: workDate !== todayYMD() ? '#fff0ea' : undefined, fontWeight: workDate !== todayYMD() ? 700 : 400 }}
                   type="date" max={todayYMD()} value={workDate} onChange={e => setWorkDate(e.target.value || todayYMD())} />
+                {workDate !== todayYMD() && (
+                  <div style={{ marginTop: 5, fontSize: 11.5, color: '#c0532a', lineHeight: 1.45 }}>
+                    задним числом — накладные проведутся сразу этим днём, логисту отправлять не нужно
+                    {kind === 'purchase' ? ' (приход, а по строкам с получателем — и расход)' : ''}
+                  </div>
+                )}
               </div>
               <div style={{ gridColumn: '1 / -1' }}><label style={LBL}>КОММЕНТАРИЙ</label><textarea style={{ ...INP, minHeight: 56, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Дополнительные пожелания..." /></div>
             </div>
