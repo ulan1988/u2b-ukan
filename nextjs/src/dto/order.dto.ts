@@ -12,6 +12,7 @@ export const orderPositionInput = z.object({
   widthCm: z.coerce.number().optional(),                   // ширина изделия в см (раскрой)
   respUserId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
+  recipientId: z.string().uuid().optional(),               // получатель строки закупа (кому эта позиция)
   specItemId: z.string().uuid().optional(),                // вынесена из позиции проекта
   deadline: z.string().optional(),
   payment: z.string().optional().default(''),

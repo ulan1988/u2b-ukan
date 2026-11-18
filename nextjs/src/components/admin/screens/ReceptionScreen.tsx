@@ -22,7 +22,7 @@ import ProcessingCard from './reception/ProcessingCard'
 import AutoProcure from './reception/AutoProcure'
 
 const CENTER = '🏬 Центр-Склад'
-const emptyPos = () => ({ productId: '', name1c: '', widthCm: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '', deadline: '', payment: '' })
+const emptyPos = () => ({ productId: '', name1c: '', widthCm: '', qty: '1', unit: 'шт', price: '', respUserId: '', supplierId: '', recipientId: '', deadline: '', payment: '' })
 
 export default function ReceptionScreen({ orders, orgId, onAction, onReload, onOpen }: {
   orders: any[]; orgId: string; onAction: (id: string, a: string) => void; onReload: () => void; onOpen?: (o: any) => void
@@ -119,6 +119,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
       widthCm: r.widthCm ? Number(r.widthCm) : undefined,
       price: Number(r.price) || 0, transit: tr, costPrice: tr ? (Number(r.costPrice) || 0) : undefined,
       respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
+      recipientId: r.recipientId || undefined,   // кому эта позиция закупа
       deadline: r.deadline || undefined, payment: r.payment || '',
     }) })
     // Карточка «целиком сквозная» только если ВСЕ строки сквозные — тогда orders.transit=true и она
@@ -242,7 +243,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
-                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', 'ПОСТАВЩИК', 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                {/* У закупа один поставщик, а получатели у строк разные — отдельная колонка. */}
+                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЦЕНА (ТГ)', 'ЛОГИСТ', 'ПОСТАВЩИК', ...(kind === 'purchase' ? ['ПОЛУЧАТЕЛЬ'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r, i) => { const rt = !!(r.transit || transit); return (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec', background: rt ? '#faf7ff' : undefined }}>
@@ -264,6 +266,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       </td>
                       <td style={{ padding: '6px 4px', width: 130 }}><select style={inpSm} value={r.respUserId} onChange={e => setRow(i, { respUserId: e.target.value })}><option value="">—</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 150 }}><ContragentPicker contragents={allCags} value={r.supplierId} defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => setRow(i, { supplierId: c.id })} placeholder={kind === 'purchase' ? '— поставщик —' : '— производитель —'} style={{ fontSize: 13 }} /></td>
+                      {/* КОМУ ЭТА ПОЗИЦИЯ: закуп один, получатели у строк разные. Пусто → как раньше
+                          (заказчик карточки / заявки автозакупа / склад). */}
+                      {kind === 'purchase' && (
+                        <td style={{ padding: '6px 4px', width: 150 }}>
+                          <ContragentPicker contragents={allCags} value={r.recipientId} onPick={c => setRow(i, { recipientId: c.id })} placeholder="— получатель —" style={{ fontSize: 13 }} />
+                        </td>
+                      )}
                       <td style={{ padding: '6px 4px', width: 120 }}><input style={inpSm} type="date" value={r.deadline} onChange={e => setRow(i, { deadline: e.target.value })} /></td>
                       <td style={{ padding: '6px 4px', width: 120 }}><select style={inpSm} value={r.payment} onChange={e => setRow(i, { payment: e.target.value })}>{PAY.map(p => <option key={p} value={p}>{p || '—'}</option>)}</select></td>
                       <td style={{ padding: '6px 4px', width: 60 }}>

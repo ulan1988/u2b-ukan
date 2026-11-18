@@ -158,6 +158,8 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     bonusAgentId: (p as any).bonusAgentId ?? null,
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? defLogist ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
+    // Получатель строки закупа: один поставщик на закуп, а кому какая позиция — своё у строки.
+    recipientId: (p as any).recipientId ?? null,
     specItemId: (p as any).specItemId ?? null,             // вынесена из позиции проекта (учёт остатка)
     leg: p.supplierId ? (legMap[p.supplierId] ?? 2) : defaultLeg,
     deadline: p.deadline ? new Date(p.deadline) : null,
@@ -363,6 +365,16 @@ async function withPositions(rows: any[]) {
   const whName: Record<string, string> = {}
   for (const w of await repo.warehouseNames(whIds)) whName[(w as any).id] = (w as any).name
   // Получателей несколько (закуп на нескольких клиентов) → «Первый +N».
+  // Получатели, проставленные в строках закупа, — в шапку карточки (их может быть несколько).
+  for (const o of rows) {
+    if (o.kind !== 'purchase') continue
+    for (const p of (byCard[o.id] || [])) {
+      const nm = (p as any).recipientId ? cagName[(p as any).recipientId] : ''
+      if (!nm) continue
+      const bag = (recByCard[o.id] ||= [])
+      if (!bag.includes(nm)) bag.push(nm)
+    }
+  }
   const purchaseTo = (o: any) => {
     // Заказчик, указанный в самой карточке (админ выбрал «для кого»), — главнее всего.
     if (o.contactId && cagName[o.contactId]) return cagName[o.contactId]
@@ -373,6 +385,9 @@ async function withPositions(rows: any[]) {
   // Заказчик строки закупа (строка собрана из заявок клиентов по имени товара).
   const posRecipient = (o: any, p: any) => {
     if (o.kind !== 'purchase') return ''
+    // Получатель, выбранный в самой строке (колонка «Получатель» в закупе), главнее всего:
+    // один закуп — один поставщик, а кому какая позиция, решает строка.
+    if (p.recipientId && cagName[p.recipientId]) return cagName[p.recipientId]
     const list = recByPos[`${o.id}::${String(p.name1c || p.oral || '').trim().toLowerCase()}`] || []
     return shortRec(list)
   }
@@ -695,6 +710,7 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
     transit: !!(p as any).transit,
     widthCm: p.widthCm != null ? String(p.widthCm) : null,
     respUserId: p.respUserId ?? null, supplierId: p.supplierId ?? null, payment: p.payment || '',
+    recipientId: (p as any).recipientId ?? null,           // получатель строки едет вместе с ней
     specItemId: p.specItemId ?? null, leg: p.leg ?? 1, status: p.status || 'В работе',
   }))
   const history = { cardId: newId, action: 'split', detail: `Создана из ${cardId} (${move.length} поз.)`, userName: actor?.name || 'Система' }

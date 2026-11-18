@@ -469,6 +469,10 @@ export const orderPositions = pgTable('order_positions', {
   widthCm: qtyCol('width_cm'),                             // ширина изделия в см (раскрой у мастера-производителя)
   respUserId: uuid('resp_user_id').references(() => users.id),   // логист-ответственный
   supplierId: uuid('supplier_id').references(() => contragents.id), // поставщик (только в закупе)
+  // ПОЛУЧАТЕЛЬ СТРОКИ ЗАКУПА: один закуп — один поставщик, а получатели у строк разные
+  // (правило владельца 18.11.2026). Пусто → получатель берётся как раньше: заказчик карточки,
+  // заявки автозакупа, иначе склад.
+  recipientId: uuid('recipient_id').references(() => contragents.id),
   status: text('status').notNull().default('В работе'),   // В работе|Готово|В пути|Доставлено
   prodStage: text('prod_stage').notNull().default(''),    // производство: '' = на распиле | cut = распилено (на листогибе) | bent = согнуто (готово)
   specItemId: uuid('spec_item_id').references(() => specProjectItems.id), // вынесена из позиции проекта (учёт остатка)
