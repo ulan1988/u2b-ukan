@@ -107,8 +107,9 @@ export const payDebtSchema = z.object({
 })
 export type PayDebtInput = z.infer<typeof payDebtSchema>
 
-// «Прочий доход» (касса/Расчёт): деньги без товара — приход по счетам + бонус 50/50 с головным.
-// Склад и накладные НЕ трогаются: себестоимости нет, вся сумма = бонус, половина — доля ГО.
+// «Прочий доход» (касса/Расчёт): деньги без товара — приход по счетам + делёж с головным 60/40.
+// Склад и накладные НЕ трогаются: себестоимости нет, вся сумма = бонус, 60% — доля ГО.
+// hqPct задаёт другую долю (например 0.5) — только когда владелец скажет по конкретному дню.
 export const otherIncomeSchema = z.object({
   uid: z.string().uuid().optional(),
   contactId: z.string().uuid().optional(),        // от кого деньги; пусто → «Розничный покупатель»
@@ -118,4 +119,5 @@ export const otherIncomeSchema = z.object({
   comment: z.string().max(200).optional().default(''),
   seller: z.string().optional().default(''),
   date: z.string().optional(),
+  hqPct: z.coerce.number().positive().max(1).optional(),
 })

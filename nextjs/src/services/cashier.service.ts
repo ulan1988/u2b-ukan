@@ -531,9 +531,12 @@ export interface SellInput {
 
 // Доля головного в бонусе: 50% (для бонусных позиций вместо обычной маржи 60/40).
 export const BONUS_HQ_SHARE = 0.5
-// Прочий доход: доля головного — 60% с каспи/QR (гасит долг филиала) и 50% с наличных.
+// Прочий доход: доля головного — 60% ПО УМОЛЧАНИЮ со всех счетов (каспи/QR и наличных):
+// этими 60% филиал гасит свой долг перед головным, 40% остаётся магазину на ЗП.
+// 50/50 бывает, но только когда владелец скажет по конкретному дню — тогда в otherIncome
+// передаётся hqPct (0.5), константы не трогаем.
 export const OTHER_HQ_CASHLESS = 0.6
-export const OTHER_HQ_CASH = 0.5
+export const OTHER_HQ_CASH = 0.6
 
 export async function sellDirect(orgId: string, i: SellInput, actor?: Session | null) {
   if (!i.positions?.length) return { ok: false as const, error: 'Пустой чек' }
@@ -767,6 +770,7 @@ export async function editCheck(cardId: string, i: EditCheckInput, actor?: Sessi
 // половина доля головного (как у товара соседа). Деньги ложатся на счета по способам.
 export async function otherIncome(orgId: string, i: {
   contactId?: string; cash?: number; kaspi?: number; qr?: number; comment?: string; seller?: string; date?: string
+  hqPct?: number   // доля головного (0..1); пусто → 60% по умолчанию, 0.5 — только по слову владельца
 }, actor?: Session | null) {
   const cash = Math.max(0, Math.round(Number(i.cash) || 0))
   const kaspi = Math.max(0, Math.round(Number(i.kaspi) || 0))
@@ -796,7 +800,10 @@ export async function otherIncome(orgId: string, i: {
   // Журнал тот же, что у бонуса товара соседа (виден в «Кассе дня»).
   const { db } = await import('../lib/db')
   const { bonusRows } = await import('../db/schema')
-  const hq = Math.round((kaspi + qr) * OTHER_HQ_CASHLESS + cash * OTHER_HQ_CASH)
+  const pct = Number(i.hqPct)
+  const hq = pct > 0 && pct <= 1
+    ? Math.round(sum * pct)
+    : Math.round((kaspi + qr) * OTHER_HQ_CASHLESS + cash * OTHER_HQ_CASH)
   await db.insert(bonusRows).values({
     id: randomUUID(), orgId, date: day, cardId: null, posId: null, agentId: null,
     productName: note ? `Прочий доход · ${note}` : 'Прочий доход',
