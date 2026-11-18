@@ -358,14 +358,18 @@ export async function saveFinFavorites(orgId: string, favs: any[]) {
   return { ok: true }
 }
 
-// Добавить в день недостающие строки из избранного (по статье).
+// Добавить в день недостающие строки из избранного.
+// КЛЮЧ — СТАТЬЯ + КОНТРАГЕНТ (правило владельца 18.11.2026): «Оплата поставщикам» у Завода,
+// Меллиуса, Частного поставщика и Берика — это ЧЕТЫРЕ разные строки. Раньше сверялись только
+// по статье, и все поставщики сливались в одну — проверить их было нельзя.
 export async function applyFavorites(orgId: string, date: string) {
   const [favs, rows] = await Promise.all([fin.favorites(orgId), fin.rowsForDay(orgId, date)])
-  const have = new Set(rows.map(r => r.article))
+  const key = (article: string, cid: any) => `${String(article || '').trim().toLowerCase()}::${cid || ''}`
+  const have = new Set(rows.map(r => key(r.article, (r as any).contragentId)))
   let base = await fin.maxSort(orgId, date)
   let added = 0
   for (const f of favs) {
-    if (have.has(f.label)) continue
+    if (have.has(key(f.label as string, (f as any).contragentId))) continue
     base++
     await fin.insertRow({ orgId, date, sortOrder: base, status: 'draft', type: f.type || 'etc', code: f.code || null, article: f.label || '', who: '', contragentId: f.contragentId || null } as any)
     added++

@@ -118,13 +118,29 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   function scheduleSave(r: any) { const k = r.id || 'new'; clearTimeout(timers.current[k]); timers.current[k] = setTimeout(() => persist(r), 500) }
 
   async function addRow() { const r = { id: '', type: 'out', code: 'ПЛ-13', article: 'Прочие платежи', who: '', status: 'draft', contragentId: null, docId: null, amt: {} }; setRows(p => [...p, r]); await persist(r); await load() }
+  // ⧉ и ＋ раньше молча не срабатывали: в список порядка попадали id авто-строк («auto-…»,
+  // «pend-…»), которых в fin_rows нет, и сохранение порядка падало; позиция вставки тоже
+  // считалась по общему списку вместе с авто-строками. Теперь порядок строим только по
+  // РУЧНЫМ строкам, а если сохранить порядок не удалось — строка всё равно остаётся.
+  const manualIds = () => rows.filter((r: any) => !r.auto && r.id).map((r: any) => String(r.id))
+  async function placeAfter(srcId: any, newId: any) {
+    if (!newId) return
+    const ids = manualIds().filter(x => x !== String(newId))
+    const pos = srcId ? ids.indexOf(String(srcId)) : -1
+    ids.splice(pos >= 0 ? pos + 1 : ids.length, 0, String(newId))
+    try { await finReorder(ids) } catch { /* порядок не критичен — строка уже создана */ }
+  }
   async function cloneRow(i: number) {
     const src = rows[i]; const cp = { ...src, id: '', status: 'draft', amt: { ...src.amt } }
-    const id = await persist(cp); const ids = rows.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
+    const id = await persist(cp)
+    if (!id) { setToast('⚠ Не удалось создать строку'); return }
+    await placeAfter(src.id, id); await load()
   }
   async function insertRow(i: number) {
-    const src = rows[i]; const nr = { id: '', type: src.type, article: src.article, who: '', status: 'draft', contragentId: null, docId: null, amt: {} }
-    const id = await persist(nr); const ids = rows.map(r => r.id).filter(x => x && !String(x).startsWith("auto-")); ids.splice(i + 1, 0, id); await finReorder(ids); await load()
+    const src = rows[i]; const nr = { id: '', type: src.type, code: src.code || null, article: src.article, who: '', status: 'draft', contragentId: null, docId: null, amt: {} }
+    const id = await persist(nr)
+    if (!id) { setToast('⚠ Не удалось добавить строку'); return }
+    await placeAfter(src.id, id); await load()
   }
   async function removeRow(i: number) { const r = rows[i]; if (r.id) await finDeleteRow(r.id); await load() }
   // Поменять местами строки (вверх/вниз) + сохранить порядок.
@@ -612,7 +628,7 @@ function FavModal({ favs, setFavs, cags, onApply, onClose }: any) {
     <div style={ov} onClick={onClose}>
       <div style={modalBox} onClick={e => e.stopPropagation()}>
         <h2 style={{ fontSize: 16, marginBottom: 2 }}>★ Избранные строки</h2>
-        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Этот набор появляется в каждом новом дне — ваш шаблон.</div>
+        <div style={{ fontSize: 12, color: '#6b7686', marginBottom: 12 }}>Этот набор появляется в каждом новом дне — ваш шаблон. Укажите контрагента: одна и та же статья с разными контрагентами (Завод, Меллиус, Частный поставщик, Берик) даст СВОЮ строку каждому.</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '52vh', overflow: 'auto', marginBottom: 12 }}>
           {favs.map((f: any, i: number) => (
             <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', border: '1px solid #d0d5db', borderRadius: 6, padding: '4px 6px' }}>
@@ -622,6 +638,10 @@ function FavModal({ favs, setFavs, cags, onApply, onClose }: any) {
               <select value={f.type} onChange={e => { const n = [...favs]; n[i] = { ...f, type: e.target.value }; setFavs(n) }} style={{ border: '1px solid #d0d5db', borderRadius: 4, padding: '3px 5px', fontSize: 12 }}>
                 {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+              {/* Контрагент строки-шаблона: с ним поставщик каждый день стоит своей строкой. */}
+              <div style={{ width: 190 }}>
+                <ContragentPicker contragents={cags} value={f.contragentId || ''} onPick={(c: any) => { const n = [...favs]; n[i] = { ...f, contragentId: c?.id || null }; setFavs(n) }} placeholder="— контрагент —" style={{ fontSize: 12 }} />
+              </div>
               <button onClick={() => setFavs(favs.filter((_: any, j: number) => j !== i))} style={{ ...miniBtn, color: '#b3261e' }}>✕</button>
             </div>
           ))}
