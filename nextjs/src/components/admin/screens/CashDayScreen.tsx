@@ -131,12 +131,13 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
       return { accountId: a.id, amount: isLast ? rest - each * (blanks.length - 1) : each }
     }).filter((x: any) => x.amount > 0)
   }
-  async function payZp(payTotal: number, names?: string[]) {
+  async function payZp(payTotal: number, names?: string[], opts?: { skip?: boolean }) {
     const bonuses = (data?.staff || []).filter((u: any) => wsel[u.id]).map((u: any) => ({ employeeId: u.id, amount: bonusEff(u.id) }))
     if (!bonuses.length) { toast('Отметьте в табеле кто на смене'); return }
     // Переспрашиваем ВСЕГДА: деньги списываются со счёта, повтор по ошибке дорого стоит.
+    // opts.skip — вызывающий уже переспросил (повторная выдача «уже выдано»), второй раз не спрашиваем.
     const who = (names || []).length ? `: ${(names || []).join(', ')}` : ''
-    if (!confirm(`Выдать ${m(payTotal)} ₸${who}? Деньги спишутся со счёта.`)) return
+    if (!opts?.skip && !confirm(`Выдать ${m(payTotal)} ₸${who}? Деньги спишутся со счёта.`)) return
     const splits = zpSplits(payTotal)
     if (!splits.length) { toast('Отметьте счёт списания и сумму'); return }
     const r: any = await cashPayZp(orgId, splits[0].accountId, date, bonuses, splits)
@@ -875,11 +876,17 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                             </>}
                         </div>
                       ))}
-                      {/* Выдано всем отмеченным → кнопка серая. Остался кто-то (нового отметили
-                          или правили сумму) — выдаём только им, с переспросом. */}
-                      <button onClick={() => payZp(payTotal, rows.filter((r: any) => !r.paid).map((r: any) => r.u.name))} disabled={!(payTotal > 0)}
-                        style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: 'none', background: payTotal > 0 ? '#2e8a5e' : COLORS.border, color: '#fff', cursor: payTotal > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>
-                        {payTotal > 0 ? `${noPct ? '💵 Выдать ЗП' : '💵 Выдать ЗП+40%'} · ${m(payTotal)}` : '✓ ЗП за этот день выдана'}
+                      {/* Остался кто-то (нового отметили/правили сумму) — выдаём только им, с переспросом.
+                          Всем выдано — кнопка НЕ мёртвая: клик переспрашивает «выдать ещё раз?» (бэкенд
+                          идемпотентен — повторно уже выданным не платит, просто подтвердит, что выдано). */}
+                      <button
+                        onClick={() => {
+                          if (payTotal > 0) { payZp(payTotal, rows.filter((r: any) => !r.paid).map((r: any) => r.u.name)); return }
+                          if (confirm('ЗП за этот день уже выдана всем отмеченным. Выдать ещё раз?'))
+                            payZp(rows.reduce((s: number, r: any) => s + r.total, 0), rows.map((r: any) => r.u.name), { skip: true })
+                        }}
+                        style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 8, border: payTotal > 0 ? 'none' : `1.5px solid #2e8a5e`, background: payTotal > 0 ? '#2e8a5e' : '#eef7f1', color: payTotal > 0 ? '#fff' : '#2e8a5e', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>
+                        {payTotal > 0 ? `${noPct ? '💵 Выдать ЗП' : '💵 Выдать ЗП+40%'} · ${m(payTotal)}` : '✓ ЗП за этот день выдана — нажмите, чтобы выдать повторно'}
                       </button>
                     </div>
                   )
