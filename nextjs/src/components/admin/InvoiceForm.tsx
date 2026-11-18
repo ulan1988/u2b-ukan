@@ -70,10 +70,14 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const [seq, setSeq] = useState(1)               // локальная нумерация новых строк
   // ЗАМЕНА ТОВАРА в проведённой строке (ошиблись номенклатурой при приёмке).
   const [swapFor, setSwapFor] = useState('')      // id строки, у которой открыт выбор товара
+  const [loadErr, setLoadErr] = useState('')     // накладная не загрузилась — показываем вместо вечной «Загрузка…»
   const origProd = useRef<Record<string, string>>({})   // товар строки на момент загрузки
 
+  // Накладная не загрузилась (сеть, деплой, документ удалён) — раньше форма навсегда
+  // зависала на «Загрузка…». Теперь пишем это прямо в окне и даём повторить.
   function reload() { return getDocument(id as string).then((d: any) => {
-    if (!d) return
+    if (!d || !d.doc) { setLoadErr('Не удалось загрузить накладную — проверьте связь и повторите'); return }
+    setLoadErr('')
     setData(d)
     setF({ number: d.doc.number || '', date: d.doc.date ? String(d.doc.date).slice(0, 10) : '', inNumber: d.doc.inNumber || '', inDate: d.doc.inDate || '', operation: d.doc.operation || (d.doc.type === 'sale' ? 'shipment' : 'receipt'), contragentId: d.doc.contragentId || '', supplierId: d.doc.supplierId || '', comment: d.doc.comment || '', discountPct: Number(d.doc.discountPct) || 0, discountSum: Number(d.doc.discountSum) || 0, paidSum: Number(d.doc.paidSum) || 0, reviewed: !!d.doc.reviewed })
     const mapped = (d.lines || []).map((l: any, i: number) => ({ ...l, price: Number(l.price), qty: Number(l.qty), block: l.block || '', sortOrder: l.sortOrder != null ? Number(l.sortOrder) : i }))
@@ -388,7 +392,17 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
       <div onClick={e => e.stopPropagation()} className="anim-pop" style={drawer
         ? { width: 580, maxWidth: '100%', height: '100vh', background: '#fff', boxShadow: '-12px 0 48px rgba(0,0,0,.25)', overflowY: 'auto' }
         : { width: 980, maxWidth: '100%', maxHeight: 'calc(100vh - 64px)', overflowY: 'auto', background: '#fff', borderRadius: 16, boxShadow: '0 12px 48px rgba(0,0,0,.2)' }}>
-        {!data ? <div style={{ padding: 48, textAlign: 'center', color: COLORS.textMuted }}>Загрузка…</div> : (
+        {!data ? (
+          <div style={{ padding: 48, textAlign: 'center', color: loadErr ? '#b03020' : COLORS.textMuted }}>
+            {loadErr || 'Загрузка…'}
+            {loadErr && (
+              <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button onClick={() => { setLoadErr(''); reload() }} style={{ padding: '8px 16px', borderRadius: 9, border: 'none', background: COLORS.primary, color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5 }}>↻ Повторить</button>
+                <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5 }}>Закрыть</button>
+              </div>
+            )}
+          </div>
+        ) : (
           <>
             {/* Замена товара строки — тот же каталог, что и при добавлении. */}
             {swapFor && <StoreCatalog orgId={data?.doc?.orgId || newOrgId} onPick={swapFromCatalog} onClose={() => setSwapFor('')} />}
