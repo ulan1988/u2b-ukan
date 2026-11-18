@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import * as svc from '@/services/finmoney.service'
 import { reviewPaymentSchema } from '@/dto/payment.dto'
-import { finUnpostSchema, finCancelPaySchema } from '@/dto/fin.dto'
+import { finUnpostSchema, finCancelPaySchema, finCancelPaysSchema } from '@/dto/fin.dto'
 import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
       const p3 = finCancelPaySchema.safeParse(b)
       if (!p3.success) { res = { ok: false, error: 'Не указан платёж' }; break }
       res = await svc.cancelAutoPayment(org, p3.data.paymentId); break
+    }
+    // Агрегированная строка головного (слот/контрагент) — сторно всех её платежей разом.
+    case 'cancelPays': {
+      const p4 = finCancelPaysSchema.safeParse(b)
+      if (!p4.success) { res = { ok: false, error: 'Не указаны платежи' }; break }
+      res = await svc.cancelAutoPayments(org, p4.data.paymentIds); break
     }
     case 'reorder': res = await svc.reorderDay(b.ids || []); break
     case 'post':

@@ -61,6 +61,7 @@ export async function financeDay(orgId: string, date: string) {
       return -1 }
     const slotAmt: Array<Record<string, number>> = SLOTS.map(() => ({}))
     const slotCag: Array<{ id: string | null; doc: string | null }> = SLOTS.map(() => ({ id: null, doc: null }))
+    const slotPayIds: string[][] = SLOTS.map(() => [])   // платежи слота — чтобы «↩ отмена» их сторнировала
     // Контрагент слота известен ДО платежей (по имени) — иначе в пустую строку нельзя внести
     // сумму вручную: не к кому её отнести.
     // Имя слота не всегда совпадает с именем контрагента в базе: «Базар Нипа (Жанар Базар)»
@@ -81,13 +82,15 @@ export async function financeDay(orgId: string, date: string) {
       const s = slotOf(p.contragent)
       if (s >= 0) {
         slotAmt[s][p.col] = (slotAmt[s][p.col] || 0) + p.signed
+        slotPayIds[s].push(p.id)
         if (!slotCag[s].id && p.contragentId) slotCag[s].id = p.contragentId
         if (!slotCag[s].doc && p.docNumber) slotCag[s].doc = p.docNumber
       } else {
         const key = (p.contragentId || 'x') + '|' + p.direction
         let g = others.get(key)
-        if (!g) { g = { contragentId: p.contragentId, contragent: p.contragent, direction: p.direction, amt: {} as Record<string, number>, doc: null as string | null }; others.set(key, g) }
+        if (!g) { g = { contragentId: p.contragentId, contragent: p.contragent, direction: p.direction, amt: {} as Record<string, number>, doc: null as string | null, payIds: [] as string[] }; others.set(key, g) }
         g.amt[p.col] = (g.amt[p.col] || 0) + p.signed
+        g.payIds.push(p.id)
         if (p.docNumber && !g.doc) g.doc = p.docNumber
       }
     }
@@ -99,10 +102,10 @@ export async function financeDay(orgId: string, date: string) {
       contragent: p.contragent || '', contragentId: p.contragentId, docId: p.docId || null, docNumber: p.docNumber || null,
       comment: p.comment || '', alloc: [], amounts: [{ accountId: p.col, amount: p.signed }],
     }))
-    const fixedRows = SLOTS.map((label, i) => ({ id: `auto-slot-${i}`, auto: true, status: 'posted', type: 'in', code: opArt.code, article: opArt.article, who: '', contragent: label, contragentId: slotCag[i].id, docId: null, docNumber: slotCag[i].doc, comment: '', alloc: [], amounts: Object.entries(slotAmt[i]).map(([accountId, amount]) => ({ accountId, amount })) }))
+    const fixedRows = SLOTS.map((label, i) => ({ id: `auto-slot-${i}`, auto: true, payIds: slotPayIds[i], status: 'posted', type: 'in', code: opArt.code, article: opArt.article, who: '', contragent: label, contragentId: slotCag[i].id, docId: null, docNumber: slotCag[i].doc, comment: '', alloc: [], amounts: Object.entries(slotAmt[i]).map(([accountId, amount]) => ({ accountId, amount })) }))
     const otherRows = Array.from(others.values()).sort((a, b) => low(a.contragent).localeCompare(low(b.contragent)))
       .map(g => { const a = g.direction === 'in' ? opArt : spArt
-        return { id: `auto-${g.contragentId || 'x'}-${g.direction}`, auto: true, status: 'posted', type: g.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: g.contragent || '', contragentId: g.contragentId, docId: null, docNumber: g.doc, comment: '', alloc: [], amounts: Object.entries(g.amt).map(([accountId, amount]) => ({ accountId, amount })) } })
+        return { id: `auto-${g.contragentId || 'x'}-${g.direction}`, auto: true, payIds: g.payIds, status: 'posted', type: g.direction === 'in' ? 'in' : 'out', code: a.code, article: a.article, who: '', contragent: g.contragent || '', contragentId: g.contragentId, docId: null, docNumber: g.doc, comment: '', alloc: [], amounts: Object.entries(g.amt).map(([accountId, amount]) => ({ accountId, amount })) } })
     autoRows = [...pendingRows, ...fixedRows, ...otherRows]
   } else {
     // ФИЛИАЛ/МАГАЗИН: строка на КАЖДЫЙ платёж (кассовый ордер) с привязкой к накладной (docNumber).
@@ -235,6 +238,20 @@ export async function cancelAutoPayment(orgId: string, paymentId: string) {
   if (pay.docId) await fin.bumpPaidSum(pay.docId, -Math.abs(num(pay.amount)))
   await fin.deletePaymentById(pay.id)
   return { ok: true as const, amount: Math.abs(num(pay.amount)), pair }
+}
+
+// Отмена агрегированной строки головного (слот/контрагент): у неё нет одного payId —
+// сторнируем ВСЕ её платежи. Оплаты по чеку пропускаем (их отменяют возвратом в кассе).
+export async function cancelAutoPayments(orgId: string, payIds: string[]) {
+  const ids = Array.from(new Set((payIds || []).filter(Boolean)))
+  if (!ids.length) return { ok: false as const, error: 'Нет платежей для отмены' }
+  let cancelled = 0, pair = 0, skipped = 0
+  for (const id of ids) {
+    const r = await cancelAutoPayment(orgId, id)
+    if (r.ok) { cancelled++; pair += (r as any).pair || 0 } else skipped++
+  }
+  if (!cancelled) return { ok: false as const, error: 'Это оплаты по чеку — отменяйте возвратом в кассе' }
+  return { ok: true as const, cancelled, pair, skipped }
 }
 
 export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q || '')

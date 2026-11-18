@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents, setAccountOpening } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finCellPayments, finEditPayment, finAddPayment, finUnpostRow, finCancelPayment, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
+import { finCellPayments, finEditPayment, finAddPayment, finUnpostRow, finCancelPayment, finCancelPayments, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
@@ -188,7 +188,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
     const key = r.payId || r.id
     if (confirmUndo !== key) { setConfirmUndo(key); setTimeout(() => setConfirmUndo(c => c === key ? null : c), 6000); return }
     setConfirmUndo(null)
-    const res: any = r.auto ? await finCancelPayment(r.payId) : await finUnpostRow(r.id)
+    // Авто-строка головного агрегирует несколько платежей (payIds) — сторнируем их все;
+    // филиал/pending — одиночный payId; ручная строка — unpost в черновик.
+    let res: any
+    if (r.auto && Array.isArray(r.payIds) && r.payIds.length) res = await finCancelPayments(r.payIds)
+    else if (r.auto && r.payId) res = await finCancelPayment(r.payId)
+    else if (r.auto) { show('Нечего отменять — в строке нет платежей'); return }
+    else res = await finUnpostRow(r.id)
     const err = res?.error || res?.data?.error
     if (err || res?.ok === false || res?.data?.ok === false) { show('⚠ ' + (err || 'Не удалось отменить')); return }
     show(r.auto ? `↩ Операция отменена${res?.data?.pair ? ' (и у головного)' : ''}` : '↩ Проведение отменено — строка в черновике')

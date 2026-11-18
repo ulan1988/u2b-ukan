@@ -46,6 +46,8 @@ export const cashMonth = (orgId: string, from: string, to: string) => getObj<any
 // Отмена проведения: ручная строка (сторно платежа → черновик) и авто-строка (удаление платежа).
 export const finUnpostRow = (id: string) => post('/api/finance/money', { action: 'unpost', id })
 export const finCancelPayment = (paymentId: string) => post('/api/finance/money', { action: 'cancelPay', paymentId })
+// Агрегированная авто-строка головного: сторно всех её платежей (у строки нет одного payId).
+export const finCancelPayments = (paymentIds: string[]) => post('/api/finance/money', { action: 'cancelPays', paymentIds })
 // Прибыль дня магазина: расчёт деления денег (себестоимость / наценка) и проводка.
 export const profitDay = (orgId: string, date: string) => getObj<any>(`/api/finance/profit-day?orgId=${orgId}&date=${date}`, null as any)
 export const profitPost = (orgId: string, date: string) => post('/api/finance/profit-day', { orgId, date, action: 'post' })
