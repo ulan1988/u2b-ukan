@@ -1090,3 +1090,67 @@ export async function deleteOrder(cardId: string, actor?: Session | null) {
   await repo.deleteOrder(cardId)
   return { ok: true as const, id: cardId, by: actor?.name || 'Система' }
 }
+
+// ── ДОСКА ЛОГИСТА (прототип, только чтение) ───────────────────────────────────────────────
+// Второй вид того же кабинета: Trello-доска вместо списка. Колонка = ПОСТАВЩИК позиции
+// («заказ поставщику»), карточка = заявка одного заказчика у этого поставщика; дальше по
+// этапам: Закуплено → Готов к отправке → Продано/Доставлено. Заказы филиалу (Нипа листогиб)
+// и «выполнено филиалом» собраны в одну колонку — она у логиста свёрнута, это справка.
+// Данные берём из того же listForLogist (роли/фильтры не меняем), НИЧЕГО не пишем: экран
+// read-only, правки живут только в браузере, пока смотрим прототип. Цен в ответе нет —
+// у логиста их не бывает (правило владельца 19.11.2026).
+export async function logistBoard(orgId: string, userId: string) {
+  const all = await listForLogist(orgId, userId)
+  const cards = all.filter((c: any) => c.orgId === orgId && c.status !== 'Отменён')
+  // «Выполнено филиалом» к логисту не привязано — добавляем отдельно, это справочная колонка.
+  const bd = await repo.branchDoneForBoard(orgId)
+  const bdMap = new Map<string, any>()
+  for (const r of bd as any[]) {
+    if (!bdMap.has(r.o.id)) bdMap.set(r.o.id, { ...r.o, positions: [], clientName: r.o.fromName, createdBy: r.o.fromName })
+    bdMap.get(r.o.id).positions.push(r.p)
+  }
+  for (const c of Array.from(bdMap.values())) if (!cards.some((x: any) => x.id === c.id)) cards.push(c)
+  const supIds = Array.from(new Set(cards.flatMap((c: any) => c.positions.map((p: any) => p.supplierId)).filter(Boolean))) as string[]
+  const supName = supIds.length ? await refsRepo.contragentNamesByIds(supIds) : {}
+  const slug = (s: string) => { let h = 7; const t = String(s); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'c' + Math.abs(h).toString(36) }
+  const hhmm = (d: any) => { const x = new Date(d), p = (v: number) => String(v).padStart(2, '0')
+    return p(x.getDate()) + '.' + p(x.getMonth() + 1) + ' ' + p(x.getHours()) + ':' + p(x.getMinutes()) }
+  const item = (p: any) => ({ n: p.name1c || p.oral || '—', q: Number(p.qty),
+    u: (p.unit && p.unit !== 'шт') ? p.unit : undefined, done: p.status === 'Доставлено' || undefined })
+
+  const cols = new Map<string, any>()
+  const out: any[] = []
+  const put = (col: string, o: any, poss: any[], extra: any = {}) => out.push({
+    id: slug(o.id + col), col, code: o.id, k: o.kind === 'purchase' ? 'buy' : 'sell',
+    client: (o.clientName || o.fromName || 'Центр-Склад').trim(), who: o.createdBy || '',
+    time: hhmm(o.createdAt), pay: o.payment || '', items: poss.map(item), ...extra })
+
+  for (const o of cards as any[]) {
+    const open = o.positions.filter((p: any) => p.status !== 'Доставлено')
+    const nipa = o.source === 'branch_done' || (open.length > 0 && open.every((p: any) => supName[p.supplierId] === 'Нипа листогиб'))
+    if (nipa) {
+      cols.set('nipa', { id: 'nipa', name: 'Заказ Нипа листогибу', fold: true })
+      put('nipa', o, o.positions, { badge: o.status, info: true })
+      continue
+    }
+    if (!open.length) continue
+    if (o.screen === 'outgoing') { put('ready', o, open); continue }
+    const by = new Map<string, any[]>()
+    for (const p of open) { const k = supName[p.supplierId] || ''; if (!by.has(k)) by.set(k, []); by.get(k)!.push(p) }
+    for (const [sup, poss] of Array.from(by.entries())) {
+      const id = sup ? slug(sup) : 'ask'
+      if (sup) cols.set(id, { id, name: 'Заказ ' + sup })
+      put(id, o, poss, { wait: !sup || undefined })
+    }
+  }
+  const order = [
+    { id: 'ask', name: 'На выяснение · без поставщика' },
+    ...Array.from(cols.values()).filter(c => c.id !== 'nipa')
+      .sort((a, b) => out.filter(x => x.col === b.id).length - out.filter(x => x.col === a.id).length),
+    ...(cols.has('nipa') ? [cols.get('nipa')] : []),
+    { id: 'bought', name: 'Закуплено', stage: true },
+    { id: 'ready', name: 'Готов к отправке', stage: true },
+    { id: 'deliv', name: 'Продано / Доставлено', stage: true },
+  ]
+  return { cols: order, cards: out }
+}

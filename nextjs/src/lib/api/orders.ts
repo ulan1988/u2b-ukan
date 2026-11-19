@@ -102,6 +102,8 @@ export async function updateCard(cardId: string, patch: any) {
 
 // Порталы
 export const logistOrders = (uid?: string) => getArray(`/api/logist/orders${uid ? `?uid=${uid}` : ''}`)
+// Доска логиста (прототип, только чтение): колонки-поставщики + этапы.
+export const logistBoardData = (uid?: string) => getObj<any>(`/api/logist/board${uid ? `?uid=${uid}` : ''}`, { cols: [], cards: [] })
 export const clientOrders = (uid?: string) => getArray(`/api/client/orders${uid ? `?uid=${uid}` : ''}`)
 export const branchOrders = (uid?: string) => getArray(`/api/branch/orders${uid ? `?uid=${uid}` : ''}`)
 // «Долг товаров» (касса магазина): журнал взяли/вернули + свёрнутые остатки.

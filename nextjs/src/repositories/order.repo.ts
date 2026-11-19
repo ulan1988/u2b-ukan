@@ -220,6 +220,16 @@ export const positionsForLogist = (orgIds: string[], userId: string) =>
       ),
     )).orderBy(desc(orders.createdAt))
 
+// Заказы филиала, выполненные для головного («Выполнено филиалом»): логисту они нужны
+// как справка — в доске это отдельная свёрнутая колонка. К позициям логиста не привязаны,
+// поэтому берём их отдельным запросом за последние 3 недели.
+export const branchDoneForBoard = (orgId: string) =>
+  db.select({ o: orders, p: orderPositions })
+    .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
+    .where(and(eq(orders.orgId, orgId), eq(orders.source, 'branch_done'), eq(orders.isCancelled, false),
+      sql`${orders.createdAt} > now() - interval '21 days'`))
+    .orderBy(desc(orders.createdAt))
+
 export const updateOrder = (id: string, patch: Partial<typeof orders.$inferInsert>) =>
   db.update(orders).set({ ...patch, updatedAt: sql`now()` }).where(eq(orders.id, id)).returning()
 
