@@ -3,6 +3,9 @@
 // продаж и переводов), остаток KASPI GOLD (личный сбор мастера), перевод GOLD→банк, закрытие.
 import { sqlClient } from '../lib/db'
 import { financeDay, saveFinRow, postFinDay } from './finmoney.service'
+
+// Статья строки «Деньги» для перевода между своими счетами (по ней же находим и отменяем).
+export const MOVE_ART = 'Перевод между счетами'
 import * as attendance from '../repositories/attendance.repo'
 import type { Session } from '../lib/auth'
 
@@ -197,6 +200,20 @@ export async function masterShift(orgId: string, date: string) {
     const to = hqAccountFor(a.name, hqAccList, orgKind)
     return { id: a.id, name: a.name, to: to?.name || '—', toId: to?.id || '' }
   })
+  // 🔄 Переводы между своими счетами за день (для списка и кнопки 🗑 в «Инкассации»).
+  const moveRaw = await sqlClient`select r.id::text id, a.amount::float amt, ca.id::text acc_id, ca.name acc
+    from fin_rows r join fin_row_amounts a on a.row_id = r.id
+    left join cash_accounts ca on ca.id = a.account_id
+    where r.org_id = ${orgId} and r.date = ${date} and r.article = ${MOVE_ART}
+    order by r.sort_order, r.id` as unknown as Array<any>
+  const moveMap = new Map<string, any>()
+  for (const r of moveRaw) {
+    const it = moveMap.get(r.id) || { id: r.id, from: '', to: '', amount: 0 }
+    if (num(r.amt) < 0) it.from = r.acc || '—'
+    else { it.to = r.acc || '—'; it.amount = num(r.amt) }
+    moveMap.set(r.id, it)
+  }
+  const moves = Array.from(moveMap.values())
   const remit = { rows: remitRows.map((r: any) => ({ direction: r.direction, amount: num(r.amount), account: r.acc, comment: r.comment })),
     out: remitOut, in: remitIn, accounts: remitAccounts, map: remitMap, hqAccounts: hqAccList.map((a: any) => ({ id: a.id, name: a.name })) }
 
@@ -313,7 +330,7 @@ export async function masterShift(orgId: string, date: string) {
   const share = { from: mFrom, earned: num(shRow.earned), zp: num(shRow.zp), left: num(shRow.earned) - num(shRow.zp) }
 
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, remit, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, remit, moves, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,
@@ -629,6 +646,38 @@ export async function incassate(orgId: string, cash: number, kaspi: number, date
   if (r?.id) { const fin = await import('../repositories/fin.repo'); await fin.setPosted([r.id]) }
   return { ok: true as const, cash: c, kaspi: k }
 }
+// 🔄 ПЕРЕВОД МЕЖДУ СВОИМИ СЧЕТАМИ (правило 19.11.2026): нал → каспи, каспи → банк и обратно.
+// Деньги из орг НЕ уходят (инкассацию это не заменяет): одна строка «Перемещение» листа «Деньги»
+// (fin_rows type='mv') — минус с одного счёта, плюс на другой, сразу проведена. Нужна и Нипе,
+// и Кристаллу: на счёте оказалось не то, что в жизни (сняли каспи налом, положили нал на карту).
+export async function moveBetweenAccounts(orgId: string, fromId: string, toId: string, amount: number, date: string, actor?: Session | null) {
+  const a = Math.round(num(amount) * 100) / 100
+  if (!(a > 0)) return { ok: false as const, error: 'Укажите сумму перевода' }
+  if (!fromId || !toId) return { ok: false as const, error: 'Выберите счёт списания и счёт зачисления' }
+  if (fromId === toId) return { ok: false as const, error: 'Счета должны быть разные' }
+  const [from] = await sqlClient`select id::text id, name from cash_accounts where id=${fromId} and org_id=${orgId} and archived=false limit 1` as unknown as Array<any>
+  const [to] = await sqlClient`select id::text id, name from cash_accounts where id=${toId} and org_id=${orgId} and archived=false limit 1` as unknown as Array<any>
+  if (!from || !to) return { ok: false as const, error: 'Счёт не найден в этой организации' }
+  const who = actor?.name ? ' · ' + actor.name : ''
+  const r: any = await saveFinRow(orgId, {
+    date, type: 'mv', article: MOVE_ART, comment: `${from.name} → ${to.name}${who}`,
+    amounts: [{ accountId: from.id, amount: -a }, { accountId: to.id, amount: a }],
+  })
+  if (r?.id) { const fin = await import('../repositories/fin.repo'); await fin.setPosted([r.id]) }
+  return { ok: true as const, id: r?.id || null, amount: a, from: from.name, to: to.name }
+}
+
+// Отмена перевода (ошиблись счётом/суммой): удаляем ТОЛЬКО строку перевода своей орг.
+export async function moveUndo(orgId: string, rowId: string) {
+  const [row] = await sqlClient`select id::text id, article from fin_rows where id=${rowId} and org_id=${orgId} limit 1` as unknown as Array<any>
+  if (!row) return { ok: false as const, error: 'Перевод не найден' }
+  if (String(row.article || '') !== MOVE_ART) return { ok: false as const, error: 'Это не перевод между счетами' }
+  const fin = await import('../repositories/fin.repo')
+  await fin.deletePaymentsForRow(rowId)
+  await fin.deleteRow(rowId)
+  return { ok: true as const }
+}
+
 // Инкассация «Нипа → головной» СО СПЛИТОМ по счетам (как просил владелец):
 //  • нал (Осн.касса Нипы) → Основная касса ГОЛОВНОГО
 //  • каспи GOLD (KASPI GOLD Нипы) → Банковский счёт ГОЛОВНОГО

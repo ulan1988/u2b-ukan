@@ -89,6 +89,8 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
   useEffect(() => { fetchRefs(user.orgId).then((r: any) => { setCags((r.contragents || []).filter((c: any) => !c.archived)); setProducts(r.products || []); setBpAccounts((r.cashAccounts || []).filter((a: any) => a.orgId === user.orgId)); const hq = (r.organizations || []).find((o: any) => o.kind === 'hq'); if (hq) setHqId(hq.id) }) }, [user.orgId])
   const [bpAccounts, setBpAccounts] = useState<any[]>([])
   const [encOpen, setEncOpen] = useState(false); const [encAcc, setEncAcc] = useState(''); const [encAmt, setEncAmt] = useState('')
+  // Та же шторка — два режима: 🏢 сдать головному и 🔄 перевод между СВОИМИ счетами (деньги из орг не уходят).
+  const [encMode, setEncMode] = useState<'hq' | 'move'>('hq'); const [encTo, setEncTo] = useState('')
   async function doEncashment() {
     const amt = Number((encAmt || '').replace(',', '.')) || 0
     if (!encAcc) { showMsg('⚠ Выберите счёт'); return }
@@ -97,6 +99,18 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
     const r = await encashment({ uid: user.id, fromAccountId: encAcc, amount: amt })
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setEncOpen(false); setEncAmt(''); showMsg(`🏦 Инкассировано ${Math.round(amt).toLocaleString('ru-RU')} ₸ → ${r.headQR || 'головной'}`)
+  }
+  // 🔄 Перевод между своими счетами (нал ⇄ KASPI GOLD ⇄ банк): деньги остаются у Нипы,
+  // долг перед головным не меняется. Проводится рабочей датой кабинета.
+  async function doMoveMoney() {
+    const amt = Number((encAmt || '').replace(',', '.')) || 0
+    if (!encAcc || !encTo) { showMsg('⚠ Выберите оба счёта'); return }
+    if (encAcc === encTo) { showMsg('⚠ Счета должны быть разные'); return }
+    if (amt <= 0) { showMsg('⚠ Сумма больше 0'); return }
+    const { moveMoney } = await import('@/lib/api/orders')
+    const r: any = await moveMoney({ uid: user.id, fromAccountId: encAcc, toAccountId: encTo, amount: amt, date: workDate })
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setEncOpen(false); setEncAmt(''); showMsg(`🔄 ${Math.round(amt).toLocaleString('ru-RU')} ₸: ${r.from} → ${r.to}`)
   }
   // «От имени заказчика» = ТОЛЬКО контрагенты головного (заказ уходит головному, в его книгу/кабинет).
   // Заказчик «от имени»: клиенты головного + мост на другой филиал (Магазин Кристалл); мост на себя исключён.
@@ -425,17 +439,29 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
         <div onClick={() => setEncOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>🏦 Инкассация → головной</div><div style={{ fontSize: 12, color: '#8a8377' }}>деньги придут в QR-счёт Нипы у головного</div></div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{encMode === 'hq' ? '🏦 Инкассация → головной' : '🔄 Перевод между счетами'}</div><div style={{ fontSize: 12, color: '#8a8377' }}>{encMode === 'hq' ? 'деньги придут в QR-счёт Нипы у головного' : 'деньги остаются у Нипы · ' + ddmm(workDate)}</div></div>
               <button onClick={() => setEncOpen(false)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Переключатель режима: сдать головному ИЛИ перекинуть между своими счетами */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {([['hq', '🏢 Головному'], ['move', '🔄 Между счетами']] as const).map(([k, t]) => (
+                  <button key={k} onClick={() => setEncMode(k as any)} style={{ flex: 1, border: 'none', borderRadius: 10, padding: '10px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', background: encMode === k ? (k === 'hq' ? '#2a5aaa' : '#7a3aaa') : '#f3f0ec', color: encMode === k ? '#fff' : '#6b645b' }}>{t}</button>
+                ))}
+              </div>
               <div><div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СЧЁТ СПИСАНИЯ</div>
                 <select value={encAcc} onChange={e => setEncAcc(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' }}>
                   <option value="">— выберите счёт —</option>{bpAccounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select></div>
+              {encMode === 'move' && (
+                <div><div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СЧЁТ ЗАЧИСЛЕНИЯ</div>
+                  <select value={encTo} onChange={e => setEncTo(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                    <option value="">— выберите счёт —</option>{bpAccounts.filter((a: any) => a.id !== encAcc).map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select></div>
+              )}
               <div><div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
                 <input value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 20, fontWeight: 800, fontFamily: 'inherit', boxSizing: 'border-box' }} /></div>
-              <button onClick={doEncashment} style={{ border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>🏦 Инкассировать</button>
+              <button onClick={encMode === 'hq' ? doEncashment : doMoveMoney} style={{ border: 'none', background: encMode === 'hq' ? '#2a5aaa' : '#7a3aaa', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{encMode === 'hq' ? '🏦 Инкассировать' : '🔄 Перевести'}</button>
             </div>
           </div>
         </div>

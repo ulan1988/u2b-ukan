@@ -127,6 +127,9 @@ export async function deleteGoodsDebt(id: string, uid?: string) {
 // Смена мастера: сводка дня + добавление расхода (ЗП/текущий) + закрытие.
 export const shiftSummary = (date: string, uid?: string) => getOne<any>(`/api/branch/shift?date=${date}${uid ? `&uid=${uid}` : ''}`)
 export const addShiftExpense = (body: { kind: 'salary' | 'current'; who?: string; article?: string; accountId: string; amount: number; date: string }) => post('/api/branch/shift', body)
+// 🔄 Перевод между своими счетами из кабинета (Нипа / Кристалл) и его отмена.
+export const moveMoney = (body: { fromAccountId: string; toAccountId: string; amount: number; date?: string; uid?: string }) => post('/api/branch/shift', { action: 'move', ...body })
+export const moveMoneyUndo = (rowId: string, date?: string, uid?: string) => post('/api/branch/shift', { action: 'moveUndo', rowId, date, uid })
 export const closeShiftDay = (date: string, uid?: string) => post('/api/branch/shift', { action: 'close', date, uid })
 // Рентабельность по товару за период.
 export const productProfit = (from: string, to: string, uid?: string) => getOne<any>(`/api/branch/profit?from=${from}&to=${to}${uid ? `&uid=${uid}` : ''}`)

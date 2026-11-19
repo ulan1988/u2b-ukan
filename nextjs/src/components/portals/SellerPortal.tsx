@@ -18,7 +18,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment } from '@/lib/api/orders'
+import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -92,6 +92,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })   // скидка по чеку: ₸ или %
   const [showCost, setShowCost] = useState(false)   // 👁 скрытая себестоимость чека — видно только пока держишь
   const [encOpen, setEncOpen] = useState(false); const [encAcc, setEncAcc] = useState(''); const [encAmt, setEncAmt] = useState('')   // инкассация: счёт + сумма
+  // Та же шторка — два режима: 🏢 сдать головному и 🔄 перевод между СВОИМИ счетами (деньги из орг не уходят).
+  const [encMode, setEncMode] = useState<'hq' | 'move'>('hq'); const [encTo, setEncTo] = useState('')
   const [busy, setBusy] = useState(false)
   const [checks, setChecks] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
@@ -615,6 +617,21 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setEncOpen(false); setEncAmt('')
     showMsg(`🏦 Инкассировано ${money(amt)} ₸ → ${r.headQR || 'головной'}`)
+  }
+
+  // 🔄 Перевод между своими счетами (нал ⇄ каспи ⇄ QR): деньги остаются в магазине,
+  // долг перед головным не меняется. Проводится рабочей датой кассы.
+  async function doMoveMoney() {
+    const amt = num(encAmt)
+    if (!encAcc || !encTo) { showMsg('⚠ Выберите оба счёта'); return }
+    if (encAcc === encTo) { showMsg('⚠ Счета должны быть разные'); return }
+    if (amt <= 0) { showMsg('⚠ Сумма больше 0'); return }
+    setBusy(true)
+    const r: any = await moveMoney({ uid: user.id, fromAccountId: encAcc, toAccountId: encTo, amount: amt, date: workDate })
+    setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    setEncOpen(false); setEncAmt('')
+    showMsg(`🔄 ${money(amt)} ₸: ${r.from} → ${r.to}`)
   }
 
   // Отмена продажи: товар на склад, деньги снимаются, чек аннулируется (для ошибок).
@@ -1915,10 +1932,16 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         <div onClick={() => setEncOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>🏦 Инкассация → головной</div><div style={{ fontSize: 12, color: '#8a8377' }}>деньги придут в QR-счёт магазина у головного</div></div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{encMode === 'hq' ? '🏦 Инкассация → головной' : '🔄 Перевод между счетами'}</div><div style={{ fontSize: 12, color: '#8a8377' }}>{encMode === 'hq' ? 'деньги придут в QR-счёт магазина у головного' : 'деньги остаются в магазине · ' + ddmm(workDate)}</div></div>
               <button onClick={() => setEncOpen(false)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Переключатель режима: сдать головному ИЛИ перекинуть между своими счетами */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {([['hq', '🏢 Головному'], ['move', '🔄 Между счетами']] as const).map(([k, t]) => (
+                  <button key={k} onClick={() => setEncMode(k as any)} style={{ flex: 1, border: 'none', borderRadius: 10, padding: '10px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', background: encMode === k ? (k === 'hq' ? BLUE : '#7a3aaa') : '#f3f0ec', color: encMode === k ? '#fff' : '#6b645b' }}>{t}</button>
+                ))}
+              </div>
               <div>
                 <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СЧЁТ СПИСАНИЯ</div>
                 <select value={encAcc} onChange={e => setEncAcc(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 15 }}>
@@ -1926,11 +1949,20 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
+              {encMode === 'move' && (
+                <div>
+                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СЧЁТ ЗАЧИСЛЕНИЯ</div>
+                  <select value={encTo} onChange={e => setEncTo(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 15 }}>
+                    <option value="">— выберите счёт —</option>
+                    {accounts.filter((a: any) => a.id !== encAcc).map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
                 <input value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
               </div>
-              <button disabled={busy} onClick={doEncashment} style={{ border: 'none', background: busy ? '#9bb5a6' : BLUE, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : '🏦 Инкассировать'}</button>
+              <button disabled={busy} onClick={encMode === 'hq' ? doEncashment : doMoveMoney} style={{ border: 'none', background: busy ? '#9bb5a6' : (encMode === 'hq' ? BLUE : '#7a3aaa'), color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : (encMode === 'hq' ? '🏦 Инкассировать' : '🔄 Перевести')}</button>
             </div>
           </div>
         </div>

@@ -28,3 +28,12 @@ export const returnFromHqSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 export type ReturnFromHqInput = z.infer<typeof returnFromHqSchema>
+
+// 🔄 Перевод между СВОИМИ счетами орг (нал ⇄ каспи ⇄ банк). Деньги орг не покидают.
+export const moveMoneySchema = z.object({
+  fromAccountId: z.string().uuid(),
+  toAccountId: z.string().uuid(),
+  amount: z.coerce.number().positive(),
+  date: z.string().regex(/^d{4}-d{2}-d{2}$/).optional(),
+})
+export type MoveMoneyInput = z.infer<typeof moveMoneySchema>

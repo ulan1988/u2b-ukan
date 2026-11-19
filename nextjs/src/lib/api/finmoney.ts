@@ -26,6 +26,10 @@ export const cashExpense = (orgId: string, body: { kind: 'salary' | 'current'; w
 export const cashIncassate = (orgId: string, cash: number, kaspi: number, date: string) => post('/api/finance/shift', { orgId, action: 'incassate', cash, kaspi, date })
 export const cashRemit = (orgId: string, cash: number, kaspi: number, date: string, splits?: Array<{ accountId: string; amount: number; toAccountId?: string }>) =>
   post('/api/finance/shift', { orgId, action: 'remit', cash, kaspi, date, splits })
+// 🔄 Перевод между своими счетами орг (нал ⇄ каспи ⇄ банк) и его отмена по строке.
+export const cashMove = (orgId: string, fromAccountId: string, toAccountId: string, amount: number, date: string) =>
+  post('/api/finance/shift', { orgId, action: 'move', fromAccountId, toAccountId, amount, date })
+export const cashMoveUndo = (orgId: string, rowId: string, date: string) => post('/api/finance/shift', { orgId, action: 'moveUndo', rowId, date })
 export const cashRemitUndo = (orgId: string, date: string) => post('/api/finance/shift', { orgId, action: 'remitUndo', date })
 // Оплата из кабинета клиента: принять / отказать (отказ удаляет платёж).
 export const reviewClientPayment = (paymentId: string, accept: boolean) => post('/api/finance/money', { action: 'payReview', paymentId, accept })

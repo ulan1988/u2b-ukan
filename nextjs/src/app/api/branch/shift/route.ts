@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { masterShift, addShiftExpense, closeMasterShift, incassate, remitToHQ, remitUndo, returnFromHQ, returnUndo } from '@/services/shift.service'
+import { masterShift, addShiftExpense, closeMasterShift, incassate, remitToHQ, remitUndo, returnFromHQ, returnUndo, moveBetweenAccounts, moveUndo } from '@/services/shift.service'
 import { resolveTarget } from '@/services/auth.service'
 import { sessionFromRequest } from '@/lib/auth'
 import { today } from '@/lib/num'
-import { returnFromHqSchema } from '@/dto/payment.dto'
+import { returnFromHqSchema, moveMoneySchema } from '@/dto/payment.dto'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
     const p = returnFromHqSchema.safeParse(b)
     res = p.success ? await returnFromHQ(t.orgId, p.data.accountId, p.data.amount, p.data.date || date, s) : { ok: false, error: 'Укажите счёт и сумму' }
   }
+  else if (b?.action === 'move') {
+    const p = moveMoneySchema.safeParse(b)
+    res = p.success ? await moveBetweenAccounts(t.orgId, p.data.fromAccountId, p.data.toAccountId, p.data.amount, p.data.date || date, s) : { ok: false, error: 'Выберите счета и сумму' }
+  }
+  else if (b?.action === 'moveUndo') res = await moveUndo(t.orgId, String(b?.rowId || ''))
   else if (b?.action === 'returnUndo') res = await returnUndo(t.orgId, date, s)
   else res = await addShiftExpense(t.orgId, { kind: b?.kind === 'salary' ? 'salary' : 'current', who: b?.who, article: b?.article, accountId: b?.accountId, amount: Number(b?.amount), date }, s)
   if (res?.ok === false) return NextResponse.json(res, { status: 400 })

@@ -9,7 +9,7 @@ import { useAdmin } from '@/components/admin/AdminChrome'
 import ModalShell from '@/components/admin/accDocs/ModalShell'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import { payDebt } from '@/lib/api/orders'
-import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashTabelWage, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
+import { cashDay, cashExpense, cashRemit, cashRemitUndo, cashMove, cashMoveUndo, cashReturnHQ, cashReturnUndo, cashTabelSet, cashTabelWage, cashPayZp, cashCloseShift, cashMonth, profitDay, profitPost, profitUnpost, bonusDay } from '@/lib/api/finmoney'
 import { fmtTime, fmtDMY } from '@/lib/adminFmt'
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -33,7 +33,8 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
   const [wedit, setWedit] = useState<Record<string, string>>({})   // Табель: ЗП за день, пока правят в поле
   const [wbonus, setWbonus] = useState<Record<string, string>>({})  // Выплата: бонус «+40%» вручную по сотруднику
   const [incas, setIncas] = useState({ cash: '', kaspi: '' })   // инкассация Нипа→головной (нал/каспи)
-  const [retm, setRetm] = useState({ accountId: '', amount: '' })  // возврат денег ОТ головного на счёт филиала
+  const [retm, setRetm] = useState({ accountId: '', amount: '' })
+  const [mvf, setMvf] = useState({ from: '', to: '', amount: '' })   // перевод между своими счетами (нал ⇄ каспи ⇄ банк)  // возврат денег ОТ головного на счёт филиала
   const [openCheck, setOpenCheck] = useState('')              // раскрытый чек в журнале дня
   const [bonus, setBonus] = useState<any>(null)        // бонусы дня: товар соседа мимо склада
   const [profit, setProfit] = useState<any>(null)             // прибыль дня: деление денег (себест / наценка)
@@ -157,6 +158,22 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
     if (!confirm('Отменить сдачу головному за этот день? Деньги вернутся на счета филиала.')) return
     const r: any = await cashRemitUndo(orgId, date)
     if (r.ok) { toast(`↩ Сдача отменена: ${m(r.total)}`); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  // 🔄 Перевод между СВОИМИ счетами: деньги остаются в орг (нал положили на каспи и т.п.).
+  // Пишется строкой «Перемещение» в «Деньгах», долг перед головным не трогает.
+  async function doMove() {
+    const accs = data?.accounts || []
+    const from = mvf.from || accs[0]?.id || '', to = mvf.to || accs.find((a: any) => a.id !== from)?.id || ''
+    const amount = Number((mvf.amount || '').replace(',', '.')) || 0
+    if (!from || !to || from === to) { toast('Выберите разные счета'); return }
+    if (amount <= 0) { toast('Укажите сумму'); return }
+    const r: any = await cashMove(orgId, from, to, amount, date)
+    if (r.ok) { toast(`🔄 ${m(r.amount)} ₸: ${r.from} → ${r.to}`); setMvf({ from, to, amount: '' }); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
+  }
+  async function undoMove(rowId: string) {
+    if (!confirm('Удалить этот перевод? Деньги вернутся на счёт списания.')) return
+    const r: any = await cashMoveUndo(orgId, rowId, date)
+    if (r.ok) { toast('↩ Перевод удалён'); load() } else toast('⚠ ' + (r.error || 'Не удалось'))
   }
   // Возврат от головного: выручка уже сдана, а на ЗП денег нет — ГО возвращает на выбранный счёт.
   async function doReturn() {
@@ -732,6 +749,32 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                   </div>
                   <button onClick={doRemit} style={{ marginTop: 8, width: '100%', border: 'none', background: '#2a5aaa', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>🏢 Сдать головному ↓ (каждый счёт — на свой)</button>
                   <button onClick={undoRemit} style={{ marginTop: 6, width: '100%', border: `1.5px solid ${COLORS.border}`, background: '#fff', color: '#b03020', borderRadius: 7, padding: '8px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>↩ Отменить сдачу за этот день</button>
+                </div>
+                {/* 🔄 Перевод между СВОИМИ счетами — деньги не выходят из орг (нал ⇄ каспи ⇄ банк) */}
+                <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#7a3aaa', marginBottom: 7 }}>🔄 Перевод между своими счетами <span style={{ color: COLORS.textLight, fontWeight: 600 }}>· деньги остаются в орг</span></div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select value={mvf.from || (data.accounts || [])[0]?.id || ''} onChange={e => setMvf(x => ({ ...x, from: e.target.value }))} title="Откуда списать" style={{ flex: '1 1 130px', minWidth: 0, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                      {(data.accounts || []).map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <span style={{ fontSize: 15, color: '#7a3aaa', fontWeight: 800 }}>→</span>
+                    <select value={mvf.to || (data.accounts || []).find((a: any) => a.id !== (mvf.from || (data.accounts || [])[0]?.id))?.id || ''} onChange={e => setMvf(x => ({ ...x, to: e.target.value }))} title="Куда зачислить" style={{ flex: '1 1 130px', minWidth: 0, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                      {(data.accounts || []).map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <input value={mvf.amount} inputMode="decimal" onChange={e => setMvf(x => ({ ...x, amount: e.target.value.replace(/[^0-9.,]/g, '') }))} placeholder="сумма" style={{ width: 110, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
+                  </div>
+                  <button onClick={doMove} style={{ marginTop: 8, width: '100%', border: 'none', background: '#7a3aaa', color: '#fff', borderRadius: 7, padding: '10px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>🔄 Перевести между счетами</button>
+                  {(data.moves || []).length > 0 && (
+                    <div style={{ marginTop: 8, borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 6 }}>
+                      {(data.moves || []).map((mv: any) => (
+                        <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '3px 0' }}>
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mv.from || '—'} → <b>{mv.to || '—'}</b></span>
+                          <b style={{ color: '#7a3aaa' }}>{m(mv.amount)} ₸</b>
+                          <button onClick={() => undoMove(mv.id)} title="Удалить перевод" style={{ border: 'none', background: 'none', color: '#b03020', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>🗑</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {/* Возврат ОТ головного: денег на ЗП не хватает — ГО возвращает на счёт филиала (1 действие) */}
                 <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: `0 0 0 1px ${COLORS.border}` }}>
