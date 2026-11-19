@@ -94,8 +94,16 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   // склада, зеркалить его как движение нельзя. Логист довёз материал К производителю (продажа
   // HQ) → у него ПРИХОД; забрал изделие ОТ производителя (закуп HQ) → у него РАСХОД.
   // Зеркалим ПО ГРУППАМ (у каждого поставщика своя накладная — значит и своё зеркало).
+  // ЧЕК КАССЫ МАГАЗИНА НЕ ЗЕРКАЛИТСЯ В ГОЛОВНОЙ (правило владельца). Магазин-продавец торгует
+  // СВОИМ товаром со своего склада: даже если кассир ошибочно выбрал покупателем мост «Адал Строй 2»,
+  // приходная у головного рождаться не должна — долг остаётся дебиторкой филиала (см. chain в payCard).
+  const sellerCheck = o.source === 'cashier' && (await refsRepo.orgById(o.orgId))?.kind === 'seller'
+  if (sellerCheck && docGroups.some(g => g.pos.length)) {
+    try { await orderRepo.insertHistory({ cardId, action: 'invoiceMirror', detail: 'Зеркало в головной не создано: чек кассы магазина', userName: actor?.name || 'Система' }) } catch { /* журнал не критичен */ }
+  }
   try {
     for (const g of docGroups) {
+      if (sellerCheck) continue
       if (!g.pos.length) continue
       const [cp] = await docRepo.contragentById(g.cid)
       const refOrg = (cp as any)?.orgRefId as string | undefined
