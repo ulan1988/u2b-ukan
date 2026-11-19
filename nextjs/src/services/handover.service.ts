@@ -38,7 +38,43 @@ export async function ensureHqBranchOrder(
   const stampRoot = async (rootId: string) => {
     for (const d of [hqIn, hqOut]) if (d && !(d as any).rootCardId) await docRepo.updateDoc((d as any).id, { rootCardId: rootId } as any)
   }
-  if (existing) { await stampRoot(String(existing.id)); return String(existing.id) }
+  // ЗАЯВКА ВИДНА У ГО С САМОГО НАЧАЛА (правило 19.11.2026): карточка-основание заводится уже
+  // в момент пометки «Долг к головному» — со статусом «В ожидании» и без накладных. Когда
+  // цепочка проводится, та же карточка ДОВОДИТСЯ до «Выполнено» (накладные, дата, цены ГО).
+  // Пока под ней в «Документе движений» нет приходной и расходной — домино не упало, видно глазом.
+  const pending = !hqIn && !hqOut
+  if (existing) {
+    await stampRoot(String(existing.id))
+    const needFinalize = !(existing as any).linkedDocId && !!hqOut
+    if (needFinalize) {
+      const tsF = date && /^d{4}-d{2}-d{2}$/.test(date)
+        ? (() => { const n = new Date(); const [y, m, dd] = date.split("-").map(Number); return new Date(y, m - 1, dd, n.getHours(), n.getMinutes(), n.getSeconds()) })()
+        : new Date()
+      // Цены/кол-во у ГО свои (прайс головного) — переписываем позиции карточки по расходной ГО.
+      const fLines = await docRepo.linesWithProduct((hqOut as any).id)
+      if (fLines.length) {
+        for (const op of await repo.positionsByCard(String(existing.id))) await repo.deletePosition(String(op.id))
+        let k = 0
+        for (const l of fLines as any[]) {
+          k++
+          await repo.insertPosition({
+            id: `${existing.id}-P${k}`, cardId: String(existing.id), productId: l.productId ?? null,
+            originPosId: l.sourcePosId ?? null, name1c: l.name || "", oral: l.name || "",
+            qty: String(num(l.qty)), unit: l.unit || "шт", price: String(num(l.price)),
+            widthCm: l.widthCm != null ? String(num(l.widthCm)) : null,
+            leg: 2, status: "Доставлено", respUserId: null, supplierId: null,
+          } as any)
+        }
+      }
+      await repo.updateOrder(String(existing.id), { status: "Выполнено", linkedDocId: (hqOut as any).id, delivered: tsF } as any)
+      await repo.insertHistory({
+        cardId: String(existing.id), action: "branchDone",
+        detail: `Цепочка проведена · ${cardId}${hqIn ? ` · приходная ${(hqIn as any).number}` : ""} · расходная ${(hqOut as any).number}`,
+        userName: actor?.name || "Система",
+      })
+    }
+    return String(existing.id)
+  }
 
   const org = await refsRepo.orgById(order.orgId)
   const positions = await repo.positionsByCard(cardId)
@@ -62,17 +98,17 @@ export async function ensureHqBranchOrder(
     : new Date()
   await repo.insertOrderPosting(
     {
-      id: mirrorId, orgId: hqId, kind: 'sale', screen: 'incoming', block: '', status: 'Выполнено',
+      id: mirrorId, orgId: hqId, kind: 'sale', screen: 'incoming', block: '', status: pending ? 'В ожидании' : 'Выполнено',
       source: 'branch_done', isDraft: false, parentCardId: cardId, rootCardId: mirrorId,
       contactId: order.contactId, fromName: (org as any)?.name || 'Филиал',
       comment: order.comment || '', phone: order.phone || '',
-      linkedDocId: (hqOut as any)?.id ?? null, delivered: ts, createdAt: ts, updatedAt: ts,
+      linkedDocId: (hqOut as any)?.id ?? null, delivered: pending ? null : ts, createdAt: ts, updatedAt: ts,
       specProjectId: (order as any).specProjectId ?? null,
     } as any,
     mirrorPositions as any,
     {
       id: randomUUID(), cardId: mirrorId, action: 'branchDone', createdAt: ts,
-      detail: `Выполнено филиалом «${(org as any)?.name || ''}» · ${cardId}${hqIn ? ` · приходная ${(hqIn as any).number}` : ''}${hqOut ? ` · расходная ${(hqOut as any).number}` : ''}`,
+      detail: `${pending ? 'Заявка филиала (долг к головному)' : 'Выполнено'} филиалом «${(org as any)?.name || ''}» · ${cardId}${hqIn ? ` · приходная ${(hqIn as any).number}` : ''}${hqOut ? ` · расходная ${(hqOut as any).number}` : ''}`,
       userName: actor?.name || 'Система',
     } as any,
   )
@@ -158,4 +194,48 @@ async function writeHandoverToLogistReport(
     if (ex) await reportRepo.updateRow(ex.id, data as any)
     else await reportRepo.addRow({ ...data, reportId: draft.id } as any)
   }
+}
+
+// ПОМЕТИЛИ «ДОЛГ К ГОЛОВНОМУ» → ЗАЯВКА СРАЗУ У ГО (правило владельца 19.11.2026).
+// Раньше карточка-основание рождалась только в момент проводки цепочки, поэтому сорванная
+// цепочка выглядела у головного как «ничего и не заказывали» — в «Документе движений» её не
+// было вовсе. Теперь заявка встаёт в 1-й полосе («В ожидании»), и если под ней не появились
+// приходная и расходная — домино не упало, это видно без разбора журналов.
+// Дубля нет: ensureHqBranchOrder ищет уже созданную по parent_card_id.
+export async function ensurePendingHqOrder(cardId: string, actor?: Session | null, date?: string) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order || !order.contactId) return null
+  const orgs = (await refsRepo.listOrganizations()) as any[]
+  const hq = orgs.find(o => o.kind === 'hq' && !o.archived)
+  if (!hq || String(hq.id) === String(order.orgId)) return null
+  // Накладная на сам мост «Адал Строй 2» при том же заказчике — филиал гасит свой долг,
+  // конечного заказчика нет, основания у ГО тоже нет (цепочка не строится).
+  const docRepo = await import('../repositories/document.repo')
+  const [bridge] = await docRepo.contragentByOrgRef(order.orgId, hq.id)
+  if (bridge && String(bridge.id) === String(order.contactId)) return null
+  const had = (await repo.childrenOf(cardId)).some((c: any) => String(c.orgId) === String(hq.id) && c.source === 'branch_done')
+  const mirrorId = await ensureHqBranchOrder(cardId, hq.id, actor, date)
+  // Новая заявка филиала → админам головного (как любая новая заявка кабинета).
+  if (mirrorId && !had) {
+    const org = await refsRepo.orgById(order.orgId)
+    try { const { notifyAdmins } = await import('./notifyHelpers'); await notifyAdmins(hq.id, `🆕 Заявка филиала «${(org as any)?.name || ''}» ${cardId} — долг к головному`, mirrorId) } catch { }
+  }
+  return mirrorId
+}
+
+// Сторно цепочки (отмена продажи / правка после доставки): карточка-основание у ГО
+// возвращается в «В ожидании» — иначе она осталась бы «Выполнено» со ссылкой на
+// сторнированную накладную, и обрыв снова стал бы невидимым.
+// Возвращает, сколько карточек-оснований откатили: >0 значит сторнированная продажа БЫЛА
+// цепочкой «долг к головному» — филиалу надо вернуть флаг, иначе следующая доставка снова
+// выпишет обычную расходную прямо на заказчика (та самая ошибка).
+export async function revertHqBranchOrder(cardId: string, actor?: Session | null): Promise<number> {
+  let n = 0
+  for (const c of (await repo.childrenOf(cardId)) as any[]) {
+    if (c.source !== 'branch_done' || !c.linkedDocId) continue
+    await repo.updateOrder(String(c.id), { status: 'В ожидании', linkedDocId: null, delivered: null } as any)
+    await repo.insertHistory({ cardId: String(c.id), action: 'branchUndone', detail: `Цепочка филиала сторнирована · ${cardId}`, userName: actor?.name || 'Система' })
+    n++
+  }
+  return n
 }

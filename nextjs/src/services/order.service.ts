@@ -175,6 +175,13 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     ...(wd ? { createdAt: stampOf(wd) } : {}),
   }
   await repo.insertOrderPosting(order, positions, history)
+  // «Долг к головному» помечен при создании → заявка сразу встаёт у ГО («Документ движений»,
+  // 1-я полоса, «В ожидании»). Делаем ДО авто-проводки заднего дня: проводка её же доведёт
+  // до «Выполнено», а если цепочка сорвётся — заявка останется без накладных и обрыв виден.
+  if (i.debtHead) {
+    try { const { ensurePendingHqOrder } = await import('./handover.service'); await ensurePendingHqOrder(id, actor, wd) }
+    catch (e) { console.error('pendingHqOrder', id, e) }
+  }
   // ЗАДНИМ ЧИСЛОМ — ПРОВОДИМ СРАЗУ (правило владельца 18.11.2026). Прошедший день вводят,
   // когда всё уже случилось: товар привезли, отдали. Карточке незачем ждать логиста и висеть
   // на столе приёмки — сразу делаем документы ТЕМ ЖЕ ДНЁМ: закуп → приходная (и расходная
@@ -828,6 +835,10 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
     if (patch.debtHead && !(old as any)?.pendingDebtHead && old?.linkedDocId)
       return { ok: false as const, error: 'Карточка уже проведена — сначала «Отменить продажу», затем ставьте «Долг к головному»' }
     set.pendingDebtHead = !!patch.debtHead; if (patch.debtHead) set.payment = 'Долг'
+    if (patch.debtHead) {
+      try { const { ensurePendingHqOrder } = await import('./handover.service'); await ensurePendingHqOrder(cardId, actor) }
+      catch (e) { console.error('pendingHqOrder', cardId, e) }
+    }
   }
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)
   await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })

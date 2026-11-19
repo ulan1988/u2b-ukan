@@ -114,6 +114,9 @@ export async function payCard(cardId: string, p: PayInput, actor?: Session | nul
   if (p.markOnly) {
     await repo.updateOrder(cardId, { pendingDebtHead: true, payment: 'Долг' } as any)
     await repo.insertHistory({ cardId, action: 'debtHead', detail: 'Долг к головному — расходная проведётся на доставке логистом', userName: actor?.name || 'Система' })
+    // Заявка сразу видна головному («Документ движений», 1-я полоса «В ожидании»).
+    try { const { ensurePendingHqOrder } = await import('./handover.service'); await ensurePendingHqOrder(cardId, actor) }
+    catch (e) { console.error('pendingHqOrder', cardId, e) }
     return { ok: true as const, pending: true }
   }
   // Оплата НЕ должна выкидывать карточку производителя из «В работе»: запоминаем её произв.
@@ -222,6 +225,13 @@ export async function unpostSale(cardId: string, actor?: Session | null) {
   for (const d of docs) await cancelDocument(d.id)
   await db.delete(payments).where(eq(payments.documentId, order.linkedDocId as string))
   await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'reception', status: 'Готов к доставке', prodPhase: 'ready', paidCash: '0', paidKaspi: '0', paidQr: '0', changeSum: '0', changeFrom: '', payment: '', delivered: null })
+  // Карточка-основание у ГО возвращается в «В ожидании» — её накладные сторнированы. И если
+  // это была цепочка «долг к головному», филиалу возвращаем флаг: без него следующая доставка
+  // снова выписала бы обычную расходную прямо на заказчика.
+  try {
+    const { revertHqBranchOrder } = await import('./handover.service')
+    if ((await revertHqBranchOrder(cardId, actor)) > 0) await repo.updateOrder(cardId, { pendingDebtHead: true, payment: 'Долг' } as any)
+  } catch (e) { console.error('revertHqBranchOrder', cardId, e) }
   await repo.insertHistory({ cardId, action: 'unpay', detail: 'Продажа отменена — карточка снова в работе', userName: actor?.name || 'Система' })
   return { ok: true as const, cancelled: docs.length }
 }

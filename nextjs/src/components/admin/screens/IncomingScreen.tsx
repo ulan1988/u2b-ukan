@@ -58,6 +58,8 @@ export default function IncomingScreen({ orders, onAction, onOpen }: {
           <KindBadge o={o} />
           <span style={statusStyle(o.status)}>{o.status}</span>
           {o.source && <span style={sourceStyle(o.source)}>{sourceLabel(o.source)}</span>}
+          {/* Заявка филиала «долг к головному» ещё без накладных — цепочка не проведена (видно сразу). */}
+          {isDone(o) && !o.linkedDocId && <span style={{ fontSize: 11, fontWeight: 700, background: '#fdecec', color: '#c1121c', padding: '2px 8px', borderRadius: 20 }}>⏳ цепочка не проведена</span>}
           {o.isChanged && <span style={{ fontSize: 12, background: '#fff0ea', color: '#c0532a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>⚡ ИЗМЕНЕНО</span>}
           {o.postponed && <span style={{ fontSize: 12, background: '#eef2ff', color: '#4a5aaa', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>ОТЛОЖЕН</span>}
           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952' }}>{fmtDate(o.createdAt)}</span>
