@@ -161,7 +161,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                           {c.who && <span style={{ marginLeft: 'auto' }}>{c.who}</span>}
                           {isOpen && (
                             <button className="pen" aria-pressed={isEd} title={isEd ? 'Закончить правку' : 'Изменить карточку'}
-                              onClick={e => { e.stopPropagation(); setEd(isEd ? '' : c.id); setAdding(false); setQ('') }}>{isEd ? '✓ готово' : '✎'}</button>
+                              onClick={e => { e.stopPropagation(); setEd(isEd ? '' : c.id); setAdding(false); setQ('') }}>{isEd ? '✓ готово' : '✎ изменить'}</button>
                           )}
                         </div>
                         <div className="c2">{!c.info && <span className="pre">от </span>}{c.client}</div>
@@ -308,8 +308,11 @@ const CSS = `
 .lb .prog{margin-left:auto;display:flex;align-items:center;gap:5px;font-weight:700;font-size:11px}
 .lb .pbar{width:36px;height:4px;border-radius:3px;background:var(--line);overflow:hidden}
 .lb .pbar i{display:block;height:100%;background:var(--ok)}
-.lb .pen{border:none;background:none;color:var(--faint);border-radius:5px;padding:2px 6px;font-size:13px;cursor:pointer;line-height:1;font-family:inherit}
-.lb .pen[aria-pressed="true"]{background:var(--accent);color:#fff}
+/* Карандаш правки — красный и заметный: мелкую серую иконку на телефоне не видно */
+.lb .pen{border:none;background:var(--bad);color:#fff;border-radius:7px;padding:5px 10px;font-size:14px;font-weight:800;
+  cursor:pointer;line-height:1;font-family:inherit;box-shadow:0 1px 2px rgba(9,30,66,.3)}
+.lb .pen:hover{filter:brightness(1.08)}
+.lb .pen[aria-pressed="true"]{background:var(--ok);color:#fff}
 .lb .phead{display:flex;gap:6px;margin-top:8px;padding:0 2px 3px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);font-weight:700}
 .lb .phead .r{margin-left:auto}
 .lb .prow{display:flex;align-items:center;gap:6px;padding:4px 3px;border-bottom:1px solid var(--line2)}
