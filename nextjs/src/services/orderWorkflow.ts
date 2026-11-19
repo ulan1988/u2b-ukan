@@ -155,8 +155,13 @@ export const TRANSITIONS: Record<string, Transition> = {
   // Отправку (целиком/частями) делает отдельный роут /api/orders/[id]/send.
   produceAccept: {
     roles: [...ADMIN, 'branch'],
-    patch: () => ({ status: 'Принял', prodPhase: 'accepted' }),
-    history: () => 'Принял в работу',
+    // Карточка заднего дня проводится сразу при создании (правило 18.11.2026), и приём мастера
+    // приходит уже ПОСЛЕ проводки. Сбрасывать её в «Принял» нельзя — проданная карточка
+    // возвращалась на стол мастера и выглядела непроведённой.
+    patch: c => (c.order.linkedDocId || c.order.prodPhase === 'sold'
+      ? { prodPhase: 'sold', status: 'Проведён' }
+      : { status: 'Принял', prodPhase: 'accepted' }),
+    history: c => (c.order.linkedDocId || c.order.prodPhase === 'sold' ? 'Уже проведена — этап не меняем' : 'Принял в работу'),
   },
   produceStart: {
     roles: [...ADMIN, 'branch'],

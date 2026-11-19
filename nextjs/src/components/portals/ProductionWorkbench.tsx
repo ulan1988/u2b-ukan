@@ -199,17 +199,20 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
         // Правка на месте: позиции/цены/кол-во + заказчик, комментарий, проект. Этап карточки (Принял/В работе/…) не меняем.
         await syncPositions(order.id)
         const LABEL = 'Прямой заказ на производство'
-        await updateCard(order.id, { contactId: cid || undefined, specProjectId: specProjectId || '', comment: note.trim() || (order.comment === LABEL ? LABEL : ''), debtHead: debtHq })
+        // Отказ сервера показываем как есть: «Долг к головному» на уже проведённой карточке
+        // не включается (нужна отмена продажи) — молчать нельзя, иначе мастер думает, что сохранилось.
+        const up: any = await updateCard(order.id, { contactId: cid || undefined, specProjectId: specProjectId || '', comment: note.trim() || (order.comment === LABEL ? LABEL : ''), debtHead: debtHq })
+        if (up?.ok === false || up?.data?.ok === false) { showMsg('⚠ ' + (up?.error || up?.data?.error || 'Не удалось сохранить')); setBusy(false); return }
         showMsg('✓ Изменения сохранены')
       }
       else if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
         const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
-        const res: any = await createClientOrder({ comment: note.trim() || 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions, date: workDate }, uid)
-        // Долг к головному: помечаем карточку — расходная-цепочка проведётся на доставке логистом.
-        const newId = res?.data?.id || res?.id
-        if (debtHq && newId) { try { await updateCard(newId, { debtHead: true }) } catch { /* пометка не критична */ } }
+        // ДОЛГ К ГОЛОВНОМУ уходит ОДНИМ запросом с карточкой (debtHead): карточка заднего дня
+        // проводится сразу внутри createOrder, и пометка отдельным updateCard опаздывала —
+        // расходная выписывалась прямо на заказчика, цепочка в головной не поднималась.
+        const res: any = await createClientOrder({ comment: note.trim() || 'Прямой заказ на производство', prodOrder: true, contactId: cid, specProjectId: specProjectId || undefined, positions, date: workDate, debtHead: debtHq }, uid)
         if (res?.ok && res.data?.id) {
           // Если приём не прошёл — карточка осталась с пустым prod_phase. Она видна во вкладке
           // «Заказы на производство» (leg=1), мастер примет её вручную; молчать нельзя.

@@ -128,6 +128,10 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
     toWarehouseId: i.toWarehouseId ?? null, comment: i.comment, phone: i.phone ?? null,
     deadline: i.deadline ? new Date(i.deadline) : null,
     trackingLink: encodeURIComponent(id),
+    // ДОЛГ К ГОЛОВНОМУ ставим ПРИ СОЗДАНИИ, до любой проводки: карточка заднего дня проводится
+    // тут же (ниже), и если флаг приходит отдельным updateCard после создания, расходная уже
+    // выписана прямо на заказчика — цепочка (зеркало ГО → продажа ГО заказчику) не поднимается.
+    ...(i.debtHead ? { pendingDebtHead: true, payment: 'Долг' } : {}),
     // МАТЕРИНСКИЙ НОМЕР: самостоятельная заявка — корень сама себе. Дочерние карточки
     // (ЗКП → ПРД, закуп автозакупа) корень получают там, где их создают.
     rootCardId: id,
@@ -817,7 +821,14 @@ export async function updateCard(cardId: string, patch: any, actor?: Session | n
   if (patch.payment !== undefined) set.payment = patch.payment || ''
   // Долг к головному: карточка помечается, расходная-цепочка проведётся на доставке логистом
   // (см. [[debt-to-head-on-delivery]]). Цены в такой карточке — по прайсу головного.
-  if (patch.debtHead !== undefined) { set.pendingDebtHead = !!patch.debtHead; if (patch.debtHead) set.payment = 'Долг' }
+  if (patch.debtHead !== undefined) {
+    // На УЖЕ ПРОВЕДЁННОЙ карточке включать флаг бессмысленно: расходная выписана прямо на
+    // заказчика, и сам флаг ничего не переносит — цепочка не поднимется (так и терялись
+    // карточки Нипы). Сначала «Отменить продажу», потом долг к головному.
+    if (patch.debtHead && !(old as any)?.pendingDebtHead && old?.linkedDocId)
+      return { ok: false as const, error: 'Карточка уже проведена — сначала «Отменить продажу», затем ставьте «Долг к головному»' }
+    set.pendingDebtHead = !!patch.debtHead; if (patch.debtHead) set.payment = 'Долг'
+  }
   if (Object.keys(set).length) await repo.updateOrder(cardId, set)
   await repo.insertHistory({ cardId, action: 'updateCard', detail: 'Карточка обновлена', userName: actor?.name || 'Система' })
   // Оповещение об изменении карточки: комментарий / срок (в чат + логисту).
