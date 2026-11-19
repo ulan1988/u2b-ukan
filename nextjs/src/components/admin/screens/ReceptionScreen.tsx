@@ -44,6 +44,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const [deadline, setDeadline] = useState('')
   // Рабочая дата карточки: по умолчанию сегодня, можно оформить прошедшим днём.
   const [workDate, setWorkDate] = useState(todayYMD())
+  // Задний день: карточка проводится сразу (приход от поставщика + расход заказчику),
+  // логисту отправлять нечего — об этом и говорит подпись кнопки.
+  const back = workDate !== todayYMD()
   const [comment, setComment] = useState('')
   const [rows, setRows] = useState<any[]>([emptyPos()])
   const [showCatalog, setShowCatalog] = useState(false)
@@ -304,12 +307,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       {/* ЗАКУП: price — цена закупа (уйдёт в приходную). ПРОДАЖА: цена для получателя
                           строки (уйдёт в расходную), подставляется из прайса по его типу цены. */}
-                      <td style={{ padding: '6px 4px', width: rt ? 150 : 100 }}>
+                      <td style={{ padding: '6px 4px', width: (rt || kind === 'sale') ? 150 : 100 }}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })}
                             placeholder={kind === 'purchase' ? 'закуп' : (isIzdelie(r.name1c) ? 'за см' : 'прод.')}
                             title={kind === 'purchase' ? 'цена ЗАКУПА — по ней проводится приходная' : (isIzdelie(r.name1c) ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'продажная цена (заказчику)')} />
-                          {rt && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику) — по умолчанию розничная из каталога" />}
+                          {(rt || (kind === 'sale' && !!r.supplierId)) && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику): по ней идёт приходная — у сквозной строки без склада, у обычной задним числом на склад. Пусто → закуп из карточки товара" />}
                         </div>
                         {isIzdelie(r.name1c) && <div style={{ fontSize: 9.5, color: '#7a3aaa', textAlign: 'right', marginTop: 1 }}>за см</div>}
                       </td>
@@ -350,7 +353,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec' }}>
               <Btn onClick={() => submit(true)} disabled={busy}>Сохранить черновик</Btn>
-              <Btn variant={kind === 'purchase' ? 'primary' : undefined} onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
+              <Btn variant={kind === 'purchase' || back ? 'primary' : undefined} onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{back ? '✅ ПРОВЕСТИ ЗАДНИМ ЧИСЛОМ (приход + расход)' : kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
               {kind === 'sale' && (
                 <Btn variant="primary" onClick={() => submit(false, true)} disabled={busy || !contactId}>📦 Сделать закуп → логисту</Btn>
               )}

@@ -69,7 +69,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     // ПРОДАЖА: заказчику ОДНА расходная на все строки (реальный долг). По сквозным строкам
     // склад не трогается (флаг transit у строки), по обычным — списывается.
     const clientLines = withProd.map(p => mkLine(p, Number(p.price) || 0, isTransit(p)))
-    const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: clientLines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false, discountSum: Number((o as any).discountSum) || 0 }
+    const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: clientLines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false, discountSum: Number((o as any).discountSum) || 0, transit: clientLines.length > 0 && clientLines.every(l => l.transit), transitAgent }
     mainDoc = await docSvc.createSale(input); numbers.push(mainDoc.number)
     if (normalPos.length) docGroups.push({ cid: contragentId, pos: normalPos })
 
@@ -202,4 +202,55 @@ async function ensureVariantProduct(name: string, orgId?: string, cost = 0): Pro
     ownerOrgId: await ownerOrgFor(orgId),
   } as any)
   return id
+}
+
+// ── ЗАДНИМ ЧИСЛОМ: ПРИХОД + РАСХОД ОДНОЙ КНОПКОЙ (правило владельца 19.11.2026) ──────────
+// Заказ прошедшего дня вводят, когда всё уже случилось: товар у поставщика взяли и заказчику
+// отдали. Поэтому у карточки с ПОСТАВЩИКОМ в строке сначала рождается ПРИХОДНАЯ от поставщика
+// (склад +, долг поставщику), а следом обычная расходная заказчику (склад −, долг заказчика);
+// себестоимость (FIFO) цепляется за эту же приходную, потому что она проведена раньше.
+// Сегодняшние карточки сюда не заходят — у них прежний маршрут: автозакуп → логист → доставка.
+// СКВОЗНЫЕ строки пропускаем: у них обе накладные делает postOrderInvoice БЕЗ склада —
+// только деньги и долги (drop-ship), и второй приход был бы дублем.
+export async function postSupplyForCard(cardId: string, date: string, actor?: Session | null) {
+  const [o] = await orderRepo.getOrder(cardId)
+  if (!o || o.kind !== 'sale' || o.linkedDocId) return { ok: false as const, skipped: true }
+  const positions = await orderRepo.positionsByCard(cardId)
+  await ensureProductIdsByName(positions, o.orgId)
+  const cardTransit = !!(o as any).transit
+  const rows = positions.filter((p: any) => p.productId && p.supplierId && !(cardTransit || p.transit))
+  if (!rows.length) return { ok: true as const, numbers: [] as string[] }
+  const wh = await refsRepo.centralWarehouse(o.orgId)
+  if (!wh) return { ok: false as const, error: 'Не найден склад' }
+  const { sqlClient } = await import('../lib/db')
+  const ids = Array.from(new Set(rows.map((p: any) => String(p.productId))))
+  const pin = new Map<string, number>()
+  for (const r of (await sqlClient`select id::text id, coalesce(price_in,0)::float p from products where id = any(${ids})` as unknown as Array<any>)) pin.set(r.id, Number(r.p) || 0)
+  // Цена прихода: «закуп» строки → закуп из карточки товара → цена продажи (чтобы не принять за 0).
+  const costOf = (p: any) => Number(p.costPrice) || pin.get(String(p.productId)) || Number(p.price) || 0
+  const projectId = (o as any).specProjectId || null
+  const bySup = new Map<string, any[]>()
+  for (const p of rows) { const sid = String(p.supplierId); const a = bySup.get(sid) || []; a.push(p); bySup.set(sid, a) }
+  const numbers: string[] = []
+  for (const [sid, ps] of Array.from(bySup.entries())) {
+    const lines = ps.map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: costOf(p), unit: p.unit || 'шт', sourcePosId: p.id, name: p.name1c || p.oral, widthCm: p.widthCm }))
+    const d: any = await docSvc.createPurchase({ orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines, date, sourceOrderId: o.id, projectId, comment: `Приход от поставщика (задним числом) · ${o.id}` } as any)
+    numbers.push(d.number)
+    // Поставщик — другая наша орг (мост): у неё этим же днём расходная нам.
+    try {
+      const [cp] = await docRepo.contragentById(sid)
+      const refOrg = (cp as any)?.orgRefId as string | undefined
+      if (refOrg && refOrg !== o.orgId) {
+        const mwh = await refsRepo.centralWarehouse(refOrg)
+        const [back] = await docRepo.contragentByOrgRef(refOrg, o.orgId)
+        const mlines = await docSvc.onlyGoodsLines(lines)
+        if (mwh && back && mlines.length) {
+          const md: any = await docSvc.createSale({ orgId: refOrg, contragentId: back.id, warehouseId: mwh.id, lines: mlines, date, sourceOrderId: o.id, projectId, parentDocId: d.id, comment: `Отгрузка нам · заявка ${o.id}` } as any)
+          await orderRepo.insertHistory({ cardId, action: 'invoiceMirror', detail: `Зеркальная расходная у «${(cp as any).name}»: ${md.number}`, userName: actor?.name || 'Система' })
+        }
+      }
+    } catch (e) { console.error('supply mirror', cardId, e) }
+  }
+  await orderRepo.insertHistory({ cardId, action: 'invoice', detail: `Приход от поставщика (задним числом): ${numbers.join(', ')}`, userName: actor?.name || 'Система' })
+  return { ok: true as const, numbers }
 }

@@ -189,6 +189,15 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // Сегодняшние карточки идут прежним маршрутом (приёмка → логист → доставка).
   if (wd && !order.isDraft) {
     try {
+      // СНАЧАЛА ПРИХОД ОТ ПОСТАВЩИКА: в прошлом дне товар уже взят у поставщика и отдан
+      // заказчику, поэтому продажа с поставщиком в строке даёт ОБЕ накладные сразу —
+      // приходную (склад +, долг поставщику) и следом расходную (склад −, долг заказчика);
+      // себестоимость FIFO цепляется за этот же приход. Сквозные строки пропускаются:
+      // по ним обе накладные БЕЗ склада делает сама проводка (только деньги и долги).
+      if (i.kind === 'sale') {
+        try { const { postSupplyForCard } = await import('./invoice.service'); await postSupplyForCard(id, wd, actor) }
+        catch (e) { console.error('backdated supply', id, e) }
+      }
       // Отгрузку получателям делает сама проводка (invoice.service), повторять не надо.
       await setPositions(id, undefined, 'Доставлено', actor, wd)
     } catch (e) { console.error('backdated autopost', id, e) }

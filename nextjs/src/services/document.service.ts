@@ -567,6 +567,10 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
   // FIFO: связываем продажу с партиями закупа (для себестоимости/маржи и цепочки).
   const links: { id: string; purchaseDocId: string; saleDocId: string; productId: string; qty: string }[] = []
   for (const l of input.lines) {
+    // Сквозная строка (drop-ship) к складу не относится: товар шёл мимо нас, себестоимость —
+    // это закуп у поставщика в самой строке, а не партия нашего прихода. Иначе такая продажа
+    // «съедала» чужую партию закупа и портила привязку себестоимости по складу.
+    if ((input as any).noStock || (l as any).transit) continue
     let need = l.qty
     const lots = await docRepo.purchaseLots(input.orgId, l.productId)   // старые первыми
     for (const lot of lots) {
