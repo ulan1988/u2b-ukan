@@ -230,7 +230,7 @@ export async function contragentPayments(orgId: string, contragentId: string) {
 export async function contragentBalances(orgId: string) {
   return sqlClient`
     select c.id, c.name, c.kind,
-      coalesce(c.opening_balance,0)::float as opening,
+      (case when c.org_id=${orgId} then coalesce(c.opening_balance,0) else 0 end)::float as opening,
       coalesce(s.total,0)::float  as sales,
       coalesce(p.total,0)::float  as purchases,
       coalesce(ri.total,0)::float as ret_in,
@@ -244,6 +244,13 @@ export async function contragentBalances(orgId: string) {
     left join (select contragent_id, sum(total) total from documents where org_id=${orgId} and type='return_out' and status<>'cancelled' and date >= coalesce((select opening_as_of from organizations o where o.id = documents.org_id), '0001-01-01'::date) group by contragent_id) ro on ro.contragent_id=c.id
     left join (select contragent_id, sum(amount) total from payments where org_id=${orgId} and direction='in' and date >= coalesce((select opening_as_of from organizations o where o.id = payments.org_id), '0001-01-01'::date) group by contragent_id) pi on pi.contragent_id=c.id
     left join (select contragent_id, sum(amount) total from payments where org_id=${orgId} and direction='out' and date >= coalesce((select opening_as_of from organizations o where o.id = payments.org_id), '0001-01-01'::date) group by contragent_id) po on po.contragent_id=c.id
-    where c.org_id=${orgId} and c.archived=false
+    -- ЧУЖОЙ КОНТРАГЕНТ, НО НАШ ДОЛГ (20.11.2026). Контрагенты головного шарятся филиалам
+    -- ([[contragent-org-scoping]]), и филиал вправе отгрузить клиенту ГО напрямую. Раньше
+    -- список долгов брал только c.org_id = своя орг — такая накладная была, а должника в
+    -- списке не было. Теперь добавляем чужих контрагентов, по которым в ЭТОЙ орг есть
+    -- непогашенные документы или оплаты (у них свой opening не берём — он чужой орг).
+    where c.archived=false and (c.org_id=${orgId}
+      or c.id in (select contragent_id from documents where org_id=${orgId} and status<>'cancelled' and contragent_id is not null
+                  union select contragent_id from payments where org_id=${orgId} and contragent_id is not null))
     order by c.name` as unknown as Promise<Array<{ id: string; name: string; kind: string; opening: number; sales: number; purchases: number; ret_in: number; ret_out: number; pay_in: number; pay_out: number }>>
 }
