@@ -1,7 +1,7 @@
 // Автозакуп: сводка потребности, черновик-накопитель, связи закуп→продажа.
 import { db } from '../lib/db'
 import { orders, orderPositions, procurementLinks, products, contragents } from '../db/schema'
-import { and, eq, ne, inArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
+import { and, eq, ne, inArray, notInArray, desc, isNull, sql as sqlOp } from 'drizzle-orm'
 
 // Новые продажи во Входящих/Приёмке (кандидаты на закуп) с позициями.
 export async function saleDemand(orgId: string) {
@@ -13,6 +13,11 @@ export async function saleDemand(orgId: string) {
     // «Выполнено филиалом» — карточка-ознакомление: филиал сам изготовил и отгрузил, накладные
     // уже проведены. Закупать по ней нечего, в потребность она попадать не должна.
     ne(orders.source, 'branch_done'),
+    // АВТОЗАКУП — ТОЛЬКО ДЛЯ ЗАЯВОК ИЗВНЕ (правило владельца 20.11.2026).
+    // В потребность идут заказы, пришедшие во «Входящие» из чужих кабинетов (клиент, филиал).
+    // Что админ завёл у себя в админке, он сам отправляет логисту, указав поставщика в строке,
+    // — второй карточки «заказ поставщику» на это не нужно.
+    notInArray(orders.source, ['admin_manual', 'admin', 'direct_sale', 'cashier', 'responsible_portal']),
   ))
   if (!cards.length) return { cards: [], positions: [] as any[] }
   // Сквозные ПОЗИЦИИ (мимо склада) в автозакуп не идут — карточка может быть смешанной (часть строк сквозные).
