@@ -8,12 +8,12 @@
 // по своим колонкам («Закуплено» / «Продано · Доставлено»); колонка Нипы свёрнута.
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { logistBoardData } from '@/lib/api/orders'
+import { logistBoardData, setPosStatus, updatePosition, deletePosition, addPosition } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import type { Session } from '@/lib/auth'
 
-type Item = { n: string; q: number; u?: string; done?: boolean; got?: number | null }
+type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
 type Card = { id: string; col: string; code: string; client: string; who: string; time: string; pay?: string
   k?: 'buy' | 'sell'; info?: boolean; badge?: string; wait?: boolean; items: Item[]; tail?: string }
 type Col = { id: string; name: string; fold?: boolean; stage?: boolean }
@@ -45,7 +45,9 @@ function alias(name: string) {
 function nextStep(c: Card): { to: string; label: string } | null {
   const stage = /^(ready|deliv)$/.test(c.col) ? c.col : 'buy'
   // У поставщика жмём «Закуплено» → ПРИХОДНАЯ, карточка в «Готов к отправке (закуп)».
-  if (stage === 'buy') return { to: 'ready', label: '✓ Закуплено' }
+  // У поставщика проводит только КАРТОЧКУ ЗАКУПА: это приходная. Заявку клиента, которая
+  // ждёт закупа, логист не «закупает» — её оформляет админ (так же, как в старом кабинете).
+  if (stage === 'buy') return c.k === 'buy' ? { to: 'ready', label: '✓ Закуплено' } : null
   // Оттуда «Доставлено / Продано» → РАСХОДНАЯ, карточка в последнюю колонку.
   if (stage === 'ready') return { to: 'deliv', label: '✓ Продано / Доставлено' }
   return null
@@ -64,6 +66,19 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const [drag, setDrag] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const uid = viewAs ? user.id : undefined
+  const say = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 4000) }
+  async function reload() { const b: any = await logistBoardData(uid); setCols(b.cols || []); setCards(b.cards || []) }
+  // Все действия идут в ТЕ ЖЕ роуты, что у обычного кабинета логиста — своей логики тут нет.
+  async function act(what: string, fn: () => Promise<any>) {
+    if (busy) return
+    setBusy(true)
+    try { await fn(); await reload(); say('✓ ' + what) }
+    catch (e: any) { say('⚠ не удалось: ' + what); console.error(what, e) }
+    finally { setBusy(false) }
+  }
 
   useEffect(() => {
     (async () => {
@@ -81,23 +96,27 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   const found = useMemo(() => (q.trim() ? prods.filter(p => matchWords(q, p.name)).slice(0, 8) : []), [q, prods])
 
   const upd = (fn: (list: Card[]) => Card[]) => setCards(list => fn(list.map(c => ({ ...c, items: c.items.map(i => ({ ...i })) }))))
-  const move = (id: string, col: string) => upd(list => list.map(c => (c.id === id ? { ...c, col, wait: /^(ask|nipa)$/.test(col) ? c.wait : undefined } : c)))
+  // Перетаскивание пока НЕ меняет поставщика в базе (это право админа) — двигаем только на экране.
+  const move = (id: string, col: string) => { say('поставщика ставит админ — на доске это только вид')
+    upd(list => list.map(c => (c.id === id ? { ...c, col } : c))) }
 
+  // Проводка: сначала правим кол-во до фактического, потом помечаем позиции «Доставлено».
+  // Дальше всё делает система: у закупа — приходная, у продажи — расходная (как в кабинете).
   function provesti(c: Card) {
     const nx = nextStep(c); if (!nx) return
-    const miss = c.items.filter(i => lack(i) > 0)
-    const tail = c.tail || 'reorder'
-    upd(list => {
-      const next = list.map(x => x.id !== c.id ? x : {
-        ...x, col: nx.to, tail: undefined,
-        items: x.items.map(i => ({ ...i, q: fact(i), got: null, done: true })).filter(i => i.q > 0),
-      })
-      if (miss.length && tail !== 'drop') next.push({
-        id: 't' + Date.now(), col: tail === 'ask' ? 'ask' : c.col, code: c.code + '·хвост', client: c.client,
-        who: 'хвост недовоза', time: 'сейчас', pay: c.pay, k: c.k,
-        items: miss.map(i => ({ n: i.n, q: lack(i), u: i.u })),
-      })
-      return next
+    const live = c.items.filter(i => i.p && !i.done)
+    if (!live.length) { say('нечего проводить'); return }
+    const miss = live.filter(i => lack(i) > 0)
+    const what = nx.to === 'ready' ? 'Закуплено' : 'Продано / Доставлено'
+    const q = miss.length
+      ? 'По ' + miss.length + ' поз. факт меньше заказанного — кол-во в карточке станет фактическим, остаток просто уйдёт. Проводим «' + what + '»?'
+      : 'Провести «' + what + '» по ' + live.length + ' поз.?'
+    if (!confirm(q)) return
+    act(what, async () => {
+      for (const i of live) {
+        if (fact(i) !== i.q) await updatePosition(c.code, i.p as string, { qty: fact(i) })
+        await setPosStatus(c.code, 'Доставлено', i.p as string)
+      }
     })
     setOpen(''); setEd('')
   }
@@ -112,8 +131,8 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
     <div className="lb">
       <style>{CSS}</style>
       <header className="top">
-        <Link href={backHref} className="tb" title="Вернуться в обычный кабинет">← кабинет</Link>
-        <div className="who">Логист · {user.name}<small>{viewAs ? 'просмотр · ' : ''}прототип доски — ничего не сохраняется</small></div>
+        <Link href={backHref} className="tb" title="Вернуться в обычный кабинет">← старый кабинет</Link>
+        <div className="who">Логист · {user.name}<small>{viewAs ? 'просмотр · ' : ''}{busy ? 'сохраняю…' : 'доска · действия идут в базу'}</small></div>
         <span className="sp" />
         <input className="find" value={find} onChange={e => setFind(e.target.value)} placeholder="поиск: заказчик, товар, №" />
         <button className="tb" onClick={() => {
@@ -127,7 +146,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
         <span className="kpi">Позиций <b>{shown.filter(c => !c.info).reduce((s, c) => s + c.items.length, 0)}</b></span>
         <span className="kpi">Недовоз <b>{shown.reduce((s, c) => s + lackN(c), 0)} поз.</b></span>
         <span className="kpi">Готов к отправке <b>{shown.filter(c => c.col === 'ready').length}</b></span>
-        <span className="hint">прототип: правки видны только на этом экране, в базу ничего не уходит</span>
+        <span className="hint">{msg || 'кнопки работают: кол-во, позиции и проводка уходят в базу'}</span>
       </div>
 
       <main className="board">
@@ -189,11 +208,14 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                                 {it.u && <span className="un">{it.u}</span>}
                                 {isEd ? (
                                   <>
-                                    <input className="qty" inputMode="decimal" defaultValue={fact(it)}
+                                    <input className="qty" inputMode="decimal" defaultValue={fact(it)} disabled={busy}
                                       onBlur={e => { const v = parseFloat(e.target.value.replace(',', '.'))
-                                        upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.map((y, j) => j === idx ? { ...y, got: isNaN(v) ? 0 : v } : y) })) }} />
-                                    <button className="x" title="убрать позицию"
-                                      onClick={() => upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.filter((_, j) => j !== idx) }))}>✕</button>
+                                        if (isNaN(v) || v === it.q || !it.p) return
+                                        act('кол-во ' + v, () => updatePosition(c.code, it.p as string, { qty: v })) }} />
+                                    <button className="x" title="убрать позицию" disabled={busy}
+                                      onClick={() => { if (!it.p) return
+                                        if (confirm('Убрать позицию «' + it.n + '» из карточки ' + c.code + '?'))
+                                          act('позиция убрана', () => deletePosition(c.code, it.p as string)) }}>✕</button>
                                   </>
                                 ) : <span className="qtxt">{fact(it)}</span>}
                               </div>
@@ -256,8 +278,8 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   )
 
   function addPos(c: Card, p: { name: string; unit: string }) {
-    upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: [...x.items, { n: p.name, q: 1, u: p.unit === 'шт' ? undefined : p.unit }] }))
     setQ(''); setSel(0)
+    act('позиция добавлена', () => addPosition(c.code, { name1c: p.name, oral: p.name, qty: 1, unit: p.unit || 'шт', respUserId: user.id }))
   }
 }
 

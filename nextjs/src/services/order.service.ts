@@ -1115,8 +1115,9 @@ export async function logistBoard(orgId: string, userId: string) {
   const slug = (s: string) => { let h = 7; const t = String(s); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'c' + Math.abs(h).toString(36) }
   const hhmm = (d: any) => { const x = new Date(d), p = (v: number) => String(v).padStart(2, '0')
     return p(x.getDate()) + '.' + p(x.getMonth() + 1) + ' ' + p(x.getHours()) + ':' + p(x.getMinutes()) }
-  const item = (p: any) => ({ n: p.name1c || p.oral || '—', q: Number(p.qty),
-    u: (p.unit && p.unit !== 'шт') ? p.unit : undefined, done: p.status === 'Доставлено' || undefined })
+  const item = (p: any) => ({ p: p.id, n: p.name1c || p.oral || '—', q: Number(p.qty),
+    u: (p.unit && p.unit !== 'шт') ? p.unit : undefined, done: p.status === 'Доставлено' || undefined,
+    wait: p.waitReason || undefined })
 
   const cols = new Map<string, any>()
   const out: any[] = []
@@ -1140,7 +1141,17 @@ export async function logistBoard(orgId: string, userId: string) {
     const by = new Map<string, any[]>()
     for (const p of open) { const k = supName[p.supplierId] || ''; if (!by.has(k)) by.set(k, []); by.get(k)!.push(p) }
     for (const [sup, poss] of Array.from(by.entries())) {
-      if (sup) { const id = slug(sup); cols.set(id, { id, name: 'Заказ ' + sup }); put(id, o, poss); continue }
+      if (sup) {
+        // Ждёт закупа (строка серая у логиста) — стоит у поставщика. Уже куплено (приход проведён)
+        // — лежит на складе, значит «Готов к отправке (закуп)».
+        const waiting = poss.filter((p: any) => p.waitReason), bought = poss.filter((p: any) => !p.waitReason)
+        if (waiting.length || o.kind === 'purchase') {
+          const id = slug(sup); cols.set(id, { id, name: 'Заказ ' + sup })
+          put(id, o, o.kind === 'purchase' ? poss : waiting)
+        }
+        if (bought.length && o.kind !== 'purchase') put('ready', o, bought)
+        continue
+      }
       put(o.screen === 'outgoing' ? 'ready' : 'ask', o, poss, { wait: o.screen === 'outgoing' ? undefined : true })
     }
   }

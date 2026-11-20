@@ -320,7 +320,7 @@ export default function LogistPortal({ user, viewAs }: { user: { id: string; nam
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {/* Второй вид кабинета — доска (прототип, только чтение). Сам кабинет не трогаем. */}
-            <a onClick={e => { e.preventDefault(); const p = location.pathname; location.href = (p.endsWith('/') ? p.slice(0, -1) : p) + '/board' }} href="#" title="Новая доска — прототип, ничего не сохраняется" style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 10px', color: '#cfc9c0', fontSize: 13, textDecoration: 'none' }}>🧪 Доска</a>
+            <a onClick={e => { e.preventDefault(); const p = location.pathname; location.href = p.endsWith('/old') ? p.slice(0, -4) : p }} href="#" title="Перейти на доску" style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 10px', color: '#cfc9c0', fontSize: 13, textDecoration: 'none' }}>📋 Доска</a>
             <ChatWidget placement="inline" myId={user.id} orgId={user.orgId} />
             <button onClick={load} style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 10px', color: loading ? PRIMARY : '#cfc9c0', cursor: 'pointer', fontSize: 14 }}>⟳</button>
             <button onClick={async () => { await logout(); location.href = '/login' }} style={{ background: DARK2, border: 'none', borderRadius: 7, padding: '6px 12px', color: '#cfc9c0', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Выйти</button>
