@@ -1163,7 +1163,13 @@ export async function logistBoard(orgId: string, userId: string) {
         : (o.kind === 'sale' && (waitPos as Set<string>).has(key(o.id, p))) ? 'procure' : ''
     }
 
-    const open = o.positions.filter((p: any) => p.status !== 'Доставлено')
+    // ЗАЯВКА ПРЯЧЕТСЯ, ПОКА ЖДЁТ ЗАКУПА (правило владельца 20.11.2026). Пока приход по закупу
+    // не проведён, работает карточка ЗАКУПА — по ней и жмут «Закуплено». Заявка-продажа в это
+    // время показывалась рядом и ничего не умела (её строка 'procure'), только путала.
+    // Пришёл товар — waitReason исчезает, и заявка сама всплывает в «Готов к отправке (закуп)».
+    // Заодно не показываем строки с нулевым количеством — работать с ними нечего.
+    const open = o.positions.filter((p: any) => p.status !== 'Доставлено'
+      && p.waitReason !== 'procure' && Number(p.qty) > 0)
     const nipa = o.source === 'branch_done' || (open.length > 0 && open.every((p: any) => supName(p.supplierId) === 'Нипа листогиб'))
     if (nipa) {
       cols.set('nipa', { id: 'nipa', name: 'Заказ Нипа листогибу', fold: true })
