@@ -47,7 +47,7 @@ function nextStep(c: Card): { to: string; label: string } | null {
   // У поставщика жмём «Закуплено» → ПРИХОДНАЯ, карточка в «Готов к отправке (закуп)».
   if (stage === 'buy') return { to: 'ready', label: '✓ Закуплено' }
   // Оттуда «Доставлено / Продано» → РАСХОДНАЯ, карточка в последнюю колонку.
-  if (stage === 'ready') return { to: 'deliv', label: '✓ Доставлено / Продано' }
+  if (stage === 'ready') return { to: 'deliv', label: '✓ Продано / Доставлено' }
   return null
 }
 

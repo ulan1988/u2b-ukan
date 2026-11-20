@@ -1151,7 +1151,7 @@ export async function logistBoard(orgId: string, userId: string) {
     ...(cols.has('nipa') ? [cols.get('nipa')] : []),
     // Две стадии, как сказал владелец: «закуплено» и «готов к отправке» — одна колонка.
     { id: 'ready', name: 'Готов к отправке (закуп)', stage: true },
-    { id: 'deliv', name: 'Доставлено / Продано', stage: true },
+    { id: 'deliv', name: 'Продано / Доставлено', stage: true },
   ]
   return { cols: order, cards: out }
 }
