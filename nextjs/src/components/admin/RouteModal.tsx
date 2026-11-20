@@ -12,7 +12,7 @@ import InvoiceForm from '@/components/admin/InvoiceForm'
 
 const COLW = 240, ROWH = 92, NW = 190, NH = 54
 // Компактная цепочка: узлы ниже и ближе друг к другу (граф «Путь» остаётся на своих размерах).
-const CROWH = 50, CNH = 40
+const CROWH = 58, CNH = 48   // выше: имя товара идёт в две строки (цвет/размер не должны обрезаться)
 // Цвет цепочки = цвет товара: линии поставщик→товар→заказчик одного цвета, видно кто куда идёт.
 const PALETTE = ['#e6194b', '#3b82f6', '#16a34a', '#f59e0b', '#9333ea', '#0891b2', '#db2777', '#65a30d', '#b45309', '#475569', '#0d9488', '#dc2626']
 const fmtDT = (s: any) => fmtDateTime(s) || '—'
@@ -188,7 +188,13 @@ export default function RouteModal({ docId, onClose }: { docId: string; onClose:
                         title={(n.docs || []).length ? `${n.label} · двойной клик — открыть ${n.docs[0].number}` : n.label} style={{ position: 'absolute', left: p.x, top: p.y, width: CNW, height: CNH, borderRadius: 10, background: c.bg, border: `${n.kind === 'product' ? 2 : 1.5}px solid ${n.kind === 'product' ? prodColor[n.id] : (isSel ? c.line : c.ring)}`, borderLeft: n.kind === 'product' ? `7px solid ${prodColor[n.id]}` : undefined, boxShadow: isSel ? '0 6px 18px -8px rgba(20,28,40,.45)' : 'none', opacity: !selCh || on ? 1 : 0.35, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', transition: 'opacity .15s, border-color .15s' }}>
                         {n.kind === 'product' && <RalDot code={extractRal(n.label)} size={12} />}
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: c.line, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: CNW - 28, lineHeight: 1.2 }}>{n.label}</div>
+                          {/* Имя товара в ОДНУ строку обрезалось на «Труба водосточна…», и цвет
+                              (7024/8017/9003) пропадал — на глаз узлы были неотличимы. Даём две
+                              строки: цвет и размер видно, подпись «N шт» остаётся ниже. */}
+                          <div title={n.label} style={{ fontSize: n.kind === 'product' ? 11.5 : 12, fontWeight: 700, color: c.line, overflow: 'hidden', maxWidth: CNW - 28, lineHeight: 1.15,
+                            ...(n.kind === 'product'
+                              ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, whiteSpace: 'normal' as any, wordBreak: 'break-word' as any }
+                              : { textOverflow: 'ellipsis', whiteSpace: 'nowrap' as any }) }}>{n.label}</div>
                           {n.sub && <div style={{ fontSize: 10.5, color: '#8b94a0', lineHeight: 1.2 }}>{n.sub}</div>}
                           {n.kind !== 'product' && <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>{colorsOf(n.id).slice(0, 12).map((cl, k) => <span key={k} style={{ width: 7, height: 7, borderRadius: '50%', background: cl }} />)}</div>}
                         </div>
