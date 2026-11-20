@@ -67,11 +67,13 @@ export async function openLinkedSales(orgId: string, purchaseCardId: string) {
       touched = true   // связь найдена → продажу двигаем в Приёмку, даже если поля уже заполнены
     }
     if (touched) {
-      // Продажа уходит СРАЗУ к логисту (Исходящие), без повторного захода в Приёмку.
-      // Пока закуп не пришёл (нет приходной) — у логиста она серая (waitingProcure);
-      // как только закуп проведён (linked_doc_id), waitingProcure гаснет и её можно доставлять.
-      await orderRepo.updateOrder(saleId, { screen: 'outgoing', block: '', status: 'В работе' })
-      await orderRepo.insertHistory({ cardId: saleId, action: 'linked', detail: `🟢 Закуплено (закуп ${purchaseCardId}) — поставщик и цена назначены, у логиста (ждёт прихода закупа)`, userName: 'Система' })
+      // ЗАЯВКА ЖДЁТ ПРИХОДА (правило владельца 20.11.2026). Раньше она сразу уезжала в
+      // «Исходящие» и висела там рядом с карточкой закупа — две карточки на одну сделку,
+      // и доставить можно было то, что ещё не куплено. Теперь заявка остаётся в Приёмке
+      // со статусом «Ждёт закупа», а к логисту уходит сама, когда приходная проведена
+      // (releaseSalesOfPostedPurchase из invoice.service).
+      await orderRepo.updateOrder(saleId, { screen: 'reception', block: '', status: 'Ждёт закупа' })
+      await orderRepo.insertHistory({ cardId: saleId, action: 'linked', detail: `🟡 Закуп оформлен (${purchaseCardId}) — ждём приход, после него заявка уйдёт логисту`, userName: 'Система' })
       opened++
     }
   }
@@ -258,4 +260,25 @@ export async function releaseSalesOfCancelledPurchase(purchaseCardId: string, ac
   }
   if (returned) { try { const { pushSignal } = await import('../lib/pusherServer'); await pushSignal('orders') } catch {} }
   return { returned }
+}
+
+
+// ПРИХОД ПРИШЁЛ — ОТПУСКАЕМ ЗАЯВКИ (правило владельца 20.11.2026). Закуп проведён, товар
+// на складе: связанные с ним продажи уходят к логисту в «Исходящие» и становятся рабочими.
+export async function releaseSalesOfPostedPurchase(purchaseCardId: string, actor?: Session | null) {
+  const links = await repo.linksByPurchases([purchaseCardId])
+  const ids = Array.from(new Set(links.map((l: any) => String(l.saleCardId))))
+  let opened = 0
+  for (const saleId of ids) {
+    const [sale] = await orderRepo.getOrder(saleId)
+    if (!sale || sale.isCancelled || sale.kind !== 'sale') continue
+    if (!['incoming', 'reception'].includes(sale.screen || '')) continue
+    await orderRepo.updateOrder(saleId, { screen: 'outgoing', block: '', status: 'В работе' })
+    await orderRepo.insertHistory({ cardId: saleId, action: 'linked',
+      detail: `🟢 Закуп ${purchaseCardId} пришёл — заявка у логиста, можно везти`,
+      userName: actor?.name || 'Система' })
+    opened++
+  }
+  if (opened) { try { const { pushSignal } = await import('../lib/pusherServer'); await pushSignal('orders') } catch {} }
+  return { opened }
 }

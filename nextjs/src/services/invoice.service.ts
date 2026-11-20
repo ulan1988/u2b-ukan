@@ -123,6 +123,11 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   await orderRepo.updateOrder(cardId, { linkedDocId: mainDoc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
   // Прямой заказ: приходная проведена — товар на Центр-Складе, значит рождается ДОЧЕРНЯЯ
   // карточка-продажа ПРД (мать ЗКП остаётся с закупом и приходной, связь — parentCardId).
+  // Приход пришёл: заявки, под которые собирался этот закуп, уходят логисту.
+  if (isPurchase) {
+    try { const { releaseSalesOfPostedPurchase } = await import('./procurement.service'); await releaseSalesOfPostedPurchase(cardId, actor) }
+    catch (e) { console.error('releaseSales', cardId, e) }
+  }
   if (isPurchase && (o as any).directOrder) {
     try { const { createSaleFromPurchase } = await import('./directOrder.service'); await createSaleFromPurchase(cardId, actor) }
     catch (e) { console.error('directSale', cardId, e) }
