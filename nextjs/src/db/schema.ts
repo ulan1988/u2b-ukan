@@ -816,3 +816,36 @@ export const prodSettings = pgTable('prod_settings', {
   sheetPrice: money('sheet_price').notNull().default('0'),   // из чего посчитали — для подписи на экране
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+// РЕВИЗИЯ ЛОГИСТА (правило владельца 20.11.2026). Логист пересчитывает Центр-Склад за
+// КОНКРЕТНЫЙ ДЕНЬ и отправляет факт админу. Склад эта ревизия НЕ трогает: ни движений,
+// ни корректировок — админ сам читает расхождения («слева склад, справа ревизия, третья
+// колонка — разница») и ищет, где потерялся товар. Остаток по учёту считается НА ЭТУ ДАТУ.
+export const stockChecks = pgTable('stock_checks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  warehouseId: uuid('warehouse_id').references(() => warehouses.id),
+  date: date('date').notNull(),                               // день, за который считали
+  authorId: uuid('author_id').references(() => users.id),
+  authorName: text('author_name').notNull().default(''),
+  status: text('status').notNull().default('sent'),           // sent | accepted
+  comment: text('comment').notNull().default(''),
+  lines: integer('lines').notNull().default(0),               // сколько позиций в ревизии
+  diffs: integer('diffs').notNull().default(0),               // из них с расхождением
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  acceptedAt: timestamp('accepted_at'),
+}, t => ({
+  byOrg: index('stock_checks_org_idx').on(t.orgId, t.date),
+}))
+
+export const stockCheckLines = pgTable('stock_check_lines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  checkId: uuid('check_id').notNull().references(() => stockChecks.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').references(() => products.id),
+  name: text('name').notNull().default(''),
+  unit: text('unit').notNull().default('шт'),
+  bookQty: qtyCol('book_qty').notNull().default('0'),         // учёт на дату ревизии
+  factQty: qtyCol('fact_qty'),                                // факт логиста (NULL = не считал)
+}, t => ({
+  byCheck: index('stock_check_lines_check_idx').on(t.checkId),
+}))

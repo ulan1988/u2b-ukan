@@ -47,6 +47,11 @@ export const addCashAccount = (b: any) => post('/api/cash-accounts', b)
 export const setAccountOpening = (id: string, b: { openingBalance?: number; openingAsOf?: string | null }) => patch(`/api/cash-accounts/${id}`, b)
 
 export const stock = (orgId: string, warehouseId: string) => getArray(`/api/stock?orgId=${orgId}&warehouseId=${warehouseId}`)
+// Ревизии логиста (склад не трогают): список, документ, пометка «разобрано», удаление.
+export const stockChecks = (orgId: string) => getArray<any>(`/api/stock/checks?orgId=${orgId}`)
+export const stockCheck = (id: string, orgId: string) => getObj<any>(`/api/stock/checks/${id}?orgId=${orgId}`, { ok: false, lines: [] })
+export const stockCheckAccept = (id: string, orgId: string) => patch(`/api/stock/checks/${id}`, { orgId })
+export const stockCheckDelete = (id: string, orgId: string) => send(`/api/stock/checks/${id}?orgId=${orgId}`, 'DELETE')
 export const stockOverview = (orgId: string) => getArray(`/api/stock?orgId=${orgId}&overview=1`)
 export const stockMovements = (orgId: string) => getArray(`/api/stock/movements?orgId=${orgId}`)
 // Движение одного товара по всем накладным (приход/расход/возвраты) — «Движение товара».

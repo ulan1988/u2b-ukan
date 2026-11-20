@@ -113,3 +113,20 @@ export async function manualIncome(orgId: string, name: string, qty: number, uni
   await db.insert(stockMovements).values({ id: randomUUID(), orgId, warehouseId: wh.id, productId: prod.id, qty: String(Math.abs(qty)), kind: 'move', date: today() })
   return { ok: true as const }
 }
+
+// Остаток Центр-Склада НА ДАТУ с деревом номенклатуры — для экрана логиста и его ревизии
+// (правило владельца 20.11.2026: логист смотрит только Центр-Склад головного).
+export async function stockOnDateGrouped(orgId: string, date: string) {
+  const wh = await central(orgId)
+  if (!wh) return { items: [], warehouse: null, date }
+  const { sqlClient } = await import('../lib/db')
+  const rows = await sqlClient`
+    select p.id::text id, p.name, coalesce(p.unit,'шт') unit,
+      coalesce(p."group" ,'') grp, coalesce(p.cat,'') cat, coalesce(p.subgroup,'') sub,
+      coalesce(sum(m.qty), 0)::float qty
+    from stock_movements m join products p on p.id = m.product_id
+    where m.org_id = ${orgId} and m.warehouse_id = ${wh.id} and m.kind = 'move' and m.date <= ${date}
+    group by 1,2,3,4,5,6 having coalesce(sum(m.qty), 0) <> 0
+    order by 4,5,6,2` as unknown as Array<any>
+  return { items: rows, warehouse: wh.name, date }
+}

@@ -8,6 +8,7 @@ import { createTransfer } from '@/lib/api/docs'
 import NomInline from '@/components/NomInline'
 import InvoiceForm from '@/components/admin/InvoiceForm'
 import { matchWords } from '@/lib/search'
+import StockChecksPanel from './StockChecksPanel'
 
 interface StockItem { id: string; name: string; unit: string; qty: number; reserved: number; cat?: string }
 interface Movement { id: string; type: 'income' | 'reserve' | 'expense'; name: string; qty: number; unit: string; cardId?: string; createdAt: string }
@@ -130,6 +131,8 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
   const [orgs, setOrgs] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [toast, setToast] = useState('')
+  // Вкладка экрана: остатки склада или ревизии логиста (пересчёт за день, склад не трогает).
+  const [page, setPage] = useState<'stock' | 'checks'>('stock')
   useEffect(() => { fetchRefs().then((r: any) => { setWhs(r.warehouses || []); setOrgs(r.organizations || []); setProducts(r.products || []) }) }, [])
   const srcWh = whs.find(w => w.orgId === orgId && w.isCentral) || whs.find(w => w.orgId === orgId)
   const dests = whs.filter(w => w.orgId !== orgId)   // склады других орг/филиалов
@@ -215,6 +218,15 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
           <button onClick={() => setShowIncome(true)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>+ Приход</button>
         </div>
       </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {([['stock', '📦 Остатки'], ['checks', '📋 Ревизии']] as const).map(([k, t]) => (
+          <button key={k} onClick={() => setPage(k as any)}
+            style={{ padding: '8px 14px', borderRadius: 9, border: '1.5px solid ' + (page === k ? COLORS.primary : '#e6e2dc'), background: page === k ? COLORS.primary : '#fff', color: page === k ? '#fff' : '#5f5952', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit' }}>{t}</button>
+        ))}
+      </div>
+      {page === 'checks' && <StockChecksPanel orgId={orgId} />}
+      {page === 'stock' && <>
 
 
       <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: 16, alignItems: 'start' }}>
@@ -334,6 +346,7 @@ export default function WarehouseScreen({ orgId, onOpenCard }: { orgId: string; 
               ))}
           </div>
         </div>
+      </>}
     </div>
   )
 }

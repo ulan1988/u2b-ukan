@@ -12,6 +12,7 @@ import { logistBoardData, setPosStatus, updatePosition, deletePosition, addPosit
 import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import { useLiveData } from '@/lib/live'
+import LogistStock from './LogistStock'
 import type { Session } from '@/lib/auth'
 
 type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
@@ -67,6 +68,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const [drag, setDrag] = useState('')
+  const [tab, setTab] = useState<'board' | 'stock'>('board')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const uid = viewAs ? user.id : undefined
@@ -141,23 +143,28 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
       <header className="top">
         <Link href={backHref} className="tb" title="Вернуться в обычный кабинет">← старый кабинет</Link>
         <div className="who">Логист · {user.name}<small>{viewAs ? 'просмотр · ' : ''}{busy ? 'сохраняю…' : 'доска · действия идут в базу'}</small></div>
+        <div className="seg">
+          <button className={'sgb' + (tab === 'board' ? ' on' : '')} onClick={() => setTab('board')}>📋 Доска</button>
+          <button className={'sgb' + (tab === 'stock' ? ' on' : '')} onClick={() => setTab('stock')}>📦 Остаток</button>
+        </div>
         <span className="sp" />
-        <input className="find" value={find} onChange={e => setFind(e.target.value)} placeholder="поиск: заказчик, товар, №" />
-        <button className="tb" onClick={() => {
+        {tab === 'board' && <input className="find" value={find} onChange={e => setFind(e.target.value)} placeholder="поиск: заказчик, товар, №" />}
+        {tab === 'board' && <button className="tb" onClick={() => {
           const any = cols.some(c => !fold[c.id])
           setFold(Object.fromEntries(cols.map(c => [c.id, any])))
-        }}>{cols.some(c => !fold[c.id]) ? 'свернуть все' : 'развернуть все'}</button>
+        }}>{cols.some(c => !fold[c.id]) ? 'свернуть все' : 'развернуть все'}</button>}
       </header>
 
-      <div className="kpis">
+      {tab === 'stock' && <LogistStock uid={uid} />}
+      {tab === 'board' && <div className="kpis">
         <span className="kpi">В работе <b>{shown.filter(c => !c.info).length}</b></span>
         <span className="kpi">Позиций <b>{shown.filter(c => !c.info).reduce((s, c) => s + c.items.length, 0)}</b></span>
         <span className="kpi">Недовоз <b>{shown.reduce((s, c) => s + lackN(c), 0)} поз.</b></span>
         <span className="kpi">Готов к отправке <b>{shown.filter(c => c.col === 'ready').length}</b></span>
         <span className="hint">{msg || 'кнопки работают: кол-во, позиции и проводка уходят в базу'}</span>
-      </div>
+      </div>}
 
-      <main className="board">
+      {tab === 'board' && <main className="board">
         {visible.map(col => {
           const list = shown.filter(c => c.col === col.id)
           if (fold[col.id]) return (
@@ -281,7 +288,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
             </section>
           )
         })}
-      </main>
+      </main>}
     </div>
   )
 
@@ -306,6 +313,9 @@ const CSS = `
 .lb .tb:hover{background:rgba(255,255,255,.32)}
 .lb .find{border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:6px;padding:6px 10px;width:190px;font-size:12.5px;font-family:inherit}
 .lb .find::placeholder{color:rgba(255,255,255,.75)}
+.lb .seg{display:flex;background:rgba(255,255,255,.18);border-radius:7px;padding:2px;gap:2px}
+.lb .sgb{border:none;background:none;color:#fff;border-radius:6px;padding:6px 11px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.8}
+.lb .sgb.on{background:#fff;color:#026aa7;opacity:1}
 .lb .kpis{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 12px 6px;font-size:12.5px}
 .lb .kpi{background:rgba(255,255,255,.2);border-radius:999px;padding:3px 10px}
 .lb .hint{opacity:.85;margin-left:auto}

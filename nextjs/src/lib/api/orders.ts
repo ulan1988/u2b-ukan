@@ -132,6 +132,9 @@ export const addShiftExpense = (body: { kind: 'salary' | 'current'; who?: string
 // 🔄 Перевод между своими счетами из кабинета (Нипа / Кристалл) и его отмена.
 export const moveMoney = (body: { fromAccountId: string; toAccountId: string; amount: number; date?: string; uid?: string }) => post('/api/branch/shift', { action: 'move', ...body })
 export const moveMoneyUndo = (rowId: string, date?: string, uid?: string) => post('/api/branch/shift', { action: 'moveUndo', rowId, date, uid })
+// Остаток Центр-Склада на дату + ревизия логиста (склад не трогает).
+export const logistStock = (date: string, uid?: string) => getObj<any>(`/api/logist/stock?date=${date}${uid ? `&uid=${uid}` : ''}`, { items: [], warehouse: null })
+export const sendStockCheck = (body: { date: string; rows: Array<{ productId: string; fact: number | null }>; comment?: string; uid?: string }) => post('/api/stock/checks', body)
 export const closeShiftDay = (date: string, uid?: string) => post('/api/branch/shift', { action: 'close', date, uid })
 // Рентабельность по товару за период.
 export const productProfit = (from: string, to: string, uid?: string) => getOne<any>(`/api/branch/profit?from=${from}&to=${to}${uid ? `&uid=${uid}` : ''}`)
