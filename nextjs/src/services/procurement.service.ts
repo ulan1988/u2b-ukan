@@ -282,3 +282,36 @@ export async function releaseSalesOfPostedPurchase(purchaseCardId: string, actor
   if (opened) { try { const { pushSignal } = await import('../lib/pusherServer'); await pushSignal('orders') } catch {} }
   return { opened }
 }
+// 🗑 УБРАТЬ ТОВАР ИЗ АВТОЗАКУПА = УДАЛИТЬ ЕГО ПОЗИЦИИ В ЗАЯВКАХ (решение владельца 20.11.2026).
+// Автозакуп — не список, а СРЕЗ потребности живых заявок, скрыть строку «на время» негде.
+// Поэтому корзина удаляет саму позицию в карточке-заявке: её не повезёт и логист.
+// ПРАВИЛО ДОМИНО: трогаем только заявки, которые ещё в Входящих/Приёмке и не проведены;
+// последнюю позицию карточки не удаляем (пустая карточка = баг) — такую возвращаем
+// списком, владелец отменяет карточку целиком. В журнал каждой заявки пишем строку.
+export async function dropDemand(orgId: string, names: string[], actor?: Session | null) {
+  const keys = new Set(names.map(n => normNom(n)))
+  if (!keys.size) return { ok: false as const, error: 'Нечего убирать' }
+  const { cards, positions } = await repo.saleDemand(orgId)
+  const live = new Set(cards.map(c => c.id))
+  const victims = positions.filter(p => live.has(p.cardId) && keys.has(normNom(p.name1c || p.oral || '')))
+  if (!victims.length) return { ok: false as const, error: 'Позиции уже нет в потребности' }
+
+  const byCard = new Map<string, any[]>()
+  for (const p of victims) byCard.set(p.cardId, [...(byCard.get(p.cardId) || []), p])
+
+  let removed = 0
+  const kept: string[] = []
+  for (const [cardId, poss] of Array.from(byCard.entries())) {
+    const total = await countPositions(cardId)
+    if (total - poss.length < 1) { kept.push(cardId); continue }   // последнюю позицию не трогаем
+    for (const p of poss) await orderRepo.deletePosition(p.id)
+    removed += poss.length
+    await orderRepo.insertHistory({
+      cardId, action: 'deletePos',
+      detail: `🗑 Убрано из автозакупа и из заявки: ${poss.map(p => `${p.name1c || p.oral} ${Number(p.qty)} ${p.unit || 'шт'}`).join(', ')}`,
+      userName: actor?.name || 'Система',
+    })
+  }
+  if (removed) { try { const { pushSignal } = await import('../lib/pusherServer'); await pushSignal('orders') } catch {} }
+  return { ok: true as const, removed, kept }
+}

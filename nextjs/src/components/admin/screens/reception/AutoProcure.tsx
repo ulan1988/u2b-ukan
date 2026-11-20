@@ -2,7 +2,7 @@
 // Автозакуп: сводка потребности новых продаж по товару → в черновик закупа одной кнопкой.
 import { Fragment, useEffect, useState } from 'react'
 import { RalDot, extractRal } from '@/lib/ral'
-import { demandSummary, stage } from '@/lib/api/procurement'
+import { demandSummary, stage, dropDemand } from '@/lib/api/procurement'
 
 export default function AutoProcure({ orgId, onReload, toast }: { orgId: string; onReload: () => void; toast: (m: string) => void }) {
   const [rows, setRows] = useState<any[]>([])
@@ -23,6 +23,21 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
     setBusy(false)
     if (r.ok) { toast(`В закуп: ${r.data?.added ?? src.length}`); setChecked({}); load(); onReload() }
     else toast('⚠ ' + (r.error || 'Ошибка'))
+  }
+
+  // 🗑 Убрать строку: позиция удаляется В САМИХ ЗАЯВКАХ (решение владельца 20.11.2026) —
+  // её не повезёт и логист. Домино называем прямо в подтверждении, вместе со списком заявок.
+  async function drop(r: any) {
+    const who = (r.rows || []).map((x: any) => `${x.from}: ${x.qty} ${r.unit}`).join('\n')
+    if (!confirm(`Убрать «${r.name}» из автозакупа?\n\nПозиция будет УДАЛЕНА из заявок:\n${who}\n\nЛогист её не повезёт. Вернуть можно только руками, в карточке.`)) return
+    setBusy(true)
+    const res: any = await dropDemand([r.name])
+    setBusy(false)
+    if (res.ok) {
+      const kept: string[] = res.data?.kept || []
+      toast(kept.length ? `Убрано. Осталось в ${kept.join(', ')} — там это последняя позиция, отмените карточку целиком` : '🗑 Убрано из заявок')
+      load(); onReload()
+    } else toast('⚠ ' + (res.error || 'Ошибка'))
   }
 
   if (rows.length === 0) return null
@@ -57,6 +72,7 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
                     <RalDot code={extractRal(r.name)} size={13} />
                     <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{r.name}</span>
                     <span style={{ fontWeight: 800, fontSize: 15, color: '#7a3aaa', whiteSpace: 'nowrap' }}>{r.total} {r.unit}</span>
+                    <button onClick={() => drop(r)} disabled={busy} title="Убрать из автозакупа — позиция удалится и из заявки" style={{ border: '1.5px solid #f3d6d6', background: '#fff', color: '#c1121c', borderRadius: 8, width: 30, height: 30, fontSize: 14, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>🗑</button>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 44 }}>
                     {(r.rows || []).map((x: any, ri: number) => <span key={ri} style={{ fontSize: 12, background: '#f6f3f0', color: '#5f5952', padding: '2px 9px', borderRadius: 20 }}>{x.from}: <b style={{ color: '#211f1c' }}>{x.qty} {r.unit}</b></span>)}
