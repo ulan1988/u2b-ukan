@@ -105,7 +105,18 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // РАБОЧАЯ ДАТА КАБИНЕТА (задним числом): карточка оформляется выбранным днём — им же
   // выписывается номер и им же она ложится в списки/журнал. Вперёд нельзя.
   const wd = i.date && i.date <= today() ? i.date : undefined
-  const id = i.directOrder ? await repo.nextFreeByKind('direct', wd)
+  // ЗАКАЗ АДМИНА С ПОСТАВЩИКОМ РОЖДАЕТСЯ ЗАКУПОМ (правило владельца 20.11.2026).
+  // Пока товар не куплен — продавать нечего: карточка живёт ЗАКУПОМ ЗКП (на неё ляжет
+  // приходная), а продажа ПРД рождается сама, когда приход проведён (directOrder.service
+  // .createSaleFromPurchase) — и уходит логисту уже на отгрузку. Так на каждом этапе видна
+  // ОДНА карточка, а в «Документе движений» цепочка идёт одной веткой (parentCardId).
+  // Не трогаем: заявки кабинетов и филиалов (запрос клиента живёт до покупки), кассу,
+  // заказ мастера, сквозные (товар мимо склада), черновики и задний день — там своя пара
+  // приход+расход одной кнопкой (правило 19.11.2026).
+  const adminMade = !i.source || i.source === 'admin_manual' || i.source === 'admin'
+  const asDirect = !!i.directOrder || !!(i.kind === 'sale' && !i.prodOrder && adminMade && !i.isDraft && !wd
+    && !(i as any).transit && i.contactId && i.positions.some(p => p.supplierId))
+  const id = asDirect ? await repo.nextFreeByKind('direct', wd)
     : i.prodOrder ? prodOrderNumber(await repo.nextProdSeq(), wd)
     : await repo.nextFreeOrderId(orgId, i.kind, wd)
 
@@ -119,8 +130,8 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   const screen = i.screen || 'incoming'
   // Заявки кабинета/филиала падают во «Входящие» (Новые) головного — голова видит их сразу.
   const order = {
-    id, orgId, kind: i.kind, directOrder: !!i.directOrder,
-    screen, block: i.block || '', toacc: false,
+    id, orgId, kind: asDirect ? 'purchase' : i.kind, directOrder: asDirect,
+    screen: asDirect ? 'outgoing' : screen, block: asDirect ? '' : (i.block || ''), toacc: false,
     status: i.isDraft ? 'Черновик' : (screen === 'reception' ? 'В обработке' : 'В ожидании'),
     source: i.source, isDraft: i.isDraft ?? false,
     fromName, fromId, contactId: i.contactId ?? null,
@@ -152,9 +163,14 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // если явно не задан. Так любой заказ сразу попадает в кабинет этого логиста.
   // Касса (прямая продажа) логиста не касается — дефолт-логиста не назначаем.
   const defLogist = i.source === 'cashier' ? null : await settingsRepo.orgDefaultLogist(orgId)
+  const conv = asDirect && i.kind === 'sale'   // заказ админа переехал в закуп
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
-    name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit, price: String(p.price),
+    name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit,
+    // Переехавшая в закуп карточка: в строке цена ЗАКУПА, а вписанная цена продажи едет
+    // в salePrice — её подхватит ПРД, когда родится после прихода.
+    price: String(conv ? ((p as any).costPrice ?? 0) : p.price),
+    salePrice: String(conv ? p.price : ((p as any).salePrice ?? 0)),
     costPrice: String((p as any).costPrice ?? 0),
     transit: !!(p as any).transit || (p.supplierId ? transitSupIds.has(p.supplierId) : false),   // сквозная строка (или сквозной поставщик)
     // Бонусная продажа: цена соседа и сам сосед живут на строке чека.
@@ -170,7 +186,8 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   }))
   const history = {
     cardId: id, action: 'create',
-    detail: `${i.kind === 'purchase' ? 'Закуп' : 'Продажа'} создан (${positions.length} поз.)`,
+    detail: `${asDirect ? 'Закуп' : 'Продажа'} создан (${positions.length} поз.)`
+      + (conv ? ' · заказ админа с поставщиком → закуп, продажа родится после прихода' : ''),
     userName: actor?.name || 'Система',
     ...(wd ? { createdAt: stampOf(wd) } : {}),
   }
