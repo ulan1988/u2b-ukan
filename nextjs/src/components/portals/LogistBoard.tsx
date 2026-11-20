@@ -6,11 +6,12 @@
 // Правила экрана (от владельца): цен у логиста нет, только количество; колонка = поставщик;
 // позиции простым списком с алиасами; пустые колонки не показываем; закуп и продажа —
 // по своим колонкам («Закуплено» / «Продано · Доставлено»); колонка Нипы свёрнута.
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { logistBoardData, setPosStatus, updatePosition, deletePosition, addPosition } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
+import { useLiveData } from '@/lib/live'
 import type { Session } from '@/lib/auth'
 
 type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
@@ -74,19 +75,26 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   // Все действия идут в ТЕ ЖЕ роуты, что у обычного кабинета логиста — своей логики тут нет.
   async function act(what: string, fn: () => Promise<any>) {
     if (busy) return
-    setBusy(true)
+    setBusy(true); busyRef.current = true
     try { await fn(); await reload(); say('✓ ' + what) }
     catch (e: any) { say('⚠ не удалось: ' + what); console.error(what, e) }
-    finally { setBusy(false) }
+    finally { setBusy(false); busyRef.current = false }
   }
 
-  useEffect(() => {
-    (async () => {
-      const uid = viewAs ? user.id : undefined
-      const [b, r]: any[] = await Promise.all([logistBoardData(uid), fetchRefs()])
+  // Живое обновление: тот же сигнал, что у админских экранов (Pusher + страховка опросом).
+  // Чужое действие видно сразу, свою правку не перебиваем — пока идёт сохранение, обновление ждёт.
+  const busyRef = useRef(false)
+  const firstRef = useRef(true)
+  useLiveData(() => {
+    if (busyRef.current) return
+    ;(async () => {
+      const [b, r]: any[] = await Promise.all([logistBoardData(uid), firstRef.current ? fetchRefs() : Promise.resolve(null)])
       setCols(b.cols || []); setCards(b.cards || [])
-      setFold(Object.fromEntries((b.cols || []).filter((c: Col) => c.fold).map((c: Col) => [c.id, true])))
-      setProds(((r.products || []) as any[]).filter(p => !p.archived).map(p => ({ name: p.name, unit: p.unit || 'шт' })))
+      if (firstRef.current) {
+        setFold(Object.fromEntries((b.cols || []).filter((c: Col) => c.fold).map((c: Col) => [c.id, true])))
+        setProds(((r?.products || []) as any[]).filter((p: any) => !p.archived).map((p: any) => ({ name: p.name, unit: p.unit || 'шт' })))
+        firstRef.current = false
+      }
       setLoading(false)
     })()
   }, [user.id, viewAs])

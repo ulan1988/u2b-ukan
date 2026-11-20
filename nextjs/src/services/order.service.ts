@@ -1100,19 +1100,38 @@ export async function deleteOrder(cardId: string, actor?: Session | null) {
 // read-only, правки живут только в браузере, пока смотрим прототип. Цен в ответе нет —
 // у логиста их не бывает (правило владельца 19.11.2026).
 export async function logistBoard(orgId: string, userId: string) {
-  const all = await listForLogist(orgId, userId)
-  const cards = all.filter((c: any) => c.orgId === orgId && c.status !== 'Отменён')
-  // «Выполнено филиалом» к логисту не привязано — добавляем отдельно, это справочная колонка.
-  const bd = await repo.branchDoneForBoard(orgId)
-  const bdMap = new Map<string, any>()
-  for (const r of bd as any[]) {
-    if (!bdMap.has(r.o.id)) bdMap.set(r.o.id, { ...r.o, positions: [], clientName: r.o.fromName, createdBy: r.o.fromName })
-    bdMap.get(r.o.id).positions.push(r.p)
+  // СКОРОСТЬ: Neon отвечает ~0,3 с на запрос, поэтому все обращения идут ПАРАЛЛЕЛЬНО и только
+  // по своей орг. Раньше доска звала listForLogist (он тянет ВСЕ орг и делает ~7 запросов
+  // подряд) — экран собирался 4–6 секунд и «тормозил» на живом обновлении.
+  const [rows, bdRows] = await Promise.all([
+    repo.positionsForLogist([orgId], userId),
+    repo.branchDoneForBoard(orgId),
+  ])
+  const byCard = new Map<string, any>()
+  const push = (o: any, p: any) => {
+    if (!byCard.has(o.id)) byCard.set(o.id, { ...o, positions: [] })
+    byCard.get(o.id).positions.push(p)
   }
-  for (const c of Array.from(bdMap.values())) if (!cards.some((x: any) => x.id === c.id)) cards.push(c)
+  for (const r of rows as any[]) push(r.o, r.p)
+  for (const r of bdRows as any[]) push(r.o, r.p)
+  const cards = Array.from(byCard.values()).filter((c: any) => c.status !== 'Отменён')
+  if (!cards.length) return { cols: [{ id: 'ask', name: 'На выяснение · без поставщика' }], cards: [] }
+
   const supIds = Array.from(new Set(cards.flatMap((c: any) => c.positions.map((p: any) => p.supplierId)).filter(Boolean))) as string[]
-  const supName = supIds.length ? await refsRepo.contragentNamesByIds(supIds) : {}
-  const slug = (s: string) => { let h = 7; const t = String(s); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'c' + Math.abs(h).toString(36) }
+  const cIds = Array.from(new Set(cards.map((c: any) => c.contactId).filter(Boolean))) as string[]
+  const saleIds = cards.filter((c: any) => c.kind === 'sale').map((c: any) => c.id)
+  const purchaseIds = cards.filter((c: any) => c.kind === 'purchase').map((c: any) => c.id)
+  const procRepo = await import('../repositories/procurement.repo')
+  const [names, creators, waitPos, byPurchase] = await Promise.all([
+    refsRepo.contragentNamesByIds(Array.from(new Set([...supIds, ...cIds]))),
+    repo.cardCreators(cards.map((c: any) => c.id)),
+    saleIds.length ? procRepo.positionsWaitingProcure(saleIds) : Promise.resolve(new Set<string>()),
+    purchaseIds.length ? procRepo.clientsByPurchase(purchaseIds) : Promise.resolve(new Map<string, string[]>()),
+  ])
+  const supName = (id: any) => (id ? names[id as string] || '' : '')
+  const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
+
+  const slug = (t: string) => { let h = 7; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'c' + Math.abs(h).toString(36) }
   const hhmm = (d: any) => { const x = new Date(d), p = (v: number) => String(v).padStart(2, '0')
     return p(x.getDate()) + '.' + p(x.getMonth() + 1) + ' ' + p(x.getHours()) + ':' + p(x.getMinutes()) }
   const item = (p: any) => ({ p: p.id, n: p.name1c || p.oral || '—', q: Number(p.qty),
@@ -1123,27 +1142,40 @@ export async function logistBoard(orgId: string, userId: string) {
   const out: any[] = []
   const put = (col: string, o: any, poss: any[], extra: any = {}) => out.push({
     id: slug(o.id + col), col, code: o.id, k: o.kind === 'purchase' ? 'buy' : 'sell',
-    client: (o.clientName || o.fromName || 'Центр-Склад').trim(), who: o.createdBy || '',
+    client: String(o.clientName || o.fromName || 'Центр-Склад').trim(), who: o.createdBy || '',
     time: hhmm(o.createdAt), pay: o.payment || '', items: poss.map(item), ...extra })
 
   for (const o of cards as any[]) {
+    // Заказчик: контрагент карточки, у закупа — заказчики связанных заявок.
+    o.clientName = o.contactId ? names[o.contactId] || '' : ''
+    if (!o.clientName && o.kind === 'purchase') {
+      const list = (byPurchase as Map<string, string[]>).get(o.id) || []
+      o.clientName = list.length ? `${list[0]}${list.length > 1 ? ` +${list.length - 1}` : ''}` : ''
+    }
+    if (o.source === 'branch_done' && !o.clientName) o.clientName = o.fromName
+    o.createdBy = (creators as any)[o.id] || (o.source === 'branch_done' ? o.fromName : '')
+    // Почему строка ещё «серая»: карточка у админа · у закупа нет поставщика · ждём приход закупа.
+    const atAdmin = o.screen === 'incoming' || (o.kind === 'purchase' && o.screen === 'reception')
+    for (const p of o.positions) {
+      p.waitReason = p.status === 'Доставлено' ? ''
+        : atAdmin ? 'admin'
+        : (o.kind === 'purchase' && !p.supplierId) ? 'supplier'
+        : (o.kind === 'sale' && (waitPos as Set<string>).has(key(o.id, p))) ? 'procure' : ''
+    }
+
     const open = o.positions.filter((p: any) => p.status !== 'Доставлено')
-    const nipa = o.source === 'branch_done' || (open.length > 0 && open.every((p: any) => supName[p.supplierId] === 'Нипа листогиб'))
+    const nipa = o.source === 'branch_done' || (open.length > 0 && open.every((p: any) => supName(p.supplierId) === 'Нипа листогиб'))
     if (nipa) {
       cols.set('nipa', { id: 'nipa', name: 'Заказ Нипа листогибу', fold: true })
       put('nipa', o, o.positions, { badge: o.status, info: true })
       continue
     }
     if (!open.length) continue
-    // ПОСТАВЩИК ГЛАВНЕЕ ЭКРАНА (правило владельца 20.11.2026): как только админ проставил
-    // поставщика, позиция встаёт в колонку этого поставщика — её ещё надо у него купить.
-    // «Готов к отправке» — только то, что везём и у чего поставщика нет (куплено/со склада).
+    // ПОСТАВЩИК ГЛАВНЕЕ ЭКРАНА: пока не куплено — стоит у поставщика; куплено — «Готов к отправке».
     const by = new Map<string, any[]>()
-    for (const p of open) { const k = supName[p.supplierId] || ''; if (!by.has(k)) by.set(k, []); by.get(k)!.push(p) }
+    for (const p of open) { const k = supName(p.supplierId); if (!by.has(k)) by.set(k, []); by.get(k)!.push(p) }
     for (const [sup, poss] of Array.from(by.entries())) {
       if (sup) {
-        // Ждёт закупа (строка серая у логиста) — стоит у поставщика. Уже куплено (приход проведён)
-        // — лежит на складе, значит «Готов к отправке (закуп)».
         const waiting = poss.filter((p: any) => p.waitReason), bought = poss.filter((p: any) => !p.waitReason)
         if (waiting.length || o.kind === 'purchase') {
           const id = slug(sup); cols.set(id, { id, name: 'Заказ ' + sup })
@@ -1160,7 +1192,6 @@ export async function logistBoard(orgId: string, userId: string) {
     ...Array.from(cols.values()).filter(c => c.id !== 'nipa')
       .sort((a, b) => out.filter(x => x.col === b.id).length - out.filter(x => x.col === a.id).length),
     ...(cols.has('nipa') ? [cols.get('nipa')] : []),
-    // Две стадии, как сказал владелец: «закуплено» и «готов к отправке» — одна колонка.
     { id: 'ready', name: 'Готов к отправке (закуп)', stage: true },
     { id: 'deliv', name: 'Продано / Доставлено', stage: true },
   ]
