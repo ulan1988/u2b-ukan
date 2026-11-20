@@ -107,6 +107,37 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
     matchWords(find, c.client, c.code, c.who, ...c.items.map(i => i.n))), [cards, find])
   const found = useMemo(() => (q.trim() ? prods.filter(p => matchWords(q, p.name)).slice(0, 8) : []), [q, prods])
 
+  // КОПИРОВАНИЕ (просьба владельца 20.11.2026): 📋 рядом с датой — вся карточка с позициями и
+  // штуками; двойной тап ИЛИ долгое нажатие на строке — одна позиция. Шлём в WhatsApp как есть.
+  // clipboard API работает не везде (http, старый webview) — отсюда запасной путь через textarea.
+  async function copy(text: string, what: string) {
+    try { await navigator.clipboard.writeText(text) }
+    catch {
+      try {
+        const t = document.createElement('textarea'); t.value = text
+        t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t)
+        t.select(); document.execCommand('copy'); document.body.removeChild(t)
+      } catch { say('⚠ не удалось скопировать'); return }
+    }
+    say('📋 скопировано: ' + what)
+  }
+  const posLine = (it: Item) => it.n + ' — ' + fact(it) + ' ' + (it.u || 'шт')
+  const cardText = (c: Card) => [
+    c.code + ' · ' + c.time,
+    (c.info ? '' : 'от ') + c.client,
+    ...c.items.map((it, i) => (i + 1) + '. ' + posLine(it)),
+    'Всего позиций: ' + c.items.length,
+  ].filter(Boolean).join('\n')
+
+  // Долгое нажатие на позиции: по отпусканию подавляем обычный клик (он помечает «взято»).
+  const pressRef = useRef<any>(null)
+  const heldRef = useRef(false)
+  const holdStart = (it: Item) => {
+    heldRef.current = false
+    pressRef.current = setTimeout(() => { heldRef.current = true; copy(posLine(it), 'позиция') }, 500)
+  }
+  const holdEnd = () => { if (pressRef.current) clearTimeout(pressRef.current); pressRef.current = null }
+
   const upd = (fn: (list: Card[]) => Card[]) => setCards(list => fn(list.map(c => ({ ...c, items: c.items.map(i => ({ ...i })) }))))
   // Перетаскивание пока НЕ меняет поставщика в базе (это право админа) — двигаем только на экране.
   const move = (id: string, col: string) => { say('поставщика ставит админ — на доске это только вид')
@@ -205,6 +236,8 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                       <div onClick={() => { setOpen(isOpen ? '' : c.id); setEd(''); setAdding(false) }}>
                         <div className="c1">
                           <span className="code">{c.code}</span><span>· {c.time}</span>
+                          <button className="cp" title="Скопировать карточку с позициями"
+                            onClick={e => { e.stopPropagation(); copy(cardText(c), c.code) }}>📋</button>
                           {c.who && <span style={{ marginLeft: 'auto' }}>{c.who}</span>}
                           {isOpen && (
                             <button className="pen" aria-pressed={isEd} title={isEd ? 'Закончить правку' : 'Изменить карточку'}
@@ -229,7 +262,14 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                             const a = alias(it.n), l = lack(it)
                             return (
                               <div key={idx} className={'prow' + (it.done ? ' got' : '') + (l ? ' short' : '')}
-                                onClick={() => { if (!isEd && !c.info) upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.map((y, j) => j === idx ? { ...y, done: !y.done } : y) })) }}>
+                                title="Двойной тап или долгое нажатие — скопировать позицию"
+                                onPointerDown={() => holdStart(it)} onPointerUp={holdEnd}
+                                onPointerLeave={holdEnd} onPointerCancel={holdEnd}
+                                onContextMenu={e => { if (heldRef.current) e.preventDefault() }}
+                                onDoubleClick={e => { e.stopPropagation(); copy(posLine(it), 'позиция') }}
+                                onClick={() => {
+                                  if (heldRef.current) { heldRef.current = false; return }   // это было долгое нажатие — копия, не отметка
+                                  if (!isEd && !c.info) upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.map((y, j) => j === idx ? { ...y, done: !y.done } : y) })) }}>
                                 <span className="al" title={a.full}>{a.short}</span>
                                 {l > 0 && <span className="was">из {it.q}</span>}
                                 {it.u && <span className="un">{it.u}</span>}
@@ -356,6 +396,8 @@ const CSS = `
 .lb .card.edit{box-shadow:0 0 0 2px var(--accent)}
 .lb .card.info{opacity:.9}
 .lb .c1{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--faint)}
+.lb .cp{border:none;background:none;color:var(--faint);cursor:pointer;font-size:13px;line-height:1;padding:2px 3px;border-radius:5px}
+.lb .cp:hover{background:var(--surface2);color:var(--text)}
 .lb .code{font-family:ui-monospace,Consolas,monospace;font-weight:700;font-size:11px;color:var(--accent)}
 .lb .c2{font-weight:700;font-size:13.5px;margin-top:2px;line-height:1.25}
 .lb .c2 .pre{color:var(--faint);font-weight:600}
@@ -375,7 +417,7 @@ const CSS = `
 .lb .pen[aria-pressed="true"]{background:var(--ok);color:#fff}
 .lb .phead{display:flex;gap:6px;margin-top:8px;padding:0 2px 3px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);font-weight:700}
 .lb .phead .r{margin-left:auto}
-.lb .prow{display:flex;align-items:center;gap:6px;padding:4px 3px;border-bottom:1px solid var(--line2)}
+.lb .prow{display:flex;align-items:center;gap:6px;padding:4px 3px;border-bottom:1px solid var(--line2);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .lb .prow:last-of-type{border-bottom:none}
 .lb .prow.got{background:var(--ok-soft)}
 .lb .prow.short{background:var(--bad-soft)}
