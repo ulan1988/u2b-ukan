@@ -1149,9 +1149,9 @@ export async function logistBoard(orgId: string, userId: string) {
     ...Array.from(cols.values()).filter(c => c.id !== 'nipa')
       .sort((a, b) => out.filter(x => x.col === b.id).length - out.filter(x => x.col === a.id).length),
     ...(cols.has('nipa') ? [cols.get('nipa')] : []),
-    { id: 'bought', name: 'Закуплено', stage: true },
-    { id: 'ready', name: 'Готов к отправке', stage: true },
-    { id: 'deliv', name: 'Продано / Доставлено', stage: true },
+    // Две стадии, как сказал владелец: «закуплено» и «готов к отправке» — одна колонка.
+    { id: 'ready', name: 'Готов к отправке (закуп)', stage: true },
+    { id: 'deliv', name: 'Доставлено / Продано', stage: true },
   ]
   return { cols: order, cards: out }
 }

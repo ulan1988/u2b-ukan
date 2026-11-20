@@ -43,10 +43,11 @@ function alias(name: string) {
 }
 // Куда карточка едет дальше и как называется кнопка: закуп и продажа — разные колонки.
 function nextStep(c: Card): { to: string; label: string } | null {
-  const stage = /^(bought|ready|deliv)$/.test(c.col) ? c.col : 'buy'
-  if (stage === 'buy') return { to: 'bought', label: '✓ Закуплено по факту' }
-  if (stage === 'bought') return c.k === 'buy' ? null : { to: 'ready', label: '→ Готов к отправке' }
-  if (stage === 'ready') return { to: 'deliv', label: '✓ Продано / Доставлено' }
+  const stage = /^(ready|deliv)$/.test(c.col) ? c.col : 'buy'
+  // У поставщика жмём «Закуплено» → ПРИХОДНАЯ, карточка в «Готов к отправке (закуп)».
+  if (stage === 'buy') return { to: 'ready', label: '✓ Закуплено · приходная' }
+  // Оттуда «Доставлено / Продано» → РАСХОДНАЯ, карточка в последнюю колонку.
+  if (stage === 'ready') return { to: 'deliv', label: '✓ Доставлено / Продано · расходная' }
   return null
 }
 
