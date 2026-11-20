@@ -39,7 +39,12 @@ function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
 }
 
 export default function LogistPortal({ user, viewAs }: { user: { id: string; name: string; orgId: string }; viewAs?: boolean }) {
-  const [tab, setTab] = useState<Tab>('in')
+  // Раздел открывается по ссылке из меню новой доски: /rsp/<slug>/old?tab=shift
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === 'undefined') return 'in'
+    const t = new URLSearchParams(window.location.search).get('tab') as Tab | null
+    return t && ['req', 'in', 'buy', 'out', 'changes', 'new', 'shift'].includes(t) ? t : 'in'
+  })
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')

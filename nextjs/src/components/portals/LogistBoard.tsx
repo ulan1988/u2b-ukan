@@ -69,6 +69,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   const [sel, setSel] = useState(0)
   const [drag, setDrag] = useState('')
   const [tab, setTab] = useState<'board' | 'stock'>('board')
+  const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const uid = viewAs ? user.id : undefined
@@ -141,11 +142,20 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
     <div className="lb">
       <style>{CSS}</style>
       <header className="top">
-        <Link href={backHref} className="tb" title="Вернуться в обычный кабинет">← старый кабинет</Link>
         <div className="who">Логист · {user.name}<small>{viewAs ? 'просмотр · ' : ''}{busy ? 'сохраняю…' : 'доска · действия идут в базу'}</small></div>
-        <div className="seg">
-          <button className={'sgb' + (tab === 'board' ? ' on' : '')} onClick={() => setTab('board')}>📋 Доска</button>
-          <button className={'sgb' + (tab === 'stock' ? ' on' : '')} onClick={() => setTab('stock')}>📦 Остаток</button>
+        <div className="menu">
+          <button className="tb" onClick={() => setMenu(!menu)}>☰ {tab === 'stock' ? 'Остаток' : 'Доска'}</button>
+          {menu && (
+            <div className="drop" onClick={() => setMenu(false)}>
+              <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>📋 Доска</button>
+              <button className={tab === 'stock' ? 'on' : ''} onClick={() => setTab('stock')}>📦 Остаток склада</button>
+              <div className="sep" />
+              <a href={backHref + '?tab=shift'}>📊 Смена · отчёт дня</a>
+              <a href={backHref + '?tab=changes'}>⚡ Правки</a>
+              <a href={backHref + '?tab=new'}>➕ Новая заявка</a>
+              <a href={backHref}>↩ Старый кабинет</a>
+            </div>
+          )}
         </div>
         <span className="sp" />
         {tab === 'board' && <input className="find" value={find} onChange={e => setFind(e.target.value)} placeholder="поиск: заказчик, товар, №" />}
@@ -313,7 +323,12 @@ const CSS = `
 .lb .tb:hover{background:rgba(255,255,255,.32)}
 .lb .find{border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:6px;padding:6px 10px;width:190px;font-size:12.5px;font-family:inherit}
 .lb .find::placeholder{color:rgba(255,255,255,.75)}
-.lb .seg{display:flex;background:rgba(255,255,255,.18);border-radius:7px;padding:2px;gap:2px}
+.lb .menu{position:relative}
+.lb .drop{position:absolute;top:calc(100% + 6px);left:0;z-index:50;background:var(--surface);border-radius:10px;min-width:210px;padding:6px;display:flex;flex-direction:column;gap:2px;box-shadow:0 8px 24px rgba(9,30,66,.25)}
+.lb .drop button,.lb .drop a{border:none;background:none;color:var(--text);text-align:left;padding:9px 11px;border-radius:7px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none;display:block}
+.lb .drop button:hover,.lb .drop a:hover{background:var(--surface2)}
+.lb .drop button.on{background:var(--accent);color:#fff}
+.lb .drop .sep{height:1px;background:var(--line);margin:4px 2px}
 .lb .sgb{border:none;background:none;color:#fff;border-radius:6px;padding:6px 11px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.8}
 .lb .sgb.on{background:#fff;color:#026aa7;opacity:1}
 .lb .kpis{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 12px 6px;font-size:12.5px}
