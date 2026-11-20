@@ -13,6 +13,7 @@ import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import { useLiveData } from '@/lib/live'
 import LogistStock from './LogistStock'
+import LogistShift from './LogistShift'
 import type { Session } from '@/lib/auth'
 
 type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
@@ -68,7 +69,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const [drag, setDrag] = useState('')
-  const [tab, setTab] = useState<'board' | 'stock'>('board')
+  const [tab, setTab] = useState<'board' | 'stock' | 'shift'>('board')
   const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -144,13 +145,13 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
       <header className="top">
         <div className="who">Логист · {user.name}<small>{viewAs ? 'просмотр · ' : ''}{busy ? 'сохраняю…' : 'доска · действия идут в базу'}</small></div>
         <div className="menu">
-          <button className="tb" onClick={() => setMenu(!menu)}>☰ {tab === 'stock' ? 'Остаток' : 'Доска'}</button>
+          <button className="tb" onClick={() => setMenu(!menu)}>☰ {tab === 'stock' ? 'Остаток' : tab === 'shift' ? 'Смена' : 'Доска'}</button>
           {menu && (
             <div className="drop" onClick={() => setMenu(false)}>
               <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>📋 Доска</button>
               <button className={tab === 'stock' ? 'on' : ''} onClick={() => setTab('stock')}>📦 Остаток склада</button>
+              <button className={tab === 'shift' ? 'on' : ''} onClick={() => setTab('shift')}>📊 Смена · отчёт дня</button>
               <div className="sep" />
-              <a href={backHref + '?tab=shift'}>📊 Смена · отчёт дня</a>
               <a href={backHref + '?tab=changes'}>⚡ Правки</a>
               <a href={backHref + '?tab=new'}>➕ Новая заявка</a>
               <a href={backHref}>↩ Старый кабинет</a>
@@ -166,6 +167,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
       </header>
 
       {tab === 'stock' && <LogistStock uid={uid} />}
+      {tab === 'shift' && <LogistShift />}
       {tab === 'board' && <div className="kpis">
         <span className="kpi">В работе <b>{shown.filter(c => !c.info).length}</b></span>
         <span className="kpi">Позиций <b>{shown.filter(c => !c.info).reduce((s, c) => s + c.items.length, 0)}</b></span>

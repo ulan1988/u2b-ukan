@@ -19,12 +19,14 @@ function stampOf(ymd: string): Date {
 }
 
 // Авто-строка смены логиста при доставке позиции (как updatePos в Улкане):
-// upsert по posId в СЕГОДНЯШНИЙ черновик смены логиста-ответственного.
-async function addDeliveryToShift(orgId: string, pos: any, order: any) {
+// upsert по posId в черновик смены логиста-ответственного.
+// РАБОЧАЯ ДАТА (правило 20.11.2026): строка ложится в смену ЗА ДЕНЬ ДОСТАВКИ. Раньше всегда
+// писалась в сегодняшнюю смену, и доставка задним числом попадала не в свой отчёт.
+async function addDeliveryToShift(orgId: string, pos: any, order: any, day?: string) {
   if (!pos.respUserId) return
-  const day = today()
-  let [draft] = await reportRepo.draftForDay(orgId, pos.respUserId, day)
-  if (!draft) [draft] = await reportRepo.createReport({ orgId, logistId: pos.respUserId, date: day, status: 'draft' })
+  const d = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : today()
+  let [draft] = await reportRepo.draftForDay(orgId, pos.respUserId, d)
+  if (!draft) [draft] = await reportRepo.createReport({ orgId, logistId: pos.respUserId, date: d, status: 'draft' })
   // Строка как в Улкане (updatePos): fromWho = поставщик || отправитель,
   // toWho = назначение (закуп → Центр-Склад, продажа → клиент-получатель).
   const cags = await refsRepo.listContragents()
@@ -590,7 +592,7 @@ export async function setPositions(cardId: string, posId: string | undefined, st
   // При доставке — авто-строка в смену логиста (собирается «Доставлено» → отчёт).
   if (status === 'Доставлено' && order) {
     const delivered = posId ? positions.filter(p => p.id === posId) : positions
-    for (const p of delivered) { try { await addDeliveryToShift(order.orgId, p, order) } catch {} }
+    for (const p of delivered) { try { await addDeliveryToShift(order.orgId, p, order, date) } catch {} }
   }
   if (allDelivered) {
     // Как в 1С: на полной доставке сразу проводим документ (приходная/расходная).
