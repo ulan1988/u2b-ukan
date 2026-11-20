@@ -388,8 +388,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>Ожидание <span style={{ fontSize: 13, background: '#fff0ea', color: '#c0532a', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{waiting.length}</span></div>
         {waiting.length === 0 ? <div style={{ color: '#5f5952', fontSize: 14, padding: '16px 0' }}>Нет карточек в ожидании</div>
           : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
-              {waiting.map(o => (
-                <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 0 0 1.5px #e6e2dc' }}>
+              {waiting.map(o => {
+                // Заявка, под которую автозакуп уже оформил закуп, ждёт ПРИХОДА и уйдёт логисту
+                // сама (releaseSalesOfPostedPurchase). Чтобы её не приняли руками — бейдж и
+                // предупреждение на кнопке; номер закупа виден в журнале карточки.
+                const waitBuy = o.status === 'Ждёт закупа'
+                return (
+                <div key={o.id} style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: `0 0 0 1.5px ${waitBuy ? '#f4d79a' : '#e6e2dc'}` }}>
                   <div onClick={() => onOpen?.(o)} title={onOpen ? 'Открыть состав заявки' : ''} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 13, color: COLORS.primary }}>{o.id}</span>
@@ -397,14 +402,17 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <span style={{ marginLeft: 'auto', fontSize: 12, color: '#5f5952', whiteSpace: 'nowrap' }}>{fmtDate(o.createdAt)} · <b style={{ color: COLORS.text }}>{fmtTime(o.createdAt)}</b></span>
                     </div>
                     <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{o.fromName} → {o.toName || '—'}</div>
+                    {waitBuy && <div style={{ fontSize: 12.5, background: '#fff7e6', color: '#8a5a00', border: '1px solid #f4d79a', borderRadius: 8, padding: '6px 9px', marginBottom: 10, fontWeight: 600 }}>⏳ Ждёт закупа — уйдёт логисту сама, когда проведёшь приходную по закупу</div>}
                     {o.comment && <div style={{ fontSize: 13, color: '#5f5952', marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}>{o.comment}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <Btn variant="primary" onClick={() => onAction(o.id, 'take')} style={{ flex: 1 }}>ПРИНЯТЬ В ОБРАБОТКУ →</Btn>
+                    <Btn variant={waitBuy ? undefined : 'primary'} style={{ flex: 1 }}
+                      onClick={() => { if (waitBuy && !confirm('Закуп по этой заявке ещё не пришёл. Она уйдёт логисту сама после приходной.\n\nВсё равно взять её в обработку вручную?')) return
+                        onAction(o.id, 'take') }}>ПРИНЯТЬ В ОБРАБОТКУ →</Btn>
                     <Btn onClick={() => onAction(o.id, 'returnToIncoming')}>← Вернуть</Btn>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>}
       </div>
 
