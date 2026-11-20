@@ -337,7 +337,9 @@ const CSS = `
 .lb .kpi{background:rgba(255,255,255,.2);border-radius:999px;padding:3px 10px}
 .lb .hint{opacity:.85;margin-left:auto}
 .lb .board{display:flex;gap:9px;align-items:flex-start;overflow-x:auto;padding:4px 12px 20px}
-.lb .col{flex:0 0 288px;width:288px;background:var(--surface2);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 150px);padding:8px}
+/* Колонка растёт по содержимому: прокручивается ВСЯ страница, а не внутренность колонки —
+   иначе низ доски упирался в невидимую границу и карточки было не достать. */
+.lb .col{flex:0 0 288px;width:288px;background:var(--surface2);border-radius:12px;display:flex;flex-direction:column;padding:8px}
 .lb .ch{display:flex;align-items:center;gap:6px;padding:2px 4px 7px}
 .lb .ch .nm{font-weight:800;font-size:13px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lb .ch .n,.lb .foldcol .n{background:var(--surface);color:var(--muted);border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:700}
@@ -346,7 +348,7 @@ const CSS = `
 .lb .foldbtn:hover{background:#d8dbe0;color:var(--text)}
 .lb .foldcol{justify-content:flex-start}
 .lb .foldcol .v{padding:6px 0}
-.lb .cards{display:flex;flex-direction:column;gap:7px;overflow-y:auto;padding:1px}
+.lb .cards{display:flex;flex-direction:column;gap:7px;padding:1px}
 .lb .none{color:var(--faint);font-size:12px;text-align:center;padding:10px 4px}
 .lb .foldcol{flex:0 0 44px;width:44px;background:var(--surface2);border-radius:12px;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
 .lb .foldcol .v{writing-mode:vertical-rl;font-weight:800;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:70vh}
@@ -400,5 +402,5 @@ const CSS = `
 .lb .res div.sel,.lb .res div:hover{background:var(--accent-soft)}
 .lb .res .u{margin-left:auto;font-size:10.5px;color:var(--faint)}
 .lb .res .no{color:var(--muted);cursor:default}
-@media (max-width:620px){.lb .col{flex-basis:84vw;width:84vw;max-height:none}}
+@media (max-width:620px){.lb .col{flex-basis:84vw;width:84vw}}
 `
