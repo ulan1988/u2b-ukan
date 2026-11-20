@@ -1134,13 +1134,14 @@ export async function logistBoard(orgId: string, userId: string) {
       continue
     }
     if (!open.length) continue
-    if (o.screen === 'outgoing') { put('ready', o, open); continue }
+    // ПОСТАВЩИК ГЛАВНЕЕ ЭКРАНА (правило владельца 20.11.2026): как только админ проставил
+    // поставщика, позиция встаёт в колонку этого поставщика — её ещё надо у него купить.
+    // «Готов к отправке» — только то, что везём и у чего поставщика нет (куплено/со склада).
     const by = new Map<string, any[]>()
     for (const p of open) { const k = supName[p.supplierId] || ''; if (!by.has(k)) by.set(k, []); by.get(k)!.push(p) }
     for (const [sup, poss] of Array.from(by.entries())) {
-      const id = sup ? slug(sup) : 'ask'
-      if (sup) cols.set(id, { id, name: 'Заказ ' + sup })
-      put(id, o, poss, { wait: !sup || undefined })
+      if (sup) { const id = slug(sup); cols.set(id, { id, name: 'Заказ ' + sup }); put(id, o, poss); continue }
+      put(o.screen === 'outgoing' ? 'ready' : 'ask', o, poss, { wait: o.screen === 'outgoing' ? undefined : true })
     }
   }
   const order = [
