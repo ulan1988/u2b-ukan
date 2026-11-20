@@ -64,6 +64,8 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     for (const [sid, ps] of groupBy(transitPos)) {
       const input: any = { orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines: ps.map(p => mkLine(p, Number(p.price) || 0, true)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · закуп мимо склада · ${o.id}`, noStock: true, transit: true, transitAgent }
       const d = await docSvc.createPurchase(input); numbers.push(d.number); mainDoc = mainDoc || d
+      // Сквозная У ФИЛИАЛА: мимо НАШЕГО склада, но у него товар реально уходит — зеркало нужно.
+      docGroups.push({ cid: sid, pos: ps })
     }
   } else {
     // ПРОДАЖА: заказчику ОДНА расходная на все строки (реальный долг). По сквозным строкам
@@ -71,7 +73,12 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     const clientLines = withProd.map(p => mkLine(p, Number(p.price) || 0, isTransit(p)))
     const input: any = { orgId: o.orgId, contragentId, warehouseId: wh.id, lines: clientLines, date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false, discountSum: Number((o as any).discountSum) || 0, transit: clientLines.length > 0 && clientLines.every(l => l.transit), transitAgent }
     mainDoc = await docSvc.createSale(input); numbers.push(mainDoc.number)
-    if (normalPos.length) docGroups.push({ cid: contragentId, pos: normalPos })
+    // СКВОЗНАЯ ПРОДАЖА ФИЛИАЛУ ТОЖЕ ЗЕРКАЛИТСЯ (правило владельца 20.11.2026). «Мимо склада» —
+    // это про НАШ склад: товар едет от поставщика прямо покупателю. Если покупатель — наш
+    // филиал (мост orgRefId), у него товар физически появляется, значит приходная ему нужна,
+    // иначе лист «не доехал» (так потерялась 02-ПР-0053-101126: у Нипы прихода не было).
+    // Для обычного клиента ничего не меняется — цикл ниже уходит только по мостам.
+    if (withProd.length) docGroups.push({ cid: contragentId, pos: withProd })
 
     // Сквозные строки → приходная(ые) поставщику по costPrice (долг сквозного агента, не наш финанс).
     const bySupplier = new Map<string, any[]>()
@@ -90,8 +97,8 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
 
   // ── Зеркальная накладная в книге связанной орг (филиал-производитель) ──────────
   // Контрагент карточки привязан к другой орг (contragents.orgRefId) → создаём у него
-  // ПРОТИВОПОЛОЖНУЮ накладную. Только по ОБЫЧНЫМ (не сквозным) строкам — сквозной товар мимо
-  // склада, зеркалить его как движение нельзя. Логист довёз материал К производителю (продажа
+  // ПРОТИВОПОЛОЖНУЮ накладную. Сквозные строки тоже: «мимо склада» — это про НАШ склад, у
+  // филиала товар реально появляется. Логист довёз материал К производителю (продажа
   // HQ) → у него ПРИХОД; забрал изделие ОТ производителя (закуп HQ) → у него РАСХОД.
   // Зеркалим ПО ГРУППАМ (у каждого поставщика своя накладная — значит и своё зеркало).
   // ЧЕК КАССЫ МАГАЗИНА НЕ ЗЕРКАЛИТСЯ В ГОЛОВНОЙ (правило владельца). Магазин-продавец торгует
