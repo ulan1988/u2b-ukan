@@ -3,12 +3,18 @@ import { COLORS } from '@/lib/colors'
 
 export interface NavItem { key: string; label: string; icon: string }
 
-export default function Sidebar({ nav, screen, counts, user, onNav, onRefresh, onLogout, open, onClose }: {
+// ОРГАНИЗАЦИЯ ЖИВЁТ В САЙДБАРЕ (правило владельца 21.11.2026): переключатель орг стоит
+// под «U2B ERP», на месте подписи «автоматизация бизнеса» — в шапке рабочего экрана он
+// только занимал место. Нет выбора (одна орг / филиал) — показываем бейдж с её именем.
+export default function Sidebar({ nav, screen, counts, user, onNav, onRefresh, onLogout, open, onClose, orgs = [], orgId, onOrg, orgColor = '#6b7280', canSwitchOrg = true }: {
   nav: NavItem[]; screen: string; counts: Record<string, number>
   user: { name: string; role: string }
   onNav: (k: string) => void; onRefresh: () => void; onLogout: () => void
   open: boolean; onClose: () => void
+  orgs?: { id: string; name: string; kind?: string; color?: string }[]; orgId?: string
+  onOrg?: (id: string) => void; orgColor?: string; canSwitchOrg?: boolean
 }) {
+  const orgName = orgs.find(o => o.id === orgId)?.name || ''
   const roleLabel = user.role === 'super_admin' || user.role === 'admin' ? 'Супер-Админ' : user.role === 'bookkeeper' ? 'Бухгалтер' : user.role
 
   return (
@@ -21,7 +27,17 @@ export default function Sidebar({ nav, screen, counts, user, onNav, onRefresh, o
           <img src="/icons/icon-192.png" alt="U2B" style={{ width: 54, height: 54, borderRadius: 13, display: 'block' }} />
           <div style={{ flex: 1 }}>
             <div style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>U2B ERP</div>
-            <div style={{ color: COLORS.sidebar.muted, fontSize: 12 }}>автоматизация бизнеса</div>
+            {orgs.length > 0 ? (
+              <div style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#2d2a26', border: '1px solid #3d3933', borderRadius: 8, padding: '3px 7px', maxWidth: '100%' }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
+                {canSwitchOrg && orgs.length > 1 && onOrg ? (
+                  <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
+                    style={{ border: 'none', background: 'transparent', color: '#efe9e0', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', outline: 'none', maxWidth: 150 }}>
+                    {orgs.map(o => <option key={o.id} value={o.id} style={{ color: '#26231f' }}>{o.name}</option>)}
+                  </select>
+                ) : <span style={{ color: '#efe9e0', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{orgName}</span>}
+              </div>
+            ) : <div style={{ color: COLORS.sidebar.muted, fontSize: 12 }}>автоматизация бизнеса</div>}
           </div>
           <button onClick={onClose} className="sidebar-close" style={{ background: 'none', border: 'none', color: COLORS.sidebar.muted, cursor: 'pointer', fontSize: 20, padding: '4px', display: 'none' }}>✕</button>
         </div>

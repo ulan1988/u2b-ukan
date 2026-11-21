@@ -243,12 +243,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     <div className="anim-fade">
       {flash && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{flash}</div>}
 
-      {/* Счётчики */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 20 }}>Приёмка</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {counters.map(c => <div key={c.label} style={{ background: c.bg, color: c.color, borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700 }}>{c.label} {c.val}</div>)}
-        </div>
+      {/* Счётчики — тихие, в одну строку: название экрана уже стоит в общей шапке. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+        {counters.map(c => <div key={c.label} style={{ background: c.bg, color: c.color, borderRadius: 7, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>{c.label} {c.val}</div>)}
       </div>
 
       {/* Форма создания */}
@@ -283,7 +280,9 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
         {open && step === 'items' && (
           <div style={{ padding: 20 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            {/* ЧЕТЫРЕ ПОЛЯ В РЯД, ДАЛЬШЕ СРАЗУ ПОЗИЦИИ (правило владельца 21.11.2026): срок и
+                комментарий уехали под таблицу, чтобы экран открывался на товарах, а не на тексте. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 14 }}>
               <div>
                 <label style={LBL}>{kind === 'purchase' ? 'ПОЛУЧАТЕЛЬ' : 'К КОМУ (КЛИЕНТ) *'}</label>
                 {kind === 'purchase'
@@ -298,7 +297,6 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 </div>
               </div>
               <div><label style={LBL}>ТЕЛЕФОН</label><input style={INP} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 700 000 00 00" /></div>
-              <div><label style={LBL}>СРОК</label><input style={INP} type="date" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
               {/* РАБОЧАЯ ДАТА: карточка оформляется этим днём (можно прошлым) — им же она ложится
                   в списки, журнал и номер. Вперёд нельзя (правило владельца 18.11.2026). */}
               <div>
@@ -312,7 +310,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                   </div>
                 )}
               </div>
-              <div style={{ gridColumn: '1 / -1' }}><label style={LBL}>КОММЕНТАРИЙ</label><textarea style={{ ...INP, minHeight: 56, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Дополнительные пожелания..." /></div>
+
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -388,7 +386,12 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             </div>
             {showCatalog && <StoreCatalog orgId={orgId} onPick={addFromCatalog} onClose={() => setShowCatalog(false)} />}
 
-            <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec' }}>
+            {/* Срок и комментарий — ПОСЛЕ позиций, рядом с кнопками. */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
+              <div style={{ width: 150 }}><label style={LBL}>СРОК</label><input style={INP} type="date" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
+              <div style={{ flex: 1, minWidth: 260 }}><label style={LBL}>КОММЕНТАРИЙ</label><textarea style={{ ...INP, minHeight: 44, resize: 'vertical' }} value={comment} onChange={e => setComment(e.target.value)} placeholder="Дополнительные пожелания..." /></div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
               <Btn onClick={() => submit(true)} disabled={busy}>Сохранить черновик</Btn>
               <Btn variant={kind === 'purchase' || back ? 'primary' : undefined} onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{back ? '✅ ПРОВЕСТИ ЗАДНИМ ЧИСЛОМ (приход + расход)' : kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
               {kind === 'sale' && (

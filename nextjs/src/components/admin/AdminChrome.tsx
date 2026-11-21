@@ -168,7 +168,8 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
       <Sidebar nav={nav} screen={screen} counts={counts} user={user}
         onNav={k => { router.push(orgQ(k)); setSideOpen(false) }} onRefresh={load}
         onLogout={async () => { await logout(); location.href = '/login' }}
-        open={sideOpen} onClose={() => setSideOpen(false)} />
+        open={sideOpen} onClose={() => setSideOpen(false)}
+        orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} canSwitchOrg={canSwitchOrg} />
 
       {/* Весь фон рабочей области = оттенок цвета текущей орг/филиала (чтобы не путать книги) */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: orgs.length > 1 ? orgColor + '1f' : COLORS.bg, transition: 'background .25s' }}>
@@ -182,7 +183,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
             style={{ display: 'none', position: 'fixed', left: 10, bottom: 14, zIndex: 120, width: 46, height: 46, borderRadius: 14, border: 'none', background: COLORS.sidebar.bg, color: '#fff', fontSize: 20, alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(0,0,0,.28)', cursor: 'pointer', fontFamily: 'inherit' }}>☰</button>
         )}
         {/* «Расчёт» — лист на весь экран: шапку прячем, чтобы помещалось 15–18 позиций. */}
-        {!BARE.includes(screen) && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
+        {!BARE.includes(screen) && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} quiet={screen === 'reception'} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
         <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}

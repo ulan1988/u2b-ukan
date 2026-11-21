@@ -34,10 +34,14 @@ function Bell() {
   )
 }
 
-export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug, canSwitchOrg = true, extra }: {
+// ТИХАЯ ШАПКА (правило владельца 21.11.2026): на рабочих экранах, где считают и вводят
+// (Приёмка), в шапке остаются только иконка, название и дата — поиск, колокольчик, чат,
+// плашки и переключатель орг убраны: орг теперь в сайдбаре, остальное там мешало.
+export default function Topbar({ title, orders, search, onSearch, onBurger, orgs = [], orgId, onOrg, orgColor = '#6b7280', onOrgColor, hideOrderInfo, branchSlug, canSwitchOrg = true, extra, quiet }: {
   title: string; orders: any[]; search: string; onSearch: (v: string) => void; onBurger: () => void
   orgs?: { id: string; name: string; kind?: string; color?: string }[]; orgId?: string; onOrg?: (id: string) => void
   orgColor?: string; onOrgColor?: (id: string, color: string) => void; hideOrderInfo?: boolean; branchSlug?: string; canSwitchOrg?: boolean; extra?: React.ReactNode
+  quiet?: boolean
 }) {
   const active = orders.filter(o => !o.isDraft && !o.isCancelled && o.screen !== 'archive').length
   const working = orders.filter(o => o.screen === 'outgoing' && !o.isCancelled).length
@@ -57,10 +61,11 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
       <button onClick={onBurger} className="hamburger" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, padding: '2px 6px', color: '#26231f', display: 'none', flexShrink: 0 }}>☰</button>
       {/* Заголовок и дата одной строкой — шапка ниже, рабочей области больше. */}
       <div className="tb-title" style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+        {quiet && <span style={{ width: 26, height: 26, borderRadius: 8, background: '#f3eeff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, alignSelf: 'center' }}>📦</span>}
         <div style={{ fontWeight: 700, fontSize: 16, whiteSpace: 'nowrap' }}>{title}</div>
         <div className="tb-date" style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap' }}>{new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
-      {!hideOrderInfo && <div className="tb-pills">
+      {!hideOrderInfo && !quiet && <div className="tb-pills">
         {pills.map(({ label, bg, color }) => (
           <span key={label} className="tb-pill" style={{ background: bg, color }}>{label}</span>
         ))}
@@ -70,7 +75,7 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
           <a href={`/branch/${branchSlug}`} target="_blank" rel="noopener" title={isSellerOrg ? 'Открыть кассу этого магазина' : 'Открыть кабинет мастера этого филиала (заказы, приём, касса)'}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: COLORS.primary, color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>{isSellerOrg ? <>🏪<span className="tb-lbl"> Касса магазина</span></> : <>🏭<span className="tb-lbl"> Кабинет мастера</span></>}</a>
         )}
-        {orgs.length > 0 && (canSwitchOrg && orgs.length > 1 && onOrg ? (
+        {!quiet && orgs.length > 0 && (canSwitchOrg && orgs.length > 1 && onOrg ? (
           <div className="tb-org" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 2px 8px', borderRadius: 10, background: orgColor + '18', boxShadow: `inset 0 0 0 2px ${orgColor}` }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: orgColor, flexShrink: 0 }} />
             <select value={orgId} onChange={e => onOrg(e.target.value)} title="Организация / филиал"
@@ -85,9 +90,9 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
             🏢 {orgs.find(o => o.id === orgId)?.name || ''}
           </div>
         ))}
-        {!hideOrderInfo && <input className="tb-search" style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
-        <Bell />
-        {extra}
+        {!hideOrderInfo && !quiet && <input className="tb-search" style={{ ...INP, width: 200 }} value={search} onChange={e => onSearch(e.target.value)} placeholder="🔍 Поиск..." />}
+        {!quiet && <Bell />}
+        {!quiet && extra}
       </div>
     </div>
   )
