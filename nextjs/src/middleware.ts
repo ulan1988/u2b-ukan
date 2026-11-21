@@ -4,7 +4,7 @@ import { verifyToken, COOKIE } from '@/lib/auth'
 
 // Пускаем без сессии: логин и его API + статика PWA (манифест/воркер/иконки).
 // Всё остальное — только авторизованным.
-const PUBLIC = ['/login', '/register', '/api/auth', '/api/health', '/track', '/api/track', '/listy', '/api/listy', '/manifest.json', '/order.webmanifest', '/sw.js', '/icons']
+const PUBLIC = ['/login', '/register', '/api/auth', '/api/health', '/track', '/api/track', '/listy', '/api/listy', '/install', '/manifest.json', '/order.webmanifest', '/sw.js', '/icons']
 
 // ── Доступ по ролям (единое место, чтобы не править 30 роутов по одному) ────────────────────────────
 // Раньше любой вошедший (в т.ч. самозарегистрированный «клиент») мог читать и править деньги, накладные,

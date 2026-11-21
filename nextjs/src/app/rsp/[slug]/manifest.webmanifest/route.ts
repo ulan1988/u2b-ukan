@@ -13,7 +13,9 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
     short_name: 'U-Kan',
     description: 'Доска логиста: заказы по поставщикам, остаток склада, смена',
     start_url: base,
-    scope: base,
+    // scope ВСЕГО сайта: страница, с которой ставят (например /install), обязана быть внутри
+    // scope — иначе Chrome вообще не читает манифест и кнопки установки нет.
+    scope: '/',
     display: 'standalone',
     background_color: '#0079bf',
     theme_color: '#0079bf',
