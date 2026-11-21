@@ -37,3 +37,7 @@ export const saveCostPerCm = (b: { orgId: string; sheetPrice?: number; m2Price?:
 
 // «Документ движений»: четыре полосы одной страницы (только чтение).
 export const movementBoard = (orgId: string, date?: string) => getObj(`/api/movements?orgId=${orgId}${date ? `&date=${date}` : ''}`, null as any)
+
+// Объединение приходных одного поставщика (поставщик привёз одной накладной).
+export const mergeCandidates = (id: string) => getArray(`/api/documents/${id}/merge`)
+export const mergeDocs = (id: string, ids: string[]) => post(`/api/documents/${id}/merge`, { ids })

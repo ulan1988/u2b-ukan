@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtDate } from '@/lib/adminFmt'
-import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument } from '@/lib/api/docs'
+import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument, mergeCandidates, mergeDocs } from '@/lib/api/docs'
 import { listProducts, autoPrices } from '@/lib/api/refs'
 import { finance } from '@/lib/api/finance'
 import { matchWords } from '@/lib/search'
@@ -51,6 +51,11 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState('')
   const [returning, setReturning] = useState(false)
+  // ОБЪЕДИНЕНИЕ ПРИХОДНЫХ: поставщик привёз одной накладной, а приходов у нас несколько.
+  const [merging, setMerging] = useState(false)
+  const [cands, setCands] = useState<any[]>([])
+  const [mPick, setMPick] = useState<Record<string, boolean>>({})
+  const [mQ, setMQ] = useState('')
   const [cags, setCags] = useState<any[]>([])   // контрагенты орг накладной — чтобы править ошибочного
   // ── режим создания ───────────────────────────────────────────────────────────
   const [products, setProducts] = useState<any[]>([])
@@ -272,6 +277,34 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   }
   // Ошибочный документ — стереть совсем: движения склада, FIFO-связи, оплаты и зеркала
   // филиалов уходят вместе с ним, карточка-заявка отвязывается и снова ждёт проведения.
+  // ── ОБЪЕДИНИТЬ ПРИХОДНЫЕ (правило 21.11.2026) ───────────────────────────────
+  // Выбираем накладные того же поставщика → их строки, склад, связки и оплаты переезжают
+  // в ЭТУ, номер показывает оба. Расходные не трогаем.
+  async function openMerge() {
+    setMerging(true); setMPick({}); setMQ('')
+    const r: any = await mergeCandidates(id as string)
+    setCands(Array.isArray(r) ? r : [])
+  }
+  async function doMerge() {
+    const picked = cands.filter((c: any) => mPick[c.id])
+    if (!picked.length) return
+    const diffDay = picked.filter((c: any) => String(c.date).slice(0, 10) !== String(o.date).slice(0, 10))
+    const warn = [
+      'Объединить в ' + (o.number || '') + ':', '',
+      ...picked.map((c: any) => '• ' + c.number + ' — ' + m2(Number(c.total) || 0) + ' ₸'), '',
+      'Строки, склад, себестоимость и оплаты переедут сюда, сумма сложится.',
+      'Расходные НЕ трогаем — долги заказчиков останутся как есть.',
+      diffDay.length ? '⚠ разные дни: движения встанут днём ' + fmtDate(o.date) : '',
+    ].filter(Boolean).join(String.fromCharCode(10))
+    if (!confirm(warn)) return
+    setBusy(true)
+    const r: any = await mergeDocs(id as string, picked.map((c: any) => c.id))
+    setBusy(false)
+    if (r?.ok === false) { setFlash('⚠ ' + (r.error || 'Не удалось')); return }
+    setMerging(false)
+    await reload(); onSaved?.()
+    setFlash('✓ Объединено: ' + (r.numbers || []).join(', '))
+  }
   async function purgeDoc() {
     const n = o?.number || ''
     const kids = (data?.children || []).length
@@ -665,6 +698,10 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
             <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', position: 'sticky', bottom: 0, background: '#fff', zIndex: 6 }}>
               {flash && <span style={{ marginRight: 'auto', fontSize: 13, color: flash.startsWith('⚠') ? '#b03020' : '#2e8a5e' }}>{flash}</span>}
               {!creating && o.status !== 'cancelled' && (o.type === 'purchase' || o.type === 'sale') && <button onClick={() => setReturning(true)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b4574c', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>↩ Вернуть</button>}
+              {!creating && o.type === 'purchase' && o.status !== 'cancelled' && (
+                <button onClick={openMerge} title="Поставщик привёз одной накладной: слить сюда другие приходные этого поставщика"
+                  style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #cfc3ea', background: '#fff', color: '#5b3fa8', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>🔗 Объединить</button>
+              )}
               {!creating && <button onClick={purgeDoc} disabled={busy} title="Ошибочный документ: снять движения склада и стереть его совсем"
                 style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6c4bf', background: '#fff', color: '#b3261e', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>🗑 Отменить и удалить</button>}
               <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Закрыть</button>
@@ -681,6 +718,38 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
           </>
         )}
       </div>
+      {/* ОБЪЕДИНЕНИЕ ПРИХОДНЫХ: список накладных того же поставщика (поиск по словам). */}
+      {merging && (
+        <div onClick={() => setMerging(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(23,43,77,.45)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: 'min(640px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1efec' }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>🔗 Объединить накладные в {o.number}</div>
+              <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 4, lineHeight: 1.5 }}>
+                Приходные поставщика «{data?.contragent?.name || '—'}». Строки, склад, себестоимость и оплаты переедут сюда; расходные не трогаем.
+              </div>
+              <input style={{ ...inp, marginTop: 10 }} placeholder="🔎 поиск по номеру или дате…" value={mQ} onChange={e => setMQ(e.target.value)} />
+            </div>
+            <div style={{ overflowY: 'auto', padding: '8px 12px', flex: 1 }}>
+              {cands.filter((c: any) => matchWords(mQ, c.number, fmtDate(c.date))).map((c: any) => (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', borderBottom: '1px solid #f6f4f1', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!mPick[c.id]} onChange={e => setMPick(m => ({ ...m, [c.id]: e.target.checked }))} />
+                  <span style={{ fontWeight: 700, color: '#5b3fa8', fontSize: 13.5 }}>{c.number}</span>
+                  <span style={{ fontSize: 13, color: COLORS.textMuted }}>{fmtDate(c.date)}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 13.5 }}>{m2(Number(c.total) || 0)} ₸</span>
+                </label>
+              ))}
+              {!cands.length && <div style={{ padding: 18, color: COLORS.textMuted, fontSize: 13 }}>Других приходных этого поставщика нет.</div>}
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #f1efec', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setMerging(false)} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
+              <button onClick={doMerge} disabled={busy || !Object.values(mPick).some(Boolean)}
+                style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#5b3fa8', color: '#fff', cursor: 'pointer', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', opacity: busy || !Object.values(mPick).some(Boolean) ? 0.5 : 1 }}>
+                {busy ? '…' : 'Объединить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {returning && id && <ReturnModal docId={id} onClose={() => setReturning(false)} onDone={() => { setReturning(false); onSaved?.() }} />}
     </div>
   )

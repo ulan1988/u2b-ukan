@@ -403,3 +403,41 @@ export async function purgeDocument(docId: string): Promise<string[]> {
   if (row?.number) gone.push(row.number)
   return gone
 }
+
+// ── ОБЪЕДИНЕНИЕ ПРИХОДНЫХ (правило 21.11.2026) ────────────────────────────────
+// Поставщик привёз всё ОДНОЙ накладной, а у нас приходов несколько (их завели по разным
+// карточкам). Кандидаты — проведённые приходные ТОГО ЖЕ поставщика в этой орг.
+export const mergeCandidates = (orgId: string, docId: string, contragentId: string) =>
+  db.select({ id: documents.id, number: documents.number, date: documents.date, total: documents.total, inNumber: documents.inNumber, reviewed: documents.reviewed })
+    .from(documents)
+    .where(and(eq(documents.orgId, orgId), eq(documents.type, 'purchase'), eq(documents.contragentId, contragentId),
+      ne(documents.id, docId), ne(documents.status, 'cancelled')))
+    .orderBy(desc(documents.date)).limit(60)
+
+// Перелить одну приходную в другую. Переезжают СТРОКИ (в свой блок = номер исходной),
+// движения склада (днём приёмника), FIFO-связки, оплаты, привязки листа «Деньги»,
+// дети-накладные (зеркала и отгрузка получателю) и карточка-заявка. Источник остаётся
+// в базе отменённым с пометкой — иначе теряется след и повисает его карточка-основание.
+export async function mergeDocInto(targetId: string, srcId: string, targetNumber: string, targetDate: string, block: string, sortShift: number) {
+  await sqlClient`update document_lines set document_id = ${targetId},
+      block = case when coalesce(block, '') = '' then ${block} else block end,
+      sort_order = sort_order + ${sortShift}
+    where document_id = ${srcId}`
+  await sqlClient`update stock_movements set document_id = ${targetId}, date = ${targetDate} where document_id = ${srcId}`
+  await sqlClient`update doc_links set purchase_doc_id = ${targetId} where purchase_doc_id = ${srcId}`
+  await sqlClient`update doc_links set sale_doc_id = ${targetId} where sale_doc_id = ${srcId}`
+  await sqlClient`update payments set document_id = ${targetId} where document_id = ${srcId}`
+  await sqlClient`update fin_row_alloc set doc_id = ${targetId} where doc_id = ${srcId}`
+  await sqlClient`update documents set parent_doc_id = ${targetId} where parent_doc_id = ${srcId}`
+  await sqlClient`update documents set origin_doc_id = ${targetId} where origin_doc_id = ${srcId}`
+  await sqlClient`update orders set linked_doc_id = ${targetId} where linked_doc_id = ${srcId}`
+  await sqlClient`update documents set status = 'cancelled', total = '0',
+      comment = trim(both ' ' from coalesce(comment, '') || ' · ОБЪЕДИНЕНА В ' || ${targetNumber})
+    where id = ${srcId}`
+}
+
+// Шапка накладной-приёмника после объединения: номер (оба рядом), сумма, вх. номера, коммент.
+export async function applyMergeHead(targetId: string, number: string, total: number, inNumber: string | null, comment: string | null) {
+  await sqlClient`update documents set number = ${number}, total = ${String(total)},
+      in_number = ${inNumber}, comment = ${comment} where id = ${targetId}`
+}

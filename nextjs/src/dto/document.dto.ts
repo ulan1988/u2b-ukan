@@ -44,3 +44,9 @@ export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>
 // Форма та же, что у прихода (contragentId = заказчик, цена = продажная).
 export const createSaleSchema = createPurchaseSchema
 export type CreateSaleInput = z.infer<typeof createSaleSchema>
+
+// Объединение приходных: в какую сливаем — в адресе роута, что сливаем — здесь.
+export const mergeDocsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, 'Выберите накладные'),
+})
+export type MergeDocsInput = z.infer<typeof mergeDocsSchema>

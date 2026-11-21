@@ -849,3 +849,55 @@ export async function purgeDocument(docId: string, actor?: any) {
   const numbers = await docRepo.purgeDocument(docId)
   return { ok: true as const, numbers, count: numbers.length }
 }
+
+// ── ОБЪЕДИНИТЬ ПРИХОДНЫЕ (правило 21.11.2026) ─────────────────────────────────
+// Поставщик отгрузил всё одной накладной, а у нас приходы заведены по разным карточкам.
+// Сливаем их в одну: строки, движения склада, FIFO-связки, оплаты и дети переезжают в
+// накладную-приёмник, её номер показывает оба («04-ПР-0084-111126 + 03-ПР-0083-111126»),
+// сумма складывается. РАСХОДНЫЕ НЕ ТРОГАЕМ — долг заказчиков и их накладные как были.
+// ⚠ По [[Правилу Домино]]: если дни разные, движения источника встают ДНЁМ ПРИЁМНИКА
+// (решение владельца 21.11.2026) — остаток на дату между этими днями изменится.
+export async function mergeInvoices(targetId: string, srcIds: string[], actor?: { name?: string } | null) {
+  const [t] = await docRepo.getDoc(targetId)
+  if (!t) return { ok: false as const, error: 'Накладная не найдена' }
+  if (t.type !== 'purchase') return { ok: false as const, error: 'Объединять можно только приходные' }
+  if (t.status === 'cancelled') return { ok: false as const, error: 'Накладная отменена' }
+  if (!t.contragentId) return { ok: false as const, error: 'У накладной не указан поставщик' }
+
+  const numbers: string[] = []
+  const ins: string[] = [t.inNumber || ''].filter(Boolean)
+  let total = Number(t.total || 0)
+  let moved = 0
+
+  for (let i = 0; i < srcIds.length; i++) {
+    const sid = srcIds[i]
+    if (sid === targetId) continue
+    const [s] = await docRepo.getDoc(sid)
+    if (!s) return { ok: false as const, error: 'Накладная-источник не найдена' }
+    if (s.orgId !== t.orgId) return { ok: false as const, error: `${s.number}: другая организация` }
+    if (s.type !== 'purchase') return { ok: false as const, error: `${s.number}: это не приходная` }
+    if (s.contragentId !== t.contragentId) return { ok: false as const, error: `${s.number}: другой поставщик` }
+    if (s.status === 'cancelled') return { ok: false as const, error: `${s.number}: отменена` }
+
+    await docRepo.mergeDocInto(targetId, sid, t.number, t.date, s.number, 1000 * (i + 1))
+    total += Number(s.total || 0)
+    numbers.push(s.number)
+    if (s.inNumber) ins.push(s.inNumber)
+    moved++
+    await docRepo.insertDocHistory({ documentId: sid, action: 'merge', detail: `Объединена в ${t.number}`, userName: actor?.name || 'Система' } as any)
+  }
+  if (!moved) return { ok: false as const, error: 'Нечего объединять' }
+
+  const number = [t.number, ...numbers].join(' + ')
+  const comment = [t.comment || '', `объединено: ${numbers.join(', ')}`].filter(Boolean).join(' · ')
+  await docRepo.applyMergeHead(targetId, number, Math.round(total * 100) / 100, ins.length ? ins.join(', ') : null, comment)
+  await docRepo.insertDocHistory({ documentId: targetId, action: 'merge', detail: `Объединены накладные: ${numbers.join(', ')} · сумма ${Math.round(total)} ₸`, userName: actor?.name || 'Система' } as any)
+  return { ok: true as const, number, numbers, total: Math.round(total * 100) / 100, count: moved }
+}
+
+// Кандидаты на объединение: приходные того же поставщика в этой орг (кроме самой).
+export async function mergeCandidates(docId: string) {
+  const [d] = await docRepo.getDoc(docId)
+  if (!d || d.type !== 'purchase' || !d.contragentId) return []
+  return docRepo.mergeCandidates(d.orgId, docId, d.contragentId)
+}
