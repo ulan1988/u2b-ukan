@@ -129,10 +129,17 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     }).catch(() => {})
   }, [creating, fromId, withLines, linesOnly, products.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Справочники для создания: товары (поиск/каталог) и склады орг.
+  // ПОДСКАЗКА ЦЕНЫ В ОТКРЫТОЙ НАКЛАДНОЙ (просьба владельца 21.11.2026): номенклатуру грузим
+  // всегда, не только при создании — из неё берём закуп (приходная) или цену по типу цены
+  // контрагента (расходная) и показываем под ценой строки.
+  useEffect(() => {
+    const org = data?.doc?.orgId || newOrgId; if (!org) return
+    listProducts(org).then((ps: any) => setProducts(Array.isArray(ps) ? ps : [])).catch(() => {})
+  }, [data?.doc?.orgId, newOrgId])
+
+  // Справочники для создания: склады орг.
   useEffect(() => {
     if (!creating || !newOrgId) return
-    listProducts(newOrgId).then((ps: any) => setProducts(Array.isArray(ps) ? ps : [])).catch(() => {})
     fetchRefs(newOrgId).then((r: any) => {
       const w = ((r.warehouses || []) as any[]).filter(x => x.orgId === newOrgId)
       setWhs(w); setWhId((w.find((x: any) => x.isCentral) || w[0])?.id || '')
@@ -216,6 +223,13 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   // Цена продажи — по ТИПУ ЦЕНЫ ПОКУПАТЕЛЯ (спец/опт/розница) из прайса своей орг: у моста
   // «Адал Строй 2» стоит спец, значит при продаже головному подставляется спец-цена.
   const buyerPT = (cags.find((c: any) => c.id === f.contragentId)?.priceType) || 'retail'
+  // Цена-подсказка для строки открытой накладной: закуп (приход) или цена по типу цены
+  // контрагента (расход). Показываем, только если она отличается от вписанной.
+  const hintPrice = (l: any) => {
+    const pr = products.find((x: any) => x.id === l.productId); if (!pr) return 0
+    const v = isSale ? (priceByType(pr, buyerPT) || 0) : (Number(pr.priceIn) || 0)
+    return v > 0 && Math.abs(v - (Number(l.price) || 0)) > 0.004 ? v : 0
+  }
   const priceOf = (pr: any) => (newType === 'purchase' ? Number(pr.priceIn) || 0 : (priceByType(pr, buyerPT) || Number(pr.priceRetail) || Number(pr.priceIn) || 0))
   // label — имя строки, если оно отличается от имени товара (комплектующее с цветом → базовый товар).
   // Сменили покупателя при создании — цены строк переставляются под его тип цены.
@@ -658,7 +672,13 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                               <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: izd ? '#7a3aaa' : COLORS.textMuted, whiteSpace: 'nowrap' }}>{cmOf(l) ? `${cmOf(l)} см` : '—'}</td>
                               <td style={{ padding: '6px 4px', width: 96 }}>{izd && !creating
                                 ? <div style={{ textAlign: 'right', fontWeight: 600, color: '#7a3aaa', padding: '4px 6px' }} title="₸/шт = см × цена за см (задаётся сверху)">{m2((Number(cmOf(l)) || 0) * (Number(l.price) || 0))}</div>
-                                : <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.price || ''} onChange={e => setPriceL(l.id, Number(e.target.value))} placeholder="0" title="цена за единицу (до 6 знаков) — сумма пересчитается" />}</td>
+                                : <>
+                                    <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.price || ''} onChange={e => setPriceL(l.id, Number(e.target.value))} placeholder="0" title="цена за единицу (до 6 знаков) — сумма пересчитается" />
+                                    {/* Подсказка из номенклатуры: приходная — закуп, расходная — цена по типу цены контрагента. Нажал — подставилась. */}
+                                    {(() => { const h = hintPrice(l); return h > 0 ? (
+                                      <div onClick={() => setPriceL(l.id, h)} title={isSale ? 'цена из номенклатуры по типу цены контрагента — нажми, чтобы подставить' : 'закупочная цена из номенклатуры — нажми, чтобы подставить'}
+                                        style={{ textAlign: 'right', fontSize: 10.5, color: '#5b3fa8', cursor: 'pointer', marginTop: 2, whiteSpace: 'nowrap' }}>↙ {m2(h)}</div>) : null })()}
+                                  </>}</td>
                               {/* СУММУ при создании вписываем сами (как в накладной завода) — цена пересчитается. */}
                               <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', width: 130 }}>
                                 <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l) || ''} placeholder="0"

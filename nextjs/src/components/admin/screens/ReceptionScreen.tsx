@@ -110,6 +110,18 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   const assignAllLogist = (uid: string) => uid && setRows(rs => rs.map(r => ({ ...r, respUserId: uid })))
   const assignAllSupplier = (sid: string) => sid && setRows(rs => rs.map(r => ({ ...r, supplierId: sid })))
 
+  // Заказчика выбрали ПОСЛЕ набора позиций — пустые цены заполняем по его типу цены.
+  // Вписанные руками не трогаем (иначе затрём правку).
+  useEffect(() => {
+    if (!contactId || !products.length) return
+    setRows(rs => rs.map(r => {
+      if (!r.productId || String(r.price || '').trim()) return r
+      const p = products.find((x: any) => x.id === r.productId); if (!p) return r
+      const v = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0)
+      return v > 0 ? { ...r, price: String(v) } : r
+    }))
+  }, [contactId, products.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function pullPrices() {
     // ЗАКУП: обе колонки сразу — закуп из карточки товара (price_in), продажа из прайса по
     // типу цены получателя строки (иначе заказчика карточки). Продажа считается локально,
@@ -139,9 +151,31 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     }))
     toast('Цены подтянуты')
   }
+  // ЦЕНЫ ИЗ КАТАЛОГА ПОДСТАВЛЯЮТСЯ САМИ (просьба владельца 21.11.2026): раньше позиции,
+  // добавленные через «📖 Каталог», приходили с пустой ценой — в отличие от выбора строкой.
+  // Продажа — цена по типу цены заказчика (розница/опт/спец), закуп — закуп из номенклатуры
+  // плюс колонка «продажа» по типу цены получателя.
+  const normNm = (x: string) => String(x || '').trim().toLowerCase().replace(/ё/g, 'е')
+  const prodOf = (it: any, nm: string) => (it?.productId ? products.find((p: any) => p.id === it.productId) : null)
+    || products.find((p: any) => normNm(p.name) === normNm(nm))
+    || products.filter((p: any) => normNm(p.name).length >= 3 && normNm(nm).startsWith(normNm(p.name) + ' '))
+        .sort((a: any, b: any) => b.name.length - a.name.length)[0]
   function addFromCatalog(items: PickedPos[]) {
     const log = defaultLogistId()
-    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => { const cm = it.widthCm != null ? String(it.widthCm) : ''; const raw = it.name1c || it.oral; const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm }) : raw; return { ...emptyPos(), productId: (it as any).productId || undefined, name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit, respUserId: log } })])
+    setRows(rs => [...rs.filter(r => r.name1c || r.productId), ...items.map(it => {
+      const cm = it.widthCm != null ? String(it.widthCm) : ''
+      const raw = it.name1c || it.oral
+      const nm = isIzdelie(raw) ? itemName({ name: raw, color: extractRal(raw), cm }) : raw
+      const prod = prodOf(it as any, nm)
+      const buy = prod ? Number(prod.priceIn) || 0 : 0
+      const sale = prod ? priceForClient(prod, clientPT()) : 0
+      return {
+        ...emptyPos(), productId: (it as any).productId || prod?.id || undefined,
+        name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit, respUserId: log,
+        price: kind === 'sale' ? (sale > 0 ? String(sale) : '') : (buy > 0 ? String(buy) : ''),
+        ...(kind === 'purchase' && sale > 0 ? { salePrice: String(sale) } : {}),
+      }
+    })])
     setShowCatalog(false)
   }
   // Инлайн-создание проекта — сразу на выбранного клиента (Автор), чтобы попал в его фильтр.
