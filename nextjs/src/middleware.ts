@@ -31,7 +31,10 @@ export async function middleware(req: NextRequest) {
   // накладные) может застыть на старом ответе, хотя в базе данные уже изменились.
   const noStore = (res: NextResponse) => { if (isApi) res.headers.set('Cache-Control', 'no-store, max-age=0, must-revalidate'); return res }
 
-  if (PUBLIC.some(p => pathname.startsWith(p))) return noStore(NextResponse.next())
+  // МАНИФЕСТ PWA ДОЛЖЕН БЫТЬ ОТКРЫТ (правило 21.11.2026). Браузер тянет manifest БЕЗ cookies,
+  // поэтому защищённый роут отдавал ему редирект на /login — Chrome считал манифест битым и
+  // кнопки «Установить приложение» не было ни на телефоне, ни на планшете. Секретов в нём нет.
+  if (PUBLIC.some(p => pathname.startsWith(p)) || pathname.endsWith('/manifest.webmanifest')) return noStore(NextResponse.next())
 
   const token = req.cookies.get(COOKIE)?.value
   const session = token ? await verifyToken(token) : null
