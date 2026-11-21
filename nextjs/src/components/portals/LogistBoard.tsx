@@ -166,7 +166,10 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
 
   // Пустые колонки прячем (правило владельца): показываем только те, где есть карточки,
   // а при перетаскивании ненадолго показываем все — иначе некуда положить карточку.
-  const visible = cols.filter(c => drag || shown.some(x => x.col === c.id))
+  // ИСКЛЮЧЕНИЕ — колонки-этапы «Готов к отправке» и «Продано / Доставлено» (`stage`):
+  // они стоят ВСЕГДА, даже пустые. Иначе логисту некуда вести карточку и не видно, что
+  // закрыто за день (правило владельца 21.11.2026).
+  const visible = cols.filter(c => c.stage || drag || shown.some(x => x.col === c.id))
 
   if (loading) return <div style={{ padding: 30, color: '#fff' }}>Загрузка доски…</div>
 

@@ -1157,6 +1157,12 @@ export async function logistBoard(orgId: string, userId: string) {
     u: (p.unit && p.unit !== 'шт') ? p.unit : undefined, done: p.status === 'Доставлено' || undefined,
     wait: p.waitReason || undefined })
 
+  // Локальный день (не UTC-срез) — им отбираем «доставлено сегодня» в последнюю колонку.
+  const nowDay = today()
+  const dayOf = (d: any) => { if (!d) return ''
+    const x = new Date(d), p = (v: number) => String(v).padStart(2, '0')
+    return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate()) }
+
   const cols = new Map<string, any>()
   const out: any[] = []
   const put = (col: string, o: any, poss: any[], extra: any = {}) => out.push({
@@ -1195,6 +1201,13 @@ export async function logistBoard(orgId: string, userId: string) {
       put('nipa', o, o.positions, { badge: o.status, info: true })
       continue
     }
+    // КОЛОНКА «Продано / Доставлено» ЖИВАЯ, ЗА СЕГОДНЯ (правило владельца 21.11.2026).
+    // Раньше доставленные позиции из доски выпадали совсем (их режет `open`), и колонка
+    // всегда стояла пустой — логист не видел, что уже закрыл за день. Берём позиции,
+    // отмеченные «Доставлено» сегодня (по времени отметки или по дню доставки карточки).
+    const doneToday = o.positions.filter((p: any) => p.status === 'Доставлено'
+      && (dayOf(p.updatedAt) === nowDay || dayOf(o.delivered) === nowDay))
+    if (doneToday.length) put('deliv', o, doneToday, { badge: 'доставлено' })
     if (!open.length) continue
     // ПОСТАВЩИК ГЛАВНЕЕ ЭКРАНА: пока не куплено — стоит у поставщика; куплено — «Готов к отправке».
     const by = new Map<string, any[]>()
