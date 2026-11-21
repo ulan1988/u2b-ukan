@@ -186,7 +186,12 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     await reload(); onSaved?.(); setFlash('✓ Позиция убрана'); setTimeout(() => setFlash(''), 1500)
   }
   // Применить одну цену за см ко всем изделиям (у изделия price = цена за 1 см).
-  const applyPriceCm = (v: string) => { setPriceCm(v); setLines(ls => ls.map(l => isIzdelie(l.name) ? { ...l, price: v } : l)) }
+  // ЦЕНА ЗА СМ ПЕРЕСЧИТЫВАЕТ И СУММУ (правило 21.11.2026): раньше менялась только цена,
+  // а сумма строки оставалась старой (она хранится отдельно — её вписывают руками
+  // «как в накладной поставщика»), и итог накладной не двигался.
+  const applyPriceCm = (v: string) => { setPriceCm(v); setLines(ls => ls.map(l => isIzdelie(l.name)
+    ? { ...l, price: v, amount: r2(lineAmount({ name: l.name, qty: Number(l.qty) || 0, price: Number(v) || 0, widthCm: l.widthCm })) }
+    : l)) }
 
   // ── Блоки внутри накладной (раскладка по накладным поставщика) ──────────────────
   const addBlock = () => { const n = `Накладная ${blocks.length + 1}`; setBlocks(b => [...b, n]) }
