@@ -39,5 +39,7 @@ export const saveCostPerCm = (b: { orgId: string; sheetPrice?: number; m2Price?:
 export const movementBoard = (orgId: string, date?: string) => getObj(`/api/movements?orgId=${orgId}${date ? `&date=${date}` : ''}`, null as any)
 
 // Объединение приходных одного поставщика (поставщик привёз одной накладной).
-export const mergeCandidates = (id: string) => getArray(`/api/documents/${id}/merge`)
+export const mergeInfo = (id: string) => getObj(`/api/documents/${id}/merge`, { candidates: [], merged: [] } as any)
+// Разъединить: вернуть влитую накладную обратно отдельной.
+export const unmergeDoc = (id: string, src: string) => send(`/api/documents/${id}/merge?src=${encodeURIComponent(src)}`, 'DELETE')
 export const mergeDocs = (id: string, ids: string[]) => post(`/api/documents/${id}/merge`, { ids })

@@ -901,3 +901,39 @@ export async function mergeCandidates(docId: string) {
   if (!d || d.type !== 'purchase' || !d.contragentId) return []
   return docRepo.mergeCandidates(d.orgId, docId, d.contragentId)
 }
+
+// Накладные, влитые в эту (для кнопки «✂ Разъединить»).
+export const mergedList = (docId: string) => docRepo.mergedSources(docId)
+
+// ── РАЗЪЕДИНИТЬ (отыграть объединение) ────────────────────────────────────────
+// Ошиблись накладной — возвращаем всё на место по записи журнала ('mergeLog'):
+// строки в свой блок и порядок, движения склада СВОИМ днём, FIFO-связки, оплаты,
+// дети и карточка. Приёмнику снимаем номер-хвост, сумму и упоминание в комментарии.
+export async function unmergeInvoice(targetId: string, srcId: string, actor?: { name?: string } | null) {
+  const [t] = await docRepo.getDoc(targetId)
+  const [s] = await docRepo.getDoc(srcId)
+  if (!t || !s) return { ok: false as const, error: 'Накладная не найдена' }
+  if (String((s as any).mergedInto || '') !== String(targetId)) return { ok: false as const, error: `${s.number} не объединена с этой накладной` }
+  const log = await docRepo.mergeLogOf(srcId)
+  if (!log) return { ok: false as const, error: 'Нет записи объединения — разъединить нечем' }
+
+  await docRepo.unmergeDocFromLog(targetId, srcId, log)
+
+  const srcNum = log.number || s.number
+  const number = String(t.number || '').split(' + ').filter(x => x.trim() && x.trim() !== srcNum).join(' + ') || srcNum
+  const total = Math.round((Number(t.total || 0) - Number(log.total || 0)) * 100) / 100
+  const ins = String((t as any).inNumber || '').split(', ').map(x => x.trim()).filter(x => x && x !== (log.inNumber || '\u0000'))
+  // Комментарий приёмника: из пометки «объединено: A, B» убираем только эту накладную.
+  const parts = String(t.comment || '').split(' · ').map(x => x.trim()).filter(Boolean)
+  const kept = parts.map(x => {
+    if (!x.startsWith('объединено:')) return x
+    const list = x.slice('объединено:'.length).split(',').map(y => y.trim()).filter(y => y && y !== srcNum)
+    return list.length ? 'объединено: ' + list.join(', ') : ''
+  }).filter(Boolean)
+  const comment = kept.join(' · ') || null
+  await docRepo.applyMergeHead(targetId, number, total, ins.length ? ins.join(', ') : null, comment)
+
+  await docRepo.insertDocHistory({ documentId: targetId, action: 'unmerge', detail: `Разъединено: ${srcNum} вернулась отдельной накладной`, userName: actor?.name || 'Система' } as any)
+  await docRepo.insertDocHistory({ documentId: srcId, action: 'unmerge', detail: `Возвращена из ${t.number}`, userName: actor?.name || 'Система' } as any)
+  return { ok: true as const, number: srcNum, total: Number(log.total || 0) }
+}

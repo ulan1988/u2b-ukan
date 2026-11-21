@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { fmtDate } from '@/lib/adminFmt'
-import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument, mergeCandidates, mergeDocs } from '@/lib/api/docs'
+import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, createPurchase, createSale, purgeDocument, mergeInfo, mergeDocs, unmergeDoc } from '@/lib/api/docs'
 import { listProducts, autoPrices } from '@/lib/api/refs'
 import { finance } from '@/lib/api/finance'
 import { matchWords } from '@/lib/search'
@@ -56,6 +56,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   const [cands, setCands] = useState<any[]>([])
   const [mPick, setMPick] = useState<Record<string, boolean>>({})
   const [mQ, setMQ] = useState('')
+  const [mDone, setMDone] = useState<any[]>([])   // уже влитые сюда — их можно разъединить
   const [cags, setCags] = useState<any[]>([])   // контрагенты орг накладной — чтобы править ошибочного
   // ── режим создания ───────────────────────────────────────────────────────────
   const [products, setProducts] = useState<any[]>([])
@@ -282,8 +283,24 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
   // в ЭТУ, номер показывает оба. Расходные не трогаем.
   async function openMerge() {
     setMerging(true); setMPick({}); setMQ('')
-    const r: any = await mergeCandidates(id as string)
-    setCands(Array.isArray(r) ? r : [])
+    const r: any = await mergeInfo(id as string)
+    setCands(Array.isArray(r?.candidates) ? r.candidates : [])
+    setMDone(Array.isArray(r?.merged) ? r.merged : [])
+  }
+  // ✂ РАЗЪЕДИНИТЬ: вернуть влитую накладную обратно отдельной (ошиблись при объединении).
+  async function doUnmerge(m: any) {
+    const warn = ['Разъединить ' + m.number + '?', '',
+      'Её строки, движения склада (своим днём), себестоимость и оплаты вернутся в неё,',
+      'из номера этой накладной уйдёт хвост, сумма уменьшится.',
+      'Расходные не трогаем.'].join(String.fromCharCode(10))
+    if (!confirm(warn)) return
+    setBusy(true)
+    const r: any = await unmergeDoc(id as string, m.id)
+    setBusy(false)
+    if (r?.ok === false) { setFlash('⚠ ' + (r.error || 'Не удалось')); return }
+    setMerging(false)
+    await reload(); onSaved?.()
+    setFlash('✂ Разъединено: ' + (r.number || m.number))
   }
   async function doMerge() {
     const picked = cands.filter((c: any) => mPick[c.id])
@@ -730,6 +747,20 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
               <input style={{ ...inp, marginTop: 10 }} placeholder="🔎 поиск по номеру или дате…" value={mQ} onChange={e => setMQ(e.target.value)} />
             </div>
             <div style={{ overflowY: 'auto', padding: '8px 12px', flex: 1 }}>
+              {/* УЖЕ ВЛИТЫЕ СЮДА — можно отыграть, если объединили не ту. */}
+              {!!mDone.length && (
+                <div style={{ background: '#f6f3ff', border: '1px solid #e2d9f7', borderRadius: 10, padding: '8px 10px', marginBottom: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: '#5b3fa8', letterSpacing: '.03em', marginBottom: 4 }}>УЖЕ ОБЪЕДИНЕНО СЮДА</div>
+                  {mDone.map((m: any) => (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 2px' }}>
+                      <span style={{ fontWeight: 700, fontSize: 13.5 }}>{m.number}</span>
+                      <span style={{ fontSize: 13, color: COLORS.textMuted }}>{fmtDate(m.date)}</span>
+                      <button onClick={() => doUnmerge(m)} disabled={busy} title="Вернуть эту накладную обратно отдельной"
+                        style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 7, border: '1.5px solid #cfc3ea', background: '#fff', color: '#5b3fa8', cursor: busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 12.5, fontFamily: 'inherit' }}>✂ Разъединить</button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {cands.filter((c: any) => matchWords(mQ, c.number, fmtDate(c.date))).map((c: any) => (
                 <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', borderBottom: '1px solid #f6f4f1', cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!mPick[c.id]} onChange={e => setMPick(m => ({ ...m, [c.id]: e.target.checked }))} />

@@ -418,7 +418,30 @@ export const mergeCandidates = (orgId: string, docId: string, contragentId: stri
 // движения склада (днём приёмника), FIFO-связки, оплаты, привязки листа «Деньги»,
 // дети-накладные (зеркала и отгрузка получателю) и карточка-заявка. Источник остаётся
 // в базе отменённым с пометкой — иначе теряется след и повисает его карточка-основание.
+// ВСЁ ПЕРЕЕХАВШЕЕ ЗАПИСЫВАЕТСЯ В ЖУРНАЛ ('mergeLog') — по нему работает «Разъединить».
 export async function mergeDocInto(targetId: string, srcId: string, targetNumber: string, targetDate: string, block: string, sortShift: number) {
+  const q = async (text: any) => (await text) as unknown as Array<any>
+  const [src] = await q(sqlClient`select number, status, total::float t, comment, in_number from documents where id = ${srcId}`)
+  const lines = await q(sqlClient`select id::text, coalesce(block,'') b, sort_order so from document_lines where document_id = ${srcId}`)
+  const moves = await q(sqlClient`select id::text from stock_movements where document_id = ${srcId}`)
+  const linkP = await q(sqlClient`select id::text from doc_links where purchase_doc_id = ${srcId}`)
+  const linkS = await q(sqlClient`select id::text from doc_links where sale_doc_id = ${srcId}`)
+  const pays = await q(sqlClient`select id::text from payments where document_id = ${srcId}`)
+  const alloc = await q(sqlClient`select id::text from fin_row_alloc where doc_id = ${srcId}`)
+  const kidsP = await q(sqlClient`select id::text from documents where parent_doc_id = ${srcId}`)
+  const kidsO = await q(sqlClient`select id::text from documents where origin_doc_id = ${srcId}`)
+  const cards = await q(sqlClient`select id from orders where linked_doc_id = ${srcId}`)
+  const log = {
+    src: srcId, number: src?.number || '', status: src?.status || 'posted', total: src?.t || 0,
+    comment: src?.comment || null, inNumber: src?.in_number || null, date: null as any,
+    lines: lines.map(l => ({ id: l.id, b: l.b, so: l.so })),
+    moves: moves.map(m => m.id), linkP: linkP.map(x => x.id), linkS: linkS.map(x => x.id),
+    pays: pays.map(x => x.id), alloc: alloc.map(x => x.id),
+    kidsP: kidsP.map(x => x.id), kidsO: kidsO.map(x => x.id), cards: cards.map((x: any) => x.id),
+  }
+  const [d] = await q(sqlClient`select date::text dt from documents where id = ${srcId}`)
+  log.date = d?.dt || null
+
   await sqlClient`update document_lines set document_id = ${targetId},
       block = case when coalesce(block, '') = '' then ${block} else block end,
       sort_order = sort_order + ${sortShift}
@@ -431,9 +454,44 @@ export async function mergeDocInto(targetId: string, srcId: string, targetNumber
   await sqlClient`update documents set parent_doc_id = ${targetId} where parent_doc_id = ${srcId}`
   await sqlClient`update documents set origin_doc_id = ${targetId} where origin_doc_id = ${srcId}`
   await sqlClient`update orders set linked_doc_id = ${targetId} where linked_doc_id = ${srcId}`
-  await sqlClient`update documents set status = 'cancelled', total = '0',
+  await sqlClient`update documents set status = 'cancelled', total = '0', merged_into = ${targetId},
       comment = trim(both ' ' from coalesce(comment, '') || ' · ОБЪЕДИНЕНА В ' || ${targetNumber})
     where id = ${srcId}`
+  await sqlClient`insert into document_history (id, document_id, action, detail, user_name)
+    values (gen_random_uuid(), ${srcId}, 'mergeLog', ${JSON.stringify(log)}, 'Система')`
+  return log
+}
+
+// Накладные, влитые В ЭТУ (для кнопки «Разъединить»).
+export const mergedSources = (targetId: string) =>
+  db.select({ id: documents.id, number: documents.number, date: documents.date })
+    .from(documents).where(eq(documents.mergedInto, targetId)).orderBy(desc(documents.date))
+
+// Вернуть всё на место по записи журнала: строки, склад (своим днём), связки, оплаты, дети.
+export async function unmergeDocFromLog(targetId: string, srcId: string, log: any) {
+  for (const l of (log.lines || [])) {
+    await sqlClient`update document_lines set document_id = ${srcId}, block = ${l.b || ''}, sort_order = ${l.so || 0}
+      where id = ${l.id}`
+  }
+  if ((log.moves || []).length) await sqlClient`update stock_movements set document_id = ${srcId}, date = ${log.date}
+    where id = any(${log.moves})`
+  if ((log.linkP || []).length) await sqlClient`update doc_links set purchase_doc_id = ${srcId} where id = any(${log.linkP})`
+  if ((log.linkS || []).length) await sqlClient`update doc_links set sale_doc_id = ${srcId} where id = any(${log.linkS})`
+  if ((log.pays || []).length) await sqlClient`update payments set document_id = ${srcId} where id = any(${log.pays})`
+  if ((log.alloc || []).length) await sqlClient`update fin_row_alloc set doc_id = ${srcId} where id = any(${log.alloc})`
+  if ((log.kidsP || []).length) await sqlClient`update documents set parent_doc_id = ${srcId} where id = any(${log.kidsP})`
+  if ((log.kidsO || []).length) await sqlClient`update documents set origin_doc_id = ${srcId} where id = any(${log.kidsO})`
+  if ((log.cards || []).length) await sqlClient`update orders set linked_doc_id = ${srcId} where id = any(${log.cards})`
+  await sqlClient`update documents set status = ${log.status || 'posted'}, total = ${String(log.total || 0)},
+      comment = ${log.comment}, merged_into = null where id = ${srcId}`
+}
+
+// Запись журнала объединения (последняя) — по ней разъединяем.
+export async function mergeLogOf(srcId: string) {
+  const [r] = await sqlClient`select detail from document_history
+    where document_id = ${srcId} and action = 'mergeLog' order by created_at desc limit 1` as unknown as Array<any>
+  if (!r?.detail) return null
+  try { return JSON.parse(r.detail) } catch { return null }
 }
 
 // Шапка накладной-приёмника после объединения: номер (оба рядом), сумма, вх. номера, коммент.

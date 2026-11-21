@@ -252,6 +252,10 @@ export const documents = pgTable('documents', {
   // (карточка → приходная → расходная → зеркало). Пусто у старых документов — там номер
   // по-прежнему вычисляется по связям (правило 18.11.2026).
   rootCardId: text('root_card_id'),
+  // ОБЪЕДИНЕНИЕ ПРИХОДНЫХ (21.11.2026): у накладной-ИСТОЧНИКА здесь id приёмника, в который
+  // её влили (сама остаётся отменённой). По этой ссылке работает «✂ Разъединить»: что откуда
+  // вернуть, подробно записано в журнале документа (document_history, action='mergeLog').
+  mergedInto: uuid('merged_into').references((): any => documents.id, { onDelete: 'set null' }),
   discountPct: money('discount_pct').notNull().default('0'),  // скидка руч., %
   discountSum: money('discount_sum').notNull().default('0'),  // скидка руч., сумма
   paidSum: money('paid_sum').notNull().default('0'),      // оплачено поставщику (вкладка Оплата)
