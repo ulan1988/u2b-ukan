@@ -164,7 +164,11 @@ export async function onlyGoodsLines(lines: any[]): Promise<any[]> {
 async function mirrorBetweenOrgs(input: any, doc: { id: string; number: string }, kind: 'purchase' | 'sale') {
   // Накладная из КАРТОЧКИ (sourceOrderId) зеркалится своим механизмом в invoice.service —
   // второй раз здесь нельзя, иначе у второй орг будет две накладные.
-  if ((input as any).noMirror || (input as any).parentDocId || (input as any).sourceOrderId) return
+  // ИСКЛЮЧЕНИЕ (правило 21.11.2026): отгрузка получателю по закупу тоже идёт с sourceOrderId,
+  // но своего зеркала у неё НЕТ — у филиала-получателя приходная не появлялась совсем.
+  // Такие накладные помечают forceMirror и зеркалятся здесь.
+  if ((input as any).noMirror || (input as any).parentDocId) return
+  if ((input as any).sourceOrderId && !(input as any).forceMirror) return
   try {
     const [cp] = await docRepo.contragentById(input.contragentId)
     const refOrg = (cp as any)?.orgRefId as string | undefined

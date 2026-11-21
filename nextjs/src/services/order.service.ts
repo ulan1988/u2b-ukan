@@ -278,6 +278,9 @@ export async function shipPurchaseRecipients(cardId: string, date: string, actor
     const d: any = await docSvc.createSale({
       orgId: o.orgId, contragentId: cid, warehouseId: wh.id, lines, date,
       sourceOrderId: cardId, projectId: (o as any).specProjectId || null,
+      // Получатель — наш филиал (мост): у него эта отгрузка обязана стать приходной тем же
+      // днём. Зеркало по sourceOrderId обычно пропускается — просим его явно.
+      forceMirror: true,
       comment: `Отгрузка получателю по закупу ${cardId}`,
     } as any)
     await repo.insertHistory({ cardId, action: 'shipRecipient', detail: `Отгружено получателю «${(cag as any)?.name || ''}»: ${d?.number || ''}`, userName: actor?.name || 'Система' })
