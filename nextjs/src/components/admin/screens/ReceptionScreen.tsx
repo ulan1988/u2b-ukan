@@ -285,8 +285,11 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
               <div style={{ fontSize: 13, fontWeight: 700, color: '#5f5952', letterSpacing: '.04em' }}>{kind === 'sale' ? 'ШАГ 2–3 — ТОВАРЫ И КОЛ-ВО · ШАГ 4 — ПОСТАВЩИК' : 'ПОЗИЦИИ'}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', background: '#f8f6f3', borderRadius: 8, padding: '5px 8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#5f5952' }}>КО ВСЕМ:</span>
-                <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllLogist(e.target.value)}><option value="">Логист →</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                {kind === 'purchase' && <div style={{ width: 160 }}><ContragentPicker contragents={allCags} value="" defaultId={defaultCagId} onPick={c => c?.id && assignAllSupplier(c.id)} placeholder="Поставщик → всем" /></div>}
+                {/* КО ВСЕМ. В ПРОДАЖЕ ПОСТАВЩИК НУЖНЕЕ ЛОГИСТА (просьба владельца 21.11.2026):
+                    логист у строк и так один по умолчанию, а поставщика («производителя») ставят
+                    каждой строке руками. В закупе шапка прежняя — и логист, и поставщик. */}
+                {kind === 'purchase' && <select style={{ ...inpSm, width: 150 }} value="" onChange={e => assignAllLogist(e.target.value)}><option value="">Логист →</option>{logists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>}
+                <div style={{ width: 170 }}><ContragentPicker contragents={allCags} value="" defaultId={kind === 'purchase' ? defaultCagId : ''} onPick={c => c?.id && assignAllSupplier(c.id)} placeholder="Поставщик → всем" /></div>
               </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
