@@ -41,6 +41,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [incMode, setIncMode] = useState(false)      // галочка «прочий доход»: деньги без товара
   const [incAcc, setIncAcc] = useState<'cash' | 'kaspi' | 'qr'>('cash')
   const [incSum, setIncSum] = useState('')
+  // ДЕЛЁЖ ПРОЧЕГО ДОХОДА: по умолчанию 60 головному / 40 магазину. 50/50 — только если
+  // владелец сам пометит операцию (правило 21.11.2026), поэтому это отдельная галочка.
+  const [incHalf, setIncHalf] = useState(false)
   const [incNote, setIncNote] = useState('')          // за что «прочий доход» (пишем в комментарий платежа)                 // сколько дали налом → сдача
   const [wide, setWide] = useState(true)                 // широкий экран: чек рядом с таблицей
   const [full, setFull] = useState(false)                // полноэкранный режим кассы (без меню слева)
@@ -385,19 +388,21 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const canSell = sellRows.length > 0 && net > 0 && Math.abs(rest) < 0.5 && !selling && !bonusBad
 
   // «Прочий доход»: деньги без товара. Берём суммы из строк оплаты (нал/каспи/QR),
-  // кладём на счета и делим 50/50 с головным — склад и накладные не трогаются.
+  // кладём на счета и делим с головным 60/40 (или 50/50, если отмечено) — склад и
+  // накладные не трогаются.
   async function doOtherIncome() {
     const money = incMode ? num(incSum) : pCash + pKaspi + pQr
     if (!(money > 0)) { setSellMsg('⚠ впишите сумму'); return }
+    const pct = incHalf ? 0.5 : 0.6
     if (!confirm(`Провести как ПРОЧИЙ ДОХОД ${fmt(money)} ₸?
 
-Товар не списывается, прибыль делится 50/50 с Адал Строй 2 (ваша доля ${fmt(money - Math.round(money * 0.5))} ₸).`)) return
+Товар не списывается, делёж ${incHalf ? '50/50' : '60/40'} с Адал Строй 2 (ваша доля ${fmt(money - Math.round(money * pct))} ₸).`)) return
     setSelling(true); setSellMsg('')
     const emp = staff.find((s2: any) => s2.id === sellerId)
     const body = incMode
       ? { cash: incAcc === 'cash' ? money : 0, kaspi: incAcc === 'kaspi' ? money : 0, qr: incAcc === 'qr' ? money : 0 }
       : { cash: pCash, kaspi: pKaspi, qr: pQr }
-    const r: any = await otherIncome({ contactId: sellContact || undefined, ...body, comment: incNote, seller: emp?.name, date: wd() })
+    const r: any = await otherIncome({ contactId: sellContact || undefined, ...body, comment: incNote, seller: emp?.name, date: wd(), ...(incHalf ? { hqPct: 0.5 } : {}) })
     setSelling(false)
     if (!r.ok) { setSellMsg('⚠ ' + (r.error || 'не удалось')); return }
     setSellMsg(`✓ прочий доход ${fmt(r.sum || money)} ₸ · вам ${fmt(r.ourShare || 0)} · Адал Строй 2 ${fmt(r.hqShare || 0)}`)
@@ -757,7 +762,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', background: incMode ? '#f7f3fc' : '#faf9f7', border: `1.5px solid ${incMode ? '#cdb6e2' : COLORS.border}` }}>
           <input type="checkbox" checked={incMode} onChange={e => { setIncMode(e.target.checked); setSellMsg('') }} style={{ width: 17, height: 17, accentColor: '#7a3aaa', cursor: 'pointer' }} />
           <span style={{ fontSize: 13.5, fontWeight: 800, color: incMode ? '#7a3aaa' : COLORS.text }}>➕ Прочий доход</span>
-          <span style={{ fontSize: 11.5, color: COLORS.textMuted }}>без товара · 50/50</span>
+          <span style={{ fontSize: 11.5, color: COLORS.textMuted }}>без товара · 60/40</span>
         </label>
 
         {incMode && (<>
@@ -769,13 +774,18 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
           </div>
           <input value={incSum} inputMode="decimal" placeholder="сумма" onChange={e => setIncSum(e.target.value.replace(/[^0-9.,]/g, ''))}
             style={{ width: '100%', padding: '14px 12px', borderRadius: 11, border: `1.5px solid ${COLORS.border}`, fontSize: 22, fontFamily: 'Consolas, monospace', fontWeight: 800, textAlign: 'right', boxSizing: 'border-box' }} />
+          {/* 50/50 ТОЛЬКО ПО ОТМЕТКЕ (правило владельца 21.11.2026) — обычный делёж 60/40. */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: COLORS.textMuted, cursor: 'pointer' }}>
+            <input type="checkbox" checked={incHalf} onChange={e => setIncHalf(e.target.checked)} style={{ width: 15, height: 15, accentColor: '#7a3aaa', cursor: 'pointer' }} />
+            <span>делить <b style={{ color: incHalf ? '#7a3aaa' : COLORS.text }}>{incHalf ? '50/50' : '60/40'}</b> с головным</span>
+          </label>
           <input value={incNote} onChange={e => setIncNote(e.target.value)} placeholder="за что (необязательно)"
             style={{ width: '100%', padding: '9px 10px', borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 13, fontFamily: 'inherit', fontWeight: 600, boxSizing: 'border-box' }} />
           {/* Две строки, а не одна: имя орг кончается цифрой («Адал Строй 2») и слипалось с суммой. */}
           {num(incSum) > 0 && (
             <div style={{ background: '#f7f3fc', border: '1px solid #cdb6e2', color: '#5b3a8a', borderRadius: 9, padding: '8px 10px', fontSize: 13, fontWeight: 700, display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>вам</span><b style={{ fontFamily: 'Consolas, monospace' }}>{fmt(num(incSum) - Math.round(num(incSum) * 0.5))} ₸</b></span>
-              <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Адал Строй 2</span><b style={{ fontFamily: 'Consolas, monospace' }}>{fmt(Math.round(num(incSum) * 0.5))} ₸</b></span>
+              <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>вам</span><b style={{ fontFamily: 'Consolas, monospace' }}>{fmt(num(incSum) - Math.round(num(incSum) * (incHalf ? 0.5 : 0.6)))} ₸</b></span>
+              <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Адал Строй 2</span><b style={{ fontFamily: 'Consolas, monospace' }}>{fmt(Math.round(num(incSum) * (incHalf ? 0.5 : 0.6)))} ₸</b></span>
             </div>
           )}
           <button onClick={doOtherIncome} disabled={selling || !(num(incSum) > 0)}
@@ -783,7 +793,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
             {selling ? '…' : `➕ Отправить ${fmt(num(incSum))} ₸`}
           </button>
           {sellMsg && <div style={{ fontSize: 13, fontWeight: 700, color: sellMsg.startsWith('✓') ? '#2e8a5e' : COLORS.primaryDark }}>{sellMsg}</div>}
-          <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Деньги лягут на выбранный счёт. Товар не списывается, позиции листа не трогаются, прибыль делится 50/50 с Адал Строй 2.</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Деньги лягут на выбранный счёт. Товар не списывается, позиции листа не трогаются, прибыль делится 60/40 с Адал Строй 2 (50/50 — только с галочкой).</div>
         </>)}
 
         {!incMode && (<>

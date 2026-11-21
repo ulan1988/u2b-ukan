@@ -805,8 +805,9 @@ export async function otherIncome(orgId: string, i: {
 
   // ДЕЛЁЖ ПРОЧЕГО ДОХОДА (правило владельца 15.11.2026): чеки магазина пробиваются ПО
   // СЕБЕСТОИМОСТИ, а наценка вносится прочим доходом. Безналичная часть (каспи/QR) делится
-  // 60/40: 60% головному — так филиал постепенно гасит свой долг перед ним, 40% магазину
-  // (из этих 40% платится ЗП продавцам, другого источника нет). Наличная часть — пополам.
+  // 60/40 ПО ВСЕМ СЧЕТАМ (уточнение владельца 18.11.2026): и безнал (каспи/QR), и наличные —
+  // 60% головному (филиал гасит свой долг), 40% магазину (из них ЗП продавцам). 50/50 бывает
+  // ТОЛЬКО по отметке владельца в самой операции (hqPct=0.5), по умолчанию — никогда.
   // Журнал тот же, что у бонуса товара соседа (виден в «Кассе дня»).
   const { db } = await import('../lib/db')
   const { bonusRows } = await import('../db/schema')
@@ -817,7 +818,7 @@ export async function otherIncome(orgId: string, i: {
   await db.insert(bonusRows).values({
     id: randomUUID(), orgId, date: day, cardId: null, posId: null, agentId: null,
     productName: note ? `Прочий доход · ${note}` : 'Прочий доход',
-    qty: '1', price: String(sum), cost: '0', bonus: String(sum), hqShare: String(hq),
+    qty: '1', price: String(sum), cost: '0', bonus: String(sum), hqShare: String(hq), docNumber,
   } as any)
   return { ok: true as const, sum, hqShare: hq, ourShare: sum - hq, docNumber }
 }
@@ -828,7 +829,10 @@ export async function listOtherIncome(orgId: string, date: string) {
   const { sqlClient } = await import('../lib/db')
   const rows = await sqlClient`
     select p.id, p.amount::float amount, coalesce(p.comment,'') comment, coalesce(p.doc_number,'') "docNumber",
-      to_char(p.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') ts, coalesce(a.name,'') account
+      to_char(p.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') ts, coalesce(a.name,'') account,
+      -- делёж именно этой операции: обычно 60/40, 50/50 — только по отметке
+      (select round(100.0 * b.hq_share / nullif(b.bonus, 0))::int from bonus_rows b
+        where b.org_id = p.org_id and b.doc_number = p.doc_number limit 1) "hqPct"
     from payments p left join cash_accounts a on a.id = p.cash_account_id
     where p.org_id = ${orgId} and p.date = ${date} and p.direction = 'in' and p.comment ilike 'Прочий доход%'
     order by p.created_at desc` as unknown as Array<any>

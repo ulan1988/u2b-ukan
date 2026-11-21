@@ -805,6 +805,9 @@ export const bonusRows = pgTable('bonus_rows', {
   cost: money('cost').notNull().default('0'),          // цена соседа (вернём ему)
   bonus: money('bonus').notNull().default('0'),        // (price − cost) × qty
   hqShare: money('hq_share').notNull().default('0'),   // доля головного (50%)
+  // Номер операции «прочего дохода» (ПД-01-121126) — по нему в «Кассе дня» видно
+  // ДЕЙСТВИТЕЛЬНЫЙ делёж строки (обычно 60/40, 50/50 — только если отметили галочкой).
+  docNumber: text('doc_number'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, t => ({
   byDay: index('bonus_rows_day_idx').on(t.orgId, t.date),

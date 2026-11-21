@@ -546,7 +546,11 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: COLORS.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r.comment || '').replace(/^Прочий доход\s*·?\s*/, '') || 'без товара'}</span>
                     <span style={{ fontSize: 12.5, color: COLORS.textLight, whiteSpace: 'nowrap' }}>{r.account}</span>
                     <b style={{ fontSize: 14, color: '#5b3a8a', width: 110, textAlign: 'right' }}>{m(Number(r.amount) || 0)} ₸</b>
-                    <span style={{ width: 122, textAlign: 'right', fontSize: 12, color: '#7a3aaa' }}>50/50</span>
+                    {/* ДЕЛЁЖ ПОКАЗЫВАЕМ ФАКТИЧЕСКИЙ (правило владельца 21.11.2026): по умолчанию
+                        60 головному / 40 магазину; 50/50 бывает только по отметке в самой операции. */}
+                    <span style={{ width: 122, textAlign: 'right', fontSize: 12, color: '#7a3aaa' }} title="доля головного / доля магазина">
+                      {(() => { const pct = Number(r.hqPct) > 0 ? Math.round(Number(r.hqPct)) : 60; return pct + '/' + (100 - pct) })()}
+                    </span>
                     <span style={{ width: 14 }} />
                   </div>
                 )
