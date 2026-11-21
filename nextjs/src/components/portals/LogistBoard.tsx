@@ -14,6 +14,7 @@ import { matchWords } from '@/lib/search'
 import { useLiveData } from '@/lib/live'
 import LogistStock from './LogistStock'
 import LogistShift from './LogistShift'
+import InstallApp from './InstallApp'
 import type { Session } from '@/lib/auth'
 
 type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
@@ -186,6 +187,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
               <button className={tab === 'stock' ? 'on' : ''} onClick={() => setTab('stock')}>📦 Остаток склада</button>
               <button className={tab === 'shift' ? 'on' : ''} onClick={() => setTab('shift')}>📊 Смена · отчёт дня</button>
               <div className="sep" />
+              <InstallApp compact />
               <a href={backHref + '?tab=changes'}>⚡ Правки</a>
               <a href={backHref + '?tab=new'}>➕ Новая заявка</a>
               <a href={backHref}>↩ Старый кабинет</a>
@@ -200,6 +202,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
         }}>{cols.some(c => !fold[c.id]) ? 'свернуть все' : 'развернуть все'}</button>}
       </header>
 
+      <InstallApp />
       {tab === 'stock' && <LogistStock uid={uid} />}
       {tab === 'shift' && <LogistShift />}
       {tab === 'board' && <div className="kpis">
