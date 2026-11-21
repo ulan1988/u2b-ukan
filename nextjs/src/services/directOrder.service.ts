@@ -43,6 +43,10 @@ export async function createSaleFromPurchase(cardId: string, actor?: Session | n
   const child = {
     id, orgId: mother.orgId, kind: 'sale', directOrder: true, parentCardId: mother.id,
     screen: 'outgoing', block: '', status: 'В работе',
+    // КОРЕНЬ ЦЕПОЧКИ — МАТЕРИНСКИЙ ЗКП (правило 21.11.2026): в «Документе движений» заказ,
+    // приход, продажа и расход обязаны стоять в ОДНОЙ цепочке. Без этого дочь заводила свою
+    // (её расходная писала корнем саму себя), и одна сделка выглядела двумя.
+    rootCardId: (mother as any).rootCardId || mother.id,
     fromId: mother.fromId ?? null, contactId: mother.contactId, fromName: mother.fromName || '',
     source: 'direct_sale', comment: mother.comment || '', phone: mother.phone || '',
     deadline: mother.deadline ?? null, specProjectId: (mother as any).specProjectId ?? null,
