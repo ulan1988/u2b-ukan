@@ -1163,6 +1163,11 @@ export async function logistBoard(orgId: string, userId: string) {
     const x = new Date(d), p = (v: number) => String(v).padStart(2, '0')
     return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate()) }
 
+  // ПРЯМОЙ ЗАКАЗ = ДВЕ КАРТОЧКИ, НА ДОСКЕ ПОКАЗЫВАЕМ ПОСЛЕДНЮЮ (правило 21.11.2026).
+  // ЗКП (мать, закуп у поставщика) после прихода рождает ПРД (продажа клиенту) с теми же
+  // позициями. Обе закрываются в один день, и в «Продано / Доставлено» выходил дубль:
+  // один ЗКП и один ПРД на тот же товар. Мать со сложившейся дочерью в эту колонку не берём.
+  const hasChild = new Set(cards.map((c: any) => c.parentCardId).filter(Boolean) as string[])
   const cols = new Map<string, any>()
   const out: any[] = []
   const put = (col: string, o: any, poss: any[], extra: any = {}) => out.push({
@@ -1205,9 +1210,13 @@ export async function logistBoard(orgId: string, userId: string) {
     // Раньше доставленные позиции из доски выпадали совсем (их режет `open`), и колонка
     // всегда стояла пустой — логист не видел, что уже закрыл за день. Берём позиции,
     // отмеченные «Доставлено» сегодня (по времени отметки или по дню доставки карточки).
+    // ДЕНЬ ДОСТАВКИ РЕШАЕТ: у карточки проставлена дата доставки — смотрим ТОЛЬКО её,
+    // иначе любая сегодняшняя правка старой карточки поднимала её обратно в колонку.
+    // Даты нет (прямой заказ, прямая продажа) — берём день отметки позиции.
+    const dlvDay = dayOf(o.delivered)
     const doneToday = o.positions.filter((p: any) => p.status === 'Доставлено'
-      && (dayOf(p.updatedAt) === nowDay || dayOf(o.delivered) === nowDay))
-    if (doneToday.length) put('deliv', o, doneToday, { badge: 'доставлено' })
+      && (dlvDay ? dlvDay === nowDay : dayOf(p.updatedAt) === nowDay))
+    if (doneToday.length && !(o.kind === 'purchase' && hasChild.has(o.id))) put('deliv', o, doneToday, { badge: 'доставлено' })
     if (!open.length) continue
     // ПОСТАВЩИК ГЛАВНЕЕ ЭКРАНА: пока не куплено — стоит у поставщика; куплено — «Готов к отправке».
     const by = new Map<string, any[]>()
