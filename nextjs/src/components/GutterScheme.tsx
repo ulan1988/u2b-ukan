@@ -4,7 +4,7 @@
 // Количество пишется в тот же «выбранный» список каталога, что и строки обычного списка (ключ — имя товара).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { GutterKind, GutterScene } from '@/lib/gutter3d'
-import { GUTTER_PARTS, gutterLabel, gutterProduct, gutterTheme } from '@/lib/gutterParts'
+import { GUTTER_HIDDEN, GUTTER_PARTS, gutterLabel, gutterProduct, gutterTheme } from '@/lib/gutterParts'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
@@ -37,6 +37,7 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
     let dead = false, made: GutterScene | null = null
     const host = hostRef.current; if (!host) return
     import('@/lib/gutter3d').then(m => m.createGutterScene(host, {
+      hide: GUTTER_HIDDEN,
       onPick: k => setSel(k),
       onSnap: k => {
         const r = rowsRef.current.find(x => x.part.id === k)

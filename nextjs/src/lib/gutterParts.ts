@@ -21,9 +21,15 @@ export const GUTTER_PARTS: GutterPart[] = [
   { id: 'funnel', title: 'Воронка', test: has('воронка выпускная') },
   { id: 'pipe', title: 'Труба', test: has('труба водосточная', '76х102') },
   { id: 'clamp', title: 'Хомут на кирпич', test: has('держатель трубы', 'кирпич') },
-  { id: 'clampw', title: 'Хомут на дерево', test: has('держатель трубы', 'дерев') },
   { id: 'elbow', title: 'Колено', test: has('колено трубы') },
 ]
+
+// Убрано из меню по слову владельца (22.11.2026), но живёт в базе: 3D-модель в движке и правило поиска
+// товара целы. Вернуть — перенести строку обратно в GUTTER_PARTS и убрать вид из GUTTER_HIDDEN.
+export const GUTTER_SPARE: GutterPart[] = [
+  { id: 'clampw', title: 'Хомут на дерево', test: has('держатель трубы', 'дерев') },
+]
+export const GUTTER_HIDDEN: GutterKind[] = GUTTER_SPARE.map(p => p.id)
 
 export const isGutterCat = (p: any) => norm(p.group) === 'водосток' && norm(p.cat) === GUTTER_CAT
 

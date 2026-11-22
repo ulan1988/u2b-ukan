@@ -15,7 +15,8 @@ export interface GutterScene {
   resetView(): void
   dispose(): void
 }
-interface Opts { onPick: (k: GutterKind | null) => void; onSnap?: (k: GutterKind) => void }
+// hide — детали, которых в меню нет: модель в движке остаётся, на схему просто не ставится
+interface Opts { onPick: (k: GutterKind | null) => void; onSnap?: (k: GutterKind) => void; hide?: GutterKind[] }
 
 const ACCENT = '#e0744d', OK = '#2e8a5e'
 
@@ -195,7 +196,7 @@ export async function createGutterScene(host: HTMLElement, opts: Opts): Promise<
     ['funnel', [FX, -1, FZ], [0, PI / 2, 0], [0, -90, 0], 'l'],
     ['pipe', [FX, PT - PL / 2, FZ], [0, PI / 2, 0], [0, -180, 0], 'l'],
     ['elbow', [FX, PT - PL, FZ], [0, -PI / 2, 0], [0, -270, 0], 'l'],
-    ['clamp', [FX, PT - 110, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
+    ['clamp', [FX, PT - 170, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
     ['clampw', [FX, PT - 270, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
   ]
   let pal: GutterPalette = { out: '#5b392e', inn: '#f2f3f0', line: '#2c1b15' }
@@ -216,7 +217,8 @@ export async function createGutterScene(host: HTMLElement, opts: Opts): Promise<
 
   const pivot = new T.Group(), content = new T.Group(); pivot.add(content); scene.add(pivot)
   const hitList: any[] = []
-  const INST = LAYOUT.map(row => {
+  const hidden = opts.hide || []
+  const INST = LAYOUT.filter(row => !hidden.includes(row[0])).map(row => {
     const m = mats(), outer = new T.Group(), inner = new T.Group(), def = DEF[row[0]]
     def.g.forEach(it => {
       if (it[1]) inner.add(new T.Mesh(it[0], m.all)); else { inner.add(new T.Mesh(it[0], m.out)); inner.add(new T.Mesh(it[0], m.inn)) }
