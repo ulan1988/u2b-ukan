@@ -13,6 +13,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fmtTime, fmtDateTime } from '@/lib/adminFmt'
 import StoreCatalog from '@/components/StoreCatalog'
 import { isBonusProduct } from '@/lib/catalogNav'
+import GutterScheme from '@/components/GutterScheme'
+import { useGutterScheme } from '@/lib/useGutterScheme'
 import { type PickedPos } from '@/components/NomPicker'
 import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
@@ -343,6 +345,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       return v > 0 && !r.price ? { ...r, price: Math.round(v * 100) / 100 } : r
     })
   }, [user.orgId])
+
+  // «Водосток → Модерн бюджет» открывается схемой (как в общем каталоге); список — по кнопке.
+  const gs = useGutterScheme(products, folder, path, setPath, q)
 
   // Недостающие папки из номенклатуры: все категории товаров, кроме уже покрытых 4 основными.
   // Добавляются справа (лента табов прокручивается), чтобы касса видела всю номенклатуру.
@@ -1000,14 +1005,14 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             {folders.map(f => {
               const on = folder === f.key
               return (
-                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter(''); setColor('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
+                <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath(f.key === 'vodostok' && gs.gCat ? [gs.gCat] : []); setThick(''); setKfilter(''); setColor('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
               )
             })}
             <button onClick={() => setShowCatalog(true)} title="Весь каталог" style={{ flexShrink: 0, width: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 17, color: '#6b645b', borderBottom: '3px solid transparent' }}>⋯</button>
           </div>
 
           {/* подпапки раздела — компактные чипы (уровни дерева), появляются только при наличии выбора */}
-          {subRows.map(row => (
+          {subRows.filter(row => !(gs.showScheme && row.level > 0)).map(row => (
             <div key={row.level} style={{ display: 'flex', gap: 6, padding: '7px 10px', background: '#faf8f5', borderBottom: '1px solid #efeae3', overflowX: 'auto' }}>
               {row.vals.map(v => {
                 const on = path[row.level] === v
@@ -1042,6 +1047,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             </div>
           )}
 
+          {gs.showScheme && (
+            <GutterScheme products={products} ral={gs.gRal} rals={gs.gRals} onRal={gs.pickRal} onList={() => gs.setScheme(false)}
+              qtyOf={name => (rows.find(r => r.name1c === name) || { qty: 0 }).qty || 0} setQty={(p, qty) => upsertQty(p, String(qty))}
+              stockTag={p => <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />} />
+          )}
+
+          {!gs.showScheme && (<>
           {/* цвет */}
           <div style={{ background: '#fff', padding: '9px 10px 10px', borderBottom: '1px solid #e6e2dc', display: 'flex', gap: 9, overflowX: 'auto' }}>
             {/* «без цвета» — сброс фильтра цвета: показать все товары папки (по умолчанию активно) */}
@@ -1073,6 +1085,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px 6px' }}>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по названию" style={{ flex: 1, padding: '9px 11px', borderRadius: 10, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
             <span style={{ fontSize: 11.5, color: '#a09889', whiteSpace: 'nowrap' }}>{list.length} поз.</span>
+            {gs.inGutter && !gs.scheme && <button onClick={() => { setQ(''); gs.setScheme(true) }} style={{ flexShrink: 0, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 10, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>🧩 схема</button>}
           </div>
 
           {/* сборка комплектующего: цвет уже выбран сверху, тут см и количество */}
@@ -1127,6 +1140,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             })}
           </div>
           )}
+          </>)}
         </div>
       ) : (
         <div style={{ padding: 12, maxWidth: 760, margin: '0 auto', paddingBottom: 86 }}>

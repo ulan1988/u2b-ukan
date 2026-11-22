@@ -2,7 +2,7 @@
 // Единый каталог-пикер (как в кассе магазина): вкладки-папки · подпапки · цвет · поиск ·
 // алиасы · ввод кол-ва · сборка изделия (цвет+см). Возвращает выбранные позиции (PickedPos[]).
 // Заменяет старый NomPicker в кабинетах клиента/мастера и форме «Заказ».
-import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { PickedPos } from '@/components/NomPicker'
 import { itemName } from '@/lib/itemName'
@@ -10,7 +10,7 @@ import { isIzdelie } from '@/lib/lineAmount'
 import { extractRal, ralOrdered } from '@/lib/ral'
 import { matchWords } from '@/lib/search'
 import GutterScheme from '@/components/GutterScheme'
-import { gutterRals, isGutterCat } from '@/lib/gutterParts'
+import { useGutterScheme } from '@/lib/useGutterScheme'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
@@ -55,12 +55,6 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
   const [picked, setPicked] = useState<PickedPos[]>([])
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  // «Водосток → Модерн бюджет» открывается СХЕМОЙ (3D): RAL-папки сверху, детали нажимаются на картинке.
-  // Список никуда не делся — кнопка «☰ список» / «🧩 схема».
-  const [scheme, setScheme] = useState(true)
-  const [ralSaved, setRalSaved] = useState('')
-  useEffect(() => { try { setRalSaved(localStorage.getItem('u2b_vodostok_ral') || '') } catch { /* нет доступа к хранилищу */ } }, [])
-  const autoGutter = useRef(false)
   // За компьютером (широкий экран) раскладка другая: поле кол-ва стоит СРАЗУ за названием,
   // а выбранное — аккуратным списком справа, где и так пусто. На телефоне всё как было.
   const [wide, setWide] = useState(false)
@@ -95,23 +89,9 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
     }).catch(() => {})
   }, [orgId, showStock])
 
-  const gCat = useMemo(() => ((products.find(isGutterCat) || {}).cat || '').trim(), [products])
-  const gRals = useMemo(() => gutterRals(products), [products])
-  // Каталог открывается на «Водостоке» — сразу встаём в серию со схемой (один раз, дальше как выберет человек).
-  useEffect(() => {
-    if (!gCat || autoGutter.current) return
-    autoGutter.current = true
-    if (folder === 'vodostok' && path.length === 0) setPath([gCat])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gCat])
-  const inGutter = folder === 'vodostok' && !!gCat && (path[0] || '') === gCat && gRals.length > 0
-  const showScheme = inGutter && scheme && !norm(q)
-  const gRal = ((gRals.find(x => x.sub === path[1]) || gRals.find(x => x.ral === ralSaved) || gRals[0]) || { ral: '' }).ral
-  function pickRal(ral: string) {
-    const x = gRals.find(y => y.ral === ral); if (!x) return
-    setPath([gCat, x.sub]); setRalSaved(ral)
-    try { localStorage.setItem('u2b_vodostok_ral', ral) } catch { /* нет доступа к хранилищу */ }
-  }
+  // «Водосток → Модерн бюджет» открывается СХЕМОЙ (3D): RAL-папки сверху, детали нажимаются на картинке.
+  // Список никуда не делся — кнопка «☰ список» / «🧩 схема».
+  const { scheme, setScheme, gCat, gRals, gRal, inGutter, showScheme, pickRal } = useGutterScheme(products, folder, path, setPath, q)
 
   const byName = useMemo(() => { const m: Record<string, any> = {}; for (const p of products) m[norm(p.name)] = p; return m }, [products])
 

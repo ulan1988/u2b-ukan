@@ -8,12 +8,14 @@ export const GUTTER_CAT = 'модерн бюджет'
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/x/g, 'х').replace(/\s+/g, ' ')
 const has = (...w: string[]) => (n: string) => w.every(x => n.includes(x))
 
-export interface GutterPart { id: GutterKind; title: string; test: (n: string) => boolean }
+export interface GutterPart { id: GutterKind; title: string; test: (n: string) => boolean; fallbackRal?: string }
 // Порядок = порядок строк под схемой: сверху вниз по ходу воды.
 export const GUTTER_PARTS: GutterPart[] = [
   { id: 'gutter', title: 'Желоб', test: n => n.startsWith('желоб') && n.includes('120х86') },
   { id: 'hold', title: 'Кронштейн', test: has('держатель желоба', 'х295') },
-  { id: 'holdk', title: 'Кронштейн короткий', test: has('держатель желоба', 'карниз') },
+  // владелец 22.11.2026: карнизный держатель привязан к «Держатель желоба 9003 карнизный 120х86х146 (3мм)» —
+  // в цвете, где своего карнизного нет (8017), подставляется он
+  { id: 'holdk', title: 'Кронштейн короткий', test: has('держатель желоба', 'карниз'), fallbackRal: '9003' },
   { id: 'capl', title: 'Заглушка левая', test: has('заглушка желоба', 'лев') },
   { id: 'capr', title: 'Заглушка правая', test: has('заглушка желоба', 'прав') },
   { id: 'cout', title: 'Угол наружный', test: n => n.includes('угол желоба') && n.includes('наружн') && !n.includes('чп') },
@@ -46,6 +48,7 @@ export function gutterRals(products: any[]): { ral: string; sub: string }[] {
 export function gutterProduct(products: any[], part: GutterPart, ral: string): any | undefined {
   const c = products.filter(p => isGutterCat(p) && part.test(norm(p.name)))
   return c.find(p => extractRal(p.name) === ral) || c.find(p => !extractRal(p.name))
+    || (part.fallbackRal ? c.find(p => extractRal(p.name) === part.fallbackRal) : undefined)
 }
 
 // Подпись на схеме — наш алиас; RAL в конце убираем (он выбран папкой сверху).
