@@ -101,21 +101,56 @@ async function addRemnant(orgId: string, color: string, widthCm: number, qty = 1
   await repo.insertMaterialPiece({ orgId, color, widthCm: String(w), lengthCm: String(SHEET_LENGTH_CM), qty, kind: 'remnant' })
 }
 
-// Раскрой карточки → движение склада: −целые листы по цвету, +обрезь ≥4см. Идемпотентность — у вызывающего.
-export async function consumeForCut(orgId: string, positions: any[]) {
-  const items = positions
-    .filter(p => Number(p.leg) === 1 && Number(p.widthCm) > 0)
-    .map(p => ({ name: p.name1c || p.oral || '', color: sheetColor(p.name1c || p.oral || ''), cm: Number(p.widthCm), qty: Number(p.qty) }))
-    .filter(i => i.cm > 0 && i.qty > 0)
-  if (!items.length) return null
+// КАКОЙ ЛИСТ НУЖЕН ПОД ТОВАР (правило владельца 22.11.2026): лист берётся из «Материалов», а какой именно и сколько см —
+// говорит сам товар «Комплектующих». Ключ листа: RAL («7024»); матовый — «7024 матовый» (в имени «7024М» или «матовый»);
+// декор — по названию листа на складе («темное дерево»). Декор без уточнения («дерево») ни с одним листом не совпадёт:
+// лист не угадываем, в журнал карточки уйдёт «не хватило».
+const normK = (x: string) => (x || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
+const ralIn = (x: string) => ((x || '').match(/(\d{4})/) || [])[1] || ''
+const isMatName = (n: string) => /\d{4}\s*м(?![а-яёa-z])/i.test(n || '') || /матов/i.test(n || '') || /(^|\s)мат(\s|$)/i.test(n || '')
+const pieceKey = (pc: any, prodName: string) => {
+  const ral = ralIn(pc.color) || ralIn(prodName)
+  return ral ? ral + (isMatName(pc.color) || isMatName(prodName) ? ' матовый' : '') : normK(pc.color)
+}
+export function sheetKeyOf(name: string, decors: string[]): string {
+  const ral = ralIn(name)
+  if (ral) return ral + (isMatName(name) ? ' матовый' : '')
+  const n = normK(name)
+  const hit = decors.filter(d => d && n.includes(d)).sort((a, b) => b.length - a.length)[0]
+  return hit || (/(дуб|дерев|3d)/i.test(name || '') ? 'дерево' : '')
+}
+
+// Раскрой → склад материала: −целые листы нужного цвета (FIFO), +обрезь ≥4 см. Идемпотентность — у вызывающего.
+// positions: { leg: 1, name1c, widthCm (см на штуку: у изделия — свои, у комплектующего — ширина типа), qty }.
+// dry — только посчитать (сколько листов какого цвета уйдёт), склад не трогать.
+export async function consumeForCut(orgId: string, positions: any[], dry = false) {
+  const src = positions.filter(p => Number(p.leg) === 1 && Number(p.widthCm) > 0 && Number(p.qty) > 0)
+  if (!src.length) return null
+  const refs = await import('../repositories/refs.repo')
+  const prods: any[] = await refs.listProducts()
+  const nameById = new Map(prods.map(p => [p.id, p.name as string]))
+  const sheets = (await repo.listMaterialPieces(orgId)).filter((p: any) => p.kind === 'sheet')
+    .map((p: any) => ({ id: p.id as string, qty: Number(p.qty), at: new Date(p.createdAt).getTime(), key: pieceKey(p, nameById.get(p.productId) || '') }))
+    .sort((a, b) => a.at - b.at)   // FIFO
+  const decors = Array.from(new Set(sheets.map(x => x.key).filter(k => k && !ralIn(k))))
+  const items = src.map(p => { const name = p.name1c || p.oral || ''; return { name, color: sheetKeyOf(name, decors), cm: Number(p.widthCm), qty: Number(p.qty) } })
   const pack = optimizeCut(items, SHEET_WIDTH_CM)
   const summary = { sheets: 0, remnants: 0, shortfall: 0, byColor: [] as any[] }
   for (const g of pack.byColor) {
-    const d = await deductSheets(orgId, g.color, g.count)
+    let need = g.count
+    for (const pc of sheets) {
+      if (need <= 0) break
+      if (pc.key !== g.color || pc.qty <= 0) continue
+      const take = Math.min(need, pc.qty)
+      pc.qty -= take; need -= take
+      if (!dry) await repo.updateMaterialQty(pc.id, pc.qty)
+    }
+    // Обрезь приходуем только с листов, которые реально сняты со склада (не хватило листа — нет и обрези).
+    const taken = g.count - need
     let rem = 0
-    for (const sh of g.sheets) if (sh.waste >= MIN_REMNANT_CM) { await addRemnant(orgId, g.color, sh.waste); rem++ }
-    summary.sheets += g.count; summary.remnants += rem; summary.shortfall += d.shortfall
-    summary.byColor.push({ color: g.color, sheets: g.count, remnants: rem, shortfall: d.shortfall })
+    for (let i = 0; i < taken && i < g.sheets.length; i++) if (g.sheets[i].waste >= MIN_REMNANT_CM) { if (!dry) await addRemnant(orgId, g.color, g.sheets[i].waste); rem++ }
+    summary.sheets += g.count; summary.remnants += rem; summary.shortfall += need
+    summary.byColor.push({ color: g.color, sheets: g.count, remnants: rem, shortfall: need })
   }
   return summary
 }

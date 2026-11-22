@@ -169,9 +169,9 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     if (izd || own > 0) await setProductCost(productId as string, cost)
 
     outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: own || undefined })
-    // Раскрой (списание листа) — как раньше, только по строкам со своей шириной. Под комплектующие лист пока НЕ
-    // списываем: выпущенное «на запас» при продаже по заказу выпускается ещё раз — лист ушёл бы дважды.
-    made.push(p)
+    // Раскрой (списание листа из «Материалов»): у изделия — свои см, у комплектующего — ширина его типа.
+    // Какой лист — по цвету в имени товара (правило владельца 22.11.2026).
+    if (width > 0) made.push({ leg: 1, name1c: nm, oral: nm, widthCm: width, qty: Number(p.qty) })
   }
   if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета или длины — укажите РАЛ и см, тогда выпустится товар «Изделие {цвет} {см} см»' : 'Нет изделий для внесения', skipped }
 
@@ -181,7 +181,7 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
   let consumed: any = null
   try {
     const { consumeForCut } = await import('./material.service')
-    consumed = await consumeForCut(order.orgId, made)
+    consumed = await consumeForCut(prodOrgId, made)   // лист — со склада материала ПРОИЗВОДИТЕЛЯ
   } catch { /* нехватка листов не должна ронять выпуск */ }
 
   const doc = await createProduction({ orgId: order.orgId, warehouseId: wh.id, inputs: [], outputs, date: date || undefined, comment: `Производство изделий · заявка ${cardId}` } as any)
@@ -226,7 +226,7 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     else if (!productId) { productId = await ensureProduct(nm, orgId); created++ }
     if (productId && (izd || own > 0)) await setProductCost(productId, cost)
     outputs.push({ productId, qty, price: cost || 0, widthCm: own || undefined, comment: nm })
-    made.push({ name1c: nm, oral: nm, widthCm: own, qty, productId })
+    if (width > 0) made.push({ leg: 1, name1c: nm, oral: nm, widthCm: width, qty, productId })   // лист списывается и «на запас»
   }
   if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : foreign ? 'Это покупной товар: на склад он встаёт приходной накладной, а не производством' : 'Нет позиций для выпуска', skipped }
   let consumed: any = null
