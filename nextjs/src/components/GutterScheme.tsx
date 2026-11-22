@@ -1,18 +1,19 @@
 'use client'
-// Схема водостока «Модерн бюджет» в каталоге: сверху RAL-папки, под ними 3D-схема (детали двигаются и
-// собираются, подписи — наши алиасы), ниже — выбранная деталь с количеством и список всех деталей.
-// Количество пишется в тот же «выбранный» список каталога, что и строки обычного списка (ключ — имя товара).
+// Схема водостока в каталоге (серии «Модерн бюджет» и «Дёке»): сверху папки серии (RAL или класс),
+// под ними 3D-схема (детали двигаются и собираются, подписи — наши алиасы), ниже — выбранная деталь
+// с количеством и список всех деталей. Количество пишется в тот же «выбранный» список каталога,
+// что и строки обычного списка (ключ — имя товара).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { GutterKind, GutterScene } from '@/lib/gutter3d'
-import { GUTTER_HIDDEN, GUTTER_PARTS, gutterLabel, gutterProduct, gutterTheme } from '@/lib/gutterParts'
+import { gutterTheme, type GutterFolder, type GutterSystem } from '@/lib/gutterParts'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
 const num = (s: string) => Number((s || '').replace(',', '.')) || 0
 
-export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf, setQty, stockTag }: {
-  products: any[]; ral: string; rals: { ral: string; sub: string }[]
-  onRal: (ral: string) => void; onList: () => void
+export default function GutterScheme({ system, products, folder, folders, onFolder, onList, qtyOf, setQty, stockTag }: {
+  system: GutterSystem; products: any[]; folder: GutterFolder; folders: GutterFolder[]
+  onFolder: (key: string) => void; onList: () => void
   qtyOf: (name: string) => number; setQty: (p: any, qty: number) => void
   stockTag?: (p: any) => ReactNode
 }) {
@@ -24,20 +25,20 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
   const [assembled, setAssembled] = useState(false)
   const [note, setNote] = useState('')
   const noteTimer = useRef<any>(null)
-  const theme = useMemo(() => gutterTheme(ral), [ral])
+  const theme = useMemo(() => gutterTheme(folder.hex), [folder.hex])
 
-  // деталь → товар выбранного RAL (или его нет в номенклатуре)
-  const rows = useMemo(() => GUTTER_PARTS.map(part => {
-    const product = gutterProduct(products, part, ral)
-    return { part, product, label: gutterLabel(part, product, ral) }
-  }), [products, ral])
+  // деталь → товар выбранной папки (или его нет в номенклатуре)
+  const rows = useMemo(() => system.parts.map(part => {
+    const product = system.product(products, part, folder)
+    return { part, product, label: system.label(part, product, folder) }
+  }), [system, products, folder])
   const rowsRef = useRef(rows); rowsRef.current = rows
 
   useEffect(() => {
     let dead = false, made: GutterScene | null = null
     const host = hostRef.current; if (!host) return
     import('@/lib/gutter3d').then(m => m.createGutterScene(host, {
-      hide: GUTTER_HIDDEN,
+      system: system.id, hide: system.hidden,
       onPick: k => setSel(k),
       onSnap: k => {
         const r = rowsRef.current.find(x => x.part.id === k)
@@ -47,7 +48,8 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
     })).then(s => { if (dead) { s.dispose(); return } made = s; sceneRef.current = s; setReady(true) })
       .catch(() => { if (!dead) setErr('Схема не открылась на этом устройстве — количество можно вписать в списке ниже.') })
     return () => { dead = true; clearTimeout(noteTimer.current); if (made) made.dispose(); sceneRef.current = null }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [system.id])
 
   useEffect(() => { if (ready) sceneRef.current?.setPalette(theme.palette) }, [ready, theme])
   const qtyKey = rows.map(r => r.product ? qtyOf(r.product.name) : 0).join(',')
@@ -63,6 +65,7 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
   const cur = rows.find(r => r.part.id === sel)
   const curQty = cur?.product ? qtyOf(cur.product.name) : 0
   const total = rows.reduce((a, r) => a + (r.product && qtyOf(r.product.name) > 0 ? 1 : 0), 0)
+  const tight = folders.length > 3   // четыре папки и больше — плашки компактнее, чтобы влезли в телефон
 
   const seg = (on: boolean): React.CSSProperties => ({ border: 'none', background: on ? '#fff' : 'transparent', color: on ? DARK : 'inherit', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800 })
   const qtyInput = (p: any, big?: boolean) => (
@@ -75,18 +78,18 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
 
   return (
     <div>
-      {/* RAL-папки серии */}
-      <div style={{ display: 'flex', gap: 8, padding: '9px 12px 2px', alignItems: 'stretch' }}>
-        {rals.map(x => { const t = gutterTheme(x.ral), on = x.ral === ral; return (
-          <button key={x.ral} onClick={() => onRal(x.ral)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, border: on ? `2px solid ${PRIMARY}` : '1.5px solid #e2ddd5', background: on ? '#fff7f3' : '#fff', borderRadius: 12, padding: '7px 8px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-            <span style={{ width: 30, height: 30, borderRadius: 9, background: t.hex, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.18)', flexShrink: 0 }} />
-            <span style={{ minWidth: 0 }}>
-              <b style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: DARK, lineHeight: 1.1 }}>{x.ral}</b>
-              <span style={{ display: 'block', fontSize: 10.5, color: '#6b645b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
+      {/* папки серии: RAL или класс */}
+      <div style={{ display: 'flex', gap: tight ? 5 : 8, padding: '9px 12px 2px', alignItems: 'stretch' }}>
+        {folders.map(x => { const on = x.key === folder.key; return (
+          <button key={x.key} onClick={() => onFolder(x.key)} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: tight ? 'column' : 'row', alignItems: 'center', gap: tight ? 3 : 8, border: on ? `2px solid ${PRIMARY}` : '1.5px solid #e2ddd5', background: on ? '#fff7f3' : '#fff', borderRadius: 12, padding: tight ? '6px 3px' : '7px 8px', cursor: 'pointer', fontFamily: 'inherit', textAlign: tight ? 'center' : 'left' }}>
+            <span style={{ width: tight ? 22 : 30, height: tight ? 22 : 30, borderRadius: tight ? 7 : 9, background: x.hex, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.18)', flexShrink: 0 }} />
+            <span style={{ minWidth: 0, maxWidth: '100%' }}>
+              <b style={{ display: 'block', fontSize: tight ? 12 : 14.5, fontWeight: 800, color: DARK, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</b>
+              <span style={{ display: 'block', fontSize: 10.5, color: '#6b645b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.note}</span>
             </span>
           </button>
         )})}
-        <button onClick={onList} title="Показать списком" style={{ flexShrink: 0, border: '1.5px solid #e2ddd5', background: '#fff', borderRadius: 12, padding: '0 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: '#5f5952' }}>☰<br />список</button>
+        <button onClick={onList} title="Показать списком" style={{ flexShrink: 0, border: '1.5px solid #e2ddd5', background: '#fff', borderRadius: 12, padding: tight ? '0 7px' : '0 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: '#5f5952' }}>☰<br />список</button>
       </div>
 
       {/* схема */}
@@ -111,7 +114,7 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
         {!cur ? (
           <div style={{ flex: 1, fontSize: 13.5, color: '#6b645b' }}><b style={{ color: DARK }}>Нажмите на деталь</b> на схеме — здесь впишете количество.</div>
         ) : !cur.product ? (
-          <div style={{ flex: 1, fontSize: 13.5, color: '#6b645b' }}><b style={{ color: DARK }}>{cur.label}</b> — в номенклатуре {ral} такого товара нет.</div>
+          <div style={{ flex: 1, fontSize: 13.5, color: '#6b645b' }}><b style={{ color: DARK }}>{cur.label}</b> — в номенклатуре «{system.title} {folder.title}» такого товара нет.</div>
         ) : (
           <>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -131,7 +134,7 @@ export default function GutterScheme({ products, ral, rals, onRal, onList, qtyOf
 
       {/* все детали серии строками */}
       <div style={{ padding: '2px 14px 5px', fontSize: 11.5, fontWeight: 700, color: '#8a8377', letterSpacing: '.04em', textTransform: 'uppercase', display: 'flex' }}>
-        <span>Детали · {ral}</span><span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>{total ? `выбрано ${total}` : ''}</span>
+        <span>Детали · {system.title} {folder.title}</span><span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>{total ? `выбрано ${total}` : ''}</span>
       </div>
       <div style={{ margin: '0 12px', background: '#fff', borderRadius: 14, boxShadow: '0 0 0 1px #e6e2dc', overflow: 'hidden' }}>
         {rows.map(r => { const on = sel === r.part.id, p = r.product; return (

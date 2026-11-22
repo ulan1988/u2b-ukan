@@ -91,7 +91,8 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
 
   // «Водосток → Модерн бюджет» открывается СХЕМОЙ (3D): RAL-папки сверху, детали нажимаются на картинке.
   // Список никуда не делся — кнопка «☰ список» / «🧩 схема».
-  const { scheme, setScheme, gCat, gRals, gRal, inGutter, showScheme, pickRal } = useGutterScheme(products, folder, path, setPath, q)
+  const gs = useGutterScheme(products, folder, path, setPath, q)
+  const { scheme, setScheme, gCat, inGutter, showScheme } = gs
 
   const byName = useMemo(() => { const m: Record<string, any> = {}; for (const p of products) m[norm(p.name)] = p; return m }, [products])
 
@@ -227,8 +228,8 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
           </div>
         )}
 
-        {showScheme && (
-          <GutterScheme products={products} ral={gRal} rals={gRals} onRal={pickRal} onList={() => setScheme(false)}
+        {showScheme && gs.sys && gs.gFolder && (
+          <GutterScheme key={gs.sys.id} system={gs.sys} products={products} folder={gs.gFolder} folders={gs.folders} onFolder={gs.pick} onList={() => setScheme(false)}
             qtyOf={qtyOf} setQty={(p, qty) => upsert(p.name, { qty, unit: p.unit || 'шт' })}
             stockTag={orgId && showStock ? (p => <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />) : undefined} />
         )}

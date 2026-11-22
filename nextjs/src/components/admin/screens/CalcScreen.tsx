@@ -11,7 +11,7 @@ import { fetchRefs } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import CatalogFilterBar from '@/components/CatalogFilterBar'
 import GutterScheme from '@/components/GutterScheme'
-import { useGutterRal } from '@/lib/useGutterScheme'
+import { useGutterPanel } from '@/lib/useGutterScheme'
 import { FOLDERS, extraFolders, filterProducts, emptySel, norm, isBonusProduct, type CatalogSel } from '@/lib/catalogNav'
 
 const fmt = (n: number) => !n ? '0' : Number(n).toLocaleString('ru-RU')
@@ -338,9 +338,9 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     fetch(`/api/products?orgId=${orgId}`).then(r => r.ok ? r.json() : []).then((d: any[]) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
   }
 
-  // 🧩 Схема водостока «Модерн бюджет»: количество с картинки пишется прямо в строки листа.
+  // 🧩 Схема водостока (Модерн бюджет / Дёке): количество с картинки пишется прямо в строки листа.
   const [schemeOpen, setSchemeOpen] = useState(false)
-  const gr = useGutterRal(products)
+  const gr = useGutterPanel(products)
   function schemeQty(p: any, qty: number) {
     const next = [...rows], i = next.findIndex((r: any) => r.name1c === p.name)
     if (i >= 0) next[i] = { ...next[i], qty }
@@ -538,16 +538,23 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         extra={(() => {
           const n = (activeFolder ? filterProducts(products, activeFolder, sel, '', 60) : []).length
           return <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {gr.gRals.length > 0 && <button onClick={() => setSchemeOpen(v => !v)} title="Водосток «Модерн бюджет» схемой: нажал деталь — вписал количество" style={{ border: 'none', background: schemeOpen ? '#26231f' : '#d4613a', color: '#fff', borderRadius: 8, padding: '4px 10px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, whiteSpace: 'nowrap' }}>🧩 схема водостока</button>}
+            {gr.present.length > 0 && <button onClick={() => setSchemeOpen(v => !v)} title="Водосток схемой (Модерн бюджет, Дёке): нажал деталь — вписал количество" style={{ border: 'none', background: schemeOpen ? '#26231f' : '#d4613a', color: '#fff', borderRadius: 8, padding: '4px 10px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, whiteSpace: 'nowrap' }}>🧩 схема водостока</button>}
             <button onClick={savePrices} title="Записать цены из листа в номенклатуру (розница этой орг) — потом подтянутся сами" style={{ border: '1px solid #cfeadd', background: '#eaf7f0', color: '#2e8a5e', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>💾 цены в номенклатуру</button>
             <button onClick={pullPrices} title="Подтянуть розничные цены из номенклатуры к строкам, где цена пустая" style={{ border: '1px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>💲 подтянуть цены</button>
             {pullMsg ? <span style={{ fontSize: 11.5, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{pullMsg}</span> : null}
             {n ? <button onClick={insertKit} title="Вставить все позиции выбранного набора в строки — останется проставить количества" style={{ border: 'none', background: '#2e8a5e', color: '#fff', borderRadius: 16, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>📦 вставить комплект · {n}</button> : null}
           </span>
         })()} />
-      {schemeOpen && gr.gRals.length > 0 && (
+      {schemeOpen && gr.cur && gr.gFolder && (
         <div style={{ maxWidth: 560, marginBottom: 10, background: '#f1efec', borderRadius: 12, boxShadow: '0 0 0 1px #e6e2dc', paddingBottom: 10 }}>
-          <GutterScheme products={products} ral={gr.gRal} rals={gr.gRals} onRal={gr.setRal} onList={() => setSchemeOpen(false)}
+          {gr.present.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, padding: '9px 12px 0' }}>
+              {gr.present.map(x => { const on = x.sys.id === gr.cur!.sys.id; return (
+                <button key={x.sys.id} onClick={() => gr.setSysId(x.sys.id)} style={{ border: on ? 'none' : '1.5px solid #e2ddd5', background: on ? '#26231f' : '#fff', color: on ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800 }}>{x.sys.title}</button>
+              )})}
+            </div>
+          )}
+          <GutterScheme key={gr.cur.sys.id} system={gr.cur.sys} products={products} folder={gr.gFolder} folders={gr.cur.folders} onFolder={gr.pick} onList={() => setSchemeOpen(false)}
             qtyOf={name => Number((rows.find((r: any) => r.name1c === name) || {}).qty) || 0} setQty={schemeQty} />
         </div>
       )}

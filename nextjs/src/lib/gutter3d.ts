@@ -1,10 +1,13 @@
-// 3D-схема водостока «Модерн бюджет» (желоб 120×86, труба 76×102): детали строятся кодом по размерам,
+// 3D-схема водостока: две системы — «Модерн бюджет» (желоб 120×86, труба 76×102) и «Дёке»
+// (полукруглый желоб, круглая труба; три класса отличаются размером, для меню модель одна).
+// Детали строятся кодом по размерам,
 // лежат разобранной схемой, каждую можно тащить пальцем — рядом со своим местом у желоба она
 // прищёлкивается. Подписи (наши алиасы) стоят рядом с деталью со стрелкой.
 // Чистый движок: о товарах и ценах ничего не знает — их даёт компонент GutterScheme.
 // three.js грузится ТОЛЬКО здесь (динамический import) — в общий бандл каталога не попадает.
 
-export type GutterKind = 'gutter' | 'hold' | 'holdk' | 'capl' | 'capr' | 'cout' | 'cin' | 'funnel' | 'elbow' | 'pipe' | 'clamp' | 'clampw'
+export type GutterKind = string
+export type GutterSystemId = 'budget' | 'docke'
 export interface GutterLabel { text: string; qty?: number; off?: boolean }
 export interface GutterPalette { out: string; inn: string; line: string }
 export interface GutterScene {
@@ -16,7 +19,7 @@ export interface GutterScene {
   dispose(): void
 }
 // hide — детали, которых в меню нет: модель в движке остаётся, на схему просто не ставится
-interface Opts { onPick: (k: GutterKind | null) => void; onSnap?: (k: GutterKind) => void; hide?: GutterKind[] }
+interface Opts { system?: GutterSystemId; onPick: (k: GutterKind | null) => void; onSnap?: (k: GutterKind) => void; hide?: GutterKind[] }
 
 const ACCENT = '#e0744d', OK = '#2e8a5e'
 
@@ -79,12 +82,14 @@ export async function createGutterScene(host: HTMLElement, opts: Opts): Promise<
       return prof.map(q => at(q[0], q[1]))
     })
     const r = ref as unknown as number[]
-    // отрезок дна — третий с конца; по нему видно, где у желоба «снаружи»
-    return faceOut(skin(rings, false), (prof.length - 3) * 2, new V3(r[0], r[1], r[2]))
+    // самый нижний отрезок сечения — дно: по нему видно, где у желоба «снаружи»
+    let bot = 0, lowY = 1e9
+    for (let i = 0; i < prof.length - 1; i++) { const my = (prof[i][1] + prof[i + 1][1]) / 2; if (my < lowY) { lowY = my; bot = i } }
+    return faceOut(skin(rings, false), bot * 2, new V3(r[0], r[1], r[2]))
   }
   // торцевая пластина по сечению желоба в плоскости x = const (лицевая стенка к +z)
-  function capPlate(x: number) {
-    const pts = PROF.slice(2)
+  function capPlate(x: number, prof: number[][] = PROF.slice(2)) {
+    const pts = prof
     const tri = T.ShapeUtils.triangulateShape(pts.map(q => new T.Vector2(q[0], q[1])), [])
     const pos: number[] = [], idx: number[] = []
     pts.forEach(q => pos.push(x, q[1], 60 - q[0]))
@@ -161,44 +166,114 @@ export async function createGutterScene(host: HTMLElement, opts: Opts): Promise<
     return poly([[BA, -y, z0], [BA, -y, z1], [BA, -y + 10, z2], [BA, y - 10, z2], [BA, y, z1], [BA, y, z0]])
   }
 
-  // у каждой детали — список кусков [геометрия, одноцветная?]; flip — зеркало по длине
-  const capG = [[capPlate(0)], [gutterSweep([[0, 0], [28, 0]], 1, PROF.slice(1))]]
-  const DEF: Record<GutterKind, { g: any[][]; flip?: boolean }> = {
-    gutter: { g: [[gutterSweep([[-200, 0], [200, 0]], 1)]] },
-    cout: { g: [[gutterSweep([[0, -160], [0, 0], [160, 0]], 1)]] },
-    cin: { g: [[gutterSweep([[-160, 0], [0, 0], [0, 160]], 1)]] },
-    capl: { g: capG },
-    capr: { g: capG, flip: true },
-    hold: { g: [[strip2d(hookPath(195), -13, 13), true]] },
-    holdk: { g: [[strip2d(hookPath(46), -13, 13), true]] },
-    pipe: { g: [[tubeSweep([[0, -PL / 2], [0, PL / 2]], tubeSection())]] },
-    elbow: { g: [[tubeSweep(ELBOW, tubeSection())]] },
-    funnel: { g: [[flange(46, 62, 38, 51, 0)], [tubeSweep([[0, 0], [0, -75]], tubeSection())]] },
-    clamp: { g: [[band(70)], [wedge(70), true], [rod(7, 5, 6, BA - 3, 0), true], [rod(2.6, 46, 8, BA + 23, 0), true]] },
-    clampw: { g: [[band(48)], [wedge(48), true], [ear(1, 48), true], [ear(-1, 48), true], [rod(4.5, 3, 8, BA - 1.5, BB + 16), true], [rod(4.5, 3, 8, BA - 1.5, -BB - 16), true]] },
+  type Def = Record<string, { g: any[][]; flip?: boolean }>
+  //   деталь, место в сборке, поворот, сдвиг в разобранной схеме, подпись: сторона и доля вдоль края
+  type Row = [GutterKind, number[], number[], number[], string, number?]
+  interface Sys { DEF: Def; LAYOUT: Row[]; thin: GutterKind[] }
+
+  // ── «Модерн бюджет»: у каждой детали — список кусков [геометрия, одноцветная?]; flip — зеркало по длине
+  function budget(): Sys {
+    const capG = [[capPlate(0)], [gutterSweep([[0, 0], [28, 0]], 1, PROF.slice(1))]]
+    const DEF: Def = {
+      gutter: { g: [[gutterSweep([[-200, 0], [200, 0]], 1)]] },
+      cout: { g: [[gutterSweep([[0, -160], [0, 0], [160, 0]], 1)]] },
+      cin: { g: [[gutterSweep([[-160, 0], [0, 0], [0, 160]], 1)]] },
+      capl: { g: capG },
+      capr: { g: capG, flip: true },
+      hold: { g: [[strip2d(hookPath(195), -13, 13), true]] },
+      holdk: { g: [[strip2d(hookPath(46), -13, 13), true]] },
+      pipe: { g: [[tubeSweep([[0, -PL / 2], [0, PL / 2]], tubeSection())]] },
+      elbow: { g: [[tubeSweep(ELBOW, tubeSection())]] },
+      funnel: { g: [[flange(46, 62, 38, 51, 0)], [tubeSweep([[0, 0], [0, -75]], tubeSection())]] },
+      clamp: { g: [[band(70)], [wedge(70), true], [rod(7, 5, 6, BA - 3, 0), true], [rod(2.6, 46, 8, BA + 23, 0), true]] },
+      clampw: { g: [[band(48)], [wedge(48), true], [ear(1, 48), true], [ear(-1, 48), true], [rod(4.5, 3, 8, BA - 1.5, BB + 16), true], [rod(4.5, 3, 8, BA - 1.5, -BB - 16), true]] },
+    }
+    const FX = -30, FZ = -18.5, PT = -76   // верх трубы = низ воронки; колено одно — слив внизу трубы
+    const LAYOUT: Row[] = [
+      ['gutter', [0, 0, 0], [0, 0, 0], [0, 0, 0], 'b', 0.82],
+      ['cout', [-360, 0, 0], [0, 0, 0], [-100, 0, 0], 'b', 0.35],
+      ['capl', [-360, 0, -160], [0, -PI / 2, 0], [-100, 0, -100], 't'],
+      ['cin', [360, 0, 0], [0, 0, 0], [100, 0, 0], 't', 0.6],
+      ['capr', [360, 0, 160], [0, -PI / 2, 0], [100, 0, 100], 'b'],
+      ['hold', [-140, 0, 0], [0, 0, 0], [0, 150, 0], 'l', 0.3],
+      ['holdk', [140, 0, 0], [0, 0, 0], [0, 150, 0], 't'],
+      ['funnel', [FX, -1, FZ], [0, PI / 2, 0], [0, -90, 0], 'l'],
+      ['pipe', [FX, PT - PL / 2, FZ], [0, PI / 2, 0], [0, -180, 0], 'l'],
+      ['elbow', [FX, PT - PL, FZ], [0, -PI / 2, 0], [0, -270, 0], 'l'],
+      ['clamp', [FX, PT - 170, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
+      ['clampw', [FX, PT - 270, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
+    ]
+    return { DEF, LAYOUT, thin: ['hold', 'holdk', 'clamp', 'clampw'] }
   }
+
+  // ── «Дёке»: желоб полукруглый, труба круглая. Виды деталей — по нашей номенклатуре (14 позиций класса).
+  function docke(): Sys {
+    const half = (r: number) => { const p: number[][] = []; for (let i = 0; i <= 18; i++) { const t = PI * i / 18; p.push([60 - r * Math.cos(t), 60 - r * Math.sin(t)]) } return p }
+    // сечение желоба: наружный валик спереди → полукруг → отбортовка у стены
+    const PD = [[-6, 52], [-6, 62]].concat(half(60), [[126, 60], [126, 68]])
+    const PJ = [[-10, 50], [-10, 65]].concat(half(63.5), [[130, 60], [130, 71]])       // соединитель — чуть шире желоба
+    const open = (rt: number, rb: number, hh: number, y: number) => { const g = new T.CylinderGeometry(rt, rb, hh, 28, 1, true); g.translate(0, y, 0); return g }
+    const ring: number[][] = []; for (let i = 0; i < 28; i++) { const t = 2 * PI * i / 28; ring.push([45 * Math.cos(t), 45 * Math.sin(t)]) }
+    // колено: раструб сверху, поворот на ang градусов, прямой выпуск
+    const bend = (ang: number, tail: number) => {
+      const p = [[0, 0], [0, -45]]; let d = -PI / 2, x = 0, y = -45; const steps = Math.round(ang / 9)
+      for (let k = 0; k < steps; k++) { d += (ang / steps) * PI / 180; x += 13 * Math.cos(d - (ang / steps) * PI / 360); y += 13 * Math.sin(d - (ang / steps) * PI / 360); p.push([x, y]) }
+      p.push([x + tail * Math.cos(d), y + tail * Math.sin(d)])
+      return p
+    }
+    const elbow = (ang: number, tail: number) => [[tubeSweep(bend(ang, tail), ring)], [open(50, 50, 36, -18)]]
+    // кронштейн: спинка у стены → дуга под желобом → зацеп за передний валик
+    const hook = (top: number, r: number) => {
+      const p = [[127, top], [127, 60]]
+      for (let i = 1; i <= 18; i++) { const t = PI - PI * i / 18; p.push([60 - r * Math.cos(t), 60 - r * Math.sin(t)]) }
+      p.push([60 - r, 67], [60 - r + 8, 67])
+      return p
+    }
+    const box = (w: number, hh: number, d: number, x: number, y: number, z: number) => { const g = new T.BoxGeometry(w, hh, d); g.translate(x, y, z); return g }
+    const pin = (rad: number, len: number, z: number) => { const g = new T.CylinderGeometry(rad, rad, len, 8); g.rotateX(PI / 2); g.translate(0, 0, z); return g }
+    const DPL = 300
+    const DEF: Def = {
+      dg: { g: [[gutterSweep([[-160, 0], [160, 0]], 1, PD)]] },
+      dc90: { g: [[gutterSweep([[0, -140], [0, 0], [140, 0]], 1, PD)]] },
+      dc135: { g: [[gutterSweep([[-120, 0], [0, 0], [85, -85]], 1, PD)]] },
+      dcap: { g: [[capPlate(0, half(60))], [gutterSweep([[0, 0], [24, 0]], 1, PJ)]] },
+      dconn: { g: [[gutterSweep([[-34, 0], [34, 0]], 1, PJ)]] },
+      dfun: { g: [[gutterSweep([[-80, 0], [80, 0]], 1, PD)], [open(54, 46, 38, -15)], [open(46, 46, 58, -63)]] },
+      dbr: { g: [[strip2d(hook(112, 65), -13, 13), true], [box(44, 66, 5, 0, 80, -69.5), true]] },
+      dbrm: { g: [[strip2d(hook(250, 64), -9, 9), true]] },
+      dpipe: { g: [[open(45, 45, DPL, 0)]] },
+      dmuf: { g: [[open(49, 49, 80, 0)], [open(52.5, 52.5, 7, 14)], [open(52.5, 52.5, 7, -14)]] },
+      dclamp: { g: [[open(49.5, 49.5, 22, 0), true], [box(30, 22, 26, 0, 0, -62), true], [pin(3, 44, -97), true]] },
+      del72: { g: elbow(72, 52) },
+      del45: { g: elbow(45, 52) },
+      dtip: { g: elbow(62, 95) },
+    }
+    const PX = 240, PT = -92                              // ось трубы — под воронкой; низ выпуска воронки
+    const LAYOUT: Row[] = [
+      ['dg', [0, 0, 0], [0, 0, 0], [0, 0, 0], 't', 0.5],
+      ['dconn', [-160, 0, 0], [0, 0, 0], [-48, 0, 0], 'b'],
+      ['dc90', [-300, 0, 0], [0, 0, 0], [-100, 0, 0], 'b', 0.3],
+      ['dcap', [-300, 0, -140], [0, -PI / 2, 0], [-100, 0, -95], 't'],
+      ['dfun', [PX, 0, 0], [0, 0, 0], [55, 0, 0], 't', 0.4],
+      ['dc135', [440, 0, 0], [0, 0, 0], [118, 0, 0], 'b', 0.7],
+      ['dbr', [-80, 0, 0], [0, 0, 0], [0, 150, 0], 'l', 0.3],
+      ['dbrm', [80, 0, 0], [0, 0, 0], [0, 150, 0], 'r', 0.3],
+      ['dpipe', [PX, PT - DPL / 2, 0], [0, 0, 0], [55, -55, 0], 'l'],
+      ['dclamp', [PX, PT - DPL / 2, 0], [0, 0, 0], [215, -55, 0], 'r'],
+      ['dmuf', [PX, PT - DPL - 40, 0], [0, 0, 0], [55, -110, 0], 'l'],
+      ['dtip', [PX, PT - DPL - 80, 0], [0, 0, 0], [55, -165, 0], 'l'],
+      ['del72', [-60, -190, 0], [0, 0, 0], [-20, -55, 0], 'l'],
+      ['del45', [-60, -380, 0], [0, 0, 0], [-20, -140, 0], 'l'],
+    ]
+    return { DEF, LAYOUT, thin: ['dbr', 'dbrm', 'dclamp', 'dconn', 'dcap'] }
+  }
+
+  const { DEF, LAYOUT, thin } = opts.system === 'docke' ? docke() : budget()
   const geos: any[] = []
   Object.values(DEF).forEach(d => d.g.forEach(it => { if (!geos.includes(it[0])) geos.push(it[0]) }))
   const edgeOf = new Map<any, any>()
   geos.forEach(g => edgeOf.set(g, new T.EdgesGeometry(g, 28)))
 
-  // ── сцена: место детали в сборке и её сдвиг в разобранной схеме ───────────────
-  const FX = -30, FZ = -18.5, PT = -76   // верх трубы = низ воронки; колено одно — слив внизу трубы
-  //      деталь     место в сборке          поворот            сдвиг в разборе   подпись: сторона, доля вдоль края
-  const LAYOUT: [GutterKind, number[], number[], number[], string, number?][] = [
-    ['gutter', [0, 0, 0], [0, 0, 0], [0, 0, 0], 'b', 0.82],
-    ['cout', [-360, 0, 0], [0, 0, 0], [-100, 0, 0], 'b', 0.35],
-    ['capl', [-360, 0, -160], [0, -PI / 2, 0], [-100, 0, -100], 't'],
-    ['cin', [360, 0, 0], [0, 0, 0], [100, 0, 0], 't', 0.6],
-    ['capr', [360, 0, 160], [0, -PI / 2, 0], [100, 0, 100], 'b'],
-    ['hold', [-140, 0, 0], [0, 0, 0], [0, 150, 0], 'l', 0.3],
-    ['holdk', [140, 0, 0], [0, 0, 0], [0, 150, 0], 't'],
-    ['funnel', [FX, -1, FZ], [0, PI / 2, 0], [0, -90, 0], 'l'],
-    ['pipe', [FX, PT - PL / 2, FZ], [0, PI / 2, 0], [0, -180, 0], 'l'],
-    ['elbow', [FX, PT - PL, FZ], [0, -PI / 2, 0], [0, -270, 0], 'l'],
-    ['clamp', [FX, PT - 170, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
-    ['clampw', [FX, PT - 270, FZ], [0, PI / 2, 0], [178, -180, 0], 'r'],
-  ]
   let pal: GutterPalette = { out: '#5b392e', inn: '#f2f3f0', line: '#2c1b15' }
   const mats = () => ({
     out: new T.MeshStandardMaterial({ color: pal.out, roughness: 0.62, metalness: 0.1, side: T.FrontSide, flatShading: true }),
@@ -230,7 +305,7 @@ export async function createGutterScene(host: HTMLElement, opts: Opts): Promise<
     const box0 = new T.Box3().setFromObject(outer)
     // тонким деталям — невидимая «ручка» покрупнее, иначе пальцем не попасть
     let handle: any = null
-    if (row[0] === 'hold' || row[0] === 'holdk' || row[0] === 'clamp' || row[0] === 'clampw') {
+    if (thin.includes(row[0])) {
       const ib = new T.Box3().setFromObject(inner), sz = ib.getSize(new V3()).addScalar(34)
       handle = new T.Mesh(new T.BoxGeometry(sz.x, sz.y, sz.z), hitMat)
       handle.position.copy(ib.getCenter(new V3())); inner.add(handle)
@@ -239,8 +314,8 @@ export async function createGutterScene(host: HTMLElement, opts: Opts): Promise<
     line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '1.4'); line.setAttribute('stroke-linecap', 'round')
     const dot = document.createElementNS(NS, 'path'); dot.setAttribute('fill', 'currentColor')
     svg.appendChild(line); svg.appendChild(dot)
-    const tag = document.createElement('button'); tag.type = 'button'
-    tag.style.cssText = 'position:absolute;left:0;top:0;margin:0;border:1px solid rgba(0,0,0,.14);border-radius:9px;padding:4px 7px;font-family:inherit;font-size:11px;font-weight:700;line-height:1.15;white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.18);will-change:transform;-webkit-tap-highlight-color:transparent'
+    const tag = document.createElement('div'); tag.setAttribute('role', 'button'); tag.dataset.tag = '1'   // div, а не button: общие стили кнопок кабинета раздували плашку
+    tag.style.cssText = 'position:absolute;left:0;top:0;margin:0;box-sizing:border-box;user-select:none;border:1px solid rgba(0,0,0,.14);border-radius:9px;padding:4px 7px;font-family:inherit;font-size:11px;font-weight:700;line-height:1.15;white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.18);will-change:transform;-webkit-tap-highlight-color:transparent'
     host.appendChild(tag)
     const inst = { kind: row[0], m, group: outer, handle, home: new V3().fromArray(row[1]), ex: new V3().fromArray(row[3]), rel: new V3(),
       c0: box0.getCenter(new V3()), box0, side: row[4], frac: row[5] ?? 0.5, attached: false, tag, line, dot, w: 40, h: 20, label: { text: '' } as GutterLabel }

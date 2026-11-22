@@ -1047,8 +1047,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             </div>
           )}
 
-          {gs.showScheme && (
-            <GutterScheme products={products} ral={gs.gRal} rals={gs.gRals} onRal={gs.pickRal} onList={() => gs.setScheme(false)}
+          {gs.showScheme && gs.sys && gs.gFolder && (
+            <GutterScheme key={gs.sys.id} system={gs.sys} products={products} folder={gs.gFolder} folders={gs.folders} onFolder={gs.pick} onList={() => gs.setScheme(false)}
               qtyOf={name => (rows.find(r => r.name1c === name) || { qty: 0 }).qty || 0} setQty={(p, qty) => upsertQty(p, String(qty))}
               stockTag={p => <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />} />
           )}
