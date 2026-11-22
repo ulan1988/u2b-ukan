@@ -643,6 +643,7 @@ export const finRows = pgTable('fin_rows', {
   article: text('article').notNull().default(''),         // статья (Кристалл, Зарплата, Аренда…)
   contragentId: uuid('contragent_id').references(() => contragents.id),  // если завязано на контрагента
   docId: uuid('doc_id').references(() => documents.id),    // подобранный документ (накладная/счёт)
+  basisPayId: uuid('basis_pay_id').references(() => payments.id, { onDelete: 'set null' }),  // основание-оплата (возврат покупателю по его документу оплаты)
   who: text('who').notNull().default(''),                  // свободный текст «Контрагент/документ»
   status: text('status').notNull().default('draft'),      // draft | posted
   sortOrder: integer('sort_order').notNull().default(0),

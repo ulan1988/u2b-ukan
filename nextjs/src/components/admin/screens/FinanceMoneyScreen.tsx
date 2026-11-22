@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listContragents, setAccountOpening } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
-import { finCellPayments, finEditPayment, finAddPayment, finUnpostRow, finCancelPayment, finCancelPayments, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
+import { finCellPayments, finEditPayment, finAddPayment, finUnpostRow, finCancelPayment, finCancelPayments, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finBasis, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
@@ -34,7 +34,7 @@ const parseCell = (v: any) => { const n = calc(v); return n == null ? 0 : n }
 function mapRow(r: any) {
   const amt: Record<string, number> = {}
   for (const a of (r.amounts || [])) amt[a.accountId] = Number(a.amount) || 0
-  return { id: r.id, auto: !!r.auto, payId: r.payId || null, accepted: r.accepted !== false, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], amt }
+  return { id: r.id, auto: !!r.auto, payId: r.payId || null, accepted: r.accepted !== false, type: r.type, code: r.code, article: r.article, who: r.who, comment: r.comment || '', status: r.status, contragentId: r.contragentId, docId: r.docId, contragent: r.contragent, docNumber: r.docNumber, docType: r.docType, expenseArticleId: r.expenseArticleId, expCode: r.expCode, expName: r.expName, alloc: r.alloc || [], basisPayId: r.basisPayId || null, amt }
 }
 
 export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
@@ -112,7 +112,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   }
 
   function payload(r: any) {
-    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, comment: r.comment || '', contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, alloc: r.alloc || [], amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
+    return { id: r.id, date, type: r.type, code: r.code || null, article: r.article, who: r.who, comment: r.comment || '', contragentId: r.contragentId || null, docId: r.docId || null, expenseArticleId: r.expenseArticleId || null, alloc: r.alloc || [], basisPayId: r.basisPayId || null, amounts: accounts.map(a => ({ accountId: a.id, amount: r.amt[a.id] || 0 })) }
   }
   async function persist(r: any) { const res: any = await finSaveRow(payload(r)); if (res?.data?.id && !r.id) setRows(p => p.map(x => x === r ? { ...x, id: res.data.id } : x)); return res?.data?.id || r.id }
   function scheduleSave(r: any) { const k = r.id || 'new'; clearTimeout(timers.current[k]); timers.current[k] = setTimeout(() => persist(r), 500) }
@@ -550,6 +550,26 @@ function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, 
 
   useEffect(() => { if (cid) finOpenInvoices(cid, row.type).then((r: any) => setInv(r?.data || [])); else setInv([]) }, [cid]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Движение контрагента (накладные + документы оплат) и выбранное основание-оплата.
+  const [mov, setMov] = useState<any>(null)
+  const [basisPay, setBasisPay] = useState<string | null>(row.basisPayId || null)
+  useEffect(() => { if (cid && row.type !== 'mv' && row.type !== 'service') finBasis(cid, row.type, row.id || null).then((r: any) => setMov(r?.data || null)); else setMov(null) }, [cid]) // eslint-disable-line react-hooks/exhaustive-deps
+  const movRows: any[] = (mov?.rows || [])
+  const basisDocs = movRows.filter((m: any) => m.kind === 'doc' && m.pick)
+  // сальдо: + контрагент должен нам, − мы должны ему (аванс); строка-черновик ещё не в движении
+  const after = (mov?.balance || 0) + (row.status === 'posted' ? 0 : -sign * target)
+  const saldo = (v: number) => Math.abs(v) < 0.005 ? 'расчёты закрыты' : v > 0 ? `контрагент должен нам ${fmt(v)}` : `мы должны ему (аванс) ${fmt(-v)}`
+  function toggleBasisDoc(m: any) {
+    setAlloc(a => {
+      const n: any = { ...a }
+      if (n[m.id]) { delete n[m.id]; return n }
+      let used = 0; for (const v of Object.values(n)) used += parseCell(v)
+      const take = target > 0 ? Math.min(Number(m.free) || 0, Math.max(0, target - used)) : (Number(m.free) || 0)
+      if (take > 0) n[m.id] = String(Math.round(take * 100) / 100)
+      return n
+    })
+  }
+
   function autoFill() { const a: any = {}; let leftAmt = target; for (const d of inv) { if (leftAmt <= 0.001) break; const out = Number(d.outstanding) || 0; const take = Math.min(out, leftAmt); if (take > 0) { a[d.id] = String(Math.round(take * 100) / 100); leftAmt -= take } } setAlloc(a) }
   function toggleInv(d: any) {
     setAlloc(a => {
@@ -565,7 +585,8 @@ function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, 
     row.amt = {}; accounts.forEach((a: any) => { const v = parseCell(vals[a.id]); if (v > 0) row.amt[a.id] = sign * v })
     row.contragentId = cid || null
     if (cid && !row.who) { const c = cags.find((x: any) => x.id === cid); if (c) row.who = c.name }
-    row.alloc = inv.filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) }))
+    row.alloc = [...inv, ...basisDocs.filter((m: any) => !inv.some((d: any) => d.id === m.id))].filter((d: any) => parseCell(alloc[d.id]) > 0).map((d: any) => ({ docId: d.id, number: d.number, amount: parseCell(alloc[d.id]) }))
+    row.basisPayId = cid && movRows.some((m: any) => m.kind === 'pay' && m.id === basisPay) ? basisPay : null
     await persist(row)
     if (alsoPost) await finPost(date)
     onSaved()
@@ -595,7 +616,7 @@ function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, 
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #eee' }}><span>Сумма всего</span><span style={{ fontFamily: 'Consolas, monospace' }}>{fmt(target)}</span></div>
 
         {canPay && (inv.length === 0
-          ? <div style={{ fontSize: 13, color: '#6b7686' }}>У контрагента нет неоплаченных накладных — будет предоплата (аванс).</div>
+          ? <div style={{ fontSize: 13, color: '#6b7686' }}>{movRows.some((m: any) => m.pick) ? 'Неоплаченных накладных нет — отметьте основание ниже (документ оплаты или возврат). Без основания пройдёт как аванс.' : 'У контрагента нет неоплаченных накладных — будет предоплата (аванс).'}</div>
           : <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span style={{ fontSize: 12.5, color: '#6b7686' }}>Кликните накладную для погашения (сумма подставится):</span>
@@ -617,6 +638,31 @@ function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, 
             </table>
             <div style={{ marginTop: 6, fontSize: 13 }}>Распределено: <b style={{ color: allocTotal > 0 && Math.abs(allocTotal - target) < 1e-9 ? '#0f7b3d' : '#8a6d00' }}>{fmt(allocTotal)}</b> из {fmt(target)}</div>
           </>)}
+
+        {canPay && movRows.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7686', marginBottom: 4 }}>ДВИЖЕНИЕ КОНТРАГЕНТА · накладные и документы оплат{movRows.some((m: any) => m.pick) ? ' — отметьте основание' : ''}</div>
+            <div style={{ maxHeight: 230, overflowY: 'auto', border: '1px solid #d0d5db', borderRadius: 4 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead><tr>{['', 'Дата', 'Документ', 'Нам должен +', 'Оплата −', 'Свободно'].map((h, i) => <th key={i} style={{ borderBottom: '1px solid #d0d5db', padding: '5px 8px', background: '#eef0f3', textAlign: i >= 3 ? 'right' : 'left', position: 'sticky', top: 0 }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {movRows.map((m: any) => { const sel = m.kind === 'pay' ? basisPay === m.id : !!alloc[m.id]; return (
+                    <tr key={m.kind + m.id} onClick={() => { if (!m.pick) return; if (m.kind === 'pay') setBasisPay(basisPay === m.id ? null : m.id); else toggleBasisDoc(m) }} style={{ cursor: m.pick ? 'pointer' : 'default', background: sel ? '#eef4ff' : '#fff', color: m.pick ? '#1c2430' : '#6b7686' }}>
+                      <td style={{ borderBottom: '1px solid #eceef1', padding: '4px 8px', textAlign: 'center', width: 26 }}>{m.pick && <input type="checkbox" checked={sel} readOnly style={{ cursor: 'pointer', width: 15, height: 15 }} />}</td>
+                      <td style={{ borderBottom: '1px solid #eceef1', padding: '4px 8px', whiteSpace: 'nowrap' }}>{(m.date || '').split('-').reverse().join('.')}</td>
+                      <td style={{ borderBottom: '1px solid #eceef1', padding: '4px 8px' }}>{m.title}{m.note ? <span style={{ color: '#8a6d00' }}> · {m.note}</span> : null}</td>
+                      <td style={{ borderBottom: '1px solid #eceef1', padding: '4px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{m.inc ? fmt(m.inc) : ''}</td>
+                      <td style={{ borderBottom: '1px solid #eceef1', padding: '4px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{m.dec ? fmt(m.dec) : ''}</td>
+                      <td style={{ borderBottom: '1px solid #eceef1', padding: '4px 8px', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700, color: sel ? '#0f7b3d' : '#9aa3ad' }}>{m.pick ? fmt(m.free) : ''}</td>
+                    </tr>
+                  ) })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13 }}>Сальдо сейчас: <b>{saldo(mov?.balance || 0)}</b>{target > 0 && row.status !== 'posted' ? <> → после операции: <b>{saldo(after)}</b></> : null}</div>
+            {basisPay && <div style={{ marginTop: 2, fontSize: 12.5, color: '#0f7b3d' }}>Основание: {(movRows.find((m: any) => m.id === basisPay) || {}).title || 'документ оплаты'}</div>}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btn}>Отмена</button>

@@ -103,7 +103,7 @@ export const openingByAccount = (orgId: string, date: string) =>
 
 export const rowsForDay = (orgId: string, date: string) =>
   sqlClient`select r.id::text, r.type, r.code, r.article, r.who, r.comment, r.status, r.sort_order "sortOrder",
-      r.contragent_id::text "contragentId", r.doc_id::text "docId",
+      r.contragent_id::text "contragentId", r.doc_id::text "docId", r.basis_pay_id::text "basisPayId",
       r.expense_article_id::text "expenseArticleId", ea.code "expCode", ea.name "expName",
       c.name "contragent", d.number "docNumber", d.type "docType",
       coalesce((select json_agg(json_build_object('docId', al.doc_id::text, 'number', dd.number, 'amount', al.amount::float)) from fin_row_alloc al join documents dd on dd.id=al.doc_id where al.row_id=r.id), '[]') alloc,
@@ -312,3 +312,29 @@ export const contragentBridge = (id: string) =>
 
 export const bridgeBack = (ownerOrgId: string, targetOrgId: string) =>
   sqlClient`select id::text from contragents where org_id=${targetOrgId} and org_ref_id=${ownerOrgId} and archived=false limit 1` as unknown as Promise<Array<{ id: string }>>
+
+// ДВИЖЕНИЕ КОНТРАГЕНТА — ОСНОВАНИЕ ПЛАТЕЖА/ВОЗВРАТА (правило владельца 22.11.2026). Накладные и документы
+// оплат с даты отсечения орг — то же, что в акте сверки. paid — сколько по накладной уже закрыто деньгами;
+// used — сколько по этому документу оплаты уже возвращено другими строками листа (fin_rows.basis_pay_id).
+export const movementDocs = (orgId: string, contragentId: string) =>
+  sqlClient`select d.id::text, d.number, d.type, d.date::text date, d.total::float total, d.paid_sum::float paid
+    from documents d
+    where d.org_id=${orgId} and d.contragent_id=${contragentId} and d.status<>'cancelled'
+      and d.type in ('sale','purchase','return_in','return_out')
+      and not (coalesce(d.transit,false) and d.type='purchase')
+      and d.date >= coalesce((select opening_as_of from organizations o where o.id = d.org_id), '0001-01-01'::date)
+    order by d.date, d.created_at` as unknown as Promise<Array<{ id: string; number: string; type: string; date: string; total: number; paid: number }>>
+
+export const movementPays = (orgId: string, contragentId: string, exceptRowId: string | null) =>
+  sqlClient`select p.id::text, p.direction, p.amount::float amount, p.date::text date, p.comment, a.name account, d.number "docNumber",
+      coalesce((select sum(abs(am.amount)) from fin_rows r join fin_row_amounts am on am.row_id=r.id
+        where r.basis_pay_id=p.id and (${exceptRowId}::uuid is null or r.id <> ${exceptRowId}::uuid)), 0)::float used
+    from payments p
+    left join cash_accounts a on a.id=p.cash_account_id
+    left join documents d on d.id=p.document_id
+    where p.org_id=${orgId} and p.contragent_id=${contragentId}
+      and p.date >= coalesce((select opening_as_of from organizations o where o.id = p.org_id), '0001-01-01'::date)
+    order by p.date, p.created_at` as unknown as Promise<Array<{ id: string; direction: string; amount: number; date: string; comment: string | null; account: string | null; docNumber: string | null; used: number }>>
+
+export const paymentBrief = (id: string) =>
+  sqlClient`select date::text date, amount::float amount from payments where id=${id}` as unknown as Promise<Array<{ date: string; amount: number }>>

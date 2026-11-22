@@ -10,6 +10,7 @@ export const finFavSave = (favs: any[]) => post('/api/finance/money', { action: 
 export const finFavApply = (date: string) => post('/api/finance/money', { action: 'favApply', date })
 export const finDocSearch = (q: string) => post('/api/finance/money', { action: 'docSearch', q })
 export const finOpenInvoices = (contragentId: string, dir: string) => post('/api/finance/money', { action: 'openInvoices', contragentId, dir })
+export const finBasis = (contragentId: string, dir: string, rowId?: string | null) => post('/api/finance/money', { action: 'basis', contragentId, dir, rowId: rowId || null })
 export const finJournal = (from: string, to: string) => post('/api/finance/money', { action: 'journal', from, to })
 export const finLedger = (from: string, to: string) => post('/api/finance/money', { action: 'ledger', from, to })
 export const finEditDoc = (id: string, row: any) => post('/api/finance/money', { action: 'editDoc', id, row })

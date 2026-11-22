@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import * as svc from '@/services/finmoney.service'
 import { reviewPaymentSchema } from '@/dto/payment.dto'
-import { finUnpostSchema, finCancelPaySchema, finCancelPaysSchema } from '@/dto/fin.dto'
+import { finUnpostSchema, finCancelPaySchema, finCancelPaysSchema, finBasisSchema } from '@/dto/fin.dto'
 import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
@@ -58,6 +58,12 @@ export async function POST(req: NextRequest) {
     case 'favApply': res = await svc.applyFavorites(org, b.date); break
     case 'docSearch': res = await svc.searchDocs(org, b.q || ''); break
     case 'openInvoices': res = await svc.openInvoices(org, b.contragentId, b.dir || 'out'); break
+    // Движение контрагента (накладные + документы оплат) — выбор основания. Только чтение, без сигнала.
+    case 'basis': {
+      const pb = finBasisSchema.safeParse({ contragentId: b.contragentId, dir: b.dir === 'in' ? 'in' : 'out', rowId: b.rowId || null })
+      if (!pb.success) return NextResponse.json({ error: 'Не указан контрагент' }, { status: 400 })
+      return NextResponse.json(await svc.contragentBasis(org, pb.data.contragentId, pb.data.dir, pb.data.rowId || null))
+    }
     case 'journal': res = await svc.financeJournal(org, b.from || '2000-01-01', b.to || '2100-01-01'); break
     case 'ledger': res = await svc.financeLedger(org, b.from || '2000-01-01', b.to || '2100-01-01'); break
     case 'editDoc': res = await svc.editDoc(org, b.id, b.row, s.id); break

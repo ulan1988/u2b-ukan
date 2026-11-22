@@ -140,7 +140,7 @@ export async function financeDay(orgId: string, date: string) {
 // Создать/обновить строку + её суммы по счетам. Правка только черновика.
 export async function saveFinRow(orgId: string, input: any) {
   let id: string = input.id
-  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', comment: input.comment ?? null, contragentId: input.contragentId || null, docId: input.docId || null, expenseArticleId: input.expenseArticleId || null }
+  const fields = { type: input.type || 'etc', code: input.code || null, article: input.article || '', who: input.who || '', comment: input.comment ?? null, contragentId: input.contragentId || null, docId: input.docId || null, basisPayId: input.basisPayId || null, expenseArticleId: input.expenseArticleId || null }
   if (id) {
     await fin.updateRowFields(id, input.date ? { ...fields, date: input.date } : fields)
   } else {
@@ -258,6 +258,37 @@ export const searchDocs = (orgId: string, q: string) => fin.docSearch(orgId, q |
 // Открытые накладные контрагента для погашения: kind out→ поставщику (приходные), in→ от клиента (расходные).
 export const openInvoices = (orgId: string, contragentId: string, dir: string) =>
   fin.contragentOpenInvoices(orgId, contragentId, dir === 'in' ? 'sale' : 'purchase')
+// ОСНОВАНИЕ ПЛАТЕЖА / ВОЗВРАТА (правило владельца 22.11.2026). В окне строки листа «Деньги» видно ДВИЖЕНИЕ
+// контрагента — накладные и документы оплат (как акт сверки) — и из него выбирается основание:
+//  • «Платёж» (возврат покупателю): его оплаты нам (документ оплаты) и возвратные накладные от него;
+//  • «Поступление» (возврат от поставщика): наши оплаты ему и возвратные накладные ему.
+// Возвратная накладная гасится как обычная (fin_row_alloc → paid_sum), документ оплаты пишется в
+// fin_rows.basis_pay_id: по нему видно, сколько с этой оплаты уже вернули. Сальдо: + нам должны, − мы должны.
+export async function contragentBasis(orgId: string, contragentId: string, dir: string, rowId?: string | null) {
+  const { contragentOpening } = await import('../repositories/finance.repo')
+  const [docs, pays, opening] = await Promise.all([
+    fin.movementDocs(orgId, contragentId), fin.movementPays(orgId, contragentId, rowId || null), contragentOpening(orgId, contragentId),
+  ])
+  const title: Record<string, string> = { sale: 'Расходная накладная', purchase: 'Приходная накладная', return_in: 'Возврат от клиента', return_out: 'Возврат поставщику' }
+  const out = dir !== 'in'
+  const money = (v: number) => Math.round(v).toLocaleString('ru-RU')
+  const rows = [
+    ...docs.map(d => {
+      const inc = d.type === 'sale' || d.type === 'return_out'
+      const rest = Math.max(0, num(d.total) - num(d.paid))
+      const pick = (out ? d.type === 'return_in' : d.type === 'return_out') && rest > 0.004
+      return { kind: 'doc' as const, id: d.id, date: d.date, title: `${title[d.type] || d.type} ${d.number}`, number: d.number, note: num(d.paid) > 0.004 ? `оплачено ${money(num(d.paid))}` : '', inc: inc ? num(d.total) : 0, dec: inc ? 0 : num(d.total), free: pick ? rest : 0, pick }
+    }),
+    ...pays.map(p => {
+      const isIn = p.direction === 'in'
+      const free = Math.max(0, num(p.amount) - num(p.used))
+      const pick = (out ? isIn : !isIn) && free > 0.004
+      return { kind: 'pay' as const, id: p.id, date: p.date, title: (isIn ? 'Оплата от контрагента' : 'Оплата контрагенту') + (p.account ? ' · ' + p.account : '') + (p.docNumber ? ' · по ' + p.docNumber : ''), number: '', note: num(p.used) > 0.004 ? `возвращено ${money(num(p.used))}` : '', inc: isIn ? 0 : num(p.amount), dec: isIn ? num(p.amount) : 0, free: pick ? free : 0, pick }
+    }),
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  const balance = rows.reduce((s, r) => s + r.inc - r.dec, num(opening))
+  return { opening: num(opening), balance, rows }
+}
 export const listFinFavorites = (orgId: string) => fin.favorites(orgId)
 export const listExpenseArticles = (orgId: string) => fin.expenseArticles(orgId)
 export async function saveExpenseArticles(orgId: string, items: any[]) {
@@ -302,7 +333,10 @@ async function applyRowPayments(orgId: string, r: any, date: string, actorId?: s
     }
     return allocs.length
   }
-  await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(total)), date, cashAccountId: acc?.accountId || null, finRowId: r.id, comment: `Деньги · ${r.article}${r.who ? ' · ' + r.who : ''}`, createdBy: actorId || null } as any)
+  // Основание-оплата (возврат по документу оплаты) — пишем в комментарий платежа: видно в акте сверки.
+  let basis = ''
+  if (r.basisPayId) { const [bp] = await fin.paymentBrief(r.basisPayId); if (bp) basis = ` · основание: оплата от ${String(bp.date).split('-').reverse().join('.')} на ${Math.round(num(bp.amount)).toLocaleString('ru-RU')} ₸` }
+  await fin.insertPayment({ orgId, contragentId: r.contragentId, direction: dir, amount: String(Math.abs(total)), date, cashAccountId: acc?.accountId || null, finRowId: r.id, comment: `Деньги · ${r.article}${r.who ? ' · ' + r.who : ''}${basis}`, createdBy: actorId || null } as any)
   return 1
 }
 
