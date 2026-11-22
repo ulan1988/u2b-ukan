@@ -2,13 +2,15 @@
 // Единый каталог-пикер (как в кассе магазина): вкладки-папки · подпапки · цвет · поиск ·
 // алиасы · ввод кол-ва · сборка изделия (цвет+см). Возвращает выбранные позиции (PickedPos[]).
 // Заменяет старый NomPicker в кабинетах клиента/мастера и форме «Заказ».
-import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { PickedPos } from '@/components/NomPicker'
 import { itemName } from '@/lib/itemName'
 import { isIzdelie } from '@/lib/lineAmount'
 import { extractRal, ralOrdered } from '@/lib/ral'
 import { matchWords } from '@/lib/search'
+import GutterScheme from '@/components/GutterScheme'
+import { gutterRals, isGutterCat } from '@/lib/gutterParts'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
@@ -53,6 +55,12 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
   const [picked, setPicked] = useState<PickedPos[]>([])
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  // «Водосток → Модерн бюджет» открывается СХЕМОЙ (3D): RAL-папки сверху, детали нажимаются на картинке.
+  // Список никуда не делся — кнопка «☰ список» / «🧩 схема».
+  const [scheme, setScheme] = useState(true)
+  const [ralSaved, setRalSaved] = useState('')
+  useEffect(() => { try { setRalSaved(localStorage.getItem('u2b_vodostok_ral') || '') } catch { /* нет доступа к хранилищу */ } }, [])
+  const autoGutter = useRef(false)
   // За компьютером (широкий экран) раскладка другая: поле кол-ва стоит СРАЗУ за названием,
   // а выбранное — аккуратным списком справа, где и так пусто. На телефоне всё как было.
   const [wide, setWide] = useState(false)
@@ -79,13 +87,31 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
 
   // Остаток по складу своей орг — продавец сразу видит, сколько есть (без перехода в «Склад»).
   useEffect(() => {
-    if (!orgId) return
+    if (!orgId || !showStock) return
     fetch(`/api/stock?orgId=${orgId}&overview=1`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
       const m: Record<string, number> = {}
       for (const s of (Array.isArray(d) ? d : [])) m[s.id] = Number(s.qty) || 0
       setStock(m)
     }).catch(() => {})
-  }, [orgId])
+  }, [orgId, showStock])
+
+  const gCat = useMemo(() => ((products.find(isGutterCat) || {}).cat || '').trim(), [products])
+  const gRals = useMemo(() => gutterRals(products), [products])
+  // Каталог открывается на «Водостоке» — сразу встаём в серию со схемой (один раз, дальше как выберет человек).
+  useEffect(() => {
+    if (!gCat || autoGutter.current) return
+    autoGutter.current = true
+    if (folder === 'vodostok' && path.length === 0) setPath([gCat])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gCat])
+  const inGutter = folder === 'vodostok' && !!gCat && (path[0] || '') === gCat && gRals.length > 0
+  const showScheme = inGutter && scheme && !norm(q)
+  const gRal = ((gRals.find(x => x.sub === path[1]) || gRals.find(x => x.ral === ralSaved) || gRals[0]) || { ral: '' }).ral
+  function pickRal(ral: string) {
+    const x = gRals.find(y => y.ral === ral); if (!x) return
+    setPath([gCat, x.sub]); setRalSaved(ral)
+    try { localStorage.setItem('u2b_vodostok_ral', ral) } catch { /* нет доступа к хранилищу */ }
+  }
 
   const byName = useMemo(() => { const m: Record<string, any> = {}; for (const p of products) m[norm(p.name)] = p; return m }, [products])
 
@@ -191,12 +217,12 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
         {/* папки */}
         <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', overflowX: 'auto' }}>
           {folders.map(f => { const on = folder === f.key; return (
-            <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath([]); setThick(''); setKfilter(''); setColor('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
+            <button key={f.key} onClick={() => { setFolder(f.key); setBuild(null); setPath(f.key === 'vodostok' && gCat ? [gCat] : []); setThick(''); setKfilter(''); setColor('') }} style={{ flexShrink: 0, border: 'none', background: 'none', padding: '11px 14px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? PRIMARY : '#6b645b', borderBottom: `3px solid ${on ? PRIMARY : 'transparent'}`, whiteSpace: 'nowrap' }}>{f.label}</button>
           )})}
         </div>
 
         {/* подпапки */}
-        {subRows.map(row => (
+        {subRows.filter(row => !(showScheme && row.level > 0)).map(row => (
           <div key={row.level} style={{ display: 'flex', gap: 6, padding: '7px 10px', background: '#faf8f5', borderBottom: '1px solid #efeae3', overflowX: 'auto' }}>
             {row.vals.map(v => { const on = path[row.level] === v; return (
               <button key={v} onClick={() => { setThick(''); setColor(''); setPath(prev => { const next = prev.slice(0, row.level); if (prev[row.level] !== v) next[row.level] = v; return next }) }} style={{ flexShrink: 0, border: on ? 'none' : '1.5px solid #e2ddd5', background: on ? PRIMARY : '#fff', color: on ? '#fff' : '#5f5952', borderRadius: 20, padding: '6px 13px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap' }}>{v}</button>
@@ -221,6 +247,13 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
           </div>
         )}
 
+        {showScheme && (
+          <GutterScheme products={products} ral={gRal} rals={gRals} onRal={pickRal} onList={() => setScheme(false)}
+            qtyOf={qtyOf} setQty={(p, qty) => upsert(p.name, { qty, unit: p.unit || 'шт' })}
+            stockTag={orgId && showStock ? (p => <StockTag qty={stock[p.id]} unit={p.unit || 'шт'} />) : undefined} />
+        )}
+
+        {!showScheme && (<>
         {/* цвета */}
         <div style={{ background: '#fff', padding: '9px 10px 10px', borderBottom: '1px solid #e6e2dc', display: 'flex', gap: 9, overflowX: 'auto' }}>
           <button onClick={() => setColor('')} title="Без фильтра по цвету" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -243,6 +276,7 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px 6px' }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по названию" style={{ flex: 1, padding: '9px 11px', borderRadius: 10, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
           <span style={{ fontSize: 11.5, color: '#a09889', whiteSpace: 'nowrap' }}>{list.length} поз.</span>
+          {inGutter && !scheme && <button onClick={() => { setQ(''); setScheme(true) }} style={{ flexShrink: 0, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 10, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>🧩 схема</button>}
         </div>
 
         {/* сборка изделия: см + кол-во (цвет сверху) */}
@@ -295,6 +329,7 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
           })}
         </div>
         )}
+        </>)}
       </div>
 
       {/* ЗА КОМПЬЮТЕРОМ: выбранное — аккуратным списком справа (там и так пусто),
