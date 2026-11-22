@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stage } from '@/services/procurement.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,5 +11,6 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => null)
   const r = await stage(s.orgId, b?.items || [], s)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+  await pushSignal()
   return NextResponse.json(r)
 }

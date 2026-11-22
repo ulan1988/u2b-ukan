@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import * as svc from '@/services/finmoney.service'
 import { z } from 'zod'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,9 @@ export async function POST(req: NextRequest) {
   if (!s?.orgId) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const parsed = addSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля' }, { status: 400 })
-  return NextResponse.json(await svc.addCellPayment(s.orgId, parsed.data, s))
+  const out = await svc.addCellPayment(s.orgId, parsed.data, s)
+  await pushSignal()
+  return NextResponse.json(out)
 }
 
 // Правка суммы платежа: двигает кассу, долг контрагента, оплату по накладной
@@ -44,5 +47,7 @@ export async function PATCH(req: NextRequest) {
   if (!s?.orgId) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const parsed = patchSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте сумму' }, { status: 400 })
-  return NextResponse.json(await svc.editAutoPayment(s.orgId, parsed.data.id, parsed.data.amount))
+  const out = await svc.editAutoPayment(s.orgId, parsed.data.id, parsed.data.amount)
+  await pushSignal()
+  return NextResponse.json(out)
 }

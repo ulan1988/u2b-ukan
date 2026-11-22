@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPurchaseSchema } from '@/dto/document.dto'
 import { createPurchase, listPurchases } from '@/services/document.service'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,5 +18,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Проверьте поля', issues: parsed.error.flatten() }, { status: 400 })
   }
   const created = await createPurchase(parsed.data)
+  await pushSignal()
   return NextResponse.json(created, { status: 201 })
 }

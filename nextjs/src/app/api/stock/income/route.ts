@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { manualIncome } from '@/services/warehouse.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,5 +11,6 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => null)
   const r = await manualIncome(s.orgId, b?.name || '', Number(b?.qty) || 0, b?.unit || 'шт')
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+  await pushSignal()
   return NextResponse.json(r)
 }

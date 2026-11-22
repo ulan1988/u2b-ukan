@@ -6,6 +6,7 @@ import InvoiceForm from '@/components/admin/InvoiceForm'
 import { COLORS } from '@/lib/colors'
 import { fmtMoney, fmtDMY, ymdKey } from '@/lib/adminFmt'
 import { postInvoice } from '@/lib/adminApi'
+import { useLiveData } from '@/lib/live'
 
 // kind: 'in' = приходные (закуп/возврат), 'out' = расходные (продажа).
 // Готовит карточки с экрана «К учёту» и превращает их в ERP-документы.
@@ -34,7 +35,9 @@ export default function InvoicesScreen({ kind, orders, orgId, onReload, onOpen }
   const loadDocs = useCallback(() => {
     fetch(`${endpoint}?orgId=${orgId}`).then(r => r.json()).then(d => setDocs(Array.isArray(d) ? d : [])).catch(() => {})
   }, [endpoint, orgId])
-  useEffect(() => { loadDocs() }, [loadDocs])
+  // Живое обновление, как в Приёмке: сигнал об изменении (Pusher) + возврат на вкладку + редкая страховка.
+  // Раньше список грузился один раз — новую накладную было видно только после ручного обновления страницы.
+  useLiveData(loadDocs, [loadDocs])
 
   // Карточки «К учёту» нужного типа, ещё не проведённые в накладную.
   const pending = orders.filter(o => o.screen === 'accounting' && !o.isCancelled && o.kind === wantKind && !o.linkedDocId)

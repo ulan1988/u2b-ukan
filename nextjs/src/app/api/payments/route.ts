@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPaymentSchema } from '@/dto/payment.dto'
 import { createPayment, listPayments } from '@/services/payment.service'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,5 +15,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = createPaymentSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля', issues: parsed.error.flatten() }, { status: 400 })
-  return NextResponse.json(await createPayment(parsed.data), { status: 201 })
+  const out = await createPayment(parsed.data)
+  await pushSignal()
+  return NextResponse.json(out, { status: 201 })
 }

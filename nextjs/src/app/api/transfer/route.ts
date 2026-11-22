@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createTransferSchema } from '@/dto/transfer.dto'
 import { createTransfer, listTransfers } from '@/services/document.service'
 import { sessionFromRequest } from '@/lib/auth'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,5 +19,7 @@ export async function POST(req: NextRequest) {
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const parsed = createTransferSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте склады и позиции' }, { status: 400 })
-  return NextResponse.json(await createTransfer(parsed.data))
+  const out = await createTransfer(parsed.data)
+  await pushSignal()
+  return NextResponse.json(out)
 }

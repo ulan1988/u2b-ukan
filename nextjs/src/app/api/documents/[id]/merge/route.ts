@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import { mergeCandidates, mergeInvoices, mergedList, unmergeInvoice } from '@/services/document.service'
 import { mergeDocsSchema } from '@/dto/document.dto'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const p = mergeDocsSchema.safeParse(await req.json())
   if (!p.success) return NextResponse.json({ error: p.error.issues[0]?.message || 'Неверные данные' }, { status: 400 })
   const res = await mergeInvoices(params.id, p.data.ids, s as any)
+  await pushSignal()
   return NextResponse.json(res, { status: res.ok ? 200 : 400 })
 }
 
@@ -32,5 +34,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const src = req.nextUrl.searchParams.get('src') || ''
   if (!src) return NextResponse.json({ error: 'Не указана накладная' }, { status: 400 })
   const res = await unmergeInvoice(params.id, src, s as any)
+  await pushSignal()
   return NextResponse.json(res, { status: res.ok ? 200 : 400 })
 }

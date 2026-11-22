@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth'
 import { purgeDocument } from '@/services/document.service'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,5 +13,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
   }
   const res = await purgeDocument(params.id, s)
+  await pushSignal()
   return NextResponse.json(res, { status: res.ok ? 200 : 400 })
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createProductionSchema } from '@/dto/production.dto'
 import { createProduction, listProduction } from '@/services/document.service'
+import { pushSignal } from '@/lib/pusherServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +15,9 @@ export async function POST(req: NextRequest) {
   const parsed = createProductionSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Проверьте поля', issues: parsed.error.flatten() }, { status: 400 })
   try {
-    return NextResponse.json(await createProduction(parsed.data), { status: 201 })
+    const out = await createProduction(parsed.data)
+    await pushSignal()
+    return NextResponse.json(out, { status: 201 })
   } catch (e: any) {
     // напр. «Изделие без цвета нельзя выпустить на склад» — показываем текст в UI
     return NextResponse.json({ error: e?.message || 'Не удалось провести производство' }, { status: 400 })
