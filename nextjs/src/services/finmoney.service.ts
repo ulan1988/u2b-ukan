@@ -134,7 +134,27 @@ export async function financeDay(orgId: string, date: string) {
   for (const r of allRows) for (const am of (r.amounts || [])) closing[am.accountId] = (closing[am.accountId] || 0) + num(am.amount)
   // Дни = дни листа + дни авто-платежей (чтобы день инкассации был в выборе) + текущий.
   const dl = Array.from(new Set([date, ...dates.map(d => d.date), ...autoPays.map(p => p.date)])).sort((a, b) => a < b ? 1 : -1)
-  return { accounts: accts, opening: open, closing, rows: allRows, dates: dl, favorites: favs, expenseArticles: expArticles }
+  // СТАТЬИ ДЛЯ ВЫБОРА В СТРОКЕ = избранное + всё, чем орг уже пользовалась (правило 22.11.2026). Избранное — это ещё
+  // и шаблон дня: «★ В избранное» перезаписывает его строками одного дня, и раньше вместе с шаблоном из выпадашки
+  // пропадали статьи («Прочие поступления», «Возврат покупателю»…). Теперь статья, которая хоть раз была в листе,
+  // в выборе остаётся. Одна статья — одна строка выбора (ключ: код, иначе название), тип — самый частый.
+  const actOf = (code: string | null) => { const p = String(code || '').slice(0, 2).toUpperCase(); return p === 'ФП' || p === 'ФВ' ? 'financial' : p === 'ИП' || p === 'ИВ' ? 'investing' : p === 'ПМ' ? 'transfer' : p === 'СЛ' ? 'service' : 'operating' }
+  const artKey = (code: any, label: any) => String(code || '').trim().toUpperCase() || ('~' + low(label))
+  const articles: any[] = []
+  const seenArt = new Set<string>()
+  for (const f of favs) { const k = artKey(f.code, f.label); if (seenArt.has(k)) continue; seenArt.add(k); articles.push(f) }
+  const codedLabels = new Set([...favs.filter((f: any) => f.code).map((f: any) => low(f.label))])
+  const used = (await fin.usedArticles(orgId)).slice().sort((a, b) => b.n - a.n)
+  for (const u of used) if (u.code) codedLabels.add(low(u.label))
+  for (const u of used) {
+    if (!u.code && codedLabels.has(low(u.label))) continue   // та же статья уже есть с кодом
+    const k = artKey(u.code, u.label)
+    if (seenArt.has(k)) continue
+    seenArt.add(k)
+    articles.push({ id: 'used-' + k, code: u.code || null, label: u.label, type: u.type, activity: actOf(u.code), contragentId: null, defaultAccountId: null })
+  }
+  articles.sort((a, b) => String(a.code || 'яя').localeCompare(String(b.code || 'яя'), 'ru') || low(a.label).localeCompare(low(b.label), 'ru'))
+  return { accounts: accts, opening: open, closing, rows: allRows, dates: dl, favorites: favs, articles, expenseArticles: expArticles }
 }
 
 // Создать/обновить строку + её суммы по счетам. Правка только черновика.

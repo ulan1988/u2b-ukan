@@ -214,12 +214,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
   async function newDay() { const nd = nextDay(date); await finFavApply(nd); setDate(nd) }
   async function applyFavs() { await finFavApply(date); setFavOpen(false); await load() }
   // Сохранить текущие строки листа как избранное (шаблон), без сумм.
-  // Пропускаем пустые/«Новая статья» и дубли (по коду или названию).
+  // Пропускаем пустые/«Новая статья» и дубли. Ключ — СТАТЬЯ + КОНТРАГЕНТ (как в applyFavorites): «Оплата поставщикам»
+  // у четырёх поставщиков — четыре строки шаблона, а не одна.
   async function saveAsFavorites() {
     const seen = new Set<string>()
     const favs = rows
       .filter((r: any) => (r.article || '').trim() && r.article !== 'Новая статья' && r.article !== 'Прочие')
-      .filter((r: any) => { const k = r.code || r.article; if (seen.has(k)) return false; seen.add(k); return true })
+      .filter((r: any) => { const k = (r.code || r.article) + '|' + (r.contragentId || ''); if (seen.has(k)) return false; seen.add(k); return true })
       .map((r: any) => { const ex = (data?.favorites || []).find((f: any) => f.code === r.code); return { code: r.code || null, label: r.article, type: r.type, activity: ex?.activity || 'operating', contragentId: r.contragentId || null, defaultAccountId: ex?.defaultAccountId || null } })
     const res: any = await finFavSave(favs)
     show(res?.ok ? `★ Сохранено в избранное: ${favs.length} статей` : '⚠ Ошибка сохранения')
@@ -323,7 +324,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
                     </td>
                     <td style={td}>{isPosted
                       ? <span>{r.code && <span style={{ color: '#6b7686', fontFamily: 'Consolas, monospace', fontSize: 11, marginRight: 4 }}>{r.code}</span>}{r.article}</span>
-                      : <StatiaPicker favs={data?.favorites || []} type={r.type} code={r.code} label={r.article} onPick={(fav: any) => applyStatia(r, fav)} />}
+                      : <StatiaPicker favs={data?.articles || data?.favorites || []} type={r.type} code={r.code} label={r.article} onPick={(fav: any) => applyStatia(r, fav)} />}
                     </td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>

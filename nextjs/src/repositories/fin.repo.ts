@@ -135,6 +135,13 @@ export const favorites = (orgId: string) =>
   sqlClient`select id::text, code, label, type, activity, contragent_id::text "contragentId", default_account_id::text "defaultAccountId", sort_order "sortOrder"
     from fin_favorites where org_id=${orgId} order by sort_order, label` as unknown as Promise<any[]>
 
+// Статьи, которыми орг уже пользовалась в листе (код, название, тип и сколько раз) — чтобы статья
+// не пропадала из выбора, когда «★ В избранное» перезаписало шаблон дня.
+export const usedArticles = (orgId: string) =>
+  sqlClient`select code, article label, type, count(*)::int n from fin_rows
+    where org_id=${orgId} and coalesce(article,'')<>'' and article not in ('Новая статья','Прочие')
+    group by code, article, type` as unknown as Promise<Array<{ code: string | null; label: string; type: string; n: number }>>
+
 export const rowById = (id: string) =>
   sqlClient`select r.id::text, r.type, r.article, r.who, r.status, r.date::text, r.contragent_id::text "contragentId", r.doc_id::text "docId",
       coalesce(json_agg(json_build_object('accountId', am.account_id::text, 'amount', am.amount::float)) filter (where am.id is not null), '[]') amounts
