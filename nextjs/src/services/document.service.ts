@@ -806,7 +806,11 @@ export async function createProduction(input: CreateProductionInput) {
   return { id: docId, number: doc.number, total }
 }
 
-export const listProduction = (orgId: string) => docRepo.listByType(orgId, 'production')
+export async function listProduction(orgId: string) {
+  const docs = await docRepo.listByType(orgId, 'production')
+  const names = await docRepo.outputNames(docs.map(d => d.id))
+  return docs.map(d => ({ ...d, items: names[d.id] || '' }))
+}
 
 // Перемещение товара между складами (головной → филиал-производитель и т.п.).
 // Один документ-перемещение (в книге склада-источника) + движения: −со склада-источника,

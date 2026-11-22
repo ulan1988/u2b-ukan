@@ -213,6 +213,19 @@ export function listInvoicesForContragent(orgId: string, contragentId: string, t
     .orderBy(desc(documents.createdAt)).limit(200)
 }
 
+// Что выпущено в документах производства: «имя × кол-во» по выходным строкам (для колонки «Изделия» в списке).
+export async function outputNames(docIds: string[]): Promise<Record<string, string>> {
+  if (!docIds.length) return {}
+  const rows = await db.select({ documentId: documentLines.documentId, name: products.name, comment: documentLines.comment, qty: documentLines.qty })
+    .from(documentLines).leftJoin(products, eq(documentLines.productId, products.id))
+    .where(and(inArray(documentLines.documentId, docIds), ne(documentLines.role, 'input')))
+  const by: Record<string, string[]> = {}
+  for (const r of rows) (by[r.documentId] ||= []).push(`${(r.comment || r.name || '').trim()} × ${Number(r.qty)}`)
+  const out: Record<string, string> = {}
+  for (const id of Object.keys(by)) out[id] = by[id].slice(0, 3).join(', ') + (by[id].length > 3 ? ` +${by[id].length - 3}` : '')
+  return out
+}
+
 export function listByTypes(orgId: string, types: string[]) {
   return db
     .select()

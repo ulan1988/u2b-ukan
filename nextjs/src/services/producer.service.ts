@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import * as repo from '../repositories/order.repo'
 import * as refsRepo from '../repositories/refs.repo'
 import * as prodSettingsRepo from '../repositories/prodSettings.repo'
+import * as materialRepo from '../repositories/material.repo'
 import { createProduction } from './document.service'
 import { itemName } from '../lib/itemName'
 import { isIzdelie } from '../lib/lineAmount'
@@ -38,6 +39,17 @@ export async function saveCostPerCm(orgId: string, i: { sheetPrice?: number; m2P
 // Цвет изделия — ТА ЖЕ формула, что в раскрое (material.service.sheetColor): 4-значный РАЛ,
 // иначе декор «дерево». Если разойдутся — раскрой спишет лист, а себестоимость выйдет 0.
 const ralOf = (name: string) => (name || '').match(/(\d{4})/)?.[1] || (/(дуб|дерев|3d)/i.test(name || '') ? 'дерево' : '')
+// СЕБЕСТОИМОСТЬ КОМПЛЕКТУЮЩЕГО = ШИРИНА ТИПА × ₸/см (решение владельца 22.11.2026). У «Изделия» ширина стоит
+// в самой строке (см), а у J/H-профиля, углов, J фазки её там нет — берём стандартную из «Материал → Типы
+// изделий»: тип, чьё имя — начало имени товара («Нар. угол (пр) 7024» → тип «Нар. угол (пр)», 11 см).
+// Раньше без ширины себестоимость выходила 0 (на запас) или подставлялась ЦЕНА ПРОДАЖИ (по заказу).
+const normName = (s: string) => (s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
+export async function specWidths(): Promise<{ n: string; w: number }[]> {
+  const types = await materialRepo.listSpecTypes()
+  return types.map((t: any) => ({ n: normName(t.name), w: Number(t.widthCm) || 0 })).filter(t => t.n && t.w > 0).sort((a, b) => b.n.length - a.n.length)
+}
+export const specWidthOf = (types: { n: string; w: number }[], name: string) => { const n = normName(name); const t = types.find(x => n.startsWith(x.n)); return t ? t.w : 0 }
+
 async function setProductCost(productId: string, cost: number) {
   if (!(cost > 0)) return
   const { db } = await import('../lib/db')
@@ -63,7 +75,7 @@ export async function ensureProduct(name: string, orgId?: string): Promise<strin
   // Владелец: завёл филиал — товар остаётся у него, завёл головной — общий.
   const { ownerOrgFor } = await import('../repositories/refs.repo')
   // variant: собранный товар (база + цвет/см) — не шаблон, в общей номенклатуре не показывается.
-  const isVariant = /[0-9]+s*см$/i.test(nm)
+  const isVariant = /[0-9]+\s*см$/i.test(nm)
   await db.insert(products).values({ id, name: nm, unit: 'шт', category: 'goods', group: base?.group || 'Товары', cat: base?.cat || 'Комплектующие', variant: isVariant, ownerOrgId: await ownerOrgFor(orgId) } as any)
   return id
 }
@@ -98,6 +110,7 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
   const outputs: any[] = []
   const made: any[] = []          // позиции, реально выпущенные (для раскроя)
   const perCm = await getCostPerCm(prodOrgId)   // ₸ за 1 см листа — одно число на орг
+  const types = await specWidths()              // стандартная ширина комплектующих по типу изделия
   let created = 0, skipped = 0
   for (const p of targets) {
     const raw = (p.name1c || p.oral || '').trim()
@@ -106,9 +119,9 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     const hasCm = Number(p.widthCm) > 0 || /\d+\s*см/i.test(nm)
     // Изделие требует РАЛ и см (иначе лист не выбрать) — без них пропускаем.
     if (izd && (!ralOf(nm) || !hasCm)) { skipped++; continue }
-    const width = p.widthCm != null ? Number(p.widthCm) : 0
-    // Себестоимость = доля листа по ширине: цена_целого_листа(цвет) × ширина / 125.
-    const color = ralOf(nm)
+    // Ширина: у изделия — своя (см в строке); у комплектующего — стандартная по типу изделия.
+    const own = p.widthCm != null ? Number(p.widthCm) : 0
+    const width = own > 0 ? own : (izd ? 0 : specWidthOf(types, nm))
     // Себестоимость = ширина изделия в см × цена 1 см (лист 125 см уже учтён в ставке).
     const cost = width > 0 ? Math.round(perCm * width * 100) / 100 : 0
 
@@ -125,9 +138,13 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
     if (productId !== p.productId) patch.productId = productId
     if (cost > 0) patch.costPrice = String(Math.round(cost))   // себестоимость строки (доля листа)
     if (Object.keys(patch).length) await repo.updatePosition(p.id, patch)
-    await setProductCost(productId as string, cost)   // себестоимость в price_in товара (у изделий — доля листа)
+    // price_in пишем только изделию (товар свой, по цвету и см). У комплектующих закуп общий на все орг — не трогаем,
+    // их себестоимость живёт в строке заказа (cost_price) и в документе производства.
+    if (izd || own > 0) await setProductCost(productId as string, cost)
 
-    outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: width || undefined })
+    outputs.push({ productId, qty: Number(p.qty), price: cost || (Number(p.price) || 0), widthCm: own || undefined })
+    // Раскрой (списание листа) — как раньше, только по строкам со своей шириной. Под комплектующие лист пока НЕ
+    // списываем: выпущенное «на запас» при продаже по заказу выпускается ещё раз — лист ушёл бы дважды.
     made.push(p)
   }
   if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета или длины — укажите РАЛ и см, тогда выпустится товар «Изделие {цвет} {см} см»' : 'Нет изделий для внесения', skipped }
@@ -162,6 +179,7 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
   const outputs: any[] = []
   const made: any[] = []
   const perCm = await getCostPerCm(orgId)       // ₸ за 1 см листа — одно число на орг
+  const types = await specWidths()              // стандартная ширина комплектующих по типу изделия
   let created = 0, skipped = 0
   for (const it of items) {
     const qty = Number(it.qty) || 0
@@ -169,7 +187,8 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     const nm = itemName({ name: it.name || 'Изделие', color: it.color, cm: it.cm })
     const izd = isIzdelie(nm)
     const color = ralOf(nm) || (it.color === 'decor' ? 'дерево' : (it.color || ''))
-    const width = Number(it.cm) || 0
+    const own = Number(it.cm) || 0
+    const width = own > 0 ? own : (izd ? 0 : specWidthOf(types, nm))
     // Изделие требует РАЛ и см — иначе лист не выбрать.
     if (izd && (!color || !(width > 0))) { skipped++; continue }
     // Себестоимость = ширина изделия в см × цена 1 см (лист 125 см уже учтён в ставке).
@@ -177,9 +196,9 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     let productId = it.productId || null
     if (izd) productId = await ensureProduct(nm, orgId)   // «Изделие {РАЛ} {см} см» — без цвета на склад нельзя
     else if (!productId) { productId = await ensureProduct(nm, orgId); created++ }
-    if (productId) await setProductCost(productId, cost)
-    outputs.push({ productId, qty, price: cost || 0, widthCm: width || undefined, comment: nm })
-    made.push({ name1c: nm, oral: nm, widthCm: width, qty, productId })
+    if (productId && (izd || own > 0)) await setProductCost(productId, cost)
+    outputs.push({ productId, qty, price: cost || 0, widthCm: own || undefined, comment: nm })
+    made.push({ name1c: nm, oral: nm, widthCm: own, qty, productId })
   }
   if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : 'Нет позиций для выпуска', skipped }
   let consumed: any = null
