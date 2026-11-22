@@ -50,6 +50,26 @@ export async function specWidths(): Promise<{ n: string; w: number }[]> {
 }
 export const specWidthOf = (types: { n: string; w: number }[], name: string) => { const n = normName(name); const t = types.find(x => n.startsWith(x.n)); return t ? t.w : 0 }
 
+// ПРОИЗВОДИМ ТОЛЬКО ПАПКУ «КОМПЛЕКТУЮЩИЕ» (правило владельца 22.11.2026). Водосток, лист и прочий товар Нипа не
+// делает, а покупает: на склад он встаёт ПРИХОДНОЙ (от головного или поставщика), себестоимость — закуп (вписан
+// руками или пришёл с приходом). Раньше карточка «выпускала» и его: документ производства давал лишний приход
+// на склад (803 шт водостока за ноябрь) по цене продажи. Товара ещё нет в номенклатуре — это собранный вариант
+// (база + цвет/см): наш, если «Изделие», тип из «Материал → Типы изделий» или база из «Комплектующих».
+const isKomplekt = (p: any) => /комплект/i.test(`${(p && p.group) || ''} ${(p && p.cat) || ''}`)
+export async function madeHere(): Promise<(productId: string | null | undefined, name: string) => boolean> {
+  const prods: any[] = await refsRepo.listProducts()
+  const byId = new Map(prods.map(p => [p.id, p]))
+  const byName = new Map(prods.map(p => [normName(p.name), p]))
+  const bases = prods.filter(isKomplekt).map(p => normName(p.name)).filter(Boolean)
+  const types = await specWidths()
+  return (productId, name) => {
+    const n = normName(name)
+    const p = (productId && byId.get(productId)) || byName.get(n)
+    if (p) return isKomplekt(p)
+    return isIzdelie(name) || specWidthOf(types, name) > 0 || bases.some(b => n.startsWith(b))
+  }
+}
+
 async function setProductCost(productId: string, cost: number) {
   if (!(cost > 0)) return
   const { db } = await import('../lib/db')
@@ -99,6 +119,12 @@ export async function produceToBase(cardId: string, actor?: Session | null, date
   // дописанные после этого позиции — у них ещё нет product_id. Иначе выпустили бы всё повторно.
   if (await alreadyProduced(cardId)) targets = targets.filter((p: any) => !p.productId)
   if (!targets.length) return { ok: false as const, error: 'Нет изделий для внесения' }
+  // Покупной товар (водосток, лист) не производим — он уходит со склада как есть, расходной.
+  {
+    const ours = await madeHere()
+    targets = targets.filter((p: any) => ours(p.productId, (p.name1c || p.oral || '').trim()))
+    if (!targets.length) return { ok: true as const, number: '', produced: 0, created: 0, skipped: 0, consumed: null, note: 'В карточке только покупной товар — производство не нужно' }
+  }
   // Производящий склад — филиала-ПОСТАВЩИКА позиций (leg=1), а НЕ орг-владельца карточки.
   // Закуп головного (order.orgId=головной) с поставщиком-филиалом: выпуск должен идти на склад
   // ФИЛИАЛА, потому что зеркальная расходная списывает именно склад филиала. Иначе выпуск падал
@@ -180,11 +206,13 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
   const made: any[] = []
   const perCm = await getCostPerCm(orgId)       // ₸ за 1 см листа — одно число на орг
   const types = await specWidths()              // стандартная ширина комплектующих по типу изделия
-  let created = 0, skipped = 0
+  const ours = await madeHere()
+  let created = 0, skipped = 0, foreign = 0
   for (const it of items) {
     const qty = Number(it.qty) || 0
     if (qty <= 0 || !((it.name || '').trim() || it.productId)) continue
     const nm = itemName({ name: it.name || 'Изделие', color: it.color, cm: it.cm })
+    if (!ours(it.productId, nm)) { foreign++; continue }   // покупной товар на запас не «выпускаем»
     const izd = isIzdelie(nm)
     const color = ralOf(nm) || (it.color === 'decor' ? 'дерево' : (it.color || ''))
     const own = Number(it.cm) || 0
@@ -200,7 +228,7 @@ export async function produceToStock(orgId: string, items: { name?: string; colo
     outputs.push({ productId, qty, price: cost || 0, widthCm: own || undefined, comment: nm })
     made.push({ name1c: nm, oral: nm, widthCm: own, qty, productId })
   }
-  if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : 'Нет позиций для выпуска', skipped }
+  if (!outputs.length) return { ok: false as const, error: skipped ? 'Изделие без цвета/длины — укажите РАЛ и см' : foreign ? 'Это покупной товар: на склад он встаёт приходной накладной, а не производством' : 'Нет позиций для выпуска', skipped }
   let consumed: any = null
   try { const { consumeForCut } = await import('./material.service'); consumed = await consumeForCut(orgId, made) } catch { /* нехватка листов не роняет выпуск */ }
   const doc = await createProduction({ orgId, warehouseId: wh.id, inputs: [], outputs, comment: 'Производство на запас (склад)', date } as any)
