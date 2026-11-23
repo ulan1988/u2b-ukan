@@ -1164,9 +1164,15 @@ export async function stepBack(cardId: string, actor?: Session | null): Promise<
     for (const d of tree) { await docSvc.cancelDocument(d.id); if (d.number) numbers.push(String(d.number)) }
     // Дочь-продажа без накладных исчезает вместе с приходом, который её родил.
     if (o.kind === 'purchase') for (const ch of kids) { await repo.deleteOrder(ch.id); numbers.push('карточка ' + ch.id) }
-    try { const { revertHqBranchOrder } = await import('./handover.service'); await revertHqBranchOrder(cardId, actor) } catch { /* цепочки «долг к головному» могло не быть */ }
+    // Цепочка «долг к головному» (карточка филиала): карточка-основание у ГО возвращается в «В ожидании», а филиалу
+    // ВОЗВРАЩАЕМ ФЛАГ — иначе следующая доставка выписала бы обычную расходную прямо на заказчика (правило 19.11.2026).
+    let chain = 0
+    try { const { revertHqBranchOrder } = await import('./handover.service'); chain = await revertHqBranchOrder(cardId, actor) } catch { /* цепочки могло не быть */ }
     await repo.updatePositionsByCard(cardId, { status: 'В работе' })
-    await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'outgoing', status: 'В работе', toacc: false, delivered: null } as any)
+    await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'outgoing', status: 'В работе', toacc: false, delivered: null,
+      ...(chain > 0 ? { pendingDebtHead: true, payment: 'Долг' } : {}),
+      // у мастера проведённая на доставке карточка стояла «Продано» — возвращаем её в «Отправлено» (она снова у логиста)
+      ...((o as any).prodPhase === 'sold' ? { prodPhase: 'sent' } : {}) } as any)
     try { await reportRepo.deleteDraftRowsByPos(positions.map((p: any) => String(p.id))) } catch { /* отчёта могло не быть */ }
     await repo.insertHistory({ cardId, action: 'stepBack', detail: `↩ Возврат назад: ${o.kind === 'purchase' ? 'приход' : 'продажа'} сторнирован${numbers.length ? ' (' + numbers.join(', ') + ')' : ''} — карточка снова у логиста`, userName: actor?.name || 'Система' })
     return { ok: true as const, step: o.kind === 'purchase' ? 'toSupplier' : 'toReady', numbers }
