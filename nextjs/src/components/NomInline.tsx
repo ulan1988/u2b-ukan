@@ -4,6 +4,7 @@
 // контейнер таблицы позиций (overflow-x:auto), и результаты не видно/не кликнуть.
 import { useState, useMemo, useRef, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { wheelToPage } from '@/lib/scrollPass'
 import { COLORS } from '@/lib/colors'
 import { RalDot, extractRal, ralOrdered } from '@/lib/ral'
 import { matchWords } from '@/lib/search'
@@ -19,7 +20,7 @@ export default function NomInline({ products, value, name, onPick }: {
   const [group, setGroup] = useState('')
   const [q, setQ] = useState('')
   const btnRef = useRef<HTMLButtonElement>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxH: number } | null>(null)
   // Компоновка комплектующего: выбранная база + цвет + см.
   const [comp, setComp] = useState<any>(null)
   const [cColor, setCColor] = useState(''); const [cCm, setCCm] = useState(''); const [cAll, setCAll] = useState(false)
@@ -50,7 +51,11 @@ export default function NomInline({ products, value, name, onPick }: {
     const r = btnRef.current?.getBoundingClientRect(); if (!r) return
     const width = Math.max(r.width, 300)
     const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8))
-    setPos({ top: r.bottom + 4, left, width })
+    // Список не должен уходить за край экрана: высоту ограничиваем свободным местом, а если снизу тесно
+    // (нижние строки таблицы) — открываем вверх. Иначе нижние товары были не видны и до них не докрутить.
+    const spaceBelow = window.innerHeight - r.bottom - 8, spaceAbove = r.top - 8
+    if (spaceBelow < 260 && spaceAbove > spaceBelow) setPos({ bottom: window.innerHeight - r.top + 4, left, width, maxH: Math.min(spaceAbove, window.innerHeight * 0.6) })
+    else setPos({ top: r.bottom + 4, left, width, maxH: Math.min(spaceBelow, window.innerHeight * 0.6) })
   }
   useLayoutEffect(() => {
     if (!open) return
@@ -84,8 +89,8 @@ export default function NomInline({ products, value, name, onPick }: {
       </button>
       {open && pos && createPortal(
         <>
-          <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
-          <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.22)', border: '1.5px solid #e6e2dc', display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
+          <div onClick={close} onWheel={wheelToPage(() => btnRef.current)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width, zIndex: 9999, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.22)', border: '1.5px solid #e6e2dc', display: 'flex', flexDirection: 'column', maxHeight: pos.maxH }}>
             {comp ? (
               // ── Компоновка комплектующего: база + цвет + см → имя ──
               <div style={{ padding: 12 }}>

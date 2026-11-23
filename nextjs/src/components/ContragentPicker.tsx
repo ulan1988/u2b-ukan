@@ -5,6 +5,7 @@
 // (overflow-x:auto) и пункты не видно/не кликнуть.
 import { useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { wheelToPage } from '@/lib/scrollPass'
 import { COLORS } from '@/lib/colors'
 import { matchWords } from '@/lib/search'
 
@@ -62,7 +63,7 @@ export default function ContragentPicker({ contragents, value, onPick, defaultId
       </button>
       {open && pos && createPortal(
         <>
-          <div onClick={() => { setOpen(false); setQ('') }} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div onClick={() => { setOpen(false); setQ('') }} onWheel={wheelToPage(() => btnRef.current)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
           <div style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width, zIndex: 9999, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.2)', border: '1.5px solid #e6e2dc', display: 'flex', flexDirection: 'column', maxHeight: pos.maxH }}>
             <div style={{ padding: 10, borderBottom: '1px solid #f1efec' }}>
               <input autoFocus style={inp} placeholder="Начните вводить имя…" value={q} onChange={e => setQ(e.target.value)} />
