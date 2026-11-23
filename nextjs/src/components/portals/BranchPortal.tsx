@@ -21,6 +21,7 @@ import { branchOrders, orderAction, createClientOrder, getCard, updatePosition, 
 import { fetchRefs, listSpecProjects, carveToLogist, carveCard, sheetsByColor, takeSheet, listProjectsByClient } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
+import { cursorHere } from '@/lib/smartCursor'
 import ProductionWorkbench from '@/components/portals/ProductionWorkbench'
 import SpecProjectWorkbench from '@/components/portals/SpecProjectWorkbench'
 import ContragentPicker from '@/components/ContragentPicker'
@@ -460,7 +461,7 @@ export default function BranchPortal({ user }: { user: { id: string; name: strin
                   </select></div>
               )}
               <div><div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
-                <input value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 20, fontWeight: 800, fontFamily: 'inherit', boxSizing: 'border-box' }} /></div>
+                <input ref={cursorHere} value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1.5px solid #e6e2dc', fontSize: 20, fontWeight: 800, fontFamily: 'inherit', boxSizing: 'border-box' }} /></div>
               <button onClick={encMode === 'hq' ? doEncashment : doMoveMoney} style={{ border: 'none', background: encMode === 'hq' ? '#2a5aaa' : '#7a3aaa', color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{encMode === 'hq' ? '🏦 Инкассировать' : '🔄 Перевести'}</button>
             </div>
           </div>

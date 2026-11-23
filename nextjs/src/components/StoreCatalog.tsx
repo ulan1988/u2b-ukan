@@ -9,6 +9,7 @@ import { itemName } from '@/lib/itemName'
 import { isIzdelie } from '@/lib/lineAmount'
 import { extractRal, ralOrdered } from '@/lib/ral'
 import { matchWords } from '@/lib/search'
+import { cursorHere, cursorInRow } from '@/lib/smartCursor'
 import GutterScheme from '@/components/GutterScheme'
 import { useGutterScheme } from '@/lib/useGutterScheme'
 
@@ -255,7 +256,7 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
 
         {/* поиск */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px 6px' }}>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по названию" style={{ flex: 1, padding: '9px 11px', borderRadius: 10, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+          <input ref={wide ? cursorHere : undefined} value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по названию" style={{ flex: 1, padding: '9px 11px', borderRadius: 10, border: '1.5px solid #e6e2dc', background: '#fff', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
           <span style={{ fontSize: 11.5, color: '#a09889', whiteSpace: 'nowrap' }}>{list.length} поз.</span>
           {inGutter && !scheme && <button onClick={() => { setQ(''); setScheme(true) }} style={{ flexShrink: 0, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 10, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>🧩 схема</button>}
         </div>
@@ -288,7 +289,7 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
             const name1c = colorlessName(p)
             const price = Number(p.priceRetail) || 0
             return (
-              <div key={p.id} onClick={() => { if (izd && !build && color) setBuild({ base: p, cm: '', qty: '1' }) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default', opacity: (activeFolder.build && !color) ? 0.5 : 1 }}>
+              <div key={p.id} onClick={e => { if (izd && !build && color) setBuild({ base: p, cm: '', qty: '1' }); else if (!izd) cursorInRow(e.currentTarget) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: (!izd && qtyOf(name1c) > 0) ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default', opacity: (activeFolder.build && !color) ? 0.5 : 1 }}>
                 {/* За компьютером имя не растягиваем на всю ширину — иначе кол-во улетает к краю экрана. */}
                 <div style={{ flex: wide ? '0 1 480px' : 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>

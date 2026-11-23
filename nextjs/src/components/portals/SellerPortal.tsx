@@ -27,6 +27,7 @@ import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
 import { matchWords } from '@/lib/search'
+import { cursorHere, cursorInRow } from '@/lib/smartCursor'
 
 const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e', BLUE = '#3a6ea5'
 type Tab = 'cash' | 'checks' | 'debts' | 'order'
@@ -977,7 +978,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       style={{ flex: 1, border: incAcc === k ? `2px solid ${fg}` : '1.5px solid #e6e2dc', background: incAcc === k ? bg : '#fff', color: incAcc === k ? fg : '#8a8377', borderRadius: 10, padding: '11px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>{label}</button>
                   ))}
                 </div>
-                <input value={incSum} inputMode="decimal" placeholder="сумма" onChange={e => setIncSum(e.target.value.replace(/[^0-9.,]/g, ''))}
+                <input ref={cursorHere} value={incSum} inputMode="decimal" placeholder="сумма" onChange={e => setIncSum(e.target.value.replace(/[^0-9.,]/g, ''))}
                   style={{ ...inp, padding: '13px 12px', fontSize: 21, fontWeight: 800, textAlign: 'right' }} />
                 {/* 50/50 ТОЛЬКО ПО ОТМЕТКЕ — обычный делёж 60/40. */}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#6b645b', cursor: 'pointer' }}>
@@ -1117,7 +1118,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               const row = activeFolder.build && !izd ? rows.find(r => r.name1c === itemName({ name: p.name, color })) : inCheck[p.id]
               const price = Number(p.priceRetail) || 0
               return (
-                <div key={p.id} onClick={() => { if (izd && !build) tapProduct(p) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: row ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default' }}>
+                <div key={p.id} onClick={e => { if (izd && !build) tapProduct(p); else if (!izd) cursorInRow(e.currentTarget) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid #f4f1ed', background: row ? '#fdf6f2' : '#fff', cursor: izd ? 'pointer' : 'default' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Показываем 1С-название (алиасы отключены). */}
                     <div style={{ fontSize: 14, fontWeight: 600, color: DARK, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
@@ -1131,7 +1132,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                     <span style={{ width: 40, height: 40, borderRadius: 11, background: PRIMARY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 700, flexShrink: 0 }}>+</span>
                   ) : (
                     // Обычный товар / комплектующее — просто ввод кол-ва (без дефолта и ±).
-                    <input value={row ? String(row.qty) : ''} inputMode="decimal" placeholder="кол-во" onClick={e => e.stopPropagation()}
+                    <input data-qty-cell value={row ? String(row.qty) : ''} inputMode="decimal" placeholder="кол-во" onClick={e => e.stopPropagation()} onFocus={e => e.currentTarget.select()}
                       onChange={e => (activeFolder.build ? upsertKomplekt(p, e.target.value.replace(/[^0-9.,]/g, '')) : upsertQty(p, e.target.value.replace(/[^0-9.,]/g, '')))}
                       style={{ width: 74, padding: '9px 8px', borderRadius: 10, border: `1.5px solid ${row ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />
                   )}
@@ -1897,7 +1898,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>КОЛ-ВО</div>
-                  <input value={gForm.qty} inputMode="decimal" placeholder="0" onChange={e => setGForm(f => f ? { ...f, qty: e.target.value.replace(/[^0-9.,]/g, '') } : f)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800 }} />
+                  <input ref={cursorHere} value={gForm.qty} inputMode="decimal" placeholder="0" onChange={e => setGForm(f => f ? { ...f, qty: e.target.value.replace(/[^0-9.,]/g, '') } : f)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800 }} />
                 </div>
                 <div style={{ width: 90 }}>
                   <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>ЕД.</div>
@@ -1982,7 +1983,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               )}
               <div>
                 <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
-                <input value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
+                <input ref={cursorHere} value={encAmt} inputMode="decimal" placeholder="0" onChange={e => setEncAmt(e.target.value.replace(/[^0-9.,]/g, ''))} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
               </div>
               <button disabled={busy} onClick={encMode === 'hq' ? doEncashment : doMoveMoney} style={{ border: 'none', background: busy ? '#9bb5a6' : (encMode === 'hq' ? BLUE : '#7a3aaa'), color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : (encMode === 'hq' ? '🏦 Инкассировать' : '🔄 Перевести')}</button>
             </div>

@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { GutterKind, GutterScene } from '@/lib/gutter3d'
 import { gutterTheme, type GutterFolder, type GutterSystem } from '@/lib/gutterParts'
+import { cursorSoon, isWideScreen } from '@/lib/smartCursor'
 
 const PRIMARY = '#d4613a', DARK = '#26231f'
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU')
@@ -68,8 +69,10 @@ export default function GutterScheme({ system, products, folder, folders, onFold
   const tight = folders.length > 3   // четыре папки и больше — плашки компактнее, чтобы влезли в телефон
 
   const seg = (on: boolean): React.CSSProperties => ({ border: 'none', background: on ? '#fff' : 'transparent', color: on ? DARK : 'inherit', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800 })
+  // Выбрали деталь — курсор в её количестве (только за компьютером: на телефоне клавиатура закрыла бы схему).
+  useEffect(() => { if (sel && isWideScreen()) cursorSoon('input[data-pick-qty]') }, [sel])
   const qtyInput = (p: any, big?: boolean) => (
-    <input value={qtyOf(p.name) ? String(qtyOf(p.name)) : ''} inputMode="decimal" placeholder="кол-во"
+    <input data-pick-qty={big ? '' : undefined} value={qtyOf(p.name) ? String(qtyOf(p.name)) : ''} inputMode="decimal" placeholder="кол-во"
       onClick={e => e.stopPropagation()} onFocus={e => e.currentTarget.select()}
       onChange={e => setQty(p, num(e.target.value.replace(/[^0-9.,]/g, '')))}
       style={{ width: big ? 84 : 74, padding: big ? '11px 6px' : '9px 8px', borderRadius: 10, border: `1.5px solid ${qtyOf(p.name) > 0 ? PRIMARY : '#e6e2dc'}`, background: '#fff', fontSize: big ? 18 : 15, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', flexShrink: 0 }} />

@@ -7,6 +7,7 @@ import { listContragents, setAccountOpening } from '@/lib/api/refs'
 import ContragentPicker from '@/components/ContragentPicker'
 import { finCellPayments, finEditPayment, finAddPayment, finUnpostRow, finCancelPayment, finCancelPayments, finDay, finSaveRow, finDeleteRow, finReorder, finPost, finFavSave, finFavApply, finDds, finOpenInvoices, finBasis, finJournal, finEditDoc, finDeleteDoc, finAccounts, reviewClientPayment } from '@/lib/api/finmoney'
 import { useLiveData } from '@/lib/live'
+import { cursorHere } from '@/lib/smartCursor'
 import FinanceBalances from '@/components/admin/FinanceBalances'
 
 const TYPES: Record<string, string> = { in: 'Поступление', out: 'Платёж', mv: 'Перемещение', service: 'Служебное' }
@@ -429,13 +430,13 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
               Правка меняет сам платёж: касса, долг контрагента, оплата по накладной и парная проводка второй орг.
             </div>
             {cellPays.length === 0 && <div style={{ color: '#6b7280', fontSize: 13, padding: '8px 0' }}>{cellLoad ? 'Загрузка…' : 'Платежей по этой ячейке за день нет — внесите сумму вручную ниже.'}</div>}
-            {cellPays.map((p: any) => (
+            {cellPays.map((p: any, pi: number) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f1efec' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5 }}>{p.direction === 'in' ? '↑ приход' : '↓ расход'}{p.docNumber ? ` · ${p.docNumber}` : ''}</div>
                   <div style={{ fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.comment || '—'}</div>
                 </div>
-                <input defaultValue={p.amount} inputMode="decimal" id={`cp-${p.id}`}
+                <input defaultValue={p.amount} inputMode="decimal" id={`cp-${p.id}`} ref={pi === 0 ? cursorHere : undefined}
                   style={{ width: 140, padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'Consolas, monospace' }} />
                 <button disabled={cellBusy} onClick={() => saveCellPay(p.id, (document.getElementById(`cp-${p.id}`) as HTMLInputElement)?.value || '0')}
                   style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: cellBusy ? '#a9c9b5' : '#2e8a5e', color: '#fff', fontWeight: 700, fontSize: 13, cursor: cellBusy ? 'default' : 'pointer' }}>💾</button>
@@ -451,7 +452,7 @@ export default function FinanceMoneyScreen({ orgId }: { orgId: string }) {
             {/* Контрагент сам денег не отправил — вписываем сумму руками */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, padding: '12px 0 0', borderTop: '1.5px dashed #e6e2dc' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#4a4640' }}>＋ Внести вручную</span>
-              <input value={cellNew} onChange={e => setCellNew(e.target.value)} inputMode="decimal" placeholder="сумма"
+              <input ref={cursorHere} value={cellNew} onChange={e => setCellNew(e.target.value)} inputMode="decimal" placeholder="сумма"
                 onKeyDown={e => { if (e.key === 'Enter') addCellPay() }}
                 style={{ width: 140, padding: '7px 9px', borderRadius: 7, border: '1.5px solid #e6e2dc', fontSize: 14, fontWeight: 700, textAlign: 'right', fontFamily: 'Consolas, monospace' }} />
               <button disabled={cellBusy} onClick={addCellPay}
@@ -542,6 +543,7 @@ function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, 
   const sign = row.type === 'out' ? -1 : 1
   const [vals, setVals] = useState<Record<string, string>>(() => { const v: any = {}; accounts.forEach((a: any) => { const x = row.amt[a.id]; v[a.id] = x ? String(Math.abs(x)) : '' }); return v })
   const [cid, setCid] = useState<string | null>(row.contragentId || null)
+  const [focusAcc] = useState<string>(() => ((accounts.find((a: any) => row.amt[a.id]) || accounts.find((a: any) => a.id === defAcc) || accounts[0] || {}).id || ''))
   const [inv, setInv] = useState<any[]>([])
   const [alloc, setAlloc] = useState<Record<string, string>>(() => { const a: any = {}; (row.alloc || []).forEach((x: any) => a[x.docId] = String(x.amount)); return a })
   const target = accounts.reduce((s: number, a: any) => s + parseCell(vals[a.id]), 0)
@@ -610,7 +612,7 @@ function RowModal({ row, accounts, cags, orgId, defAcc, date, onClose, onSaved, 
           {accounts.map((a: any) => (
             <div key={a.id}>
               <label style={{ fontSize: 12, color: '#6b7686', display: 'block', marginBottom: 2 }}>{a.name}</label>
-              <input value={vals[a.id] || ''} onChange={e => setVals(v => ({ ...v, [a.id]: e.target.value }))} inputMode="decimal" placeholder="0" style={{ border: '1.5px solid #8f99a6', borderRadius: 6, padding: '7px 9px', textAlign: 'right', fontFamily: 'Consolas, monospace', width: '100%', fontSize: 14, fontWeight: 700, boxSizing: 'border-box' }} />
+              <input ref={a.id === focusAcc ? cursorHere : undefined} value={vals[a.id] || ''} onChange={e => setVals(v => ({ ...v, [a.id]: e.target.value }))} inputMode="decimal" placeholder="0" style={{ border: '1.5px solid #8f99a6', borderRadius: 6, padding: '7px 9px', textAlign: 'right', fontFamily: 'Consolas, monospace', width: '100%', fontSize: 14, fontWeight: 700, boxSizing: 'border-box' }} />
             </div>
           ))}
         </div>

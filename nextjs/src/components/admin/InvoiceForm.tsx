@@ -6,6 +6,7 @@ import { getDocument, updateDocument, deleteInvoiceLine, applyToChildren, create
 import { listProducts, autoPrices } from '@/lib/api/refs'
 import { finance } from '@/lib/api/finance'
 import { matchWords } from '@/lib/search'
+import { cursorSoon, enterTo } from '@/lib/smartCursor'
 import { extractRal } from '@/lib/ral'
 import { itemName } from '@/lib/itemName'
 import StoreCatalog from '@/components/StoreCatalog'
@@ -282,6 +283,9 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
     }
     setShowCatalog(false)
     if (skipped.length) { setFlash('⚠ Нет в номенклатуре: ' + skipped.join(', ')); setTimeout(() => setFlash(''), 4000) }
+    // Количество уже пришло из каталога — курсор сразу в СУММЕ первой добавленной строки.
+    const first = items.map(it => resolvePicked(it).pr).find(Boolean)
+    if (first) cursorSoon(`input[data-line-amt="${first.id}"]`)
   }
   // ЗАМЕНА ТОВАРА в строке — через ТОТ ЖЕ каталог, что и добавление (ошиблись номенклатурой).
   function swapFromCatalog(items: PickedPos[]) {
@@ -614,13 +618,13 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                 {creating && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input style={{ ...inp, flex: 1 }} value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по словам: «евро 7024»…" />
+                      <input data-nom-search style={{ ...inp, flex: 1 }} value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 поиск по словам: «евро 7024»…" />
                       <button onClick={() => setShowCatalog(true)} style={{ border: 'none', borderRadius: 8, padding: '0 16px', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>📖 Каталог</button>
                     </div>
                     {q.trim() && (
                       <div style={{ marginTop: 4, border: '1px solid #e6e2dc', borderRadius: 10, maxHeight: 220, overflowY: 'auto', background: '#fff' }}>
                         {products.filter((pr: any) => matchWords(q, pr.name, pr.alias)).slice(0, 30).map((pr: any) => (
-                          <div key={pr.id} onClick={() => addProduct(pr)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f1ee', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                          <div key={pr.id} onClick={() => { addProduct(pr); cursorSoon(`input[data-line-qty="${pr.id}"]`) }} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f1ee', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
                             <span>{cleanNm(pr.name)}</span>
                             <span style={{ color: COLORS.textMuted, fontSize: 12, whiteSpace: 'nowrap' }}>{m2(priceOf(pr))} ₸</span>
                           </div>
@@ -670,7 +674,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                                 {(l as any).sourcePosId && <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#a89f92' }}>{(l as any).sourcePosId}</div>}
                               </td>
                               <td style={{ padding: '6px 4px', textAlign: 'right', width: 76 }}>
-                                <input style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0"
+                                <input data-line-qty={l.productId} onKeyDown={enterTo(`input[data-line-amt="${l.productId}"]`)} style={{ ...inp, padding: '4px 6px', textAlign: 'right' }} type="number" step="any" value={l.qty || ''} placeholder="0"
                                   title={creating ? 'кол-во' : 'кол-во · при сохранении пересчитается склад, итог и связанные накладные'}
                                   onChange={e => setQtyL(l.id, Number(e.target.value))} /></td>
                               <td style={{ padding: '6px 4px', width: 60 }}><input style={{ ...inp, padding: '4px 6px', textAlign: 'center' }} value={l.unit || ''} onChange={e => updLine(l.id, { unit: e.target.value })} /></td>
@@ -686,7 +690,7 @@ export default function InvoiceForm({ id, createKind, orgId: newOrgId, fromId, w
                                   </>}</td>
                               {/* СУММУ при создании вписываем сами (как в накладной завода) — цена пересчитается. */}
                               <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', width: 130 }}>
-                                <input style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l) || ''} placeholder="0"
+                                <input data-line-amt={l.productId} onKeyDown={enterTo('input[data-nom-search]')} style={{ ...inp, padding: '4px 6px', textAlign: 'right', fontWeight: 700 }} type="number" step="0.01" value={amtOf(l) || ''} placeholder="0"
                                   title="сумма строки как в накладной поставщика — цена пересчитается назад (6 знаков), копейки не теряются"
                                   onChange={e => setAmountL(l.id, Number(e.target.value))} /></td>
                               <td style={{ padding: '6px 4px', minWidth: 120 }}><input style={{ ...inp, padding: '4px 6px' }} value={l.comment || ''} onChange={e => updLine(l.id, { comment: e.target.value })} /></td>
