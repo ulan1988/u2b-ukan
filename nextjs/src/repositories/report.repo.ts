@@ -16,6 +16,11 @@ export const rowsByReport = (reportId: string) =>
 
 export const addRow = (v: typeof dailyReportRows.$inferInsert) => db.insert(dailyReportRows).values(v).returning()
 export const deleteRow = (id: string) => db.delete(dailyReportRows).where(eq(dailyReportRows.id, id))
+// Шаг назад на доске логиста: авто-строки этих позиций уходят из НЕСДАННЫХ смен (сданные не трогаем).
+export const deleteDraftRowsByPos = (posIds: string[]) => posIds.length
+  ? db.delete(dailyReportRows).where(and(inArray(dailyReportRows.posId, posIds),
+      inArray(dailyReportRows.reportId, db.select({ id: dailyReports.id }).from(dailyReports).where(eq(dailyReports.status, 'draft')))))
+  : Promise.resolve()
 export const updateRow = (id: string, patch: Partial<typeof dailyReportRows.$inferInsert>) =>
   db.update(dailyReportRows).set(patch).where(eq(dailyReportRows.id, id)).returning()
 

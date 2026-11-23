@@ -8,7 +8,7 @@
 // по своим колонкам («Закуплено» / «Продано · Доставлено»); колонка Нипы свёрнута.
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { logistBoardData, setPosStatus, updatePosition, deletePosition, addPosition } from '@/lib/api/orders'
+import { logistBoardData, setPosStatus, updatePosition, deletePosition, addPosition, orderAction } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import { useLiveData } from '@/lib/live'
@@ -165,6 +165,30 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
     setOpen(''); setEd('')
   }
 
+  // ↩ ШАГ НАЗАД (правило владельца 23.11.2026): ошибочно нажали «Закуплено» или «Продано / Доставлено» —
+  // возвращаем карточку на предыдущий этап. Что именно сторнируется, решает сервер (order.service.stepBack);
+  // здесь только честно называем последствия до нажатия.
+  const backStep = (c: Card): { label: string; ask: string } | null => {
+    if (c.info) return null
+    if (c.col === 'deliv') return c.k === 'buy'
+      ? { label: '↩ вернуть назад', ask: 'Вернуть закуп ' + c.code + ' назад к поставщику?\n\nПриходная будет сторнирована: товар уйдёт со склада, долг поставщику снимется. Карточка снова встанет в колонку поставщика.' }
+      : { label: '↩ вернуть назад', ask: 'Вернуть ' + c.code + ' назад в «Готов к отправке»?\n\nРасходная будет сторнирована: товар вернётся на склад, долг заказчика «' + c.client + '» снимется (у филиала уйдёт и его приходная).' }
+    if (c.col === 'ready' && c.k === 'sell') return { label: '↩ назад', ask: 'Вернуть ' + c.code + ' назад к поставщику?\n\nПриходная по её закупу будет сторнирована: товар уйдёт со склада, долг поставщику снимется, карточка продажи исчезнет, закуп снова встанет в колонку поставщика.' }
+    return null
+  }
+  async function goBack(c: Card) {
+    const b = backStep(c); if (!b || busy) return
+    if (!confirm(b.ask)) return
+    setBusy(true); busyRef.current = true
+    try {
+      const r = await orderAction(c.code, 'stepBack')
+      await reload()
+      say(r.ok ? '✓ возвращено назад' : '⚠ ' + (r.error || 'не удалось вернуть'))
+    } catch (e: any) { say('⚠ не удалось вернуть'); console.error('stepBack', e) }
+    finally { setBusy(false); busyRef.current = false }
+    setOpen(''); setEd('')
+  }
+
   // Пустые колонки прячем (правило владельца): показываем только те, где есть карточки,
   // а при перетаскивании ненадолго показываем все — иначе некуда положить карточку.
   // ИСКЛЮЧЕНИЕ — колонки-этапы «Готов к отправке» и «Продано / Доставлено» (`stage`):
@@ -318,6 +342,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                           )}
 
                           <div className="foot">
+                            {backStep(c) && <button className="act back" disabled={busy} title="Отыграть последний шаг — если кнопку нажали по ошибке" onClick={() => goBack(c)}>{backStep(c)!.label}</button>}
                             <span className="t">Позиций <b>{c.items.length}</b> · взято {doneN(c)}
                               {miss.length > 0 && <> · <b style={{ color: 'var(--bad)' }}>недовоз {miss.length}</b></>}</span>
                             {isEd && !adding && <button className="act" onClick={() => setAdding(true)}>＋ позиция</button>}
@@ -438,6 +463,8 @@ const CSS = `
 .lb .foot .t{font-size:11.5px;color:var(--muted);margin-right:auto}
 .lb .act{border:1px solid var(--line);background:var(--surface2);border-radius:6px;padding:4px 8px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text)}
 .lb .act.main{background:var(--ok);border:none;color:#fff;padding:6px 11px;font-size:12.5px}
+.lb .act.back{background:#fff;border:1.5px solid #c7873a;color:#8a4b00;padding:5px 10px;font-size:12px}
+.lb .act.back:disabled{opacity:.5;cursor:default}
 .lb .dom{margin-top:7px;border-left:3px solid var(--warn);background:var(--warn-soft);border-radius:6px;padding:6px 8px;font-size:11.5px;line-height:1.4;color:var(--text)}
 .lb .dom b{color:var(--warn)}
 .lb .dom .row{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}

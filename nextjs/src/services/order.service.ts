@@ -1113,6 +1113,72 @@ export async function deleteOrder(cardId: string, actor?: Session | null) {
   return { ok: true as const, id: cardId, by: actor?.name || 'Система' }
 }
 
+// ↩ ВЕРНУТЬ НАЗАД НА ДОСКЕ ЛОГИСТА (правило владельца 23.11.2026: «была ошибочно нажата кнопка, надо вернуть
+// назад, и так до начала»). Шаг назад ОТЫГРЫВАЕТ шаг вперёд — тем же, что этот шаг создал:
+//  • «Продано / Доставлено» → «Готов к отправке»: расходная (и её зеркало у филиала) сторнируется, товар
+//    возвращается на склад, долг заказчика снимается, позиции снова «В работе», карточка — в Исходящих;
+//  • «Готов к отправке» → к поставщику (только прямой заказ: ПРД — дочь ЗКП): сторнируется приходная матери
+//    (и зеркальная расходная у филиала-поставщика), дочь-продажа удаляется (её родил приход), закуп снова
+//    стоит в колонке поставщика с кнопкой «Закуплено»;
+//  • закуп, по которому нажали «Закуплено» по ошибке, возвращается так же — но сначала надо вернуть его продажу.
+// Отказываем, если по накладной уже есть оплата (деньги молча не трогаем) или продажа выросла из общего
+// закупа админа (автозакуп на несколько заявок — его возвращает админ). Строки дневного отчёта логиста,
+// которые встали сами на «Доставлено», убираем, пока смена не сдана.
+export async function stepBack(cardId: string, actor?: Session | null): Promise<{ ok: true; step: string; numbers: string[] } | { ok: false; error: string }> {
+  const [o] = await repo.getOrder(cardId)
+  if (!o) return { ok: false as const, error: 'Заявка не найдена' }
+  if (o.status === 'Отменён') return { ok: false as const, error: 'Карточка отменена' }
+  if (o.source === 'cashier') return { ok: false as const, error: 'Это чек кассы — его отменяют возвратом в кассе' }
+  const positions = await repo.positionsByCard(cardId)
+  const docRepo = await import('../repositories/document.repo')
+  const own = await docRepo.postedBySourceOrder(cardId)
+  const posted = !!o.linkedDocId || own.length > 0 || (!!(o as any).posted1c && o.status === 'Проведён')
+  const delivered = positions.some((p: any) => p.status === 'Доставлено')
+  // Дочь прямого заказа (ПРД) — её рождает приход матери.
+  const kids = ((await repo.childrenOf(cardId)) as any[]).filter(c => c.source === 'direct_sale' && c.status !== 'Отменён')
+
+  if (posted || delivered) {
+    // У закупа сначала возвращают его продажу: проведённую дочь не трогаем.
+    if (o.kind === 'purchase') {
+      for (const ch of kids) {
+        const chDocs = await docRepo.postedBySourceOrder(ch.id)
+        if (ch.linkedDocId || chDocs.length) return { ok: false as const, error: `Сначала верните назад продажу ${ch.id} — она уже проведена` }
+      }
+    }
+    // Все накладные шага: свои (по карточке) и рождённые из них (зеркала филиалов, отгрузка получателю).
+    const { sqlClient } = await import('../lib/db')
+    const tree = await sqlClient`
+      with recursive t as (
+        select id, number from documents where source_order_id = ${cardId} and status <> 'cancelled'
+        union
+        select d.id, d.number from documents d join t on d.parent_doc_id = t.id or d.origin_doc_id = t.id where d.status <> 'cancelled'
+      ) select id::text id, number from t` as unknown as Array<{ id: string; number: string }>
+    const ids = tree.map(d => d.id)
+    // Деньги по накладным молча не трогаем.
+    if (ids.length) {
+      const pay = await sqlClient`select count(*)::int n from payments where document_id = any(${ids})` as unknown as Array<{ n: number }>
+      if (pay[0]?.n) return { ok: false as const, error: 'По накладной уже есть оплата — сначала отмените оплату, потом возвращайте карточку' }
+    }
+    const docSvc = await import('./document.service')
+    const numbers: string[] = []
+    for (const d of tree) { await docSvc.cancelDocument(d.id); if (d.number) numbers.push(String(d.number)) }
+    // Дочь-продажа без накладных исчезает вместе с приходом, который её родил.
+    if (o.kind === 'purchase') for (const ch of kids) { await repo.deleteOrder(ch.id); numbers.push('карточка ' + ch.id) }
+    try { const { revertHqBranchOrder } = await import('./handover.service'); await revertHqBranchOrder(cardId, actor) } catch { /* цепочки «долг к головному» могло не быть */ }
+    await repo.updatePositionsByCard(cardId, { status: 'В работе' })
+    await repo.updateOrder(cardId, { linkedDocId: null, posted1c: false, screen: 'outgoing', status: 'В работе', toacc: false, delivered: null } as any)
+    try { await reportRepo.deleteDraftRowsByPos(positions.map((p: any) => String(p.id))) } catch { /* отчёта могло не быть */ }
+    await repo.insertHistory({ cardId, action: 'stepBack', detail: `↩ Возврат назад: ${o.kind === 'purchase' ? 'приход' : 'продажа'} сторнирован${numbers.length ? ' (' + numbers.join(', ') + ')' : ''} — карточка снова у логиста`, userName: actor?.name || 'Система' })
+    return { ok: true as const, step: o.kind === 'purchase' ? 'toSupplier' : 'toReady', numbers }
+  }
+
+  // Не проведена и не доставлена: продажа прямого заказа возвращается шагом своего закупа.
+  if (o.kind === 'sale' && o.parentCardId) return stepBack(String(o.parentCardId), actor)
+  return { ok: false as const, error: o.kind === 'sale'
+    ? 'Возвращать нечего: продажа ещё не проведена, а её закуп оформлял админ — вернуть её в Приёмку может он'
+    : 'Возвращать нечего: закуп ещё не проведён' }
+}
+
 // ── ДОСКА ЛОГИСТА (прототип, только чтение) ───────────────────────────────────────────────
 // Второй вид того же кабинета: Trello-доска вместо списка. Колонка = ПОСТАВЩИК позиции
 // («заказ поставщику»), карточка = заявка одного заказчика у этого поставщика; дальше по

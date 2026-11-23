@@ -214,6 +214,11 @@ export async function dispatchAction(id: string, action: string, actor: Session 
   }
   // Правка после доставки: открыть карточку (сторно цепочки) / подтвердить правку (переподнять цепочку).
   if (action === 'reopenEdit') { const { reopenForEdit } = await import('./order.service'); return await reopenForEdit(id, actor) }
+  // ↩ Шаг назад на доске логиста: отыграть ошибочно нажатое «Закуплено» / «Продано / Доставлено».
+  if (action === 'stepBack') {
+    if (!actor || !['admin', 'super_admin', 'logist'].includes(actor.role)) return { ok: false as const, error: 'Недостаточно прав' }
+    const { stepBack } = await import('./order.service'); return await stepBack(id, actor)
+  }
   // Удаление карточки — не переход статуса, а снятие записи целиком (ошибочно заведённая).
   if (action === 'deleteCard') { const { deleteOrder } = await import('./order.service'); return await deleteOrder(id, actor) }
   if (action === 'confirmChange') { const { confirmChange } = await import('./order.service'); return await confirmChange(id, actor) }
