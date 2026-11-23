@@ -8,10 +8,24 @@ import * as refsRepo from '../repositories/refs.repo'
 import { toYMD, today } from '../lib/num'
 import type { Session } from '../lib/auth'
 
+// ПОСТАВЩИК — НАШ СКЛАД (правило владельца 23.11.2026). Контрагент «Центр-Склад» закреплён за нашим складом
+// (contragents.warehouse_ref_id). Когда он стоит ПОСТАВЩИКОМ, товар уже наш и уже лежит на складе — приходная
+// накладная не нужна: она давала второй приход того же товара (склад +, потом расходная −, итог 0 — проданное
+// со склада не уходило) и копила несуществующий долг перед «Центр-Складом». Тот же склад — не делаем ничего,
+// другой наш склад — перемещение. Дальше карточка идёт как обычно: прямой заказ рождает ПРД, расходная
+// списывает товар со склада.
+async function ownWarehouseOf(contragentId: string): Promise<{ whId: string; name: string } | null> {
+  const [c] = await docRepo.contragentById(contragentId)
+  const wid = (c as any)?.warehouseRefId
+  return wid ? { whId: String(wid), name: String((c as any).name || 'наш склад') } : null
+}
+
 export async function postOrderInvoice(cardId: string, actor?: Session | null, dateOverride?: string) {
   const [o] = await orderRepo.getOrder(cardId)
   if (!o) return { ok: false as const, error: 'Заявка не найдена' }
   if (o.linkedDocId) return { ok: false as const, error: 'Накладная уже проведена' }
+  // Закуп со своего склада проводится БЕЗ накладной — второй раз не проводим.
+  if (o.kind === 'purchase' && (o as any).posted1c && o.status === 'Проведён') return { ok: false as const, error: 'Заявка уже проведена (поставщик — наш склад, приходная не нужна)' }
 
   const positions = await orderRepo.positionsByCard(cardId)
   await ensureProductIdsByName(positions, o.orgId)   // позиции без productId: подхватываем по имени, а собранный в каталоге вариант заводим карточкой (иначе строка выпадала из накладной и склад не двигался)
@@ -46,6 +60,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   let mainDoc: any = null   // документ-основание карточки (linkedDocId)
   // Группы «контрагент → его строки»: по ним же потом строится зеркальная накладная.
   const docGroups: Array<{ cid: string; pos: any[] }> = []
+  const ownNotes: string[] = []   // группы, где поставщик — наш склад (приходная не выписана)
 
   if (isPurchase) {
     // ЗАКУП: строки АТОМАРНЫ — закуп бывает смешанный (разные поставщики в одной карточке),
@@ -57,11 +72,37 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
       return Array.from(m.entries())
     }
     for (const [sid, ps] of groupBy(normalPos)) {
+      // ПОСТАВЩИК — НАШ СКЛАД: приходная не нужна (см. ownWarehouseOf).
+      const own = await ownWarehouseOf(sid)
+      if (own) {
+        if (own.whId !== String(wh.id)) {
+          await docSvc.createTransfer({
+            fromWarehouseId: own.whId, toWarehouseId: String(wh.id), date: acceptDate,
+            lines: ps.map((p: any) => ({ productId: String(p.productId), qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0 })),
+            comment: `Перемещение по заявке ${o.id} со склада «${own.name}»`,
+          } as any)
+          ownNotes.push(`перемещено со склада «${own.name}»`)
+        } else ownNotes.push(`поставщик — наш склад «${own.name}», товар уже на складе`)
+        continue
+      }
       const input: any = { orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines: ps.map(p => mkLine(p, Number(p.price) || 0, false)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Из заявки ${o.id}`, noStock: false }
       const d = await docSvc.createPurchase(input); numbers.push(d.number); mainDoc = mainDoc || d
       docGroups.push({ cid: sid, pos: ps })
     }
     for (const [sid, ps] of groupBy(transitPos)) {
+      // ПОСТАВЩИК — НАШ СКЛАД: приходная не нужна (см. ownWarehouseOf).
+      const own = await ownWarehouseOf(sid)
+      if (own) {
+        if (false) {
+          await docSvc.createTransfer({
+            fromWarehouseId: own.whId, toWarehouseId: String(wh.id), date: acceptDate,
+            lines: ps.map((p: any) => ({ productId: String(p.productId), qty: Number(p.qty), unit: p.unit || 'шт', price: Number(p.price) || 0 })),
+            comment: `Перемещение по заявке ${o.id} со склада «${own.name}»`,
+          } as any)
+          ownNotes.push(`перемещено со склада «${own.name}»`)
+        } else ownNotes.push(`поставщик — наш склад «${own.name}», товар уже на складе`)
+        continue
+      }
       const input: any = { orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines: ps.map(p => mkLine(p, Number(p.price) || 0, true)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · закуп мимо склада · ${o.id}`, noStock: true, transit: true, transitAgent }
       const d = await docSvc.createPurchase(input); numbers.push(d.number); mainDoc = mainDoc || d
       // Сквозная У ФИЛИАЛА: мимо НАШЕГО склада, но у него товар реально уходит — зеркало нужно.
@@ -84,6 +125,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     const bySupplier = new Map<string, any[]>()
     for (const p of transitPos) { const sid = p.supplierId as string | null; if (!sid) continue; const a = bySupplier.get(sid) || []; a.push(p); bySupplier.set(sid, a) }
     for (const [sid, ps] of Array.from(bySupplier.entries())) {
+      if (await ownWarehouseOf(sid)) continue   // поставщик — наш склад: приходной нет
       const input2: any = { orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines: ps.map(p => mkLine(p, Number(p.costPrice) || 0, true)), date: acceptDate, sourceOrderId: o.id, projectId, comment: `Сквозная · закуп у поставщика (транзит к заказчику) · ${o.id}`, noStock: true, transit: true, transitAgent }
       const d = await docSvc.createPurchase(input2); numbers.push(d.number)
     }
@@ -93,7 +135,8 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     }
   }
 
-  if (!mainDoc) return { ok: false as const, error: 'Нет позиций для проведения' }
+  // Весь закуп со своего склада: накладной нет, но карточка проводится (дальше — продажа со склада).
+  if (!mainDoc && !(isPurchase && ownNotes.length)) return { ok: false as const, error: 'Нет позиций для проведения' }
 
   // ── Зеркальная накладная в книге связанной орг (филиал-производитель) ──────────
   // Контрагент карточки привязан к другой орг (contragents.orgRefId) → создаём у него
@@ -127,7 +170,7 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
     }
   } catch { /* зеркало не должно ронять основную накладную */ }
 
-  await orderRepo.updateOrder(cardId, { linkedDocId: mainDoc.id, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
+  await orderRepo.updateOrder(cardId, { linkedDocId: mainDoc ? mainDoc.id : null, posted1c: true, screen: 'bookkeeping', status: 'Проведён' })
   // Прямой заказ: приходная проведена — товар на Центр-Складе, значит рождается ДОЧЕРНЯЯ
   // карточка-продажа ПРД (мать ЗКП остаётся с закупом и приходной, связь — parentCardId).
   // Приход пришёл: заявки, под которые собирался этот закуп, уходят логисту.
@@ -144,7 +187,9 @@ export async function postOrderInvoice(cardId: string, actor?: Session | null, d
   try { const { deleteReservesByCard } = await import('../repositories/reserve.repo'); await deleteReservesByCard(cardId) } catch { /* резерв мог не создаваться */ }
   await orderRepo.insertHistory({
     cardId, action: 'invoice',
-    detail: `${isPurchase ? 'Приходная' : 'Расходная'} накладная ${numbers.join(' + ')}`,
+    detail: numbers.length
+      ? `${isPurchase ? 'Приходная' : 'Расходная'} накладная ${numbers.join(' + ')}` + (ownNotes.length ? ` · без приходной: ${Array.from(new Set(ownNotes)).join('; ')}` : '')
+      : `Проведено без приходной: ${Array.from(new Set(ownNotes)).join('; ')}`,
     userName: actor?.name || 'Система',
   })
   // ЗАКУП С ПОЛУЧАТЕЛЯМИ В СТРОКАХ: товар не оседает на складе — тем же днём уходит расходной
@@ -245,6 +290,8 @@ export async function postSupplyForCard(cardId: string, date: string, actor?: Se
   for (const p of rows) { const sid = String(p.supplierId); const a = bySup.get(sid) || []; a.push(p); bySup.set(sid, a) }
   const numbers: string[] = []
   for (const [sid, ps] of Array.from(bySup.entries())) {
+    // Поставщик — наш склад: товар уже лежит у нас, приход не нужен (расходная спишет его со склада).
+    { const own = await ownWarehouseOf(sid); if (own && own.whId === String(wh.id)) continue }
     const lines = ps.map((p: any) => ({ productId: p.productId as string, qty: Number(p.qty), price: costOf(p), unit: p.unit || 'шт', sourcePosId: p.id, name: p.name1c || p.oral, widthCm: p.widthCm }))
     const d: any = await docSvc.createPurchase({ orgId: o.orgId, contragentId: sid, warehouseId: wh.id, lines, date, sourceOrderId: o.id, projectId, comment: `Приход от поставщика (задним числом) · ${o.id}` } as any)
     numbers.push(d.number)
