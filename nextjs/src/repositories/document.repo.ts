@@ -172,6 +172,9 @@ export function listInvoices(orgId: string, type: string | string[]) {
             end end
           from organizations oo where oo.id = ${documents.orgId}),
         (select sc0.name from ${contragents} sc0 where sc0.id = ${documents.supplierId}),
+        -- расходная из цепочки: поставщик = тот, от кого пришла её приходная-основание (а не чья партия попалась по FIFO)
+        (select pcx.name from ${documents} px join ${contragents} pcx on pcx.id = px.contragent_id
+          where px.id in (${documents.parentDocId}, ${documents.originDocId}) and px.type = 'purchase' and px.org_id = ${documents.orgId} and px.status <> 'cancelled' limit 1),
         (select string_agg(distinct pc.name, ', ') from doc_links dl2 join documents pd on pd.id = dl2.purchase_doc_id join contragents pc on pc.id = pd.contragent_id where dl2.sale_doc_id = ${documents.id}),
         (select string_agg(distinct sc.name, ', ') from procurement_links pl2
            join order_positions pp2 on pp2.card_id = pl2.purchase_card_id and lower(trim(coalesce(pp2.name1c, pp2.oral, ''))) = lower(trim(pl2.product))
@@ -304,6 +307,9 @@ export async function saleSupplierFallback(docId: string): Promise<string> {
                else oo.name
           end end
         from organizations oo where oo.id = d.org_id),
+      -- расходная из цепочки: поставщик = тот, от кого пришла её приходная-основание
+      (select pcx.name from documents px join contragents pcx on pcx.id = px.contragent_id
+        where px.id in (d.parent_doc_id, d.origin_doc_id) and px.type = 'purchase' and px.org_id = d.org_id and px.status <> 'cancelled' limit 1),
       (select string_agg(distinct pc.name, ', ') from doc_links dl join documents pd on pd.id = dl.purchase_doc_id
          join contragents pc on pc.id = pd.contragent_id where dl.sale_doc_id = d.id),
       (select string_agg(distinct sc.name, ', ') from procurement_links pl

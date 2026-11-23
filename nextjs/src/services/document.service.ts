@@ -570,13 +570,20 @@ export async function createSale(input: CreateSaleInput & { number?: string }) {
 
   // FIFO: связываем продажу с партиями закупа (для себестоимости/маржи и цепочки).
   const links: { id: string; purchaseDocId: string; saleDocId: string; productId: string; qty: string }[] = []
+  const chainIds = [(input as any).parentDocId, (input as any).originDocId].filter(Boolean).map(String)
   for (const l of input.lines) {
     // Сквозная строка (drop-ship) к складу не относится: товар шёл мимо нас, себестоимость —
     // это закуп у поставщика в самой строке, а не партия нашего прихода. Иначе такая продажа
     // «съедала» чужую партию закупа и портила привязку себестоимости по складу.
     if ((input as any).noStock || (l as any).transit) continue
     let need = l.qty
-    const lots = await docRepo.purchaseLots(input.orgId, l.productId)   // старые первыми
+    // ЦЕПОЧКА БЕРЁТ ТОВАР ИЗ СВОЕЙ ПРИХОДНОЙ (правило владельца 23.11.2026). Расходная, рождённая из приходной
+    // (parentDocId — цепочка «филиал → головной → покупатель», originDocId — отгрузка получателю), продаёт именно
+    // ТОТ товар, поэтому сначала списываем её партию, и только остаток — по общему FIFO. Раньше брали самую
+    // старую партию склада, и в поставщиках расходной всплывал чужой (завод вместо филиала), а себестоимость
+    // считалась по чужой цене.
+    const lots0 = await docRepo.purchaseLots(input.orgId, l.productId)   // старые первыми
+    const lots = chainIds.length ? [...lots0.filter(x => chainIds.includes(String(x.purchase_doc_id))), ...lots0.filter(x => !chainIds.includes(String(x.purchase_doc_id)))] : lots0
     for (const lot of lots) {
       if (need <= 0.0001) break
       const remaining = lot.line_qty - lot.linked_qty
