@@ -95,25 +95,9 @@ export default function GutterScheme({ system, products, folder, folders, onFold
         <button onClick={onList} title="Показать списком" style={{ flexShrink: 0, border: '1.5px solid #e2ddd5', background: '#fff', borderRadius: 12, padding: tight ? '0 7px' : '0 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: '#5f5952' }}>☰<br />список</button>
       </div>
 
-      {/* схема */}
-      <div style={{ position: 'relative', margin: '8px 12px', borderRadius: 14, overflow: 'hidden', background: theme.bg, color: theme.ink, boxShadow: '0 0 0 1px rgba(0,0,0,.08)' }}>
-        <div ref={hostRef} style={{ position: 'relative', height: 'clamp(340px, 54vh, 520px)', fontFamily: 'inherit' }} />
-        {!ready && !err && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13.5, fontWeight: 700, opacity: 0.8 }}>Открываю схему…</div>}
-        {err && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 13.5, fontWeight: 600 }}>{err}</div>}
-        {ready && (
-          <>
-            <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 2, padding: 3, borderRadius: 11, background: 'rgba(0,0,0,.28)', color: '#fff' }}>
-              <button onClick={() => { setAssembled(false); sceneRef.current?.arrange(false) }} style={seg(!assembled)}>Разобрать</button>
-              <button onClick={() => { setAssembled(true); sceneRef.current?.arrange(true) }} style={seg(assembled)}>Собрать</button>
-            </div>
-            <button onClick={() => sceneRef.current?.resetView()} title="Вернуть вид" style={{ position: 'absolute', top: 8, right: 8, border: 'none', background: 'rgba(0,0,0,.28)', color: '#fff', borderRadius: 11, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800 }}>⟲ вид</button>
-            <div style={{ position: 'absolute', left: 10, right: 10, bottom: 7, fontSize: 11, opacity: 0.75, pointerEvents: 'none', textAlign: 'center' }}>{note || 'Деталь — тянуть и нажимать · пустое место — поворот · два пальца — ближе'}</div>
-          </>
-        )}
-      </div>
-
-      {/* выбранная деталь: товар + количество */}
-      <div style={{ margin: '0 12px 8px', background: '#fff', borderRadius: 14, boxShadow: cur ? `0 0 0 2px ${PRIMARY}` : '0 0 0 1px #e6e2dc', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, minHeight: 66 }}>
+      {/* выбранная деталь: товар + количество. Стоит НАД схемой (правило владельца 24.11.2026): внизу панель уезжала
+          под нижнее меню кассы, и кнопок количества не было видно. */}
+      <div style={{ margin: '8px 12px 0', background: '#fff', borderRadius: 14, boxShadow: cur ? `0 0 0 2px ${PRIMARY}` : '0 0 0 1px #e6e2dc', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, minHeight: 66 }}>
         {!cur ? (
           <div style={{ flex: 1, fontSize: 13.5, color: '#6b645b' }}><b style={{ color: DARK }}>Нажмите на деталь</b> на схеме — здесь впишете количество.</div>
         ) : !cur.product ? (
@@ -131,6 +115,24 @@ export default function GutterScheme({ system, products, folder, folders, onFold
             <button aria-label="Меньше" onClick={() => setQty(cur.product, Math.max(0, curQty - 1))} style={stepBtn}>−</button>
             {qtyInput(cur.product, true)}
             <button aria-label="Больше" onClick={() => setQty(cur.product, curQty + 1)} style={stepBtn}>+</button>
+          </>
+        )}
+      </div>
+
+
+      {/* схема */}
+      <div style={{ position: 'relative', margin: '8px 12px', borderRadius: 14, overflow: 'hidden', background: theme.bg, color: theme.ink, boxShadow: '0 0 0 1px rgba(0,0,0,.08)' }}>
+        <div ref={hostRef} style={{ position: 'relative', height: 'clamp(340px, 54vh, 520px)', fontFamily: 'inherit' }} />
+        {!ready && !err && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13.5, fontWeight: 700, opacity: 0.8 }}>Открываю схему…</div>}
+        {err && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 13.5, fontWeight: 600 }}>{err}</div>}
+        {ready && (
+          <>
+            <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 2, padding: 3, borderRadius: 11, background: 'rgba(0,0,0,.28)', color: '#fff' }}>
+              <button onClick={() => { setAssembled(false); sceneRef.current?.arrange(false) }} style={seg(!assembled)}>Разобрать</button>
+              <button onClick={() => { setAssembled(true); sceneRef.current?.arrange(true) }} style={seg(assembled)}>Собрать</button>
+            </div>
+            <button onClick={() => sceneRef.current?.resetView()} title="Вернуть вид" style={{ position: 'absolute', top: 8, right: 8, border: 'none', background: 'rgba(0,0,0,.28)', color: '#fff', borderRadius: 11, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800 }}>⟲ вид</button>
+            <div style={{ position: 'absolute', left: 10, right: 10, bottom: 7, fontSize: 11, opacity: 0.75, pointerEvents: 'none', textAlign: 'center' }}>{note || 'Деталь — тянуть и нажимать · пустое место — поворот · два пальца — ближе'}</div>
           </>
         )}
       </div>
