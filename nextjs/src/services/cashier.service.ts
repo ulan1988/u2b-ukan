@@ -608,14 +608,75 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   return { ...res, id, seller }
 }
 
-// Отмена продажи в кассе магазина: сторнируем расходную+оплаты (unpostSale) и ПОЛНОСТЬЮ отменяем
-// карточку (товар вернулся на склад, деньги сняты, чек исчезает из журнала). Для исправления ошибок.
+// УДАЛЕНИЕ ЧЕКА (касса магазина, правило владельца 24.11.2026: «клиент передумал»). Сторнируем расходную и её
+// оплаты (unpostSale) и ПОЛНОСТЬЮ отменяем карточку: товар вернулся на склад, деньги сняты, чек исчезает из
+// журнала. ДОМИНО: QR-деньги чека к этому моменту уже ушли головному инкассацией (банк магазина = деньги ГО) —
+// снимаем лишнее за день чека с обеих сторон, иначе банк магазина ушёл бы в минус, а у головного висели бы деньги,
+// которых не было. Не удаляем, если по чеку уже был возврат/обмен или долг гасили ДРУГИМ днём — там деньги и
+// товар разнесены по дням, это оформляется возвратом.
 export async function cancelStoreSale(cardId: string, actor?: Session | null) {
+  const [order] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Чек не найден' }
+  const { sqlClient } = await import('../lib/db')
+  const [ret] = await sqlClient`
+    select count(*)::int c from documents
+    where status<>'cancelled' and (
+      (type='return_in' and source_order_id=${cardId})
+      or comment like ${'%Обмен по чеку ' + cardId + '%'})` as unknown as Array<{ c: number }>
+  if (Number(ret?.c) > 0) return { ok: false as const, error: 'По чеку уже был возврат или обмен — удалить нельзя, оформите возврат остальных позиций' }
+  const sale = await sqlClient`select id::text id, date::text d from documents where source_order_id=${cardId} and type='sale' and status<>'cancelled'` as unknown as Array<{ id: string; d: string }>
+  const day = sale[0]?.d || ''
+  if (sale.length) {
+    const [late] = await sqlClient`select count(*)::int c from payments where document_id = any(${sale.map(x => x.id)}) and date::text <> ${day}` as unknown as Array<{ c: number }>
+    if (Number(late?.c) > 0) return { ok: false as const, error: 'По чеку есть оплата другим днём (погашение долга) — удалить нельзя, оформите возврат' }
+  }
   const r: any = await unpostSale(cardId, actor)
   if (r?.ok === false) return r
   await repo.updateOrder(cardId, { isCancelled: true, cancelReason: 'Отмена продажи (касса магазина)', screen: 'archive', prodPhase: '' })
-  await repo.insertHistory({ cardId, action: 'cancelSale', detail: 'Продажа отменена и карточка аннулирована', userName: actor?.name || 'Система' })
-  return { ok: true as const }
+  let trimmed = 0
+  try { if (day) trimmed = await trimSellerBankToHq(order.orgId, day) } catch (e) { console.error('trimSellerBankToHq', cardId, e) }
+  await repo.insertHistory({ cardId, action: 'cancelSale', detail: `Чек удалён: продажа отменена, карточка аннулирована${trimmed ? ` · инкассация QR головному за ${day.split('-').reverse().join('.')} уменьшена на ${Math.round(trimmed).toLocaleString('ru-RU')} ₸` : ''}`, userName: actor?.name || 'Система' })
+  return { ok: true as const, trimmed }
+}
+
+// Инкассация QR за ОДИН день больше, чем реально пришло на банк магазина (чек удалён) — снимаем лишнее
+// с обеих сторон: расход банка магазина и парный приход головного. Только за указанный день.
+export async function trimSellerBankToHq(sellerOrgId: string, day: string): Promise<number> {
+  const { db, sqlClient } = await import('../lib/db')
+  const { organizations, cashAccounts } = await import('../db/schema')
+  const { eq, and } = await import('drizzle-orm')
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, sellerOrgId)).limit(1)
+  if (!org || org.kind !== 'seller') return 0
+  const banks = await db.select().from(cashAccounts).where(and(eq(cashAccounts.orgId, sellerOrgId), eq(cashAccounts.kind, 'bank'), eq(cashAccounts.archived, false)))
+  const bank = banks.find(a => (a.name || '').toLowerCase().includes('банков')) || banks[0]
+  if (!bank) return 0
+  const [row] = await sqlClient`
+    select
+      coalesce(sum(case when (comment is null or comment not like 'Инкассация%') then (case when direction='in' then amount else -amount end) else 0 end),0)::float gross,
+      coalesce(sum(case when comment like 'Инкассация → головной%' and direction='out' then amount else 0 end),0)::float enc
+    from payments where cash_account_id=${bank.id} and date=${day}` as unknown as Array<{ gross: number; enc: number }>
+  let excess = Math.round(((Number(row?.enc) || 0) - Math.max(0, Number(row?.gross) || 0)) * 100) / 100
+  if (excess <= 0) return 0
+  const [hq] = await db.select().from(organizations).where(and(eq(organizations.kind, 'hq'), eq(organizations.archived, false))).limit(1)
+  const encs = await sqlClient`select id::text id, amount::float a from payments
+    where cash_account_id=${bank.id} and date=${day} and direction='out' and comment like 'Инкассация → головной%' order by created_at desc` as unknown as Array<{ id: string; a: number }>
+  let done = 0
+  for (const e of encs) {
+    if (excess <= 0.004) break
+    const take = Math.min(e.a, excess)
+    // парный приход головного: тот же день и сумма, от этого магазина
+    const pair = hq ? (await sqlClient`select id::text id from payments
+      where org_id=${hq.id} and date=${day} and direction='in' and amount=${String(e.a)} and comment like ${'Инкассация от ' + org.name + '%'} limit 1` as unknown as Array<{ id: string }>)[0] : undefined
+    if (take >= e.a - 0.004) {
+      await sqlClient`delete from payments where id=${e.id}`
+      if (pair) await sqlClient`delete from payments where id=${pair.id}`
+    } else {
+      await sqlClient`update payments set amount=${String(Math.round((e.a - take) * 100) / 100)} where id=${e.id}`
+      if (pair) await sqlClient`update payments set amount=${String(Math.round((e.a - take) * 100) / 100)} where id=${pair.id}`
+    }
+    excess = Math.round((excess - take) * 100) / 100; done += take
+  }
+  return done
 }
 
 // ОПЛАТА ИЗ КАБИНЕТА КЛИЕНТА (инкассация клиента): клиент выбирает счёт своей орг и сумму —

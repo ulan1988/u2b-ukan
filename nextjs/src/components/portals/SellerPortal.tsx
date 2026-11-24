@@ -645,12 +645,13 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
 
   // Отмена продажи: товар на склад, деньги снимаются, чек аннулируется (для ошибок).
   async function doCancelSale(o: any) {
-    if (!confirm('Отменить продажу? Товар вернётся на склад, оплаты снимутся, чек исчезнет из журнала.')) return
+    const qrPaid = Number(o.paidQr || 0) > 0
+    if (!confirm('Точно удалить чек № ' + (o.docNumber || o.id) + ' на ' + money(cardTotal(o)) + ' ₸?\n\nТовар вернётся на склад, оплата снимется со счёта' + (qrPaid ? ' (QR — и у головного)' : '') + '. Чек исчезнет из журнала, вернуть его нельзя — только пробить заново.')) return
     setBusy(true)
     const r = await cancelStoreSale({ uid: user.id, cardId: o.id })
     setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setViewChk(null); await load(); loadStock(); showMsg('✓ Продажа отменена')
+    setViewChk(null); await load(); loadStock(); showMsg('✓ Чек удалён')
   }
   function toggleRetPos(id: string) {
     setRetSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -1204,6 +1205,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       {Number(o.exchangeSum || 0) > 0 && <div style={{ fontSize: 11.5, color: '#2f5aa8', fontWeight: 700 }}>🔄 обмен {money(Number(o.exchangeSum))} ₸ · {(o.exchangeIn || []).map((x: any) => x.name).join(', ')} → {(o.exchangeOut || []).map((x: any) => x.name).join(', ')}</div>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* Удалить чек («клиент передумал») — слева и мелко, чтобы не нажать случайно; с контрольным вопросом.
+                          Нет кнопки у чека с возвратом/обменом — там деньги и товар уже разнесены по дням. */}
+                      {retSum < 0.5 && !(Number(o.exchangeSum || 0) > 0) && <button disabled={busy} onClick={e => { e.stopPropagation(); doCancelSale(o) }} title="Удалить чек — если клиент передумал"
+                        style={{ border: '1px solid #e6e2dc', background: '#faf8f6', color: '#a09889', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontSize: 14, flexShrink: 0, padding: 0 }}>🗑</button>}
                       <div style={{ fontSize: 16, fontWeight: 800, textDecoration: allBack ? 'line-through' : 'none', color: allBack ? '#a09889' : DARK, whiteSpace: 'nowrap' }}>{money(t)} ₸</div>
                       <span style={{ flex: 1 }} />
                     <button onClick={e => { e.stopPropagation(); setRcpt(o) }} title="Показать / отправить чек" style={{ border: '1.5px solid #d6d0c7', background: '#fff', color: '#5f5952', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 15, fontFamily: 'inherit' }}>🧾</button>
