@@ -112,6 +112,9 @@ export async function addGoodsDebt(body: { uid?: string; contragentId: string; p
   const r = await post('/api/branch/goods-debt', body)
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
+// «Долг товаров» — история за день: действия (взяли / отдали / вернули / оплатили) с товарами и деньгами.
+export const goodsDebtDay = (date: string, uid?: string) =>
+  getObj<{ moves: any[]; moneyOut: number; moneyIn: number }>(`/api/branch/goods-debt/day?date=${date}${uid ? `&uid=${uid}` : ''}`, { moves: [], moneyOut: 0, moneyIn: 0 })
 // «Долг товаров» — взяли / отдали в долг чеком: все выбранные позиции одной записью формы.
 export async function addGoodsDebtBatch(body: { uid?: string; contragentId: string; direction: 'take' | 'give'; items: { productId?: string | null; productName: string; unit?: string; qty: number }[]; note?: string }) {
   const r = await post('/api/branch/goods-debt/batch', body)

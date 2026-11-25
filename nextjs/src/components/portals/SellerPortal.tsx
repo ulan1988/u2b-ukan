@@ -20,7 +20,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebtBatch, settleGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
+import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, goodsDebtDay, addGoodsDebtBatch, settleGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -144,7 +144,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [repayFor, setRepayFor] = useState<any>(null)                   // чек, по которому открыто погашение
   const [repaySplit, setRepaySplit] = useState<Record<string, string>>({})  // сумма по каждому счёту (смешанная)
   // «Долги»: под-вкладки «Долг клиентов» (чеки) / «Долг товаров» (взяли у соседа — вернём товаром).
-  const [debtTab, setDebtTab] = useState<'clients' | 'goods'>('clients')
+  const [debtTab, setDebtTab] = useState<'clients' | 'goods' | 'history'>('clients')
+  // «История» долга товаров: действия за выбранный день (по умолчанию сегодня; на следующий день откроется уже его день)
+  const [gHistDay, setGHistDay] = useState(localDay())
+  const [gHist, setGHist] = useState<{ moves: any[]; moneyOut: number; moneyIn: number; day: string } | null>(null)
   const [gDebt, setGDebt] = useState<{ entries: any[]; balances: any[] }>({ entries: [], balances: [] })
   // Шторка «взяли / отдали в долг» — ЧЕК (правило владельца 25.11.2026): все товары, выбранные в каталоге, строками
   // с правкой количества. Раньше из каталога бралась только ПЕРВАЯ позиция — остальные молча терялись.
@@ -293,6 +296,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // «Долг товаров» — грузим при открытии вкладки «Долги».
   const loadGDebt = useCallback(async () => { setGDebt(await fetchGoodsDebts(user.id)) }, [user.id])
   useEffect(() => { if (tab === 'debts') loadGDebt() }, [tab, loadGDebt])
+  const loadGHist = useCallback(async () => { const r = await goodsDebtDay(gHistDay, user.id); setGHist({ ...r, day: gHistDay }) }, [gHistDay, user.id])
+  useEffect(() => { if (tab === 'debts' && debtTab === 'history') loadGHist() }, [tab, debtTab, loadGHist])
 
   // Товары для «долга товаров» — из НАШЕГО каталога. В чек встают ВСЕ выбранные позиции; тот же товар, выбранный
   // ещё раз, не дублируется строкой — количество складывается.
@@ -1369,8 +1374,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* под-вкладки: Долг клиентов (чеки) / Долг товаров (взяли у соседа) */}
               <div style={{ display: 'flex', gap: 6, background: '#fff', borderRadius: 12, padding: 5, boxShadow: '0 0 0 1px #e6e2dc' }}>
-                {([['clients', '💳 Долг клиентов'], ['goods', '📦 Долг товаров']] as const).map(([k, lbl]) => (
-                  <button key={k} onClick={() => setDebtTab(k)} style={{ flex: 1, border: 'none', borderRadius: 9, padding: '9px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, background: debtTab === k ? PRIMARY : 'transparent', color: debtTab === k ? '#fff' : '#8a8377' }}>{lbl}</button>
+                {([['clients', '💳 Долг клиентов'], ['goods', '📦 Долг товаров'], ['history', '🕘 История']] as const).map(([k, lbl]) => (
+                  <button key={k} onClick={() => { setDebtTab(k); if (k === 'history') setGHistDay(localDay()) }} style={{ flex: k === 'history' ? '0 0 auto' : 1, border: 'none', borderRadius: 9, padding: k === 'history' ? '9px 12px' : '9px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, background: debtTab === k ? PRIMARY : 'transparent', color: debtTab === k ? '#fff' : '#8a8377' }}>{lbl}</button>
                 ))}
               </div>
 
@@ -1468,6 +1473,62 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   )
                 })}
               </>)}
+
+              {/* 🕘 ИСТОРИЯ долга товаров (правило владельца 25.11.2026): что взяли / отдали / вернули / оплатили за день.
+                  По умолчанию — сегодня; завтра вкладка откроется уже на завтрашнем дне. Прошлые дни — «Вчера» или дата. */}
+              {debtTab === 'history' && (() => {
+                const LBL: Record<string, { t: string; c: string }> = {
+                  take: { t: '➕ взяли в долг', c: '#c0532a' }, return: { t: '↩ вернули товаром', c: GREEN }, pay: { t: '💵 оплатили деньгами', c: GREEN },
+                  give: { t: '➖ отдали в долг', c: BLUE }, giveback: { t: '↩ приняли товаром', c: GREEN }, receive: { t: '💵 получили деньгами', c: GREEN },
+                }
+                const ready = gHist && gHist.day === gHistDay
+                const moves = ready ? [...gHist!.moves].reverse() : []   // свежее действие — сверху
+                const dayBtn = (d: string, lbl: string) => (
+                  <button onClick={() => setGHistDay(d)} style={{ border: gHistDay === d ? 'none' : '1.5px solid #e6e2dc', background: gHistDay === d ? PRIMARY : '#fff', color: gHistDay === d ? '#fff' : DARK, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>{lbl}</button>
+                )
+                return (<>
+                  <div style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {dayBtn(localDay(), 'Сегодня')}
+                    {dayBtn(localDay(Date.now() - 86400000), 'Вчера')}
+                    <input type="date" value={gHistDay} max={localDay()} onChange={e => setGHistDay(e.target.value || localDay())} style={{ border: '1.5px solid #e6e2dc', borderRadius: 9, padding: '7px 10px', fontFamily: 'inherit', fontSize: 13.5, color: DARK }} />
+                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                      <div style={{ fontSize: 10.5, color: '#a09889' }}>{ready ? `${moves.length} действ.` : 'загрузка…'}</div>
+                      {ready && (gHist!.moneyOut > 0 || gHist!.moneyIn > 0) && <div style={{ fontSize: 12.5, fontWeight: 800 }}>
+                        {gHist!.moneyOut > 0 && <span style={{ color: '#c0532a' }}>−{money(gHist!.moneyOut)} ₸</span>}
+                        {gHist!.moneyOut > 0 && gHist!.moneyIn > 0 && ' · '}
+                        {gHist!.moneyIn > 0 && <span style={{ color: GREEN }}>+{money(gHist!.moneyIn)} ₸</span>}
+                      </div>}
+                    </div>
+                  </div>
+                  {ready && moves.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>За этот день движений по долгу товаров не было</div>}
+                  {moves.map((g: any) => {
+                    const L = LBL[g.direction] || { t: g.direction, c: '#8a8377' }
+                    return (
+                      <div key={g.id} data-ghist-row style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 0 0 1px #e6e2dc' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          <span style={{ fontSize: 11.5, color: '#a09889', fontFamily: 'monospace' }}>{g.t}</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, flex: 1, minWidth: 0 }}>{g.contragentName || 'Сосед'}</span>
+                          <span style={{ fontSize: 12.5, fontWeight: 800, color: L.c, whiteSpace: 'nowrap' }}>{L.t}</span>
+                        </div>
+                        <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {(g.items || []).map((it: any, i: number) => (
+                            <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, color: '#4a443c' }}>
+                              <span style={{ flex: 1, minWidth: 0 }}>{it.name}</span>
+                              <b style={{ whiteSpace: 'nowrap' }}>{qfmt(Number(it.qty))} {it.unit || 'шт'}</b>
+                            </div>
+                          ))}
+                        </div>
+                        {(g.direction === 'pay' || g.direction === 'receive') && (
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #f6f3f0', fontSize: 13, display: 'flex', gap: 8 }}>
+                            <span style={{ flex: 1, color: '#8a8377' }}>{g.amount > 0 ? (g.account || 'счёт') : 'без движения денег'}</span>
+                            {g.amount > 0 && <b style={{ color: g.direction === 'pay' ? '#c0532a' : GREEN }}>{g.direction === 'pay' ? '−' : '+'}{money(g.amount)} ₸</b>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </>)
+              })()}
             </div>
           )}
         </div>
