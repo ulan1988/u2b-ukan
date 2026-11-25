@@ -325,6 +325,11 @@ export async function masterShift(orgId: string, date: string) {
   ` as unknown as Array<any>
   const debtTotal = debts.reduce((a: number, x: any) => a + num(x.debt), 0)
 
+  // «Долг товаров» — движения дня (взяли / отдали / вернули / оплатили): в «Кассе дня» видно, что было и какие
+  // деньги по этому ушли или пришли (иначе в «ушло со счетов» стоит сумма без объяснения).
+  const { goodsDebtDay } = await import('./goodsDebt.service')
+  const goodsMoves = await goodsDebtDay(orgId, date)
+
   // Прочие доходы дня (деньги без товара, 50/50) — отдельной строкой в журнале чеков.
   const { listOtherIncome } = await import('./cashier.service')
   const otherIncome = await listOtherIncome(orgId, date)
@@ -351,7 +356,7 @@ export async function masterShift(orgId: string, date: string) {
   const share = { from: mFrom, earned: num(shRow.earned), zp: num(shRow.zp), left: num(shRow.earned) - num(shRow.zp) }
 
   return {
-    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, remit, moves, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal,
+    date, kind: orgKind, income, check, cards, staff, otherIncome, otherShare, share, remit, moves, attendance: attIds, attWage, zpPaidWho, expenseArticles, report, debts, debtTotal, goodsMoves,
     stock: { amount: num(stkRow.amount), qty: num(stkRow.qty), items: stockItems.map((s: any) => ({ name: s.name, widthCm: num(s.widthCm), qty: num(s.qty) })) },
     expenses: { rows: expRows, salaryTotal, currentTotal, total: salaryTotal + currentTotal },
     accounts, goldId: gold?.id || null, goldBalance, cashBalance, bankBalance,

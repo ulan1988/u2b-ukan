@@ -153,6 +153,34 @@ export async function settleGoodsDebt(
   return { ok: true as const, count: items.length }
 }
 
+// ДВИЖЕНИЯ ДОЛГА ТОВАРОВ ЗА ДЕНЬ — для «Кассы дня» (правило владельца 25.11.2026: «не видно историю движений долга
+// товаров — было несколько действий, а каких, не знаю»). Записи журнала собираем в ДЕЙСТВИЯ: один сосед, одно
+// направление, записано одним нажатием (до 5 секунд между строками) — это один «чек» с перечнем товаров.
+// К оплате деньгами (pay/receive) подвязываем платёж по счёту: тот же сосед, та же минута.
+export async function goodsDebtDay(orgId: string, date: string) {
+  const [rows, money] = await Promise.all([repo.movesOfDay(orgId, date), repo.moneyOfDay(orgId, date)])
+  const groups: any[] = []
+  for (const r of rows as any[]) {
+    const last = groups[groups.length - 1]
+    if (last && last.contragentId === r.contragentId && last.direction === r.direction && Math.abs(n(r.sec) - last.sec) <= 5) {
+      last.items.push({ name: r.productName, qty: n(r.qty), unit: r.unit || 'шт' }); last.sec = n(r.sec)
+    } else {
+      groups.push({ id: r.id, t: r.t, sec: n(r.sec), contragentId: r.contragentId, contragentName: r.contragentName, direction: r.direction, by: r.createdBy,
+        items: [{ name: r.productName, qty: n(r.qty), unit: r.unit || 'шт' }], amount: 0, account: '' })
+    }
+  }
+  const used = new Set<number>()
+  for (const g of groups) {
+    if (g.direction !== 'pay' && g.direction !== 'receive') continue
+    const want = g.direction === 'pay' ? 'out' : 'in'
+    const at = (money as any[]).findIndex((p, i) => !used.has(i) && p.contragentId === g.contragentId && p.direction === want && Math.abs(n(p.sec) - g.sec) <= 60)
+    if (at >= 0) { used.add(at); g.amount = n((money as any[])[at].amount); g.account = (money as any[])[at].account || '' }
+  }
+  const moneyOut = groups.filter(g => g.direction === 'pay').reduce((a, g) => a + g.amount, 0)
+  const moneyIn = groups.filter(g => g.direction === 'receive').reduce((a, g) => a + g.amount, 0)
+  return { moves: groups.map(({ sec, ...g }) => g), moneyOut, moneyIn }
+}
+
 export async function deleteGoodsDebt(id: string, orgId: string) {
   const row = await repo.getEntry(id, orgId)
   if (!row) return { ok: false as const, error: 'Запись не найдена' }

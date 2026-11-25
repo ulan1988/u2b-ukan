@@ -607,6 +607,50 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
             })}
         </div>
 
+        {/* 📦 ДОЛГ ТОВАРОВ — движения дня (правило владельца 25.11.2026): что взяли / отдали / вернули / оплатили у
+            соседей за этот день и какие деньги по этому ушли со счёта или пришли. Склад эти записи не трогают. */}
+        {(data.goodsMoves?.moves || []).length > 0 && (() => {
+          const gm = data.goodsMoves
+          const LBL: Record<string, { t: string; c: string }> = {
+            take: { t: '➕ взяли в долг', c: COLORS.primaryDark }, return: { t: '↩ вернули товаром', c: '#2e8a5e' }, pay: { t: '💵 оплатили деньгами', c: '#2e8a5e' },
+            give: { t: '➖ отдали в долг', c: '#3a6ea5' }, giveback: { t: '↩ приняли товаром', c: '#2e8a5e' }, receive: { t: '💵 получили деньгами', c: '#2e8a5e' },
+          }
+          const q = (v: number) => Number((v || 0).toFixed(3)).toLocaleString('ru-RU')
+          return (
+            <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px 10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>📦 ДОЛГ ТОВАРОВ — движения дня</span>
+                <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{gm.moves.length} действ.</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12.5, color: COLORS.textLight }}>
+                  {gm.moneyOut > 0 && <>ушло со счетов <b style={{ color: COLORS.primaryDark }}>−{m(gm.moneyOut)} ₸</b></>}
+                  {gm.moneyOut > 0 && gm.moneyIn > 0 && ' · '}
+                  {gm.moneyIn > 0 && <>пришло <b style={{ color: '#2e8a5e' }}>+{m(gm.moneyIn)} ₸</b></>}
+                  {!(gm.moneyOut > 0) && !(gm.moneyIn > 0) && 'денег по счетам не было'}
+                </span>
+              </div>
+              {gm.moves.map((g: any) => {
+                const L = LBL[g.direction] || { t: g.direction, c: COLORS.textLight }
+                const total = (g.items || []).reduce((a: number, it: any) => a + Number(it.qty || 0), 0)
+                return (
+                  <div key={g.id} style={{ borderTop: `1px solid ${COLORS.borderLight}`, padding: '9px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <span style={{ fontSize: 12, color: COLORS.textLight, width: 42, flexShrink: 0, paddingTop: 2 }}>{g.t}</span>
+                    <span style={{ fontSize: 13.5, width: 190, flexShrink: 0, fontWeight: 600 }}>{g.contragentName || '—'}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: L.c, width: 160, flexShrink: 0 }}>{L.t}</span>
+                    <span style={{ fontSize: 13, flex: 1, minWidth: 0, color: COLORS.text }}>
+                      {(g.items || []).map((it: any, i: number) => <span key={i}>{i ? ' · ' : ''}{it.name} <b>×{q(it.qty)}</b>{it.unit && it.unit !== 'шт' ? ' ' + it.unit : ''}</span>)}
+                      {(g.items || []).length > 1 && <span style={{ color: COLORS.textLight }}> — {g.items.length} позиц., всего {q(total)}</span>}
+                    </span>
+                    <span style={{ fontSize: 13.5, width: 210, flexShrink: 0, textAlign: 'right', color: COLORS.textLight }}>
+                      {g.amount > 0 ? <><b style={{ fontSize: 14.5, color: g.direction === 'pay' ? COLORS.primaryDark : '#2e8a5e' }}>{g.direction === 'pay' ? '−' : '+'}{m(g.amount)} ₸</b>{g.account ? ` · ${g.account}` : ''}</>
+                        : (g.direction === 'pay' || g.direction === 'receive') ? 'без движения денег' : ''}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+
         {/* 💰 ПРИБЫЛЬ ДНЯ — чек делится на две части ДЕНЕГ: себестоимость («Оплата от покупателей»)
             и наценка («Прочие доходы»). Накладная не трогается. Счёт прибыли — куда пришли деньги. */}
         <div style={{ ...card, marginBottom: 16 }}>
