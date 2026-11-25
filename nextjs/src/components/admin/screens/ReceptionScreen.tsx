@@ -92,10 +92,15 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     const rt = transit || !!rows[i]?.transit
     // В ЗАКУПЕ две цены: price — закуп (в приходную), salePrice — продажа получателю (в расходную).
     const sale = kind === 'purchase' ? salePriceOf(p, rows[i]) : 0
+    // В ПРОДАЖЕ тоже две цены (правило 25.11.2026): price — продажа по типу цены заказчика (в расходную),
+    // costPrice — закуп из номенклатуры (в приходную поставщика). autoPrice помнит подставленное:
+    // сменили заказчика — цена пересчитается, вписанную руками не трогаем.
+    const buy = Number(p.priceIn) || 0
     setRow(i, {
       productId: p.id, name1c: p.name, unit: p.unit || 'шт',
       ...(p.widthCm != null ? { widthCm: String(p.widthCm) } : {}),
-      price: pr > 0 ? String(pr) : '',
+      price: pr > 0 ? String(pr) : '', autoPrice: pr > 0 ? String(pr) : '',
+      ...(kind === 'sale' && !rt && buy > 0 ? { costPrice: String(buy) } : {}),
       ...(kind === 'purchase' ? { salePrice: sale > 0 ? String(sale) : '' } : {}),
       ...(rt && cost > 0 ? { costPrice: String(cost) } : {}),
     })
@@ -115,10 +120,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
   useEffect(() => {
     if (!contactId || !products.length) return
     setRows(rs => rs.map(r => {
-      if (!r.productId || String(r.price || '').trim()) return r
+      if (!r.productId) return r
+      const cur = String(r.price || '').trim()
+      if (cur && cur !== String(r.autoPrice || '')) return r   // вписано руками — не трогаем
       const p = products.find((x: any) => x.id === r.productId); if (!p) return r
       const v = kind === 'sale' ? priceForClient(p, clientPT()) : (Number(p.priceIn) || 0)
-      return v > 0 ? { ...r, price: String(v) } : r
+      // У нового заказчика другой тип цены: подставленная цена меняется на его; нет в прайсе — пусто (впишут).
+      return v > 0 ? { ...r, price: String(v), autoPrice: String(v) } : (cur ? { ...r, price: '', autoPrice: '' } : r)
     }))
   }, [contactId, products.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -173,6 +181,8 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
         ...emptyPos(), productId: (it as any).productId || prod?.id || undefined,
         name1c: nm, widthCm: cm, qty: String(it.qty), unit: it.unit, respUserId: log,
         price: kind === 'sale' ? (sale > 0 ? String(sale) : '') : (buy > 0 ? String(buy) : ''),
+        autoPrice: kind === 'sale' ? (sale > 0 ? String(sale) : '') : (buy > 0 ? String(buy) : ''),
+        ...(kind === 'sale' && buy > 0 ? { costPrice: String(buy) } : {}),
         ...(kind === 'purchase' && sale > 0 ? { salePrice: String(sale) } : {}),
       }
     })])
@@ -192,7 +202,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     const positions = filled.map(r => { const nm = isIzdelie(r.name1c) ? itemName({ name: r.name1c, color: extractRal(r.name1c), cm: r.widthCm }) : r.name1c; const tr = rowTransit(r); return ({
       productId: r.productId || undefined, name1c: nm, oral: nm, qty: Number(r.qty) || 0, unit: r.unit,
       widthCm: r.widthCm ? Number(r.widthCm) : undefined,
-      price: Number(r.price) || 0, transit: tr, costPrice: tr ? (Number(r.costPrice) || 0) : undefined,
+      price: Number(r.price) || 0, transit: tr, costPrice: (tr || (kind === 'sale' && !!r.supplierId)) ? (Number(r.costPrice) || 0) : undefined,
       respUserId: r.respUserId || undefined, supplierId: r.supplierId || undefined,
       recipientId: r.recipientId || undefined,   // кому эта позиция закупа
       salePrice: kind === 'purchase' ? (Number(r.salePrice) || 0) : undefined,   // цена продажи строки
@@ -288,6 +298,13 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                 {kind === 'purchase'
                   ? <input style={{ ...INP, background: '#f6f3f0', color: purple, fontWeight: 700 }} value={CENTER} disabled />
                   : <ContragentPicker contragents={allCags} value={contactId} defaultId={defaultCagId} onPick={c => { setContactId(c.id); setSpecId('') }} placeholder="— выберите контрагента —" />}
+                {/* ТИП ЦЕНЫ ЗАКАЗЧИКА (правило 25.11.2026): по нему подставляется цена продажи строк. */}
+                {kind === 'sale' && contactId && (() => {
+                  const pt = clientPT(); const lbl = pt === 'spec' ? 'специальная' : pt === 'opt' ? 'оптовая' : 'розничная'
+                  const empty = rows.filter(r => r.productId && !(Number(r.price) > 0)).length
+                  return <div data-price-type style={{ marginTop: 5, fontSize: 11.5, color: '#5f5952', lineHeight: 1.45 }}>цена продажи: <b>{lbl}</b>
+                    {empty > 0 && <span style={{ color: '#c0532a', fontWeight: 700 }}> · {empty} поз. без цены — в номенклатуре нет цены «{lbl}», впишите в строке</span>}</div>
+                })()}
               </div>
               <div>
                 <label style={LBL}>ПРОЕКТ{contactId ? ' (клиента)' : ''}</label>

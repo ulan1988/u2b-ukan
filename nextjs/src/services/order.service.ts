@@ -165,13 +165,26 @@ export async function createOrder(i: z.infer<typeof createOrderSchema>, actor?: 
   // если явно не задан. Так любой заказ сразу попадает в кабинет этого логиста.
   // Касса (прямая продажа) логиста не касается — дефолт-логиста не назначаем.
   const defLogist = i.source === 'cashier' ? null : await settingsRepo.orgDefaultLogist(orgId)
-  const conv = asDirect && i.kind === 'sale'   // заказ админа переехал в закуп
+  // ЦЕНА ЗАКАЗА ДОЕЗЖАЕТ ДО ОБЕИХ НАКЛАДНЫХ (правило владельца 25.11.2026). Прямой заказ собирают в форме
+  // ПРОДАЖИ: в строке price — цена ПРОДАЖИ заказчику, costPrice — закуп у поставщика. Карточка живёт
+  // закупом, поэтому в ней price = ЗАКУП (уйдёт в приходную), а цена продажи едет в salePrice (её возьмёт
+  // ПРД → расходная). Кнопка «📦 Сделать закуп → логисту» шлёт kind='purchase' — раньше из-за этого цена
+  // продажи ложилась в закуп, а продажа терялась (расходные ПРД выходили на 0 ₸). Признак формы продажи —
+  // в строках нет salePrice (его шлёт только форма закупа).
+  const conv = asDirect && (i.kind === 'sale' || i.positions.every(p => (p as any).salePrice === undefined))
+  // Закуп не вписан — берём закуп из номенклатуры (price_in), чтобы приходная не вышла на 0 ₸.
+  const buyIn: Record<string, number> = {}
+  if (conv) {
+    const ids = Array.from(new Set(i.positions.map(p => p.productId).filter(Boolean))) as string[]
+    for (const pr of await refsRepo.productsWithOrgPrices(orgId, ids)) buyIn[(pr as any).id] = Number((pr as any).priceIn) || 0
+  }
+  const buyOf = (p: any) => Number(p.costPrice) > 0 ? Number(p.costPrice) : (p.productId ? buyIn[p.productId] || 0 : 0)
   const positions = i.positions.map((p, idx) => ({
     id: `${id}-P${idx + 1}`, cardId: id, productId: p.productId ?? null,
     name1c: p.name1c, oral: p.oral, qty: String(p.qty), unit: p.unit,
     // Переехавшая в закуп карточка: в строке цена ЗАКУПА, а вписанная цена продажи едет
     // в salePrice — её подхватит ПРД, когда родится после прихода.
-    price: String(conv ? ((p as any).costPrice ?? 0) : p.price),
+    price: String(conv ? buyOf(p) : p.price),
     salePrice: String(conv ? p.price : ((p as any).salePrice ?? 0)),
     costPrice: String((p as any).costPrice ?? 0),
     transit: !!(p as any).transit || (p.supplierId ? transitSupIds.has(p.supplierId) : false),   // сквозная строка (или сквозной поставщик)

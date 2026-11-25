@@ -60,9 +60,14 @@ export async function createSaleFromPurchase(cardId: string, actor?: Session | n
     // иначе прайс по типу цены клиента.
     price: String(Number(p.salePrice) > 0 ? Number(p.salePrice) : (p.productId && byId[p.productId] ? priceForClient(byId[p.productId], priceType) : 0)),
   }))
+  // Без цены осталась позиция: админ её не вписал И в прайсе орг нет цены этого типа — говорим прямо,
+  // иначе расходная молча выходит на 0 ₸ (25.11.2026: четыре ПРД подряд).
+  const PT: Record<string, string> = { retail: 'розница', opt: 'опт', spec: 'спец' }
+  const noPrice = childPositions.filter((p: any) => !(Number(p.price) > 0)).length
   await repo.insertOrderPosting(child, childPositions, {
     id: randomUUID(), cardId: id, action: 'create',
-    detail: `Продажа клиенту из закупа ${mother.id} (${childPositions.length} поз.)`,
+    detail: `Продажа клиенту из закупа ${mother.id} (${childPositions.length} поз.) · цены: ${PT[priceType] || priceType}`
+      + (noPrice ? ` · ⚠ без цены ${noPrice} поз. — в заказе не вписана и в прайсе нет цены «${PT[priceType] || priceType}»` : ''),
     userName: actor?.name || 'Система',
   } as any)
   await repo.insertHistory({
