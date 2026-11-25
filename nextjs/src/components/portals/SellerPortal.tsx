@@ -93,7 +93,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [pay, setPay] = useState({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' })
   const [payOpen, setPayOpen] = useState(false)
   const [disc, setDisc] = useState<{ mode: 'sum' | 'pct'; val: string }>({ mode: 'sum', val: '' })   // скидка по чеку: ₸ или %
-  const [showCost, setShowCost] = useState(false)   // 👁 скрытая себестоимость чека — видно только пока держишь
+  const [showCost, setShowCost] = useState(false)   // 👁 себестоимость чека: нажал — видно, нажал ещё раз — скрыто (правило 25.11.2026)
   const [encOpen, setEncOpen] = useState(false); const [encAcc, setEncAcc] = useState(''); const [encAmt, setEncAmt] = useState('')   // инкассация: счёт + сумма
   // Та же шторка — два режима: 🏢 сдать головному и 🔄 перевод между СВОИМИ счетами (деньги из орг не уходят).
   const [encMode, setEncMode] = useState<'hq' | 'move'>('hq'); const [encTo, setEncTo] = useState('')
@@ -1359,9 +1359,19 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button onClick={() => setShowClient(v => !v)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', borderRadius: 9, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: '#4a443c', maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {client ? client.name : 'Розница'}</button>
               {contactId && <button onClick={() => setContactId('')} style={{ border: 'none', background: '#f7f5f2', color: '#8a8377', borderRadius: 8, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>сброс</button>}
-              <button onClick={holdCurrent} title="Отложить заказ и обслужить следующего — вернётесь и оплатите" style={{ marginLeft: 'auto', border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800 }}>⏸ Отложить</button>
+              {/* 👁 Себестоимость — переключатель наверху чека: нажал — строка с себестоимостью видна сразу под ним,
+                  нажал ещё раз — скрыта. Раньше глаз стоял у «ИТОГО» и работал, только пока держишь палец. */}
+              <button onClick={() => setShowCost(v => !v)} aria-pressed={showCost} title={showCost ? 'Скрыть себестоимость' : 'Показать себестоимость'}
+                style={{ marginLeft: 'auto', border: 'none', background: showCost ? '#211f1c' : '#f1efec', color: showCost ? '#fff' : '#8a8377', borderRadius: 9, width: 38, height: 32, fontSize: 18, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>👁</button>
+              <button onClick={holdCurrent} title="Отложить заказ и обслужить следующего — вернётесь и оплатите" style={{ border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800 }}>⏸ Отложить</button>
               <button onClick={() => setRows([])} style={{ border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>очистить</button>
             </div>
+            {showCost && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#211f1c', color: '#fff', borderRadius: 9, padding: '7px 10px', fontSize: 13, fontWeight: 700 }}>
+                <span>себест <b style={{ color: '#ffb59a' }}>{money(totalCost)} ₸</b></span>
+                <span style={{ marginLeft: 'auto' }}>наценка <b style={{ color: margin >= 0 ? '#8fe0b0' : '#ffb59a' }}>{money(margin)} ₸</b></span>
+              </div>
+            )}
             {/* выбор покупателя — всегда видим (не прячем за кнопкой) */}
             <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false) }} placeholder="— найти покупателя —" />
             {/* Код чека — последние цифры телефона: придёт на возврат, назовёт их, чек найдётся. */}
@@ -1379,7 +1389,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                 return (
                   <div key={r.key} style={{ display: 'flex', flexDirection: 'column', gap: 4, ...(bon ? { background: '#f4f1fb', borderRadius: 8, padding: '4px 6px', margin: '0 -6px' } : {}) }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#4a443c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name1c} · {r.qty}{r.widthCm ? `×${r.widthCm}см` : ''}</div>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#4a443c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name1c}</div>
+                    {/* Количество — своя плашка, цветом: в конце названия его срезало «…», и не было видно, сколько штук. */}
+                    <b title="количество" style={{ flexShrink: 0, fontSize: 13.5, fontWeight: 800, color: '#fff', background: PRIMARY, borderRadius: 8, padding: '4px 8px', whiteSpace: 'nowrap' }}>{r.qty}{r.widthCm ? `×${r.widthCm}см` : ''}</b>
                     <input value={r.price ? String(r.price) : ''} inputMode="decimal" placeholder={perCm ? '₸/см' : '₸'} onChange={e => patchRow(r.key, { price: num(e.target.value.replace(/[^0-9.,]/g, '')), amt: undefined })} style={{ ...inp, width: 78, padding: '6px 8px', fontSize: 13, border: r.price ? '1.5px solid #e6e2dc' : `1.5px solid ${PRIMARY}` }} />
                     <input value={amtView(r.amt, sum)} inputMode="decimal" title="сумма строки — можно вписать, цена пересчитается"
                       onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, ''); patchRow(r.key, { amt: v, price: priceFromAmt(num(v), r.qty, r.name1c, r.widthCm) }) }}
@@ -1387,6 +1399,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       style={{ ...inp, width: 86, padding: '6px 8px', fontSize: 13, fontWeight: 800, textAlign: 'right' }} />
                     <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} style={{ border: 'none', background: 'none', color: '#c0532a', cursor: 'pointer', fontSize: 13, padding: '2px 2px' }}>✕</button>
                   </div>
+                  {showCost && (() => { const pc = Number(((byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId)) as any)?.priceIn) || 0
+                    return <div style={{ fontSize: 11.5, color: '#8a8377', marginTop: -2 }}>себест {pc > 0 ? <b style={{ color: '#c0532a' }}>{money(pc)}{perCm ? ' ₸/см' : ' ₸'}</b> : <b style={{ color: '#c0532a' }}>нет в карточке</b>} · наценка {money(sum - lineAmount({ name: r.name1c, qty: r.qty, price: pc, widthCm: r.widthCm }))} ₸</div> })()}
                   {/* Бонусный товар («Долг товар»): цена соседа и у кого взяли — мелко и неярко,
                       клиенту через прилавок не прочитать. Бонус = (цена − цена соседа) × кол-во. */}
                   {bon && (
@@ -1426,15 +1440,6 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 5, borderTop: '1px solid #f1ede8' }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b645b', letterSpacing: '.04em' }}>ИТОГО</span>
               <span style={{ fontSize: 12, color: '#a09889' }}>{rows.length} поз.</span>
-              {/* 👁 Скрытая себестоимость — видно только пока ДЕРЖИШЬ (для продавца, не для покупателя). */}
-              <button
-                onMouseDown={() => setShowCost(true)} onMouseUp={() => setShowCost(false)} onMouseLeave={() => setShowCost(false)}
-                onTouchStart={e => { e.preventDefault(); setShowCost(true) }} onTouchEnd={() => setShowCost(false)} onTouchCancel={() => setShowCost(false)}
-                onContextMenu={e => e.preventDefault()}
-                title="Зажми, чтобы увидеть себестоимость" style={{ border: 'none', background: showCost ? '#211f1c' : '#f1efec', color: showCost ? '#fff' : '#8a8377', borderRadius: 10, width: 38, height: 34, fontSize: 20, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>👁</button>
-              {showCost && (
-                <span style={{ fontSize: 12.5, color: '#6b645b', fontWeight: 700, whiteSpace: 'nowrap' }}>себест <b style={{ color: '#c0532a' }}>{money(totalCost)}</b> · наценка <b style={{ color: margin >= 0 ? GREEN : '#c0532a' }}>{money(margin)}</b></span>
-              )}
               <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 {discSum > 0 && <span style={{ fontSize: 13.5, color: '#a09889', textDecoration: 'line-through', fontWeight: 600 }}>{money(total)}</span>}
                 <span style={{ fontSize: 19, fontWeight: 800 }}>{money(net)} ₸</span>
