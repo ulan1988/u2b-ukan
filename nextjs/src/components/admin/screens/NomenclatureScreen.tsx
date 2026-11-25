@@ -1,12 +1,13 @@
 'use client'
 // Номенклатура — портирован из Улкана 1:1 (дерево групп/категорий/подгрупп,
 // крошки, инлайн-правка, режим правки цен, модалка добавления). API → /api/products.
-import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type CSSProperties, type KeyboardEvent } from 'react'
 import { COLORS } from '@/lib/colors'
 import { listProducts, addProduct, editProduct, archiveProduct, listUnits, listFolders, createFolder, renameFolder, deleteFolder, moveFolder, hideFolder, bulkSetPrices, copyColorPrices, reorderProducts } from '@/lib/api/refs'
 import { useAdmin } from '@/components/admin/AdminChrome'
 import { extractRal } from '@/lib/ral'
 import { matchWords } from '@/lib/search'
+import { cursorTo } from '@/lib/smartCursor'
 
 // Безцветный товар (оцинковка «(ЦВ)», аксессуар) — в имени нет RAL-кода. Хранится ОДИН раз
 // на уровне категории (подгруппа пустая) и показывается в каждой цветной подгруппе этой категории.
@@ -52,7 +53,18 @@ export default function NomenclatureScreen() {
   useEffect(() => { listUnits().then((u: any) => { setUnits(u || []); const def = (u || []).find((x: any) => x.isDefault); if (def) setNewItem(p => ({ ...p, unit: def.name })) }) }, [])
   const reloadFolders = useCallback(async () => { const f = await listFolders(orgId); setFolders((f as any) || []) }, [orgId])
   useEffect(() => { reloadFolders() }, [reloadFolders])
+  // УСТАНОВКА ЦЕН (правило владельца 25.11.2026): одна кнопка сверху — и цены правятся прямо в ячейках.
+  // Вышел из ячейки (Enter, Tab, щелчок мимо) — цена сохранена. Карандаш и галочка в строке для цены не нужны.
+  // Режим запоминается на устройстве: открыл номенклатуру — ячейки уже готовы к вводу.
   const [priceEdit, setPriceEdit] = useState(false)
+  useEffect(() => { try { if (localStorage.getItem('u2b_nom_prices') === '1') setPriceEdit(true) } catch { /* хранилище недоступно */ } }, [])
+  const togglePrices = () => setPriceEdit(v => { const n = !v; try { localStorage.setItem('u2b_nom_prices', n ? '1' : '0') } catch { /* хранилище недоступно */ } return n })
+  const [cellDraft, setCellDraft] = useState<Record<string, string>>({})                      // «товар:поле» → что набрано, пока не сохранено
+  const [cellMark, setCellMark] = useState<Record<string, 'saving' | 'ok' | 'err'>>({})       // подсветка ячейки: сохранено / ошибка
+  const cellQueue = useRef<Record<string, Promise<void>>>({})                                 // сохранения одной ячейки идут по очереди
+  const cellEsc = useRef('')                                                                  // Esc: выйти из ячейки без сохранения
+  const itemsRef = useRef<NomItem[]>([])
+  useEffect(() => { setCellDraft({}); setCellMark({}) }, [orgId])                             // у другой орг свои цены — несохранённое не переносим
   const [pricesDraft, setPricesDraft] = useState<Record<string, { priceIn: string; priceRetail: string; priceOpt: string; priceSpec: string }>>({})
   const [bulk, setBulk] = useState({ priceIn: '', priceRetail: '', priceOpt: '', priceSpec: '' })   // цена «на всех показанных»
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -78,15 +90,38 @@ export default function NomenclatureScreen() {
     } }))
   }
   const num = (s: string) => Number((s || '0').replace(',', '.')) || 0
-  async function savePrices() {
-    const ids = Object.keys(pricesDraft)
-    if (ids.length === 0) { setPriceEdit(false); return }
-    for (const id of ids) {
-      const d = pricesDraft[id]; const item = items.find(i => i.id === id); if (!item) continue
-      // Закуп (priceIn) — общий шаблон; розница/опт/спец — цены выбранной орг (orgId).
-      await editProduct(id, { priceIn: num(d.priceIn), priceRetail: num(d.priceRetail), priceOpt: num(d.priceOpt), priceSpec: num(d.priceSpec), orgId })
-    }
-    setPricesDraft({}); setPriceEdit(false); load(); showMsg('✓ Цены сохранены')
+  itemsRef.current = items
+  const cellKey = (id: string, f: PField) => `${id}:${f}`
+  // Вышли из ячейки — сохраняем ОДНУ цену одного товара. Закуп (priceIn) — общий шаблон на все орг;
+  // розница/опт/спец — цены выбранной орг (orgId). Список не перезагружаем: прокрутка и курсор на месте.
+  function saveCell(id: string, f: PField) {
+    const k = cellKey(id, f); const raw = cellDraft[k]
+    const drop = () => setCellDraft(p => { if (p[k] !== raw) return p; const n = { ...p }; delete n[k]; return n })
+    if (cellEsc.current === k) { cellEsc.current = ''; setCellDraft(p => { const n = { ...p }; delete n[k]; return n }); return }
+    if (raw === undefined) return
+    cellQueue.current[k] = (cellQueue.current[k] || Promise.resolve()).then(async () => {
+      const cur = itemsRef.current.find(x => x.id === id); if (!cur) return
+      const v = num(raw)
+      if (Math.abs(v - (Number(cur[f]) || 0)) < 0.0000005) { drop(); return }   // цена не изменилась — на сервер не ходим
+      setCellMark(p => ({ ...p, [k]: 'saving' }))
+      const r = await bulkSetPrices({ ids: [id], orgId, [f]: v })
+      if (!r.ok) { setCellMark(p => ({ ...p, [k]: 'err' })); showMsg('⚠ Цена не сохранена: ' + (r.error || 'ошибка') + ' — ' + cur.name); return }
+      itemsRef.current = itemsRef.current.map(x => x.id === id ? { ...x, [f]: v } : x)
+      setItems(p => p.map(x => x.id === id ? { ...x, [f]: v } : x))
+      drop()   // пока сохраняли, ячейку могли править дальше — тогда набранное остаётся
+      setCellMark(p => ({ ...p, [k]: 'ok' }))
+      setTimeout(() => setCellMark(p => { if (p[k] !== 'ok') return p; const n = { ...p }; delete n[k]; return n }), 1500)
+    }).catch(() => { setCellMark(p => ({ ...p, [k]: 'err' })); showMsg('⚠ Цена не сохранена — нет связи') })
+  }
+  // УМНЫЙ КУРСОР: Enter и ↓ — в ту же колонку строкой ниже, ↑ — выше, Esc — вернуть прежнюю цену.
+  function cellKeys(e: KeyboardEvent<HTMLInputElement>, id: string, f: PField) {
+    if (e.key === 'Escape') { cellEsc.current = cellKey(id, f); e.currentTarget.blur(); return }
+    const dir = (e.key === 'Enter' || e.key === 'ArrowDown') ? 1 : e.key === 'ArrowUp' ? -1 : 0
+    if (!dir) return
+    e.preventDefault()
+    const all = Array.from(document.querySelectorAll<HTMLInputElement>(`input[data-pcell="${f}"]`))
+    const next = all[all.indexOf(e.currentTarget) + dir]
+    if (next) cursorTo(next); else e.currentTarget.blur()
   }
 
   // Цена «на всех показанных»: заполненные поля → всем товарам текущего фильтра (для выбранной орг).
@@ -400,14 +435,8 @@ export default function NomenclatureScreen() {
           <input style={{ ...INP, width: 210 }} placeholder="🔍 Поиск по названию..." value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) { setSelGroup(null); setSelCat(null); setSelSubgroup(null) } }} />
           <button onClick={() => setShowArchived(v => !v)} title="Показать/скрыть архивные" style={{ padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${showArchived ? '#d4613a' : '#e6e2dc'}`, background: showArchived ? '#fff0ea' : '#fff', color: showArchived ? '#c0532a' : '#5f5952', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', fontWeight: showArchived ? 700 : 500 }}>🗃 Архив</button>
           <button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>⟳</button>
-          {priceEdit ? (
-            <>
-              <button onClick={savePrices} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#2e8a5e', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>💾 Сохранить цены</button>
-              <button onClick={() => { setPriceEdit(false); setPricesDraft({}) }} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e6e2dc', background: '#fff', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Отмена</button>
-            </>
-          ) : (
-            <button onClick={() => setPriceEdit(true)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e6c9b8', background: '#fff8f5', color: '#c0532a', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>💰 Редактировать цены</button>
-          )}
+          <button data-price-mode={priceEdit ? 'on' : 'off'} onClick={togglePrices} title={priceEdit ? 'Выключить: ячейки цен снова только для чтения' : 'Включить: цены правятся прямо в ячейках и сохраняются сами'}
+            style={{ padding: '8px 16px', borderRadius: 8, border: `1.5px solid ${priceEdit ? '#2e8a5e' : '#e6c9b8'}`, background: priceEdit ? '#2e8a5e' : '#fff8f5', color: priceEdit ? '#fff' : '#c0532a', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{priceEdit ? '💰 Установка цен · включена' : '💰 Установка цен'}</button>
           <button onClick={openAdd} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: COLORS.primary, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>+ Добавить</button>
             </span>
           </div>
@@ -422,6 +451,12 @@ export default function NomenclatureScreen() {
             </div>
           )}
 
+          {priceEdit && (
+            <div style={{ background: '#eaf6ef', borderRadius: 10, boxShadow: '0 0 0 1.5px #b9dfc9', padding: '8px 14px', marginBottom: 10, fontSize: 13, color: '#24573f', lineHeight: 1.5 }}>
+              <b>Установка цен включена.</b> Впишите цену прямо в ячейке — она сохраняется сама, как только выходите из ячейки. <b>Enter</b> или <b>↓</b> — строка ниже, <b>↑</b> — выше, <b>Esc</b> — вернуть прежнюю.
+              {' '}Приход — общий для всех организаций; розница, опт и спец — цены «{orgName || 'выбранной организации'}».
+            </div>
+          )}
           {/* ЦЕНА НА ВСЕХ ПОКАЗАННЫХ: вписать цену → применить ко всем товарам текущего фильтра (для выбранной орг) */}
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 0 0 1.5px #e6e2dc', padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, fontWeight: 800, color: '#c0532a', whiteSpace: 'nowrap' }}>💰 Цена на всех ({filtered.length})</span>
@@ -481,8 +516,22 @@ export default function NomenclatureScreen() {
                           <td style={{ padding: '9px 14px', width: 140, borderLeft: '1px solid #f1efec' }}><span style={{ fontSize: 13, color: '#5f5952' }}>{item.subgroup || '—'}</span></td>
                           {/* Цены: у каждого вида свой фон-цвет + жирная линия слева, чтобы столбцы делились чётко */}
                           {(['priceIn', 'priceRetail', 'priceOpt', 'priceSpec'] as const).map(f => {
-                            const editable = priceEdit || editItem?.id === item.id
+                            const editable = editItem?.id === item.id
                             const pc = PCOL[f]
+                            // Режим «Установка цен»: ячейка — поле ввода, сохраняется при выходе из неё.
+                            if (priceEdit && !editable) {
+                              const k = cellKey(item.id, f); const mk = cellMark[k]; const dirty = cellDraft[k] !== undefined
+                              return (
+                                <td key={f} style={{ padding: '6px 6px', width: 84, background: pc.bg, borderLeft: '2px solid #d8d2c8' }}>
+                                  <input data-pcell={f} value={cellDraft[k] ?? ((item[f] ?? 0) > 0 ? String(item[f]) : '')} placeholder="—" inputMode="decimal"
+                                    onFocus={e => e.currentTarget.select()}
+                                    onChange={e => { const val = e.target.value.replace(/[^0-9.,]/g, ''); setCellDraft(p => ({ ...p, [k]: val })) }}
+                                    onBlur={() => saveCell(item.id, f)} onKeyDown={e => cellKeys(e, item.id, f)}
+                                    title={mk === 'err' ? 'Не сохранено — выйдите из ячейки ещё раз' : mk === 'ok' ? 'Сохранено' : undefined}
+                                    style={{ ...INP, fontSize: 13, fontWeight: 700, padding: '5px 6px', textAlign: 'right', color: pc.c, background: mk === 'ok' ? '#eaf6ef' : mk === 'err' ? '#fdecec' : '#fff', border: `1.5px solid ${mk === 'err' ? '#d64545' : mk === 'ok' ? '#2e8a5e' : dirty ? COLORS.primary : '#e6e2dc'}` }} />
+                                </td>
+                              )
+                            }
                             return (
                               <td key={f} style={{ padding: '9px 8px', width: 84, background: pc.bg, borderLeft: '2px solid #d8d2c8' }}>{editable ? <input value={priceVal(item, f)} inputMode="decimal" autoFocus={editItem?.id === item.id && f === 'priceIn'} onChange={e => setPrice(item, f, e.target.value)} style={{ ...INP, fontSize: 13, padding: '5px 6px', textAlign: 'right', background: '#fff', border: `1.5px solid ${(pricesDraft[item.id]?.[f] !== undefined || editItem?.id === item.id) ? COLORS.primary : '#e6e2dc'}` }} /> : <span style={{ fontSize: 13, fontWeight: 600, color: (item[f] ?? 0) > 0 ? pc.c : '#b3aca2' }}>{(item[f] ?? 0) > 0 ? (item[f] as number).toLocaleString('ru-RU') : '—'}</span>}</td>
                             )
