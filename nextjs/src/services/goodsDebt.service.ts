@@ -88,6 +88,45 @@ export async function addGoodsDebt(
   return { ok: true as const, id: row.id }
 }
 
+// ПОГАШЕНИЕ ЧЕКОМ (правило владельца 25.11.2026): в окне виден весь долг соседа по позициям; отмеченные гасятся
+// одним действием — товаром (return / giveback) или деньгами (pay / receive). По каждой позиции своя запись
+// журнала (остаток считается по товару), а деньги — ОДНИМ платежом на всю сумму, в комментарии перечень товаров.
+export async function settleGoodsDebt(
+  orgId: string,
+  input: { contragentId: string; dir: 'return' | 'giveback'; mode: 'goods' | 'money'; items: { productId?: string | null; productName: string; unit?: string; qty: number }[]; accountId?: string; amount?: number; date?: string; note?: string },
+  actor?: Actor,
+) {
+  const cag = await repo.contragentInOrg(input.contragentId, orgId)
+  if (!cag) return { ok: false as const, error: 'Контрагент не найден у этого магазина' }
+  const items = (input.items || [])
+    .map(it => ({ productId: it.productId || null, name: (it.productName || '').trim(), unit: (it.unit || 'шт').trim() || 'шт', qty: n(it.qty) }))
+    .filter(it => it.name && it.qty > 0)
+  if (!items.length) return { ok: false as const, error: 'Впишите количество хотя бы по одной позиции' }
+  const money = input.mode === 'money'
+  if (money && !input.accountId) return { ok: false as const, error: 'Выберите счёт' }
+  const ours = input.dir === 'return'   // мы гасим свой долг; иначе сосед гасит свой
+  const dir = money ? (ours ? 'pay' : 'receive') : input.dir
+  const note = (input.note || '').trim()
+  for (const it of items) {
+    await repo.insertEntry({
+      orgId, contragentId: input.contragentId, contragentName: (cag as any).name || '',
+      productId: it.productId, productName: it.name, unit: it.unit, direction: dir, qty: String(it.qty),
+      note, createdBy: actor?.name || 'Система',
+    })
+  }
+  const amount = n(input.amount)
+  if (money && amount > 0 && input.accountId) {
+    const list = items.map(it => `${it.name} ×${Number(it.qty.toFixed(3))}`).join(', ')
+    await payRepo.insertPayment({
+      id: randomUUID(), orgId, contragentId: input.contragentId,
+      direction: ours ? 'out' : 'in', amount: String(amount), date: input.date || today(),
+      cashAccountId: input.accountId, documentId: null,
+      comment: `Долг товаров (${ours ? 'оплата' : 'приход'}): ${list}`.slice(0, 480),
+    })
+  }
+  return { ok: true as const, count: items.length }
+}
+
 export async function deleteGoodsDebt(id: string, orgId: string) {
   const row = await repo.getEntry(id, orgId)
   if (!row) return { ok: false as const, error: 'Запись не найдена' }

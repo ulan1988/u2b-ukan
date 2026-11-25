@@ -51,6 +51,25 @@ export const goodsDebtSchema = z.object({
   amount: z.coerce.number().nonnegative().optional(),// для pay/receive — сумма оплаты
 })
 
+// «Долг товаров» — погашение ЧЕКОМ (правило 25.11.2026): в одном окне весь долг соседа по позициям, отмечаем
+// нужные и гасим товаром или деньгами одним действием. dir: return = МЫ гасим свой долг, giveback = сосед гасит свой.
+export const goodsDebtSettleSchema = z.object({
+  uid: z.string().uuid().optional(),
+  contragentId: z.string().uuid(),
+  dir: z.enum(['return', 'giveback']),
+  mode: z.enum(['goods', 'money']),                 // товаром или деньгами
+  items: z.array(z.object({
+    productId: z.string().uuid().nullable().optional(),
+    productName: z.string().min(1),
+    unit: z.string().optional().default('шт'),
+    qty: z.coerce.number().positive(),
+  })).min(1),
+  accountId: z.string().uuid().optional(),          // деньгами — счёт
+  amount: z.coerce.number().nonnegative().optional(),// деньгами — сумма за все отмеченные позиции
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),   // рабочая дата кассы (деньги лягут на этот день)
+  note: z.string().optional().default(''),
+})
+
 // Возврат по чеку: позиции с кол-вом (пусто → весь чек, остаток по каждой) + счёт возврата.
 export const returnSchema = z.object({
   uid: z.string().uuid().optional(),

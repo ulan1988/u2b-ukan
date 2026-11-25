@@ -20,14 +20,14 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
+import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, settleGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
 import { useLiveData } from '@/lib/live'
 import PushSetup from '@/components/PushSetup'
 import { matchWords } from '@/lib/search'
-import { cursorHere, cursorInRow } from '@/lib/smartCursor'
+import { cursorHere, cursorInRow, cursorSoon, enterTo } from '@/lib/smartCursor'
 
 const PRIMARY = '#d4613a', BG = '#f1efec', DARK = '#26231f', GREEN = '#2e8a5e', BLUE = '#3a6ea5'
 type Tab = 'cash' | 'checks' | 'debts' | 'order'
@@ -144,7 +144,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const [debtTab, setDebtTab] = useState<'clients' | 'goods'>('clients')
   const [gDebt, setGDebt] = useState<{ entries: any[]; balances: any[] }>({ entries: [], balances: [] })
   const [gForm, setGForm] = useState<null | { mode: 'take' | 'give'; contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли/отдали в долг»
-  const [gRet, setGRet] = useState<null | { dir: 'return' | 'giveback'; mode: 'goods' | 'money'; contragentId: string; contragentName: string; productName: string; unit: string; left: number; qty: string; accountId: string; amount: string }>(null)  // шторка «погасить»: товаром или деньгами
+  // Шторка «погасить / принять» — ЧЕК соседа (правило владельца 25.11.2026): все его позиции этой стороны с остатком,
+  // у каждой своё количество; отмеченные гасятся одним действием — товаром или деньгами.
+  const [gRet, setGRet] = useState<null | { dir: 'return' | 'giveback'; mode: 'goods' | 'money'; contragentId: string; contragentName: string; rows: { productId: string | null; productName: string; unit: string; left: number; total: number; back: number; paid: number; qty: string }[]; accountId: string; amount: string }>(null)
+  const gLock = useRef(false)   // замок от двойного нажатия «Записать»
   const [gExpand, setGExpand] = useState<string>('')   // раскрытый сосед (журнал по нему)
   const [showGCatalog, setShowGCatalog] = useState(false)   // каталог для выбора товара в «долг товаров»
   // каталог на экране
@@ -305,19 +308,36 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
     setGForm(null); await loadGDebt(); showMsg(gForm.mode === 'give' ? '✓ Записано: отдали в долг' : '✓ Записано: взяли в долг')
   }
+  // Открыть чек соседа: dir='return' — мы гасим свой долг, 'giveback' — сосед гасит свой. Нажатая позиция уже
+  // отмечена на весь остаток, остальные пустые — впишите количество там, где тоже возвращают.
+  function openGRet(g: any, dir: 'return' | 'giveback', picked?: any) {
+    const ours = dir === 'return'
+    const rows = (g.items || []).filter((it: any) => (ours ? it.took : it.given) > 0.0005).map((it: any) => {
+      const left = Number((ours ? it.weOwe : it.theyOwe).toFixed(3))
+      const mine = !!picked && it.productName === picked.productName && it.unit === picked.unit
+      return { productId: it.productId || null, productName: it.productName, unit: it.unit || 'шт', left, total: ours ? it.took : it.given, back: ours ? it.returned : it.givenBack, paid: ours ? it.paid : it.received, qty: mine ? String(left) : '' }
+    })
+    rows.sort((a: any, b: any) => (b.left > 0.0005 ? 1 : 0) - (a.left > 0.0005 ? 1 : 0))   // с остатком — сверху, закрытые — ниже
+    if (!rows.some((r: any) => r.left > 0.0005)) return
+    setGRet({ dir, mode: 'goods', contragentId: g.contragentId, contragentName: g.contragentName, rows, accountId: accounts[0]?.id || '', amount: '' })
+    const at = Math.max(0, rows.findIndex((r: any) => r.qty !== ''))
+    cursorSoon(`input[data-gret-qty="${at}"]`)   // умный курсор: сразу в количестве нажатой позиции
+  }
   async function submitGRet() {
-    if (!gRet) return
-    const money = gRet.mode === 'money'
-    const dir = money ? (gRet.dir === 'giveback' ? 'receive' : 'pay') : gRet.dir
-    if (money && !gRet.accountId) { showMsg('⚠ Выберите счёт оплаты'); return }
-    const qty = num(gRet.qty)
-    if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
-    setBusy(true)
-    const r = await addGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, productName: gRet.productName, unit: gRet.unit || 'шт', direction: dir, qty, ...(money ? { accountId: gRet.accountId, amount: num(gRet.amount) } : {}) })
-    setBusy(false)
+    if (!gRet || gLock.current) return
+    const byMoney = gRet.mode === 'money'
+    const items = gRet.rows.map(r => ({ productId: r.productId, productName: r.productName, unit: r.unit, qty: num(r.qty) })).filter(r => r.qty > 0)
+    if (!items.length) { showMsg('⚠ Впишите количество хотя бы по одной позиции'); return }
+    if (byMoney && !gRet.accountId) { showMsg('⚠ Выберите счёт'); return }
+    const amount = num(gRet.amount)
+    if (byMoney && !(amount > 0) && !confirm('Сумма не вписана — долг по товару погасится БЕЗ движения денег по счёту. Записать так?')) return
+    gLock.current = true; setBusy(true)
+    const r = await settleGoodsDebt({ uid: user.id, contragentId: gRet.contragentId, dir: gRet.dir, mode: gRet.mode, items, ...(byMoney ? { accountId: gRet.accountId, amount, date: wd() } : {}) })
+    gLock.current = false; setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    const cnt = items.length
+    showMsg(byMoney ? `✓ Оплата записана · ${cnt} позиц. · ${money(amount)} ₸` : (gRet.dir === 'giveback' ? `✓ Сосед вернул — записано · ${cnt} позиц.` : `✓ Возврат товаром записан · ${cnt} позиц.`))
     setGRet(null); await loadGDebt()
-    showMsg(money ? '✓ Оплата записана' : (gRet.dir === 'giveback' ? '✓ Сосед вернул — записано' : '✓ Возврат товаром записан'))
   }
   async function removeGEntry(id: string) {
     setBusy(true)
@@ -1387,17 +1407,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                             {/* МЫ ДОЛЖНЫ: взяли → вернули */}
                             {it.took > 0.0005 && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
-                                <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>взяли {qfmt(it.took)} · вернули {qfmt(it.returned)} {it.unit}</div>
+                                <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>взяли {qfmt(it.took)} · вернули товаром {qfmt(it.returned)}{it.paid > 0.0005 ? ` · деньгами ${qfmt(it.paid)}` : ''} {it.unit}</div>
                                 <div style={{ textAlign: 'right', minWidth: 48 }}><div style={{ fontSize: 9.5, color: '#a09889' }}>мы должны</div><div style={{ fontSize: 14, fontWeight: 800, color: it.weOwe > 0.0005 ? '#c0532a' : GREEN }}>{qfmt(it.weOwe)}</div></div>
-                                {it.weOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'return', mode: 'goods', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.weOwe, qty: String(Number(it.weOwe.toFixed(3))), accountId: accounts[0]?.id || '', amount: '' })} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
+                                {it.weOwe > 0.0005 && <button onClick={() => openGRet(g, 'return', it)} style={{ border: '1.5px solid #bfe3cd', background: '#f2fbf6', color: GREEN, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Вернул</button>}
                               </div>
                             )}
                             {/* НАМ ДОЛЖНЫ: отдали → сосед вернул */}
                             {it.given > 0.0005 && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
-                                <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>отдали {qfmt(it.given)} · вернул {qfmt(it.givenBack)} {it.unit}</div>
+                                <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#a09889' }}>отдали {qfmt(it.given)} · вернул товаром {qfmt(it.givenBack)}{it.received > 0.0005 ? ` · деньгами ${qfmt(it.received)}` : ''} {it.unit}</div>
                                 <div style={{ textAlign: 'right', minWidth: 48 }}><div style={{ fontSize: 9.5, color: '#a09889' }}>нам должны</div><div style={{ fontSize: 14, fontWeight: 800, color: it.theyOwe > 0.0005 ? BLUE : GREEN }}>{qfmt(it.theyOwe)}</div></div>
-                                {it.theyOwe > 0.0005 && <button onClick={() => setGRet({ dir: 'giveback', mode: 'goods', contragentId: g.contragentId, contragentName: g.contragentName, productName: it.productName, unit: it.unit, left: it.theyOwe, qty: String(Number(it.theyOwe.toFixed(3))), accountId: accounts[0]?.id || '', amount: '' })} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Принял</button>}
+                                {it.theyOwe > 0.0005 && <button onClick={() => openGRet(g, 'giveback', it)} style={{ border: '1.5px solid #bcd3ea', background: '#f1f7fc', color: BLUE, borderRadius: 9, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↩ Принял</button>}
                               </div>
                             )}
                           </div>
@@ -1406,7 +1426,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                           <div style={{ borderTop: '1px solid #f1efec', padding: '8px 12px', background: '#faf8f6' }}>
                             <div style={{ fontSize: 11, color: '#a09889', fontWeight: 700, marginBottom: 4 }}>ЖУРНАЛ</div>
                             {log.map((e: any) => {
-                              const L = e.direction === 'return' ? { t: '↩ вернул', c: GREEN } : e.direction === 'give' ? { t: '➖ отдал', c: BLUE } : e.direction === 'giveback' ? { t: '↩ принял', c: GREEN } : { t: '➕ взял', c: '#c0532a' }
+                              const L = e.direction === 'return' ? { t: '↩ вернул', c: GREEN } : e.direction === 'give' ? { t: '➖ отдал', c: BLUE } : e.direction === 'giveback' ? { t: '↩ принял', c: GREEN } : e.direction === 'pay' ? { t: '💵 оплатили', c: GREEN } : e.direction === 'receive' ? { t: '💵 оплатил', c: GREEN } : { t: '➕ взял', c: '#c0532a' }
                               return (
                                 <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
                                   <span style={{ width: 70, color: '#a09889', fontFamily: 'monospace', fontSize: 11 }}>{fmtDateTime(e.createdAt)}</span>
@@ -2040,43 +2060,101 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       ) })()}
 
       {/* ВЕРНУЛ / ПРИНЯЛ ТОВАРОМ — шторка: кол-во по позиции долга */}
-      {gRet && (
+      {/* ДОЛГ ТОВАРОВ — ЧЕК СОСЕДА (правило владельца 25.11.2026). В окне не одна позиция, а весь его долг этой
+          стороны: по каждой видно, сколько отдали/взяли, сколько уже вернули товаром и деньгами, и остаток.
+          Вписал количество там, где возвращают, выбрал «товаром» или «деньгами» — отмеченные гасятся одним действием. */}
+      {gRet && (() => {
+        const ours = gRet.dir === 'return'
+        const col = ours ? '#c0532a' : BLUE
+        const sel = gRet.rows.filter(r => num(r.qty) > 0)
+        const selQty = sel.reduce((a, r) => a + num(r.qty), 0)
+        const leftAll = gRet.rows.reduce((a, r) => a + r.left, 0)
+        const setRow = (i: number, qty: string) => setGRet(g => g ? { ...g, rows: g.rows.map((r, k) => k === i ? { ...r, qty } : r) } : g)
+        const fillAll = (on: boolean) => setGRet(g => g ? { ...g, rows: g.rows.map(r => ({ ...r, qty: on && r.left > 0.0005 ? String(r.left) : '' })) } : g)
+        const openRows = gRet.rows.filter(r => r.left > 0.0005).length
+        return (
         <div onClick={() => setGRet(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{gRet.dir === 'giveback' ? 'Принять: товаром или деньгами' : 'Погасить: товаром или деньгами'}</div><div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {gRet.productName} · остаток {qfmt(gRet.left)} {gRet.unit}</div></div>
+          <div data-gret onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{ours ? 'Погасить: товаром или деньгами' : 'Принять: товаром или деньгами'}</div>
+                <div style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gRet.contragentName} · {ours ? 'мы должны' : 'нам должны'} <b style={{ color: col }}>{qfmt(leftAll)}</b> · {openRows} позиц. с долгом{gRet.rows.length > openRows ? ` · ${gRet.rows.length - openRows} закрыто` : ''}</div>
+              </div>
               <button onClick={() => setGRet(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '12px 14px 0', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
               {/* переключатель: товаром / деньгами */}
               <div style={{ display: 'flex', gap: 8 }}>
-                {([['goods', gRet.dir === 'giveback' ? '↩ Товаром' : '↩ Товаром'], ['money', '💵 Деньгами']] as const).map(([m, lbl]) => (
+                {([['goods', '↩ Товаром'], ['money', '💵 Деньгами']] as const).map(([m, lbl]) => (
                   <button key={m} onClick={() => setGRet(r => r ? { ...r, mode: m } : r)} style={{ flex: 1, border: 'none', borderRadius: 10, padding: '11px 6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 800, background: gRet.mode === m ? (m === 'money' ? GREEN : PRIMARY) : '#f1efec', color: gRet.mode === m ? '#fff' : '#8a8377' }}>{lbl}</button>
                 ))}
               </div>
-              <div>
-                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>{gRet.mode === 'money' ? 'КОЛ-ВО ТОВАРА (гасим)' : 'КОЛ-ВО К ВОЗВРАТУ'}</div>
-                <input value={gRet.qty} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, qty: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 20, fontWeight: 800 }} />
-                <div style={{ fontSize: 11.5, color: '#a09889', marginTop: 4 }}>можно указать больше остатка (переплата) — остаток не уйдёт в минус</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 11.5, color: '#8a8377', fontWeight: 700 }}>{gRet.mode === 'money' ? 'ПОЗИЦИИ ДОЛГА — сколько гасим деньгами' : (ours ? 'ПОЗИЦИИ ДОЛГА — сколько возвращаем' : 'ПОЗИЦИИ ДОЛГА — сколько принимаем')}</div>
+                <button onClick={() => fillAll(true)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#4a443c', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>все</button>
+                <button onClick={() => fillAll(false)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#8a8377', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>снять</button>
               </div>
-              {gRet.mode === 'money' && (<>
-                <div>
-                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>{gRet.dir === 'giveback' ? 'СЧЁТ ПРИХОДА' : 'СЧЁТ ОПЛАТЫ'}</div>
-                  <select value={gRet.accountId} onChange={e => setGRet(r => r ? { ...r, accountId: e.target.value } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 15 }}>
-                    <option value="">— выберите счёт —</option>
-                    {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
+            </div>
+            {/* позиции долга: прокручиваются, шапка и кнопка записи остаются на месте */}
+            <div style={{ padding: '4px 14px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+              {gRet.rows.map((r, i) => {
+                const on = num(r.qty) > 0
+                // закрытая позиция: долга по ней уже нет — показываем для полноты чека, без поля ввода
+                if (!(r.left > 0.0005)) return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i ? '1px solid #f6f3f0' : 'none', opacity: .62 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#6b645b' }}>{r.productName}</div>
+                      <div style={{ fontSize: 11.5, color: '#8a8377' }}>{ours ? 'взяли' : 'отдали'} {qfmt(r.total)}{r.back > 0.0005 ? ` · товаром ${qfmt(r.back)}` : ''}{r.paid > 0.0005 ? ` · деньгами ${qfmt(r.paid)}` : ''} {r.unit}</div>
+                    </div>
+                    <span style={{ fontSize: 11.5, fontWeight: 800, color: GREEN, whiteSpace: 'nowrap' }}>✓ закрыто</span>
+                  </div>
+                )
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderTop: i ? '1px solid #f6f3f0' : 'none' }}>
+                    <div onClick={() => { if (!on) setRow(i, String(r.left)); cursorSoon(`input[data-gret-qty="${i}"]`) }} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: on ? DARK : '#4a443c' }}>{r.productName}</div>
+                      <div style={{ fontSize: 11.5, color: '#8a8377' }}>
+                        {ours ? 'взяли' : 'отдали'} {qfmt(r.total)}{r.back > 0.0005 ? ` · товаром ${qfmt(r.back)}` : ''}{r.paid > 0.0005 ? ` · деньгами ${qfmt(r.paid)}` : ''} · <b style={{ color: col }}>остаток {qfmt(r.left)} {r.unit}</b>
+                      </div>
+                    </div>
+                    <input data-gret-qty={i} value={r.qty} inputMode="decimal" placeholder="0"
+                      onChange={e => setRow(i, e.target.value.replace(/[^0-9.,]/g, ''))}
+                      onFocus={e => e.target.select()}
+                      onKeyDown={enterTo(`input[data-gret-qty="${i + 1}"]`) as any}
+                      style={{ ...inp, width: 84, flexShrink: 0, boxSizing: 'border-box', textAlign: 'right', fontSize: 17, fontWeight: 800, borderColor: on ? col : '#e6e2dc', background: on ? '#fff' : '#faf8f6' }} />
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid #f1ede8', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12.5, color: '#6b645b' }}>
+                <span>Отмечено <b style={{ color: DARK }}>{sel.length}</b> из {openRows} позиц.</span>
+                <span style={{ marginLeft: 'auto' }}>всего <b style={{ fontSize: 15, color: DARK }}>{qfmt(selQty)}</b></span>
+              </div>
+              {gRet.mode === 'money' && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>{ours ? 'СЧЁТ ОПЛАТЫ' : 'СЧЁТ ПРИХОДА'}</div>
+                    <select value={gRet.accountId} onChange={e => setGRet(r => r ? { ...r, accountId: e.target.value } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 15 }}>
+                      <option value="">— выберите счёт —</option>
+                      {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ width: 150 }}>
+                    <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
+                    <input data-gret-amount value={gRet.amount} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, amount: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800, textAlign: 'right' }} />
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СУММА (₸)</div>
-                  <input value={gRet.amount} inputMode="decimal" placeholder="0" onChange={e => setGRet(r => r ? { ...r, amount: e.target.value.replace(/[^0-9.,]/g, '') } : r)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800 }} />
-                </div>
-              </>)}
-              <button disabled={busy} onClick={submitGRet} style={{ border: 'none', background: busy ? '#9bb5a6' : (gRet.mode === 'money' ? GREEN : (gRet.dir === 'giveback' ? BLUE : GREEN)), color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : gRet.mode === 'money' ? '💵 Оплатить' : (gRet.dir === 'giveback' ? '↩ Записать (принял)' : '↩ Записать возврат')}</button>
+              )}
+              <div style={{ fontSize: 11.5, color: '#a09889' }}>можно указать больше остатка (переплата) — остаток не уйдёт в минус</div>
+              <button disabled={busy || !sel.length} onClick={submitGRet} style={{ border: 'none', background: (busy || !sel.length) ? '#b9c4bd' : (gRet.mode === 'money' ? GREEN : (ours ? GREEN : BLUE)), color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || !sel.length) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>
+                {busy ? '…' : !sel.length ? 'Впишите количество' : gRet.mode === 'money' ? `💵 ${ours ? 'Оплатить' : 'Принять деньги'} · ${sel.length} позиц.` : (ours ? `↩ Записать возврат · ${sel.length} позиц.` : `↩ Записать (принял) · ${sel.length} позиц.`)}
+              </button>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* ИНКАССАЦИЯ — шторка: счёт магазина + сумма → в QR-счёт головного */}
       {encOpen && (
