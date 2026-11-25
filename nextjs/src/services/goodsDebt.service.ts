@@ -88,6 +88,32 @@ export async function addGoodsDebt(
   return { ok: true as const, id: row.id }
 }
 
+// ВЗЯЛИ / ОТДАЛИ В ДОЛГ ЧЕКОМ (правило владельца 25.11.2026: «было 3 позиции — не видно весь чек»). В каталоге
+// выбирают несколько товаров сразу, а форма записывала только первый. Теперь все позиции чека пишутся одним
+// действием — по записи журнала на каждую (остаток считается по товару). Склад журнал не трогает.
+export async function addGoodsDebtBatch(
+  orgId: string,
+  input: { contragentId: string; direction: 'take' | 'give'; items: { productId?: string | null; productName: string; unit?: string; qty: number }[]; note?: string },
+  actor?: Actor,
+) {
+  const cag = await repo.contragentInOrg(input.contragentId, orgId)
+  if (!cag) return { ok: false as const, error: 'Контрагент не найден у этого магазина' }
+  const items = (input.items || [])
+    .map(it => ({ productId: it.productId || null, name: (it.productName || '').trim(), unit: (it.unit || 'шт').trim() || 'шт', qty: n(it.qty) }))
+    .filter(it => it.name && it.qty > 0)
+  if (!items.length) return { ok: false as const, error: 'Добавьте товар и впишите количество' }
+  const dir = input.direction === 'give' ? 'give' : 'take'
+  const note = (input.note || '').trim()
+  for (const it of items) {
+    await repo.insertEntry({
+      orgId, contragentId: input.contragentId, contragentName: (cag as any).name || '',
+      productId: it.productId, productName: it.name, unit: it.unit, direction: dir, qty: String(it.qty),
+      note, createdBy: actor?.name || 'Система',
+    })
+  }
+  return { ok: true as const, count: items.length }
+}
+
 // ПОГАШЕНИЕ ЧЕКОМ (правило владельца 25.11.2026): в окне виден весь долг соседа по позициям; отмеченные гасятся
 // одним действием — товаром (return / giveback) или деньгами (pay / receive). По каждой позиции своя запись
 // журнала (остаток считается по товару), а деньги — ОДНИМ платежом на всю сумму, в комментарии перечень товаров.

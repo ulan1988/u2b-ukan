@@ -112,6 +112,11 @@ export async function addGoodsDebt(body: { uid?: string; contragentId: string; p
   const r = await post('/api/branch/goods-debt', body)
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
+// «Долг товаров» — взяли / отдали в долг чеком: все выбранные позиции одной записью формы.
+export async function addGoodsDebtBatch(body: { uid?: string; contragentId: string; direction: 'take' | 'give'; items: { productId?: string | null; productName: string; unit?: string; qty: number }[]; note?: string }) {
+  const r = await post('/api/branch/goods-debt/batch', body)
+  return { ok: r.ok, error: r.error as string | undefined, count: r.data?.count as number | undefined }
+}
 // «Долг товаров» — погашение чеком: несколько позиций соседа одним действием (товаром или деньгами).
 export async function settleGoodsDebt(body: { uid?: string; contragentId: string; dir: 'return' | 'giveback'; mode: 'goods' | 'money'; items: { productId?: string | null; productName: string; unit?: string; qty: number }[]; accountId?: string; amount?: number; date?: string }) {
   const r = await post('/api/branch/goods-debt/settle', body)

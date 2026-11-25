@@ -51,6 +51,20 @@ export const goodsDebtSchema = z.object({
   amount: z.coerce.number().nonnegative().optional(),// для pay/receive — сумма оплаты
 })
 
+// «Долг товаров» — взяли / отдали в долг ЧЕКОМ: несколько позиций одной записью формы (правило 25.11.2026).
+export const goodsDebtBatchSchema = z.object({
+  uid: z.string().uuid().optional(),
+  contragentId: z.string().uuid(),
+  direction: z.enum(['take', 'give']),              // take = взяли у соседа, give = отдали соседу
+  items: z.array(z.object({
+    productId: z.string().uuid().nullable().optional(),
+    productName: z.string().min(1),
+    unit: z.string().optional().default('шт'),
+    qty: z.coerce.number().positive(),
+  })).min(1),
+  note: z.string().optional().default(''),
+})
+
 // «Долг товаров» — погашение ЧЕКОМ (правило 25.11.2026): в одном окне весь долг соседа по позициям, отмечаем
 // нужные и гасим товаром или деньгами одним действием. dir: return = МЫ гасим свой долг, giveback = сосед гасит свой.
 export const goodsDebtSettleSchema = z.object({

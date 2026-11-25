@@ -20,7 +20,7 @@ import ContragentPicker from '@/components/ContragentPicker'
 import { lineAmount, isIzdelie } from '@/lib/lineAmount'
 import { itemName } from '@/lib/itemName'
 import { extractRal, ralOrdered } from '@/lib/ral'
-import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebt, settleGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
+import { otherIncomeDay, otherIncome, branchOrders, sellCheck, editCheck, returnSale, exchangeCheck, payDebt, goodsDebts as fetchGoodsDebts, addGoodsDebtBatch, settleGoodsDebt, deleteGoodsDebt, cancelStoreSale, encashment, moveMoney } from '@/lib/api/orders'
 import ClientApp from '@/components/portals/ClientApp'
 import { fetchRefs } from '@/lib/api/refs'
 import { logout } from '@/lib/api/auth'
@@ -146,7 +146,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // «Долги»: под-вкладки «Долг клиентов» (чеки) / «Долг товаров» (взяли у соседа — вернём товаром).
   const [debtTab, setDebtTab] = useState<'clients' | 'goods'>('clients')
   const [gDebt, setGDebt] = useState<{ entries: any[]; balances: any[] }>({ entries: [], balances: [] })
-  const [gForm, setGForm] = useState<null | { mode: 'take' | 'give'; contragentId: string; productName: string; unit: string; qty: string; note: string }>(null)  // шторка «взяли/отдали в долг»
+  // Шторка «взяли / отдали в долг» — ЧЕК (правило владельца 25.11.2026): все товары, выбранные в каталоге, строками
+  // с правкой количества. Раньше из каталога бралась только ПЕРВАЯ позиция — остальные молча терялись.
+  const [gForm, setGForm] = useState<null | { mode: 'take' | 'give'; contragentId: string; rows: { productId: string | null; productName: string; unit: string; qty: string }[]; note: string }>(null)
   // Шторка «погасить / принять» — ЧЕК соседа (правило владельца 25.11.2026): все его позиции этой стороны с остатком,
   // у каждой своё количество; отмеченные гасятся одним действием — товаром или деньгами.
   const [gRet, setGRet] = useState<null | { dir: 'return' | 'giveback'; mode: 'goods' | 'money'; contragentId: string; contragentName: string; rows: { productId: string | null; productName: string; unit: string; left: number; total: number; back: number; paid: number; qty: string }[]; accountId: string; amount: string }>(null)
@@ -292,24 +294,42 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const loadGDebt = useCallback(async () => { setGDebt(await fetchGoodsDebts(user.id)) }, [user.id])
   useEffect(() => { if (tab === 'debts') loadGDebt() }, [tab, loadGDebt])
 
-  // Товар для «долга товаров» — из НАШЕГО каталога (NomPicker). Подставляем имя/ед./кол-во.
+  // Товары для «долга товаров» — из НАШЕГО каталога. В чек встают ВСЕ выбранные позиции; тот же товар, выбранный
+  // ещё раз, не дублируется строкой — количество складывается.
   function onPickGForm(picked: PickedPos[]) {
     setShowGCatalog(false)
-    const p = picked[0]; if (!p) return
-    setGForm(f => f ? { ...f, productName: p.oral || p.name1c, unit: p.unit || 'шт', qty: p.qty ? String(p.qty) : f.qty } : f)
+    if (!picked.length) return
+    let focus = -1
+    setGForm(f => {
+      if (!f) return f
+      const rows = f.rows.map(r => ({ ...r }))
+      for (const p of picked) {
+        const name = (p.oral || p.name1c || '').trim(); if (!name) continue
+        const unit = p.unit || 'шт'
+        const at = rows.findIndex(r => r.productName === name && r.unit === unit)
+        if (at >= 0) { rows[at].qty = String(Number((num(rows[at].qty) + (Number(p.qty) || 0)).toFixed(3)) || ''); if (focus < 0) focus = at }
+        else { rows.push({ productId: (p as any).productId || null, productName: name, unit, qty: p.qty ? String(p.qty) : '' }); if (focus < 0) focus = rows.length - 1 }
+      }
+      const empty = rows.findIndex(r => !(num(r.qty) > 0))
+      cursorSoon(`input[data-gform-qty="${empty >= 0 ? empty : focus}"]`)   // умный курсор: в количестве, которое ещё не вписано
+      return { ...f, rows }
+    })
   }
 
+  const gFormLock = useRef(false)
   async function submitGForm() {
-    if (!gForm) return
+    if (!gForm || gFormLock.current) return
     if (!gForm.contragentId) { showMsg('⚠ Выберите соседа'); return }
-    if (!gForm.productName.trim()) { showMsg('⚠ Укажите товар'); return }
-    const qty = num(gForm.qty)
-    if (qty <= 0) { showMsg('⚠ Количество больше 0'); return }
-    setBusy(true)
-    const r = await addGoodsDebt({ uid: user.id, contragentId: gForm.contragentId, productName: gForm.productName.trim(), unit: gForm.unit || 'шт', direction: gForm.mode, qty, note: gForm.note })
-    setBusy(false)
+    if (!gForm.rows.length) { showMsg('⚠ Добавьте товар из каталога'); return }
+    const bad = gForm.rows.find(r => !(num(r.qty) > 0))
+    if (bad) { showMsg(`⚠ ${bad.productName}: впишите количество (или уберите строку)`); return }
+    const items = gForm.rows.map(r => ({ productId: r.productId, productName: r.productName.trim(), unit: r.unit || 'шт', qty: num(r.qty) }))
+    gFormLock.current = true; setBusy(true)
+    const r = await addGoodsDebtBatch({ uid: user.id, contragentId: gForm.contragentId, direction: gForm.mode, items, note: gForm.note })
+    gFormLock.current = false; setBusy(false)
     if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
-    setGForm(null); await loadGDebt(); showMsg(gForm.mode === 'give' ? '✓ Записано: отдали в долг' : '✓ Записано: взяли в долг')
+    showMsg(`${gForm.mode === 'give' ? '✓ Записано: отдали в долг' : '✓ Записано: взяли в долг'} · ${items.length} позиц.`)
+    setGForm(null); await loadGDebt()
   }
   // Открыть чек соседа: dir='return' — мы гасим свой долг, 'giveback' — сосед гасит свой. Нажатая позиция уже
   // отмечена на весь остаток, остальные пустые — впишите количество там, где тоже возвращают.
@@ -1385,8 +1405,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setGForm({ mode: 'take', contragentId: '', productName: '', unit: 'шт', qty: '', note: '' })} style={{ flex: 1, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>➕ Взяли в долг</button>
-                  <button onClick={() => setGForm({ mode: 'give', contragentId: '', productName: '', unit: 'шт', qty: '', note: '' })} style={{ flex: 1, border: 'none', background: BLUE, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>➖ Отдали в долг</button>
+                  <button onClick={() => setGForm({ mode: 'take', contragentId: '', rows: [], note: '' })} style={{ flex: 1, border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>➕ Взяли в долг</button>
+                  <button onClick={() => setGForm({ mode: 'give', contragentId: '', rows: [], note: '' })} style={{ flex: 1, border: 'none', background: BLUE, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>➖ Отдали в долг</button>
                 </div>
                 {gDebt.balances.length === 0 && <div style={{ background: '#fff', borderRadius: 12, padding: 30, textAlign: 'center', boxShadow: '0 0 0 1px #e6e2dc', color: '#8a8377' }}>Долгов по товарам нет 🎉</div>}
                 {gDebt.balances.map((g: any) => {
@@ -2026,41 +2046,65 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       })()}
 
       {/* ВЗЯЛИ / ОТДАЛИ ТОВАР В ДОЛГ — шторка: сосед (свой контрагент) + товар + кол-во */}
-      {gForm && (() => { const give = gForm.mode === 'give'; const acc = give ? BLUE : PRIMARY; return (
+      {/* ВЗЯЛИ / ОТДАЛИ В ДОЛГ — ЧЕК: сосед + все выбранные в каталоге товары строками, количество правится в строке. */}
+      {gForm && (() => {
+        const give = gForm.mode === 'give'; const acc = give ? BLUE : PRIMARY
+        const totalQty = gForm.rows.reduce((a, r) => a + num(r.qty), 0)
+        const setRow = (i: number, patch: Partial<{ qty: string; unit: string }>) => setGForm(f => f ? { ...f, rows: f.rows.map((r, k) => k === i ? { ...r, ...patch } : r) } : f)
+        const dropRow = (i: number) => setGForm(f => f ? { ...f, rows: f.rows.filter((_, k) => k !== i) } : f)
+        return (
         <div onClick={() => setGForm(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(38,35,31,.45)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div data-gform onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1ede8', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 800 }}>{give ? '➖ Отдали товар в долг' : '➕ Взяли товар в долг'}</div><div style={{ fontSize: 12, color: '#8a8377' }}>{give ? 'соседу — он вернёт товаром' : 'у соседа — вернём товаром'}</div></div>
               <button onClick={() => setGForm(null)} style={{ border: 'none', background: '#f7f5f2', color: '#6b645b', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
             </div>
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '14px 14px 0', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
               <div>
                 <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>СОСЕД</div>
                 <ContragentPicker contragents={cags} value={gForm.contragentId} onPick={(c: any) => setGForm(f => f ? { ...f, contragentId: c?.id || '' } : f)} placeholder="— выберите соседа —" />
               </div>
-              <div>
-                <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>ТОВАР</div>
-                <button type="button" onClick={() => setShowGCatalog(true)} style={{ ...inp, width: '100%', boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer', background: '#fff', color: gForm.productName ? DARK : '#9a938a', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gForm.productName || '📖 Выбрать из каталога'}</span>
-                  <span style={{ color: '#b7b0a6', fontSize: 15 }}>📖</span>
-                </button>
-                {gForm.productName && <div style={{ fontSize: 11, color: '#a09889', marginTop: 3 }}>можно изменить — тап по полю</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 11.5, color: '#8a8377', fontWeight: 700 }}>ТОВАРЫ{gForm.rows.length ? ` · ${gForm.rows.length} позиц.` : ''}</div>
+                <button type="button" onClick={() => setShowGCatalog(true)} style={{ border: `1.5px solid ${acc}`, background: '#fff', color: acc, borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>📖 {gForm.rows.length ? 'Добавить ещё' : 'Выбрать из каталога'}</button>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>КОЛ-ВО</div>
-                  <input ref={cursorHere} value={gForm.qty} inputMode="decimal" placeholder="0" onChange={e => setGForm(f => f ? { ...f, qty: e.target.value.replace(/[^0-9.,]/g, '') } : f)} style={{ ...inp, width: '100%', boxSizing: 'border-box', fontSize: 18, fontWeight: 800 }} />
+            </div>
+            {/* позиции чека — прокручиваются; шапка и кнопка записи стоят на месте */}
+            <div style={{ padding: '4px 14px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+              {gForm.rows.length === 0 && (
+                <div onClick={() => setShowGCatalog(true)} style={{ margin: '8px 0', padding: '18px 12px', border: '1.5px dashed #d9d3ca', borderRadius: 12, textAlign: 'center', color: '#8a8377', fontSize: 13, cursor: 'pointer' }}>
+                  Выберите в каталоге все товары сразу — они встанут сюда строками, количество можно поправить.
                 </div>
-                <div style={{ width: 90 }}>
-                  <div style={{ fontSize: 11.5, color: '#8a8377', fontWeight: 700, marginBottom: 4 }}>ЕД.</div>
-                  <input value={gForm.unit} onChange={e => setGForm(f => f ? { ...f, unit: e.target.value } : f)} placeholder="шт" style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
+              )}
+              {gForm.rows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderTop: i ? '1px solid #f6f3f0' : 'none' }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700 }}>{r.productName}</div>
+                  <input data-gform-qty={i} value={r.qty} inputMode="decimal" placeholder="0"
+                    onChange={e => setRow(i, { qty: e.target.value.replace(/[^0-9.,]/g, '') })}
+                    onFocus={e => e.target.select()}
+                    onKeyDown={enterTo(`input[data-gform-qty="${i + 1}"]`) as any}
+                    style={{ ...inp, width: 78, flexShrink: 0, boxSizing: 'border-box', textAlign: 'right', fontSize: 17, fontWeight: 800, borderColor: num(r.qty) > 0 ? acc : '#e0a48d' }} />
+                  <input value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} placeholder="шт" title="единица"
+                    style={{ ...inp, width: 48, flexShrink: 0, boxSizing: 'border-box', textAlign: 'center', fontSize: 13, padding: '8px 4px' }} />
+                  <button onClick={() => dropRow(i)} title="Убрать строку" style={{ border: 'none', background: 'none', color: '#c88', cursor: 'pointer', fontSize: 17, padding: '4px 2px', flexShrink: 0 }}>✕</button>
                 </div>
-              </div>
-              <button disabled={busy} onClick={submitGForm} style={{ border: 'none', background: busy ? '#cbb5a8' : acc, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : (give ? '➖ Записать (отдали)' : '➕ Записать долг')}</button>
+              ))}
+            </div>
+            <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid #f1ede8', flexShrink: 0 }}>
+              {gForm.rows.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'baseline', fontSize: 12.5, color: '#6b645b' }}>
+                  <span>{gForm.rows.length} позиц.</span>
+                  <span style={{ marginLeft: 'auto' }}>всего <b style={{ fontSize: 15, color: DARK }}>{qfmt(totalQty)}</b></span>
+                </div>
+              )}
+              <button disabled={busy || !gForm.rows.length} onClick={submitGForm} style={{ border: 'none', background: (busy || !gForm.rows.length) ? '#cbb5a8' : acc, color: '#fff', borderRadius: 12, padding: '14px 8px', cursor: (busy || !gForm.rows.length) ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>
+                {busy ? '…' : !gForm.rows.length ? 'Сначала выберите товары' : (give ? `➖ Записать (отдали) · ${gForm.rows.length} позиц.` : `➕ Записать долг · ${gForm.rows.length} позиц.`)}
+              </button>
             </div>
           </div>
         </div>
-      ) })()}
+        )
+      })()}
 
       {/* ВЕРНУЛ / ПРИНЯЛ ТОВАРОМ — шторка: кол-во по позиции долга */}
       {/* ДОЛГ ТОВАРОВ — ЧЕК СОСЕДА (правило владельца 25.11.2026). В окне не одна позиция, а весь его долг этой
