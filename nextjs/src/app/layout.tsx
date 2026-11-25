@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import UpdateNotice from "@/components/UpdateNotice";
 
 export const metadata: Metadata = {
   title: "U2B ERP — управление заказами",
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ru">
       <body>
         {children}
+        <UpdateNotice />
         <script dangerouslySetInnerHTML={{ __html: `
           // Колесо мыши НЕ меняет число в поле: снимаем фокус, иначе прокрутка страницы
           // накручивала суммы в накладной (крутилки у number-полей убраны в globals.css).
