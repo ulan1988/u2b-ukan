@@ -440,6 +440,9 @@ export const orders = pgTable('orders', {
   discountPct: money('discount_pct').notNull().default('0'), // скидка по чеку (%), инфо (сумма — в discountSum)
   sellerId: uuid('seller_id'),                            // → employees.id: кто из продавцов пробил чек (касса магазина)
   seller: text('seller').notNull().default(''),           // имя продавца на момент чека (без join)
+  // Ключ чека с устройства кассира (правило 25.11.2026): один на чек, живёт в черновике. Ответ сервера потерялся
+  // (связь) и кассир нажал ещё раз — по ключу находим уже пробитый чек и отдаём его, второй не создаём.
+  clientKey: text('client_key').notNull().default(''),
   clientCode: text('client_code').notNull().default(''),  // код чека = последние цифры телефона покупателя (поиск чека при возврате)
   trackingLink: text('tracking_link').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),

@@ -50,6 +50,10 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const [wide, setWide] = useState(true)                 // широкий экран: чек рядом с таблицей
   const [full, setFull] = useState(false)                // полноэкранный режим кассы (без меню слева)
   const [selling, setSelling] = useState(false)
+  // Замок от двойного пробития (правило 25.11.2026): `selling` включается только после перерисовки, а F9 с
+  // зажатой клавишей (автоповтор) или F9 + щелчок по кнопке успевали пробить чек дважды. Ref меняется сразу.
+  const sellingRef = useRef(false)
+  const checkKey = useRef('')   // ключ чека: ответ потерялся и нажали ещё раз — сервер отдаст уже пробитый чек
   const [sellMsg, setSellMsg] = useState('')
   const [cags, setCags] = useState<any[]>([])
   const [staff, setStaff] = useState<any[]>([])          // сотрудники филиала — кто пробил чек
@@ -414,31 +418,34 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
     if (!confirm(`Провести как ПРОЧИЙ ДОХОД ${fmt(money)} ₸?
 
 Товар не списывается, делёж ${incHalf ? '50/50' : '60/40'} с Адал Строй 2 (ваша доля ${fmt(money - Math.round(money * pct))} ₸).`)) return
-    setSelling(true); setSellMsg('')
+    if (sellingRef.current) return
+    sellingRef.current = true; setSelling(true); setSellMsg('')
     const emp = staff.find((s2: any) => s2.id === sellerId)
     const body = incMode
       ? { cash: incAcc === 'cash' ? money : 0, kaspi: incAcc === 'kaspi' ? money : 0, qr: incAcc === 'qr' ? money : 0 }
       : { cash: pCash, kaspi: pKaspi, qr: pQr }
     const r: any = await otherIncome({ contactId: sellContact || undefined, ...body, comment: incNote, seller: emp?.name, date: wd(), ...(incHalf ? { hqPct: 0.5 } : {}) })
-    setSelling(false)
+    sellingRef.current = false; setSelling(false)
     if (!r.ok) { setSellMsg('⚠ ' + (r.error || 'не удалось')); return }
     setSellMsg(`✓ прочий доход ${fmt(r.sum || money)} ₸ · вам ${fmt(r.ourShare || 0)} · Адал Строй 2 ${fmt(r.hqShare || 0)}`)
     setPay({ cash: '', kaspi: '', qr: '', debt: '' }); setGiven(''); setIncNote(''); setIncSum('')
   }
 
   async function doSell() {
+    if (sellingRef.current) return   // чек уже пробивается — повторное нажатие/автоповтор F9 не считается
     if (!sellRows.length) { setSellMsg('нет строк с количеством и ценой'); return }
     if (!(net > 0)) { setSellMsg('итог чека 0'); return }
     if (Math.abs(rest) >= 0.5) { setSellMsg(rest > 0 ? `⚠ не распределено ${fmt(rest)} ₸` : `⚠ перебор на ${fmt(-rest)} ₸`); return }
     if (pDebt > 0 && !sellContact) { setSellMsg('⚠ долг — только на выбранного покупателя'); return }
     if (bonusBad) { setSellMsg(`⚠ ${bonusBad.name}: укажите цену соседа и у кого взяли`); return }
-    setSelling(true); setSellMsg('')
+    if (!checkKey.current) { try { checkKey.current = crypto.randomUUID() } catch { checkKey.current = 'k' + Date.now() + '-' + Math.round(Math.random() * 1e9) } }
+    sellingRef.current = true; setSelling(true); setSellMsg('')
     const key = priceKeyOf()
     const emp = staff.find((s: any) => s.id === sellerId)
     // Долг отдельным полем не шлём: в кассе он считается как итог − нал − каспи − QR.
     // Сдача уменьшает реально внесённый нал (см. cashier.payCard), поэтому шлём «дали налом».
     const r: any = await sellCheck({
-      contactId: sellContact || undefined, clientCode: sellCode, date: wd(),
+      contactId: sellContact || undefined, clientCode: sellCode, clientKey: checkKey.current, date: wd(),
       sellerId: emp?.id, seller: emp?.name,
       cash: pCash + change, kaspi: pKaspi, qr: pQr, change, changeFrom: '',
       discountSum: discSum, discountPct: discPctN,
@@ -454,8 +461,11 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
         return out
       }),
     })
-    setSelling(false)
-    setSellMsg(r.ok ? `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(net)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}` : '⚠ ' + (r.error || 'не удалось'))
+    sellingRef.current = false; setSelling(false)
+    if (r.ok) checkKey.current = ''
+    setSellMsg(r.ok
+      ? (r.repeated ? `✓ этот чек уже был пробит${r.number ? ` № ${r.number}` : ''} — второй раз не пробиваю` : `✓ чек пробит${r.number ? ` № ${r.number}` : ''} · ${fmt(net)} ₸${r.debt ? ` · долг ${fmt(r.debt)}` : ''}`)
+      : '⚠ ' + (r.error || 'не удалось'))
     // Чек пробит — обнуляем количества и оплату: позиции и цены остаются прайсом на следующего
     // клиента, а второй раз случайно пробить тот же чек уже нельзя (количеств нет).
     if (r.ok) {
@@ -469,7 +479,7 @@ export default function CalcScreen({ orgId }: { orgId: string }) {
   const sellRef = useRef<() => void>(() => {})
   sellRef.current = doSell
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'F9') { e.preventDefault(); sellRef.current() } }
+    const h = (e: KeyboardEvent) => { if (e.key === 'F9') { e.preventDefault(); if (!e.repeat) sellRef.current() } }
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
   }, [])
 

@@ -230,6 +230,14 @@ export const branchDoneForBoard = (orgId: string) =>
       sql`${orders.createdAt} > now() - interval '21 days'`))
     .orderBy(desc(orders.createdAt))
 
+// Чек кассы по ключу устройства (не отменённый) — защита от повторного пробития одного и того же чека.
+export const findByClientKey = (orgId: string, key: string) =>
+  db.select({ id: orders.id, linkedDocId: orders.linkedDocId, seller: orders.seller,
+    fresh: sql<boolean>`${orders.createdAt} > now() - interval '2 minutes'` })   // заведена только что — возможно, ещё пробивается
+    .from(orders)
+    .where(and(eq(orders.orgId, orgId), eq(orders.clientKey, key), eq(orders.isCancelled, false)))
+    .limit(1)
+
 export const updateOrder = (id: string, patch: Partial<typeof orders.$inferInsert>) =>
   db.update(orders).set({ ...patch, updatedAt: sql`now()` }).where(eq(orders.id, id)).returning()
 

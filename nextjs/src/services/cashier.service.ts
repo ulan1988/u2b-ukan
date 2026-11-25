@@ -530,6 +530,7 @@ export interface SellInput {
   sellerId?: string        // продавец за кассой (employees.id) — выбран на телефоне и держится до смены
   seller?: string          // его имя на момент чека
   clientCode?: string      // код чека — последние цифры телефона покупателя (поиск при возврате)
+  clientKey?: string       // ключ чека с устройства кассира: повторное пробитие того же чека отдаёт уже пробитый
   comment?: string
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number     // скидка по чеку (₸ и/или % — инфо)
@@ -551,7 +552,29 @@ export const OTHER_HQ_CASH = 0.6
 export async function sellDirect(orgId: string, i: SellInput, actor?: Session | null) {
   if (!i.positions?.length) return { ok: false as const, error: 'Пустой чек' }
   const { ensureProduct } = await import('./producer.service')
-  const { createOrder } = await import('./order.service')
+  const { createOrder, deleteOrder } = await import('./order.service')
+  // ПОВТОРНОЕ ПРОБИТИЕ ТОГО ЖЕ ЧЕКА (правило 25.11.2026). Ответ сервера на телефоне потерялся (связь), кассир
+  // видит «не удалось» и жмёт ещё раз — а чек уже пробит. По ключу устройства находим его и отдаём как есть:
+  // второй чек, вторая расходная и вторые деньги не появляются.
+  const clientKey = (i.clientKey || '').trim().slice(0, 64)
+  if (clientKey) {
+    const [was] = await repo.findByClientKey(orgId, clientKey)
+    if (was?.linkedDocId) {
+      const docRepo = await import('../repositories/document.repo')
+      const [doc] = await docRepo.getDoc(was.linkedDocId as string)
+      const total = Number(doc?.total) || 0
+      const paid = await payRepo.sumInByDocument(was.linkedDocId as string)
+      return { ok: true as const, repeated: true as const, id: was.id, seller: was.seller, number: doc?.number as string | undefined, total, debt: Math.max(0, Math.round((total - paid) * 100) / 100) }
+    }
+    // Карточка есть, а накладной нет. Свежая (до 2 минут) — первый запрос, скорее всего, ЕЩЁ ИДЁТ (на телефоне
+    // оборвалась связь, а сервер продолжает проводить): трогать её нельзя, иначе накладная повиснет без карточки.
+    // Старая — след оборванной попытки: убираем и пробиваем заново; не убралась (накладная всё же есть) — стоп.
+    if (was?.fresh) return { ok: false as const, error: 'Этот чек ещё пробивается — подождите несколько секунд' }
+    if (was) {
+      const del = await deleteOrder(was.id, actor)
+      if (!del.ok) return { ok: false as const, error: 'По этому чеку уже есть накладная — проверьте вкладку «Чеки», прежде чем пробивать снова' }
+    }
+  }
   // Магазин (seller) НЕ плодит новые SKU в общей номенклатуре — только берёт существующие
   // (продажа идёт из каталога, где товар уже есть). Производитель может заводить (изделия).
   const orgKind = await orgKindOf(orgId)
@@ -595,10 +618,16 @@ export async function sellDirect(orgId: string, i: SellInput, actor?: Session | 
   const disc = Math.max(0, Number(i.discountSum) || 0), dpct = Math.max(0, Number(i.discountPct) || 0)
   // Код чека — последние цифры телефона покупателя: по нему кассир находит чек при возврате.
   const clientCode = (i.clientCode || '').replace(/\D/g, '').slice(-8)
-  if (seller || i.sellerId || disc || dpct || clientCode) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null, discountSum: String(disc), discountPct: String(dpct), clientCode } as any)
+  if (seller || i.sellerId || disc || dpct || clientCode || clientKey) await repo.updateOrder(id, { seller, sellerId: i.sellerId || null, discountSum: String(disc), discountPct: String(dpct), clientCode, clientKey } as any)
 
-  const res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom, date: i.date }, actor)
-  if (!res.ok) return res
+  // НЕ ПРОБИЛОСЬ — КАРТОЧКИ НЕ ОСТАЁТСЯ (правило 25.11.2026). Раньше при отказе проводки (нет товара в базе, нет
+  // склада и т. п.) карточка-чек оставалась висеть «В ожидании» без накладной, и каждое повторное нажатие
+  // добавляло ещё одну (02.11.2026 — 17 таких подряд). deleteOrder сам откажет, если накладная всё же проведена.
+  const dropOrphan = async () => { try { await deleteOrder(id, actor) } catch { /* noop */ } }
+  let res: Awaited<ReturnType<typeof payCard>>
+  try { res = await payCard(id, { cash: i.cash, kaspi: i.kaspi, qr: i.qr, change: i.change, changeFrom: i.changeFrom, date: i.date }, actor) }
+  catch (e) { await dropOrphan(); throw e }
+  if (!res.ok) { await dropOrphan(); return res }
   await repo.updateOrder(id, { status: 'Доставлено' })
   // Бонусные позиции (товар соседа): записать бонус и долг товара — не роняя продажу.
   try { const { registerBonus } = await import('./bonus.service'); await registerBonus(orgId, id, undefined, actor) }

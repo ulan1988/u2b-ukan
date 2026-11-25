@@ -9,7 +9,7 @@
 // ВАЖНО: магазин — НЕ листогиб. Изделие здесь обычный ШТУЧНЫЙ товар: цена в чеке — за штуку,
 // сумма = кол-во × цена (см уже внутри имени «Изделие 9003 19 см»). Поэтому чек не ставит
 // widthCm в строки и не подставляет цену за см (прайс запрашивается с exact=1).
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { fmtTime, fmtDateTime } from '@/lib/adminFmt'
 import StoreCatalog from '@/components/StoreCatalog'
 import { isBonusProduct } from '@/lib/catalogNav'
@@ -98,6 +98,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Та же шторка — два режима: 🏢 сдать головному и 🔄 перевод между СВОИМИ счетами (деньги из орг не уходят).
   const [encMode, setEncMode] = useState<'hq' | 'move'>('hq'); const [encTo, setEncTo] = useState('')
   const [busy, setBusy] = useState(false)
+  // ── КНОПКИ ОПЛАТЫ (правило владельца 25.11.2026) ──
+  // busyRef — замок от двойного нажатия: disabled={busy} включается только после перерисовки, а два быстрых
+  // тапа успевали оба, и чек пробивался дважды. Ref меняется сразу.
+  const busyRef = useRef(false)
+  // ask — контрольный шаг: кнопка способа оплаты чек НЕ пробивает, а спрашивает «Пробить: Каспи · 38 400 ₸?».
+  const [ask, setAsk] = useState<null | 'cash' | 'kaspi' | 'qr' | 'debt' | 'head'>(null)
+  const askAt = useRef(0)                                  // когда спросили: второй тап двойного нажатия — не ответ «да»
+  const [needClient, setNeedClient] = useState(false)      // подсветить выбор покупателя (без него чек не пробить)
+  const checkKey = useRef('')                              // ключ чека: с ним сервер не пробьёт один чек дважды
+  const [draft, setDraft] = useState<any | null>(null)     // очищенный чек — лежит черновиком, пока не вернут
+  const draftOn = useRef(false)
   const [checks, setChecks] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   const [hqBridge, setHqBridge] = useState<any>(null)   // контрагент-мост «Адал Строй» (головной) — для «долга на головного»
@@ -167,7 +178,10 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   }, [])
   async function doInstall() { if (!installPrompt) return; installPrompt.prompt(); try { await installPrompt.userChoice } catch {}; setInstallPrompt(null) }
 
-  function showMsg(m: string) { setToast(m); setTimeout(() => setToast(''), 3500) }
+  // Новое сообщение сбрасывает таймер прежнего — иначе оно гасло раньше времени (старый таймер стирал новое),
+  // и «⚠ Выберите покупателя» кассир не успевал увидеть: казалось, что кнопка не сработала.
+  const toastT = useRef<any>(null)
+  function showMsg(m: string) { setToast(m); clearTimeout(toastT.current); toastT.current = setTimeout(() => setToast(''), 3500) }
 
   // «Прочий доход»: деньги без товара — ложатся на выбранный счёт, делёж 60/40 с головным
   // (50/50 — только если отметили галочку, правило владельца 21.11.2026).
@@ -531,59 +545,93 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Что показать в поле суммы: пока кассир печатает — его ввод, иначе посчитанную сумму.
   const amtView = (draft: string | undefined, sum: number) => (draft !== undefined ? draft : String(r2(sum)))
 
-  // Быстрая оплата в один тап: вся сумма выбранным способом (или в долг).
-  async function quickPay(how: 'cash' | 'kaspi' | 'qr' | 'debt') {
-    if (!rows.length) return
-    if (noPrice) { showMsg('⚠ Есть позиции без цены — впишите цену в чеке'); return }
-    await doSell({
-      cash: how === 'cash' ? net : 0,
-      kaspi: how === 'kaspi' ? net : 0,
-      qr: how === 'qr' ? net : 0, change: 0, changeFrom: '',
-    })
+  // БЫСТРАЯ ОПЛАТА — В ДВА КАСАНИЯ (правило владельца 25.11.2026: «кнопки иногда неправильно работают — сразу
+  // пробивается»). Первое касание кнопки способа (Нал / Каспи / QR / В долг / В долг → Адал Строй) чек НЕ
+  // пробивает: на месте кнопок встаёт вопрос «Пробить чек: Каспи · 38 400 ₸?» с «✕ Нет» и «✓ Да, пробить».
+  // Раньше задел кнопку пальцем при прокрутке — и чек уже пробит не тем способом (а «В долг → Адал Строй»
+  // одним касанием вешал долг на головного). Проверки (цена, покупатель, сосед) — ДО вопроса.
+  function askClient() {
+    setShowClient(true); setNeedClient(true); setTimeout(() => setNeedClient(false), 2600)
+    showMsg('⚠ Сначала выберите покупателя')
   }
+  function quickPay(how: 'cash' | 'kaspi' | 'qr' | 'debt' | 'head') {
+    if (busyRef.current || !rows.length) return
+    if (noPrice) { showMsg('⚠ Есть позиции без цены — впишите цену в чеке'); return }
+    if (how === 'head') { if (!hqBridge) { showMsg('⚠ Контрагент «Адал Строй» (головной) не найден'); return } }
+    else if (!contactId) { askClient(); return }
+    const badBonus = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
+    if (badBonus) { showMsg(`⚠ ${badBonus.name1c}: укажите цену соседа и у кого взяли`); return }
+    askAt.current = Date.now(); setPayOpen(false); setAsk(how)
+  }
+  async function confirmPay() {
+    const how = ask
+    if (!how || busyRef.current) return
+    if (Date.now() - askAt.current < 500) return   // это второй тап двойного нажатия по кнопке способа, а не «да»
+    if (how === 'head') await sellDebtToHead()
+    else await doSell({ cash: how === 'cash' ? net : 0, kaspi: how === 'kaspi' ? net : 0, qr: how === 'qr' ? net : 0, change: 0, changeFrom: '' })
+    setAsk(null)
+  }
+  const askLabel = ask === 'cash' ? '💵 Наличка' : ask === 'kaspi' ? 'Каспи' : ask === 'qr' ? 'QR' : ask === 'debt' ? 'В ДОЛГ' : ask === 'head' ? '🏢 В долг → Адал Строй' : ''
+  const askCol = ask === 'debt' ? '#c0532a' : ask === 'head' ? '#7a3aaa' : GREEN
+  const buyerName = cags.find((c: any) => c.id === contactId)?.name || ''
+  useEffect(() => { if (!rows.length) setAsk(null) }, [rows.length])
 
   async function doSell(p?: { cash: number; kaspi: number; qr: number; change: number; changeFrom: string }) {
+    if (busyRef.current) return   // чек уже пробивается — второе нажатие не считается
     if (!rows.length) { showMsg('⚠ Чек пустой'); return }
     if (noPrice) { showMsg('⚠ Есть позиции без цены'); return }
     const body = p || { cash: cashN, kaspi: kaspiN, qr: qrN, change: num(pay.change), changeFrom: pay.changeFrom }
     // Покупатель обязателен для ЛЮБОГО чека (без контрагента чек не пробиваем).
-    if (!contactId) { setShowClient(true); showMsg('⚠ Выберите покупателя'); return }
+    if (!contactId) { askClient(); return }
+    // Смешанная оплата («⋯»): на кнопке стоит полная сумма чека, а недовнесённое молча уходило в долг —
+    // не вписал суммы и нажал «Продать», и весь чек уже в долге. Теперь остаток в долг называем и спрашиваем.
+    if (!p && debtN > 0.005 && !confirm(`Внесено ${money(net - debtN)} ₸ из ${money(net)} ₸.\n\nОстаток ${money(debtN)} ₸ уйдёт В ДОЛГ на «${buyerName}». Пробить чек?`)) return
     // Бонусный товар без цены соседа или без самого соседа проводить нельзя: он пошёл бы
     // как обычная продажа — списался бы наш склад, которого по этому товару нет.
     const badBonus = bonusRowsCart.find(r => !(Number(r.bonusCost) > 0) || !r.bonusAgentId)
     if (badBonus) { showMsg(`⚠ ${badBonus.name1c}: укажите цену соседа и у кого взяли`); return }
-    setBusy(true)
+    if (!checkKey.current) checkKey.current = newKey()
+    busyRef.current = true; setBusy(true)
     const r = await sellCheck({
       uid: user.id, contactId: contactId || undefined, date: wd(),
-      sellerId: seller?.id, seller: seller?.name, clientCode,
+      sellerId: seller?.id, seller: seller?.name, clientCode, clientKey: checkKey.current,
       discountSum: discSum, discountPct: discPctN,
       ...body,
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm, bonusCost: x.bonusCost || undefined, bonusAgentId: x.bonusAgentId || undefined })),
     })
-    setBusy(false)
-    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось пробить чек')); return }
+    busyRef.current = false; setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось пробить чек') + ' — чек остался в кассе, нажмите ещё раз'); return }
+    checkKey.current = ''
     setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setClientCode(''); setPayOpen(false)
+    // Сообщение — СРАЗУ: раньше оно ждало перезагрузки списков (секунды), чек с экрана уже пропал, а «пробит»
+    // ещё не написано — кассир не понимал, прошёл ли чек.
+    // repeated — сервер нашёл этот чек уже пробитым (прошлый ответ потерялся по связи): второго не создал.
+    showMsg(r.repeated
+      ? `✓ Этот чек уже был пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸ — второй раз не пробиваю`
+      : `💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
     await load(); loadStock()
-    showMsg(`💵 Чек пробит${r.number ? ` (${r.number})` : ''} · ${money(r.total || total)} ₸${r.debt ? ` · долг ${money(r.debt)}` : ''}`)
   }
 
   // Долг НА ГОЛОВНОГО (Адал Строй): чек в долг на мост-контрагент головного — его дебиторка
   // гасит долг магазина перед головным (сразу, на отпускную сумму). Склад/оплаты как обычный долг.
   async function sellDebtToHead() {
+    if (busyRef.current) return
     if (!rows.length) { showMsg('⚠ Чек пустой'); return }
     if (noPrice) { showMsg('⚠ Есть позиции без цены'); return }
     if (!hqBridge) { showMsg('⚠ Контрагент «Адал Строй» (головной) не найден'); return }
-    setBusy(true)
+    if (!checkKey.current) checkKey.current = newKey()
+    busyRef.current = true; setBusy(true)
     const r = await sellCheck({
-      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name, clientCode, date: wd(),
+      uid: user.id, contactId: hqBridge.id, sellerId: seller?.id, seller: seller?.name, clientCode, clientKey: checkKey.current, date: wd(),
       discountSum: discSum, discountPct: discPctN, cash: 0, kaspi: 0, qr: 0, change: 0, changeFrom: '',
       positions: rows.map(x => ({ productId: x.productId, name1c: x.name1c, oral: x.oral, qty: x.qty, unit: x.unit, price: x.price, widthCm: x.widthCm, bonusCost: x.bonusCost || undefined, bonusAgentId: x.bonusAgentId || undefined })),
     })
-    setBusy(false)
-    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось')); return }
+    busyRef.current = false; setBusy(false)
+    if (!r.ok) { showMsg('⚠ ' + (r.error || 'Не удалось') + ' — чек остался в кассе'); return }
+    checkKey.current = ''
     setRows([]); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setDisc({ mode: 'sum', val: '' }); setContactId(''); setClientCode(''); setPayOpen(false)
-    await load(); loadStock()
     showMsg(`🏢 Долг на Адал Строй · ${money(net)} ₸ — долг магазина уменьшен`)
+    await load(); loadStock()
   }
 
   // Остаток к возврату по позиции = продано − уже возвращено.
@@ -707,7 +755,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   // Отложить текущий заказ: запоминаем состав, покупателя, код и скидку; касса очищается.
   function holdCurrent() {
     if (!rows.length) { showMsg('⚠ Чек пустой'); return }
-    const h = { id: 'h' + Date.now(), ts: Date.now(), rows, contactId, clientCode, disc, seller: seller?.name || '' }
+    const h = { id: 'h' + Date.now(), ts: Date.now(), rows, contactId, clientCode, disc, seller: seller?.name || '', key: checkKey.current }
+    checkKey.current = ''
     const next = [h, ...readHold()]
     writeHold(next); setHolds(next)
     setRows([]); setContactId(''); setClientCode(''); setDisc({ mode: 'sum', val: '' }); setPay({ cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }); setPayOpen(false)
@@ -717,13 +766,54 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   function resumeHold(h: any) {
     if (rows.length) holdCurrent()
     setRows(h.rows || []); setContactId(h.contactId || ''); setClientCode(h.clientCode || '')
-    setDisc(h.disc || { mode: 'sum', val: '' })
+    setDisc(h.disc || { mode: 'sum', val: '' }); checkKey.current = h.key || ''
     const next = readHold().filter((x: any) => x.id !== h.id)
     writeHold(next); setHolds(next); setHoldOpen(false); setCheckExpanded(true)
     showMsg('▶ Заказ в кассе — можно оплатить')
   }
   function dropHold(id: string) { const next = readHold().filter((x: any) => x.id !== id); writeHold(next); setHolds(next) }
   useEffect(() => { setHolds(readHold()) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── ЧЕРНОВИК ЧЕКА (правило владельца 25.11.2026: «если случайно закрыл — сохрани как черновик») ──
+  // Набранный чек жил только в памяти страницы: закрыл вкладку, обновил страницу, телефон выгрузил браузер —
+  // и чек пропал. Теперь каждая правка (состав, покупатель, код, скидка, суммы оплаты) сразу пишется на
+  // устройство. Открыл кассу снова — чек стоит как был. «Очистить» тоже не выбрасывает: чек ложится
+  // черновиком (один, последний) и возвращается кнопкой «↩ Вернуть», пока не начали новый.
+  const DRAFT_KEY = `u2b_draft_${user.orgId}`
+  const emptyPay = { cash: '', kaspi: '', qr: '', change: '', changeFrom: '' }
+  const readDraft = (): any | null => { try { const v = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return v && Array.isArray(v.rows) && v.rows.length ? v : null } catch { return null } }
+  const writeDraft = (v: any | null) => { try { if (v) localStorage.setItem(DRAFT_KEY, JSON.stringify(v)); else localStorage.removeItem(DRAFT_KEY) } catch { /* приватный режим */ } }
+  const newKey = () => { try { return crypto.randomUUID() } catch { return 'k' + Date.now() + '-' + Math.round(Math.random() * 1e9) } }
+  function applyDraft(d: any) {
+    setRows(d.rows || []); setContactId(d.contactId || ''); setClientCode(d.clientCode || '')
+    setDisc(d.disc || { mode: 'sum', val: '' }); setPay({ ...emptyPay, ...(d.pay || {}) })
+    checkKey.current = d.key || ''; setDraft(null)
+  }
+  function clearCheck() {
+    if (!rows.length) return
+    const d = { rows, contactId, clientCode, disc, pay, key: checkKey.current, ts: Date.now(), cleared: true }
+    writeDraft(d); setDraft(d); checkKey.current = ''
+    setRows([]); setContactId(''); setClientCode(''); setDisc({ mode: 'sum', val: '' }); setPay(emptyPay); setPayOpen(false); setAsk(null)
+    showMsg('🗒 Чек убран в черновик — вернуть можно кнопкой сверху')
+  }
+  // запись: стоит ВЫШЕ восстановления — при первом показе она ещё выключена и не сотрёт то, что лежит на устройстве
+  useEffect(() => {
+    if (!draftOn.current) return
+    if (rows.length) {
+      if (!checkKey.current) checkKey.current = newKey()
+      writeDraft({ rows, contactId, clientCode, disc, pay, key: checkKey.current, ts: Date.now() })
+      if (draft) setDraft(null)
+    } else if (!draft) { writeDraft(null); checkKey.current = '' }
+  }, [rows, contactId, clientCode, disc, pay]) // eslint-disable-line react-hooks/exhaustive-deps
+  // восстановление при открытии кассы: свежий незакрытый чек (до 12 ч) встаёт сам, старый или очищенный — плашкой
+  useEffect(() => {
+    const d = readDraft()
+    if (d && !d.cleared && Date.now() - (Number(d.ts) || 0) < 12 * 3600 * 1000) {
+      applyDraft(d); showMsg(`↩ Незакрытый чек восстановлен · ${d.rows.length} поз.`)
+    } else if (d) setDraft(d)
+    const t = setTimeout(() => { draftOn.current = true }, 0)
+    return () => clearTimeout(t)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── ПРАВКА ЧЕКА: кол-во, цена, состав и счета оплаты (без возврата/перепробития) ──
   function openEdit(o: any) {
@@ -936,6 +1026,17 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
         </div>
       ) : tab === 'cash' ? (
         <div style={{ paddingBottom: wide ? 24 : 74 + checkH, paddingRight: (wide && rows.length > 0) ? 400 : undefined }}>
+          {/* Черновик чека: то, что убрали кнопкой «очистить» (или незакрытый чек старше 12 ч). */}
+          {draft && rows.length === 0 && (
+            <div data-check-draft style={{ background: '#fff7e8', borderBottom: '1px solid #f0dfbd', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5a2e' }}>🗒 Черновик чека · {draft.rows.length} поз. · {money((draft.rows || []).reduce((a: number, r: any) => a + lineAmount({ name: r.name1c, qty: r.qty, price: r.price, widthCm: r.widthCm }), 0))} ₸</div>
+                <div style={{ fontSize: 11.5, color: '#9a8a5e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(draft.rows || []).map((r: any) => r.name1c).join(' · ')}</div>
+              </div>
+              <button onClick={() => { applyDraft(draft); setCheckExpanded(true); showMsg('↩ Чек возвращён в кассу') }} style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>↩ Вернуть</button>
+              <button onClick={() => { writeDraft(null); setDraft(null) }} title="Удалить черновик" style={{ border: '1.5px solid #e6d3a8', background: '#fff', color: '#9a8a5e', borderRadius: 9, width: 34, height: 34, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, flexShrink: 0, padding: 0 }}>✕</button>
+            </div>
+          )}
           {/* Отложенные заказы — сверху: нажал, выбрал, заказ вернулся в кассу и можно оплатить. */}
           {holds.length > 0 && (
             <div style={{ background: '#f7f3fc', borderBottom: '1px solid #e7ddf3', padding: '7px 10px' }}>
@@ -1363,8 +1464,8 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   нажал ещё раз — скрыта. Раньше глаз стоял у «ИТОГО» и работал, только пока держишь палец. */}
               <button onClick={() => setShowCost(v => !v)} aria-pressed={showCost} title={showCost ? 'Скрыть себестоимость' : 'Показать себестоимость'}
                 style={{ marginLeft: 'auto', border: 'none', background: showCost ? '#211f1c' : '#f1efec', color: showCost ? '#fff' : '#8a8377', borderRadius: 9, width: 38, height: 32, fontSize: 18, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>👁</button>
-              <button onClick={holdCurrent} title="Отложить заказ и обслужить следующего — вернётесь и оплатите" style={{ border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800 }}>⏸ Отложить</button>
-              <button onClick={() => setRows([])} style={{ border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>очистить</button>
+              <button onClick={holdCurrent} title="Отложить заказ и обслужить следующего — вернётесь и оплатите" style={{ whiteSpace: 'nowrap', flexShrink: 0, border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800 }}>⏸ Отложить</button>
+              <button onClick={clearCheck} title="Убрать чек — он ляжет черновиком, вернуть можно кнопкой сверху" style={{ border: 'none', background: '#f7f5f2', color: '#c0532a', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>очистить</button>
             </div>
             {showCost && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#211f1c', color: '#fff', borderRadius: 9, padding: '7px 10px', fontSize: 13, fontWeight: 700 }}>
@@ -1373,7 +1474,9 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
             )}
             {/* выбор покупателя — всегда видим (не прячем за кнопкой) */}
-            <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false) }} placeholder="— найти покупателя —" />
+            <div style={needClient ? { borderRadius: 11, boxShadow: '0 0 0 3px ' + PRIMARY } : undefined}>
+              <ContragentPicker contragents={cags} value={contactId} onPick={(c: any) => { setContactId(c?.id || ''); setShowClient(false); setNeedClient(false) }} placeholder="— найти покупателя —" />
+            </div>
             {/* Код чека — последние цифры телефона: придёт на возврат, назовёт их, чек найдётся. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12.5, color: '#5f5952', whiteSpace: 'nowrap' }}>Код чека</span>
@@ -1463,6 +1566,21 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                   <button disabled={busy} onClick={() => doSell()} style={{ flex: 1, border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '13px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '…' : `💵 Продать · ${money(net)} ₸`}</button>
                 </div>
               </>
+            ) : ask ? (
+              /* КОНТРОЛЬНЫЙ ШАГ: способ и сумма названы, чек пробивается только по «✓ Да, пробить». «Нет» — слева,
+                 «Да» — широкая справа; первые полсекунды «Да» не принимается (второй тап двойного нажатия). */
+              <div data-pay-ask style={{ border: `2px solid ${askCol}`, background: '#fff', borderRadius: 12, padding: '9px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 14, color: '#4a443c', lineHeight: 1.35 }}>
+                  Пробить чек: <b style={{ color: askCol }}>{askLabel}</b> · <b>{money(net)} ₸</b>
+                  <div style={{ fontSize: 12, color: '#6b645b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ask === 'head' ? 'долг чека уйдёт на Адал Строй (головной)' : ask === 'debt' ? `весь чек в долг на: ${buyerName}` : `покупатель: ${buyerName}`}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 7 }}>
+                  <button disabled={busy} onClick={() => setAsk(null)} style={{ border: '1.5px solid #e6e2dc', background: '#fff', color: '#6b645b', borderRadius: 11, padding: '13px 16px', cursor: 'pointer', fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit' }}>✕ Нет</button>
+                  <button disabled={busy} onClick={confirmPay} style={{ flex: 1, border: 'none', background: busy ? '#9bb5a6' : askCol, color: '#fff', borderRadius: 11, padding: '13px 8px', cursor: busy ? 'default' : 'pointer', fontSize: 15.5, fontWeight: 800, fontFamily: 'inherit' }}>{busy ? '… пробиваю' : '✓ Да, пробить'}</button>
+                </div>
+              </div>
             ) : (
               <div style={{ display: 'flex', gap: 7 }}>
                 <button disabled={busy} onClick={() => quickPay('cash')} style={{ flex: 1, border: 'none', background: busy ? '#9bb5a6' : GREEN, color: '#fff', borderRadius: 11, padding: '13px 6px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit' }}>💵 Нал</button>
@@ -1473,7 +1591,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
               </div>
             )}
             {/* Долг на головного: чек в долг на Адал Строй — гасит долг магазина перед ним (сразу, на отпускную). */}
-            {hqBridge && <button disabled={busy} onClick={sellDebtToHead} title="Долг чека уходит на Адал Строй и уменьшает долг магазина перед головным" style={{ marginTop: 7, width: '100%', border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 11, padding: '11px 6px', cursor: busy ? 'default' : 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>🏢 В долг → Адал Строй (гасит долг магазина)</button>}
+            {hqBridge && !ask && <button disabled={busy} onClick={() => quickPay('head')} title="Долг чека уходит на Адал Строй и уменьшает долг магазина перед головным" style={{ marginTop: 7, width: '100%', border: '1.5px solid #cdb6e2', background: '#f7f3fc', color: '#7a3aaa', borderRadius: 11, padding: '11px 6px', cursor: busy ? 'default' : 'pointer', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit' }}>🏢 В долг → Адал Строй (гасит долг магазина)</button>}
           </div>
           )}
         </div>

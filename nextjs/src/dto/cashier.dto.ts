@@ -21,6 +21,7 @@ export const sellSchema = z.object({
   sellerId: z.string().uuid().optional(),         // продавец за кассой (employees.id) — выбирается на телефоне
   seller: z.string().optional().default(''),      // его имя на момент чека
   clientCode: z.string().max(20).optional().default(''),  // код чека — последние цифры телефона покупателя
+  clientKey: z.string().max(64).optional().default(''),   // ключ чека с устройства: повторное нажатие не создаёт второй чек
   comment: z.string().optional().default(''),
   cash: z.coerce.number().nonnegative().optional().default(0),
   kaspi: z.coerce.number().nonnegative().optional().default(0),

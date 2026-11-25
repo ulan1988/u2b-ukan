@@ -147,6 +147,7 @@ export const track = (id: string) => getOne(`/api/track?id=${encodeURIComponent(
 // Касса продавца (филиал-магазин): пробить чек одним запросом — позиции + оплата.
 export async function sellCheck(body: {
   uid?: string; contactId?: string; sellerId?: string; seller?: string; comment?: string; clientCode?: string
+  clientKey?: string   // ключ чека с устройства: повторное нажатие отдаёт уже пробитый чек, второй не создаётся
   cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string
   discountSum?: number; discountPct?: number; date?: string   // date — рабочая дата кассы (чек задним числом)
   positions: { productId?: string; name1c: string; oral?: string; qty: number; unit?: string; price: number; widthCm?: number; bonusCost?: number; bonusAgentId?: string }[]
@@ -156,6 +157,7 @@ export async function sellCheck(body: {
     ok: r.ok, error: r.error as string | undefined,
     id: r.data?.id as string | undefined, number: r.data?.number as string | undefined,
     total: r.data?.total as number | undefined, debt: r.data?.debt as number | undefined,
+    repeated: !!r.data?.repeated,   // этот чек уже был пробит раньше (повторное нажатие)
   }
 }
 // Производство на запас: выпуск товаров/изделий прямо на склад Нипы (без покупателя и оплаты).
