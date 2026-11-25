@@ -1421,9 +1421,11 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                         </div>
                         {g.weOweTotal > 0.0005 && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9.5, color: '#a09889' }}>мы должны</div><div style={{ fontSize: 15, fontWeight: 800, color: '#c0532a' }}>{qfmt(g.weOweTotal)}</div></div>}
                         {g.theyOweTotal > 0.0005 && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9.5, color: '#a09889' }}>нам должны</div><div style={{ fontSize: 15, fontWeight: 800, color: BLUE }}>{qfmt(g.theyOweTotal)}</div></div>}
-                        <span style={{ color: '#b7b0a6', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
+                        <span style={{ color: open ? PRIMARY : '#8a8377', fontSize: 15, width: 22, textAlign: 'center' }}>{open ? '▴' : '▾'}</span>
                       </div>
-                      <div style={{ borderTop: '1px solid #f1efec' }}>
+                      {/* СВЁРНУТО ПО УМОЛЧАНИЮ (правило владельца 25.11.2026): в списке — только сосед и итог долга;
+                          нажал на соседа — раскрылось содержание (позиции с кнопками и журнал), нажал ещё раз — свернулось. */}
+                      {open && <div style={{ borderTop: '1px solid #f1efec' }}>
                         {g.items.map((it: any, i: number) => (
                           <div key={i} style={{ padding: '9px 12px', borderTop: i ? '1px solid #f6f3f0' : 'none' }}>
                             <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{it.productName}</div>
@@ -1461,7 +1463,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                             })}
                           </div>
                         )}
-                      </div>
+                      </div>}
                     </div>
                   )
                 })}
