@@ -78,6 +78,7 @@ export const listContragents = async (viewerOrgId?: string | null) => {
 
 export const listCashAccounts = () =>
   db.select().from(cashAccounts).where(eq(cashAccounts.archived, false))
+    .orderBy(asc(cashAccounts.sortOrder), asc(cashAccounts.name))   // порядок счетов один везде: как в «Финанс → Счета» (правило 25.11.2026)
 
 // Организация по id — нужен её kind (hq | producer_seller | seller), от него зависит вид кабинета.
 // Владелец нового товара/папки: головной заводит ОБЩЕЕ (null — видно всем),

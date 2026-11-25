@@ -61,6 +61,9 @@ const cardSubtotal = (o: any) => (o.positions || []).reduce((s: number, p: any) 
 const cardTotal = (o: any) => Math.max(0, Math.round((cardSubtotal(o) - (Number(o.discountSum) || 0)) * 100) / 100)
 // Остаток долга по чеку = итог(net) − всего оплачено (продажа + погашения).
 const checkDebt = (o: any) => Math.max(0, Math.round((cardTotal(o) - (Number(o.paidTotal) || 0)) * 100) / 100)
+// Подпись оплаты чека. «Долг»/«Частично» — снимок на момент пробития: если долг потом погасили, так и пишем,
+// иначе в журнале висит «Долг», хотя денег уже не должны (правило 25.11.2026).
+const payLabel = (o: any) => { const p = o.payment || '—'; return /долг|частично/i.test(p) && (o.linkedDocId || o.docNumber) && checkDebt(o) <= 0 ? `${p} · погашен` : p }
 
 // Рабочие папки продавца — реальные категории базы (Водосток 87, Евро брус 72,
 // Комплектующие 35, Металлочерепица 48). «Комплектующие» — базы «Без цвета»:
@@ -921,7 +924,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
     L.push('--------------------------------')
     if (disc > 0) L.push(`Скидка: -${money(disc)}`)
     L.push(`*ИТОГО: ${money(total)} ₸*`)
-    L.push(`Оплата: ${o.payment || '—'}`)
+    L.push(`Оплата: ${payLabel(o)}`)
     L.push('Спасибо за покупку!')
     return L.join('\n')
   }
@@ -963,7 +966,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
       <hr>
       ${disc > 0 ? `<table><tr><td>Скидка</td><td class="r">-${money(disc)}</td></tr></table>` : ''}
       <table><tr class="tot"><td>ИТОГО</td><td class="r">${money(total)} ₸</td></tr></table>
-      <div class="muted">Оплата: ${esc(o.payment || '—')}</div>
+      <div class="muted">Оплата: ${esc(payLabel(o))}</div>
       <hr>
       <div class="c muted">Спасибо за покупку!</div>
       <div class="noprint"><button onclick="window.print()">🖨 Печать</button><button onclick="window.close()">Закрыть</button></div>
@@ -1319,7 +1322,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                         {allBack && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c0532a', background: '#fbe9e1', borderRadius: 6, padding: '2px 6px' }}>возврат</span>}
                         {Number(o.exchangeSum || 0) > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#2f5aa8', background: '#e7eefb', borderRadius: 6, padding: '2px 6px' }}>обмен{o.exchangeDate ? ` ${String(o.exchangeDate).split('-').reverse().slice(0, 2).join('.')}` : ''}</span>}
                       </div>
-                      <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.toName || o.contactName || o.fromName || 'Розница'} · {o.payment || '—'} · {(o.positions || []).length} поз.</div>
+                      <div style={{ fontSize: 12.5, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.seller ? `👤 ${o.seller} · ` : ''}{o.toName || o.contactName || o.fromName || 'Розница'} · {payLabel(o)} · {(o.positions || []).length} поз.</div>
                       {/* возвраты и обмены идут одними и теми же возвратными накладными —
                           в строке показываем их раздельно, иначе обмен читается как возврат денег */}
                       {retSum - Number(o.exchangeSum || 0) > 0.5 && <div style={{ fontSize: 11.5, color: '#c0532a', fontWeight: 700 }}>↩ возвращено {money(retSum - Number(o.exchangeSum || 0))} ₸</div>}
@@ -2241,7 +2244,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                     <span style={{ fontSize: 14, fontWeight: 800, color: DARK, letterSpacing: '.02em' }}>ИТОГО</span>
                     <span style={{ fontSize: 24, fontWeight: 800, color: PRIMARY }}>{money(total)} <span style={{ fontSize: 15 }}>₸</span></span>
                   </div>
-                  <div style={{ marginTop: 9 }}><span style={{ background: payColor, color: '#fff', borderRadius: 20, padding: '4px 13px', fontSize: 12.5, fontWeight: 700 }}>💳 {o.payment || '—'}</span></div>
+                  <div style={{ marginTop: 9 }}><span style={{ background: payColor, color: '#fff', borderRadius: 20, padding: '4px 13px', fontSize: 12.5, fontWeight: 700 }}>💳 {payLabel(o)}</span></div>
                 </div>
                 <div style={{ textAlign: 'center', fontSize: 12.5, color: PRIMARY, fontWeight: 700, padding: '11px' }}>Спасибо за покупку! 🙌</div>
               </div>

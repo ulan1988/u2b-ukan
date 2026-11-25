@@ -559,7 +559,10 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
               const open = openCheck === c.id
               const time = fmtTime(c.ts)
               const paid = Number(c.paidCash || 0) + Number(c.paidKaspi || 0) + Number(c.paidQr || 0)
-              const debt = Math.max(0, Number(c.total || 0) - paid)
+              // repaid — долг чека, погашенный уже после пробития (приходы по накладной сверх снимка оплаты)
+              const repaid = Number(c.repaid || 0)
+              const debt = Math.max(0, Math.round((Number(c.total || 0) - paid - repaid) * 100) / 100)
+              const repDay = c.repaidDate && c.repaidDate !== date ? ` ${String(c.repaidDate).slice(8, 10)}.${String(c.repaidDate).slice(5, 7)}` : ''
               return (
                 <div key={c.id} style={{ borderTop: `1px solid ${COLORS.borderLight}` }}>
                   <div onClick={() => setOpenCheck(open ? '' : c.id)} className="cd-row" style={{ padding: '10px 16px', cursor: 'pointer', background: open ? COLORS.bgCard : 'transparent' }}>
@@ -568,8 +571,10 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                     <span style={{ fontSize: 13.5, width: 110, color: c.seller ? COLORS.text : COLORS.textLight }}>{c.seller ? `👤 ${c.seller}` : '—'}</span>
                     <span style={{ fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.customer || 'Розница'}</span>
                     <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 74 }}>{c.cnt} поз.</span>
-                    <span style={{ fontSize: 12.5, width: 120, color: debt > 0 ? COLORS.primaryDark : COLORS.textLight }}>
-                      {c.payment || '—'}{debt > 0 ? ` · долг ${m(debt)}` : ''}
+                    <span title={repaid > 0 ? `Долг погашен: ${m(repaid)} ₸${c.repaidAcc ? ' · ' + c.repaidAcc : ''}${repDay ? ' ·' + repDay : ''}` : undefined}
+                      style={{ fontSize: 12.5, width: repaid > 0 ? 250 : 120, color: debt > 0 ? COLORS.primaryDark : repaid > 0 ? '#2e8a5e' : COLORS.textLight }}>
+                      {c.payment || '—'}
+                      {repaid > 0 ? (debt > 0 ? ` · погашено ${m(repaid)} · долг ${m(debt)}` : ` · погашен ${m(repaid)}${c.repaidAcc ? ` (${c.repaidAcc}${repDay})` : repDay}`) : (debt > 0 ? ` · долг ${m(debt)}` : '')}
                     </span>
                     <b style={{ fontSize: 14.5, width: 110, textAlign: 'right' }}>{m(c.total)} ₸</b>
                     {/* себестоимость чека рядом с суммой: сколько из этих денег — закуп товара */}

@@ -45,6 +45,27 @@ export async function masterShift(orgId: string, date: string) {
     from order_positions where card_id = any(${ids}) order by id
   ` as unknown as Array<any> : []
   for (const c of cards) (c as any).lines = lines.filter((l: any) => l.cardId === c.id)
+  // ПОГАШЕННЫЙ ДОЛГ ЧЕКА (правило владельца 25.11.2026: «почему не был погашен долг — мы погасили через наличку»).
+  // Способ оплаты и paid_* — снимок на момент пробития: чек «в долг», погашенный позже (вкладка «Долги → Погасить»),
+  // так и подписывался «Долг · долг N», хотя деньги уже в кассе. Считаем приходы по накладной чека: всё, что сверх
+  // снимка, — погашение (repaid), с названием счёта и днём. Сверка дня «по чекам» при этом не меняется.
+  const payRows = ids.length ? await sqlClient`
+    select o.id "cardId", coalesce(sum(p.amount),0)::float paid,
+      string_agg(distinct a.name, ', ') filter (where p.comment like 'Погашение долга%') accs,
+      max(p.date) filter (where p.comment like 'Погашение долга%')::text "lastDate"
+    from orders o join payments p on p.document_id = o.linked_doc_id and p.direction = 'in'
+    left join cash_accounts a on a.id = p.cash_account_id
+    where o.id = any(${ids}) group by o.id
+  ` as unknown as Array<any> : []
+  const payByCard: Record<string, any> = {}
+  for (const r of payRows) payByCard[r.cardId] = r
+  for (const c of cards as any[]) {
+    const snap = num(c.paidCash) + num(c.paidKaspi) + num(c.paidQr)
+    const r = payByCard[c.id]
+    c.repaid = Math.max(0, Math.round((num(r?.paid) - snap) * 100) / 100)
+    c.repaidAcc = c.repaid > 0 ? (r?.accs || '') : ''
+    c.repaidDate = c.repaid > 0 ? (r?.lastDate || '') : ''
+  }
   // Себестоимость чека: по строке (cost_price — доля листа у изделий), иначе закуп товара.
   // nocost — сколько строк без закупочной цены: по ним себестоимость не посчитана (прибыль
   // будет завышена), экран помечает такой чек.
