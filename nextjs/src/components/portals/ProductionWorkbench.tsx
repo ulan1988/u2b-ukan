@@ -16,6 +16,8 @@ import { lineAmount, isIzdelie, priceForClient as priceByType } from '@/lib/line
 
 const PRIMARY = '#d4613a'
 interface Row { id?: string; productId: string; name: string; color: string; cm: string; qty: string; price: string }
+// Потолок цены изделия ЗА СМ: выше — это уже цена за штуку, вписанная не в то поле (см. tooBig ниже).
+const IZD_MAX_PER_CM = 200
 const inp: React.CSSProperties = { padding: '6px 8px', borderRadius: 6, border: '1.5px solid #e6e2dc', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
 function rowFromPos(p: any): Row {
@@ -163,9 +165,19 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
   // Цена = «за см × см» либо ручная; строка без цены блокирует создание карточки.
   const filled = (r: Row) => (r.name || r.productId) && Number(r.qty) > 0
   const noPrice = rows.filter(r => filled(r) && !(rowSum(r) > 0))
+  // ЦЕНА ИЗДЕЛИЯ — ЗА СМ, А НЕ ЗА ШТУКУ (правило владельца 26.11.2026). Мастер вписывал в это поле цену
+  // штуки (950 ₸ за «19 см» = 50 ₸/см), программа читала её как цену за см и умножала на см ещё раз:
+  // 200 шт × 19 см × 950 = 3 610 000 ₸ вместо 190 000 ₸ — ложный долг на миллионы по всей цепочке.
+  // Цена за см выше IZD_MAX_PER_CM не бывает (частный клиент 70, опт 60) — такую строку не пропускаем
+  // и предлагаем пересчитать одной кнопкой: цена ÷ см.
+  const izdRow = (r: Row) => isIzdelie(rowName(r)) && Number(r.cm) > 0
+  const pieceOf = (r: Row) => unitPrice(r) * (Number(r.cm) || 0)                      // цена штуки = см × цена за см
+  const tooBig = rows.filter(r => filled(r) && izdRow(r) && unitPrice(r) > IZD_MAX_PER_CM)
+  const perCmOf = (r: Row) => Math.round(unitPrice(r) / Number(r.cm) * 1e6) / 1e6
+  const fixPerCm = () => setRows(rs => rs.map(r => (filled(r) && izdRow(r) && unitPrice(r) > IZD_MAX_PER_CM) ? { ...r, price: String(perCmOf(r)) } : r))
   // Изделие без цвета — ошибка: у комплектующих обязателен реальный RAL (не «дерево» тоже ок).
   const noColor = rows.filter(r => filled(r) && isIzdelie(rowName(r)) && !r.color && !extractRal(rowName(r)))
-  const valid = hasPos && (!needCustomer || !!cid) && (stockMode || noPrice.length === 0) && noColor.length === 0
+  const valid = hasPos && (!needCustomer || !!cid) && (stockMode || noPrice.length === 0) && noColor.length === 0 && (stockMode || tooBig.length === 0)
 
   // Синхронизировать строки → позиции существующей карточки (плечо-заказ).
   async function syncPositions(cardId: string) {
@@ -173,7 +185,7 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
     for (const r of rows) {
       if (!(r.name || r.productId) || !(Number(r.qty) > 0)) continue
       const name = itemName(r)
-      const body: any = { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined }
+      const body: any = { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r) * 1e6) / 1e6, productId: r.productId || undefined, widthCm: Number(r.cm) || undefined }
       if (r.id) { await updatePosition(cardId, r.id, body); keep.add(r.id) }
       else { const res: any = await addPosition(cardId, body); if (res?.data?.position?.id) keep.add(res.data.position.id) }
     }
@@ -208,7 +220,7 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
       else if (order?.id) { await syncPositions(order.id); await orderAction(order.id, 'produceStart'); showMsg('✓ Обновлено') }
       else {
         // Прямой заказ: создаём карточку сразу изготовленной (готова к логисту)
-        const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r)), productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
+        const positions = rows.filter(r => (r.name || r.productId) && Number(r.qty) > 0).map(r => { const name = itemName(r); return { name1c: name, oral: name, qty: Number(r.qty), unit: 'шт', price: Math.round(unitPrice(r) * 1e6) / 1e6, productId: r.productId || undefined, widthCm: Number(r.cm) || undefined } })
         // ДОЛГ К ГОЛОВНОМУ уходит ОДНИМ запросом с карточкой (debtHead): карточка заднего дня
         // проводится сразу внутри createOrder, и пометка отдельным updateCard опаздывала —
         // расходная выписывалась прямо на заказчика, цепочка в головной не поднималась.
@@ -332,6 +344,7 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
                 <td style={{ padding: '4px 4px', width: 56 }}><input data-qty style={{ ...inp, width: 50, textAlign: 'right' }} inputMode="numeric" value={r.qty} onChange={e => setRow(i, { qty: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="шт" /></td>
                 <td style={{ padding: '4px 4px', width: 84, textAlign: 'right', fontSize: 13 }}>
                   <input style={{ ...inp, width: 74, textAlign: 'right' }} inputMode="decimal" value={r.price} onChange={e => setRow(i, { price: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder={isIzdelie(rowName(r)) ? 'за см' : 'цена'} title={isIzdelie(rowName(r)) ? 'цена за см (сумма = см × кол-во × цена)' : 'цена за штуку'} />
+                  {izdRow(r) && unitPrice(r) > 0 && <div data-izd-piece style={{ fontSize: 10.5, lineHeight: 1.25, marginTop: 2, fontWeight: 700, color: unitPrice(r) > IZD_MAX_PER_CM ? '#c1121c' : '#7a3aaa', whiteSpace: 'nowrap' }}>за см · {Math.round(pieceOf(r)).toLocaleString('ru-RU')} ₸/шт</div>}
                 </td>
                 <td style={{ padding: '4px 6px', width: 90, textAlign: 'right', fontSize: 13, fontWeight: 700 }}>{rowSum(r) ? Math.round(rowSum(r)).toLocaleString('ru-RU') : '—'}</td>
                 <td style={{ padding: '4px 4px', width: 46, whiteSpace: 'nowrap' }}>
@@ -353,6 +366,12 @@ export default function ProductionWorkbench({ order, uid, hqOrgId, contragents, 
         <span style={{ fontSize: 13, color: '#5f5952' }}>Всего: <b style={{ color: '#26231f' }}>{totalCm}</b> см</span>
         <span style={{ fontSize: 13 }}>Итого: <b>{Math.round(grand).toLocaleString('ru-RU')} ₸</b></span>
         {noColor.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 700, color: '#c1121c' }}>⚠ Без цвета: {noColor.length} изд. — выберите цвет (RAL)</span>}
+        {!stockMode && tooBig.length > 0 && (
+          <span data-izd-toobig style={{ fontSize: 12.5, fontWeight: 700, color: '#c1121c', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            ⚠ {rowName(tooBig[0])}: {unitPrice(tooBig[0]).toLocaleString('ru-RU')} ₸ за см — это цена за штуку?{tooBig.length > 1 ? ` (и ещё ${tooBig.length - 1})` : ''}
+            <button type="button" onClick={fixPerCm} style={{ border: 'none', borderRadius: 7, padding: '5px 11px', background: '#c1121c', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}>Пересчитать: {unitPrice(tooBig[0]).toLocaleString('ru-RU')} ÷ {Number(tooBig[0].cm)} см = {perCmOf(tooBig[0]).toLocaleString('ru-RU')} ₸/см</button>
+          </span>
+        )}
         {!stockMode && noPrice.length > 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: '#c0532a' }}>⚠ Без цены: {noPrice.length} поз. — впишите «тг за шт» или цену за см</span>}
         <button onClick={done} disabled={busy || !valid} style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 8, border: 'none', background: valid ? (stockMode ? '#2e8a5e' : '#7a3aaa') : '#e6e2dc', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', opacity: busy ? .6 : 1 }}>{busy ? '...' : stockMode ? '📦 Внести на склад' : editOnly ? '✓ Сохранить изменения' : '✓ Создать карточку'}</button>
       </div>
