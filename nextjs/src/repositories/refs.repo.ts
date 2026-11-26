@@ -44,7 +44,9 @@ export const listProducts = async (orgId?: string, templateOnly = false) => {
   if (!orgId) return rows
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
   const m = new Map(pp.map(x => [x.productId, x]))
-  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0' } })
+  // orgCost — себестоимость ЭТОЙ орг (цена её последней приходной). priceIn — общий закуп шаблона, не трогаем.
+  const { lastOrgCosts } = await import('./orgCost.repo'); const oc = await lastOrgCosts(orgId)
+  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0', orgCost: oc.get(r.id) ?? null } })
 }
 
 // Контрагенты по видящей орг. Правило зависит от ВИДА орг:

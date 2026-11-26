@@ -13,7 +13,10 @@ export async function totals(orgId: string) {
       (select coalesce(sum(total),0) from documents where org_id=${orgId} and type='return_out' and status<>'cancelled' and date >= coalesce((select opening_as_of from organizations o where o.id = documents.org_id), '0001-01-01'::date))::float as ret_out,
       (select coalesce(sum(amount),0) from payments where org_id=${orgId} and direction='in' and date >= coalesce((select opening_as_of from organizations o where o.id = payments.org_id), '0001-01-01'::date))::float as pay_in,
       (select coalesce(sum(amount),0) from payments where org_id=${orgId} and direction='out' and date >= coalesce((select opening_as_of from organizations o where o.id = payments.org_id), '0001-01-01'::date))::float as pay_out,
-      (select coalesce(sum(sm.qty * p.price_in),0) from stock_movements sm join products p on p.id=sm.product_id where sm.org_id=${orgId})::float as stock_value`
+      (select coalesce(sum(sm.q * coalesce(oc.price, p.price_in::float, 0)),0) from (select product_id, sum(qty) q from stock_movements where org_id=${orgId} group by product_id) sm join products p on p.id=sm.product_id
+        left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = ${orgId} and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = sm.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= current_date) desc, d2.date desc, d2.created_at desc limit 1) oc on true)::float as stock_value`
   return r[0] as { sales: number; purchases: number; ret_in: number; ret_out: number; pay_in: number; pay_out: number; stock_value: number }
 }
 
@@ -36,14 +39,18 @@ export async function profitReport(orgId: string) {
     saleline as (
       select sl.document_id, sl.product_id, sum(sl.qty) as sqty
       from document_lines sl
-      join documents d on d.id=sl.document_id and d.type='sale'
+      join documents d on d.id=sl.document_id and d.type='sale' and d.org_id=${orgId}
       where sl.role='main' group by sl.document_id, sl.product_id
     ),
     cost as (
       select s.document_id as sale_id,
-        coalesce(l.lcost,0) + greatest(s.sqty - coalesce(l.lqty,0),0) * p.price_in as line_cost
+        coalesce(l.lcost,0) + greatest(s.sqty - coalesce(l.lqty,0),0) * coalesce(oc.price, p.price_in::float, 0) as line_cost
       from saleline s
       join products p on p.id=s.product_id
+      join documents sd on sd.id = s.document_id
+      left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = sd.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = s.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= sd.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
       left join linked l on l.sale_doc_id=s.document_id and l.product_id=s.product_id
     )
     select d.id, d.number, d.date::text as date, c.name as client,
@@ -82,9 +89,13 @@ export async function profitByProduct(orgId: string, from?: string, to?: string)
     )
     select s.product_id::text id, pr.name,
       sum(s.sqty)::float qty, sum(s.samount)::float revenue,
-      sum(coalesce(l.lcost,0) + greatest(s.sqty-coalesce(l.lqty,0),0)*pr.price_in)::float cost
+      sum(coalesce(l.lcost,0) + greatest(s.sqty-coalesce(l.lqty,0),0)*coalesce(oc.price, pr.price_in::float, 0))::float cost
     from saleline s
     join products pr on pr.id=s.product_id
+    join documents sd on sd.id = s.document_id
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = sd.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = s.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= sd.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
     left join linked l on l.sale_doc_id=s.document_id and l.product_id=s.product_id
     group by s.product_id, pr.name
     order by revenue desc` as unknown as Promise<Array<{ id: string; name: string; qty: number; revenue: number; cost: number }>>

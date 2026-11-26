@@ -71,10 +71,14 @@ export async function masterShift(orgId: string, date: string) {
   // будет завышена), экран помечает такой чек.
   const costRows = ids.length ? await sqlClient`
     select p.card_id "cardId",
-      coalesce(sum(p.qty * coalesce(nullif(p.cost_price,0), pr.price_in, 0)),0)::float cost,
-      count(*) filter (where coalesce(nullif(p.cost_price,0), pr.price_in, 0) = 0
+      coalesce(sum(p.qty * coalesce(nullif(p.cost_price,0), oc.price, pr.price_in, 0)),0)::float cost,
+      count(*) filter (where coalesce(nullif(p.cost_price,0), oc.price, pr.price_in, 0) = 0
         and not coalesce(pr.no_cost,false))::int nocost
     from order_positions p left join products pr on pr.id = p.product_id
+    join orders o on o.id = p.card_id left join documents ld on ld.id = o.linked_doc_id
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = o.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = p.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= coalesce(ld.date, current_date)) desc, d2.date desc, d2.created_at desc limit 1) oc on true
     where p.card_id = any(${ids}) group by p.card_id
   ` as unknown as Array<any> : []
   const costByCard: Record<string, any> = {}
@@ -254,12 +258,15 @@ export async function masterShift(orgId: string, date: string) {
   const expenseArticles = await sqlClient`select id::text, name, activity, direction from fin_expense_articles where org_id=${orgId} and archived=false and is_group=false order by activity, sort_order, name` as unknown as Array<any>
 
   // ── ОТЧЁТ ДНЯ (как Excel «Отчет дня») ──────────────────────────────────────────
-  // Наценка дня = продано − себестоимость (price_in проданных позиций).
+  // Наценка дня = продано − себестоимость (своя у орг: цена её приходной — см. orgCost.repo).
   const costRow = (await sqlClient`
-    select coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), p.price_in::float, 0)),0)::float cost
+    select coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), oc.price, p.price_in::float, 0)),0)::float cost
     from orders o join documents d on d.id=o.linked_doc_id and d.date=${date} and d.status<>'cancelled' and d.type='sale'
     join order_positions op on op.card_id=o.id
     left join products p on p.id=op.product_id
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = o.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = op.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= d.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
     where o.org_id=${orgId} and o.is_cancelled=false
   ` as unknown as Array<any>)[0] || { cost: 0 }
   // НАЦЕНКА ДНЯ (100%) = сверху себестоимости: товарная часть плюс прочий доход дня
@@ -418,13 +425,16 @@ export async function cashReport(orgId: string, from: string, to: string) {
     where org_id=${orgId} and type='return_in' and status<>'cancelled' and date between ${from} and ${to}
     group by date
   ` as unknown as Array<any>
-  // Себестоимость по дням = Σ(кол-во × приходная цена price_in). Маржа = КАССА − себестоимость.
+  // Себестоимость по дням = Σ(кол-во × цена приходной СВОЕЙ орг). Маржа = КАССА − себестоимость.
   const costs = await sqlClient`
-    select d.date::text as "day", coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), p.price_in::float, 0)),0)::float cost
+    select d.date::text as "day", coalesce(sum(op.qty * coalesce(nullif(op.cost_price::float,0), oc.price, p.price_in::float, 0)),0)::float cost
     from orders o
     join documents d on d.id=o.linked_doc_id and d.status<>'cancelled' and d.type='sale' and d.date between ${from} and ${to}
     join order_positions op on op.card_id=o.id
     left join products p on p.id=op.product_id
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = o.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = op.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= d.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
     where o.org_id=${orgId} and o.is_cancelled=false
     group by d.date
   ` as unknown as Array<any>

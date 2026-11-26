@@ -283,10 +283,9 @@ export async function returnSale(cardId: string, opts: { items?: { posId: string
   // У изделия цена всегда ЗА СМ, поэтому себестоимость штуки делим на см. Себестоимости нет
   // (0) — откат на цену продажи, иначе вернули бы за 0. Кассир может вписать свою цену.
   const prodIds = Array.from(new Set(sel.map(x => x.pos.productId).filter(Boolean))) as string[]
-  const priceIn: Record<string, number> = {}
-  if (prodIds.length) {
-    for (const r of await sqlClient`select id::text id, price_in::float v from products where id = any(${prodIds})` as unknown as Array<any>) priceIn[r.id] = Number(r.v) || 0
-  }
+  // Себестоимость — своя у магазина: цена его приходной (orgCost.repo), иначе общий закуп.
+  const { orgCostMap } = await import('../repositories/orgCost.repo')
+  const priceIn: Record<string, number> = await orgCostMap(order.orgId, prodIds)
   const costPriceOf = (p: any) => {
     const perUnit = Number(p.costPrice) || (p.productId ? priceIn[p.productId] || 0 : 0)   // себестоимость ШТУКИ
     const cm = Number(p.widthCm) || 0

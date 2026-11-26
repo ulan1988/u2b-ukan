@@ -12,13 +12,16 @@ import { and, eq } from 'drizzle-orm'
 export const dayPayments = (orgId: string, date: string) => sqlClient`
   with doc_cost as (
     select d.id,
-      coalesce(sum(dl.qty * coalesce(nullif(op.cost_price,0), pr.price_in, 0)),0)::float cost,
-      count(*) filter (where coalesce(nullif(op.cost_price,0), pr.price_in, 0) = 0
+      coalesce(sum(dl.qty * coalesce(nullif(op.cost_price,0), oc.price, pr.price_in, 0)),0)::float cost,
+      count(*) filter (where coalesce(nullif(op.cost_price,0), oc.price, pr.price_in, 0) = 0
         and not coalesce(pr.no_cost,false))::int nocost
     from documents d
     join document_lines dl on dl.document_id = d.id
     left join order_positions op on op.id = dl.source_pos_id
     left join products pr on pr.id = dl.product_id
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = d.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = dl.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= d.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
     where d.org_id = ${orgId} and d.status <> 'cancelled' and d.type in ('sale','return_in')
     group by d.id
   )
@@ -60,8 +63,11 @@ export const zeroCostLines = (docIds: string[]) => docIds.length ? sqlClient`
   from documents d join document_lines dl on dl.document_id = d.id
   left join order_positions op on op.id = dl.source_pos_id
   left join products pr on pr.id = dl.product_id
+  left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = d.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = dl.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= d.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
   where d.id = any(${docIds}) and dl.role = 'main'
-    and coalesce(nullif(op.cost_price,0), pr.price_in, 0) = 0
+    and coalesce(nullif(op.cost_price,0), oc.price, pr.price_in, 0) = 0
   order by name
 ` as unknown as Promise<Array<any>> : Promise.resolve([] as any[])
 

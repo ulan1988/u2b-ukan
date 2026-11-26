@@ -395,9 +395,15 @@ async function withPositions(rows: any[]) {
   // Себестоимость ЕДИНИЦЫ позиции: цена строки (cost_price — доля листа у изделия), иначе
   // закуп товара (price_in). Нужна кассе магазина: возврат принимаем по себестоимости.
   const prodIds = Array.from(new Set(pos.map((p: any) => p.productId).filter(Boolean))) as string[]
+  // Себестоимость — СВОЯ у орг (цена её приходной), см. orgCost.repo. Позиции разных орг считаем по их орг.
   const priceIn: Record<string, number> = {}
   if (prodIds.length) {
-    for (const r of await sqlNames`select id::text id, price_in::float v from products where id = any(${prodIds})` as unknown as Array<any>) priceIn[r.id] = Number(r.v) || 0
+    const { orgCostMap } = await import('../repositories/orgCost.repo')
+    const cardOrg: Record<string, string> = {}; for (const o of rows as any[]) cardOrg[o.id] = o.orgId
+    const orgsHere = Array.from(new Set(pos.map((p: any) => cardOrg[p.cardId]).filter(Boolean))) as string[]
+    const byOrg: Record<string, Record<string, number>> = {}
+    for (const og of orgsHere) byOrg[og] = await orgCostMap(og, pos.filter((p: any) => cardOrg[p.cardId] === og).map((p: any) => p.productId))
+    for (const p of pos as any[]) if (p.productId) priceIn[p.cardId + ':' + p.productId] = byOrg[cardOrg[p.cardId]]?.[p.productId] || 0
   }
   const byCard: Record<string, any[]> = {}
   for (const p of pos) {
@@ -405,7 +411,7 @@ async function withPositions(rows: any[]) {
       ...p,
       resp: p.respUserId ? (userName[p.respUserId] || '') : '',
       supplier: p.supplierId ? (cagName[p.supplierId] || '') : '',
-      unitCost: Number(p.costPrice) || (p.productId ? priceIn[p.productId] || 0 : 0),
+      unitCost: Number(p.costPrice) || (p.productId ? priceIn[p.cardId + ':' + p.productId] || 0 : 0),
     })
   }
   // Номер проведённой накладной (№ чека) + возвраты по карточке — для журнала чеков кассы магазина.

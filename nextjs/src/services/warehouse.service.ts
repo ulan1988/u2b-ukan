@@ -67,6 +67,7 @@ export async function applyRevision(orgId: string, date: string, rows: Array<{ p
     group by product_id` as unknown as Array<any>
   const byId: Record<string, number> = {}; for (const c of cur) byId[c.id] = Number(c.q)
   const prods = await sqlClient`select id::text id, name, unit, coalesce(price_in,0)::float price from products where id = any(${ids}::uuid[])` as unknown as Array<any>
+  { const { orgCostMap } = await import('../repositories/orgCost.repo'); const oc = await orgCostMap(orgId, ids, date); for (const p of prods) if (oc[p.id] > 0) p.price = oc[p.id] }   // своя себестоимость орг
   const pById: Record<string, any> = {}; for (const p of prods) pById[p.id] = p
   const lines: any[] = []
   for (const r of rows) {

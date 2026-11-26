@@ -66,9 +66,13 @@ export async function linkedSaleCustomers(docId: string): Promise<string> {
 // Себестоимость продажи (как в рентабельности): связанные приходные + непокрытое × price_in.
 export async function docCost(docId: string): Promise<number> {
   const r = await sqlClient`
-    select coalesce(sum(coalesce(lk.lcost,0) + greatest(sl.sqty - coalesce(lk.lqty,0),0) * p.price_in),0)::float as cost
+    select coalesce(sum(coalesce(lk.lcost,0) + greatest(sl.sqty - coalesce(lk.lqty,0),0) * coalesce(oc.price, p.price_in::float, 0)),0)::float as cost
     from (select product_id, sum(qty) sqty from document_lines where document_id=${docId} and role='main' group by product_id) sl
     join products p on p.id = sl.product_id
+    join documents sd on sd.id = ${docId}
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = sd.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = sl.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= sd.date) desc, d2.date desc, d2.created_at desc limit 1) oc on true
     left join (
       select dl.product_id, sum(dl.qty) lqty, sum(dl.qty * (pl.amount/nullif(pl.qty,0))) lcost
       from doc_links dl
@@ -130,9 +134,12 @@ export function listInvoices(orgId: string, type: string | string[]) {
       // Себестоимость ПРОДАЖИ = стоимость из СВЯЗАННЫХ приходных (doc_links, реально оплачено)
       // + непокрытое кол-во × приходная цена (price_in). Как в отчёте рентабельности.
       cost: sql<number>`(
-        select coalesce(sum(coalesce(lk.lcost,0) + greatest(sl.sqty - coalesce(lk.lqty,0),0) * p.price_in),0)::float
+        select coalesce(sum(coalesce(lk.lcost,0) + greatest(sl.sqty - coalesce(lk.lqty,0),0) * coalesce(oc.price, p.price_in::float, 0)),0)::float
         from (select product_id, sum(qty) sqty from document_lines where document_id = ${documents.id} and role='main' group by product_id) sl
         join products p on p.id = sl.product_id
+        left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = ${documents.orgId} and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = sl.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= ${documents.date}) desc, d2.date desc, d2.created_at desc limit 1) oc on true
         left join (
           select dl.product_id, sum(dl.qty) lqty, sum(dl.qty * (pl.amount / nullif(pl.qty,0))) lcost
           from doc_links dl

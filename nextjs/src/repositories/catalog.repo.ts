@@ -37,7 +37,8 @@ export const listAllProducts = async (orgId?: string, templateOnly = false) => {
   const { productPrices } = await import('../db/schema')
   const pp = await db.select().from(productPrices).where(eq(productPrices.orgId, orgId))
   const m = new Map(pp.map(x => [x.productId, x]))
-  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0' } })
+  const { lastOrgCosts } = await import('./orgCost.repo'); const oc = await lastOrgCosts(orgId)   // себестоимость этой орг
+  return rows.map(r => { const o = m.get(r.id); return { ...r, priceRetail: o ? o.priceRetail : '0', priceOpt: o ? o.priceOpt : '0', priceSpec: o ? o.priceSpec : '0', orgCost: oc.get(r.id) ?? null } })
 }
 export const listAllContragents = () => db.select().from(contragents)
 

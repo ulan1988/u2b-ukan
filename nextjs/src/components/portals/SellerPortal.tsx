@@ -571,7 +571,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
   const bonusSum = bonusRowsCart.reduce((s, r) => s + Math.max(0, (Number(r.price) - (Number(r.bonusCost) || 0)) * Number(r.qty)), 0)
   const bonusHq = Math.round(bonusSum * 0.5)
   // Себестоимость чека (закуп priceIn по товарам) — для скрытого «глазка». Изделия/см считает lineAmount.
-  const totalCost = rows.reduce((s, r) => { const p = byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId); return s + lineAmount({ name: r.name1c, qty: r.qty, price: Number((p as any)?.priceIn) || 0, widthCm: r.widthCm }) }, 0)
+  const totalCost = rows.reduce((s, r) => { const p = byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId); return s + lineAmount({ name: r.name1c, qty: r.qty, price: (Number((p as any)?.orgCost) || Number((p as any)?.priceIn)) || 0, widthCm: r.widthCm }) }, 0)
   const margin = net - totalCost
   const cashN = num(pay.cash), kaspiN = num(pay.kaspi), qrN = num(pay.qr)
   const debtN = Math.max(0, net - cashN - kaspiN - qrN)
@@ -1608,7 +1608,7 @@ export default function SellerPortal({ user, orgName }: { user: { id: string; na
                       style={{ ...inp, width: 86, padding: '6px 8px', fontSize: 13, fontWeight: 800, textAlign: 'right' }} />
                     <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} style={{ border: 'none', background: 'none', color: '#c0532a', cursor: 'pointer', fontSize: 13, padding: '2px 2px' }}>✕</button>
                   </div>
-                  {showCost && (() => { const pc = Number(((byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId)) as any)?.priceIn) || 0
+                  {showCost && (() => { const pc = ((pp: any) => Number(pp?.orgCost) || Number(pp?.priceIn) || 0)(byName[norm(r.name1c)] || products.find((x: any) => x.id === r.productId))
                     return <div style={{ fontSize: 11.5, color: '#8a8377', marginTop: -2 }}>себест {pc > 0 ? <b style={{ color: '#c0532a' }}>{money(pc)}{perCm ? ' ₸/см' : ' ₸'}</b> : <b style={{ color: '#c0532a' }}>нет в карточке</b>} · наценка {money(sum - lineAmount({ name: r.name1c, qty: r.qty, price: pc, widthCm: r.widthCm }))} ₸</div> })()}
                   {/* Бонусный товар («Долг товар»): цена соседа и у кого взяли — мелко и неярко,
                       клиенту через прилавок не прочитать. Бонус = (цена − цена соседа) × кол-во. */}
