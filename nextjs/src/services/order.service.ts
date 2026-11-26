@@ -1221,7 +1221,13 @@ export async function logistBoard(orgId: string, userId: string, all = false) {
     repo.branchDoneForBoard(orgId),
   ])
   const byCard = new Map<string, any>()
+  // Одна позиция — одна строка. Запросы пересекаются: карточка филиала (source='branch_done')
+  // на экране incoming/outgoing/reception попадает И в positionsForLogist, И в branchDoneForBoard,
+  // и её позиции приезжали дважды — на доске выходил дубль (ПР-0505: одна позиция, две строки,
+  // «Позиций 2», прогресс 2/2). Вторую копию той же позиции отбрасываем.
+  const seen = new Set<string>()
   const push = (o: any, p: any) => {
+    if (p?.id) { if (seen.has(p.id)) return; seen.add(p.id) }
     if (!byCard.has(o.id)) byCard.set(o.id, { ...o, positions: [] })
     byCard.get(o.id).positions.push(p)
   }
