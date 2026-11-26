@@ -79,7 +79,9 @@ export async function salesWaitingProcure(saleIds: string[]): Promise<Set<string
   if (!saleIds.length) return new Set()
   const rows = await db.select({ id: procurementLinks.saleCardId }).from(procurementLinks)
     .innerJoin(orders, eq(procurementLinks.purchaseCardId, orders.id))
-    .where(and(inArray(procurementLinks.saleCardId, saleIds), isNull(orders.linkedDocId), eq(orders.isCancelled, false)))
+    .where(and(inArray(procurementLinks.saleCardId, saleIds), isNull(orders.linkedDocId), eq(orders.isCancelled, false),
+      // Закуп со СВОЕГО склада проводится БЕЗ приходной (правило 23.11.2026) — он тоже «пришёл».
+      sqlOp`coalesce(${orders.posted1c}, false) = false`))
   return new Set(rows.map(r => r.id))
 }
 
@@ -93,7 +95,10 @@ export async function positionsWaitingProcure(saleIds: string[]): Promise<Set<st
   const rows = await sqlClient`
     select pl.sale_card_id sid, lower(trim(pl.product)) prod
     from procurement_links pl
-    join orders o on o.id = pl.purchase_card_id and o.is_cancelled = false and o.linked_doc_id is null
+    -- «Пришёл» = есть приходная ИЛИ закуп проведён без неё: поставщик — наш склад «Центр-Склад»,
+    -- товар уже лежит у нас (правило 23.11.2026). Раньше такой закуп считался непришедшим, и доска
+    -- логиста навсегда прятала его продажу (ПР-0111-261126: закуп ЗП-0062 проведён, заявки не видно).
+    join orders o on o.id = pl.purchase_card_id and o.is_cancelled = false and o.linked_doc_id is null and coalesce(o.posted_1c, false) = false
     left join order_positions pp on pp.card_id = pl.purchase_card_id
       and lower(trim(coalesce(pp.name1c, pp.oral, '')) ) = lower(trim(pl.product))
     where pl.sale_card_id = any(${saleIds as any})
@@ -105,7 +110,7 @@ export async function positionsWaitingProcure(saleIds: string[]): Promise<Set<st
         join orders d2 on d2.id = dl.purchase_card_id
         where dl.sale_card_id = pl.sale_card_id
           and lower(trim(dl.product)) = lower(trim(pl.product))
-          and d2.is_cancelled = false and d2.linked_doc_id is not null
+          and d2.is_cancelled = false and (d2.linked_doc_id is not null or coalesce(d2.posted_1c, false))
       )
     group by 1, 2
     having coalesce(bool_or(coalesce(pp.leg, 2) <> 1), true)

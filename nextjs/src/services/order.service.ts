@@ -1310,7 +1310,12 @@ export async function logistBoard(orgId: string, userId: string) {
     const dlvDay = dayOf(o.delivered)
     const doneToday = o.positions.filter((p: any) => p.status === 'Доставлено'
       && (dlvDay ? dlvDay === nowDay : dayOf(p.updatedAt) === nowDay))
-    if (doneToday.length && !(o.kind === 'purchase' && hasChild.has(o.id))) put('deliv', o, doneToday, { badge: 'доставлено' })
+    // ЗАКУП ПОД ЗАЯВКУ — НЕ «ПРОДАНО» (правило владельца 26.11.2026). Закуп, за которым стоит заявка
+    // (procurement_links), сам ничего не продаёт: продажа — это заявка, она и встанет в колонку после доставки.
+    // Раньше закуп со склада «Центр-Склад» (проводится сразу, без приходной) стоял тут «доставлено» с именем
+    // заказчика, хотя продажа ещё не выписана (ЗП-0062-261126 → Магазин Кристалл).
+    const underSale = o.kind === 'purchase' && ((byPurchase as Map<string, string[]>).get(o.id) || []).length > 0
+    if (doneToday.length && !(o.kind === 'purchase' && hasChild.has(o.id)) && !underSale) put('deliv', o, doneToday, { badge: 'доставлено' })
     if (!open.length) continue
     // ПОСТАВЩИК ГЛАВНЕЕ ЭКРАНА: пока не куплено — стоит у поставщика; куплено — «Готов к отправке».
     const by = new Map<string, any[]>()
