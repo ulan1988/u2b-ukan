@@ -191,11 +191,16 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
       {/* шапка */}
       <div style={{ background: '#211f1c', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <span style={{ color: '#fff', fontWeight: 800, fontSize: 15, flex: 1 }}>📖 Каталог</span>
+        {/* «ГОТОВО» НА ТЕЛЕФОНЕ — В ШАПКЕ (правило владельца 26.11.2026): внизу кнопку закрывала клавиатура,
+            пока курсор стоит в количестве. Шапка не прокручивается и над клавиатурой видна всегда. */}
+        {!wide && picked.length > 0 && (
+          <button data-cat-done onClick={done} style={{ border: 'none', background: PRIMARY, color: '#fff', fontSize: 14, fontWeight: 800, padding: '7px 16px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Готово · {picked.length}</button>
+        )}
         <button onClick={onClose} style={{ border: '1px solid #444', background: 'none', color: '#ccc', fontSize: 13, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>Отмена</button>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: (picked.length && !wide) ? 78 : 12 }}>
+      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: (picked.length && !wide) ? 56 : 12 }}>
         {/* папки */}
         <div style={{ display: 'flex', background: '#fff', borderBottom: '1px solid #e6e2dc', overflowX: 'auto' }}>
           {folders.map(f => { const on = folder === f.key; return (
@@ -341,11 +346,10 @@ export default function StoreCatalog({ onPick, onClose, orgId, showStock = true 
       )}
       </div>
 
-      {/* нижняя панель (телефон): выбрано + Готово */}
+      {/* нижняя панель (телефон): что выбрано; сама кнопка «Готово» — в шапке, над клавиатурой */}
       {!wide && picked.length > 0 && (
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #e6e2dc', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 -4px 16px rgba(0,0,0,.1)', maxWidth: 760, margin: '0 auto' }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#5f5952', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Выбрано <b style={{ color: DARK }}>{picked.length}</b>: {picked.map(x => x.oral).join(', ')}</div>
-          <button onClick={done} style={{ border: 'none', background: PRIMARY, color: '#fff', borderRadius: 11, padding: '12px 20px', cursor: 'pointer', fontSize: 15, fontWeight: 800, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Готово · {picked.length}</button>
         </div>
       )}
     </div>
