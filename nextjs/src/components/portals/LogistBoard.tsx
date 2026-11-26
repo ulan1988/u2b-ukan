@@ -8,7 +8,7 @@
 // по своим колонкам («Закуплено» / «Продано · Доставлено»); колонка Нипы свёрнута.
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { logistBoardData, setPosStatus, updatePosition, deletePosition, addPosition, orderAction } from '@/lib/api/orders'
+import { logistBoardData, logistBoardAll, setPosStatus, updatePosition, deletePosition, addPosition, orderAction } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import { useLiveData } from '@/lib/live'
@@ -57,7 +57,15 @@ function nextStep(c: Card): { to: string; label: string } | null {
   return null
 }
 
-export default function LogistBoard({ user, viewAs, backHref }: { user: Session; viewAs?: boolean; backHref: string }) {
+// adminOrgId — ДОСКА В АДМИНКЕ (правило владельца 26.11.2026): та же доска, но позиции ВСЕХ логистов орг.
+// По умолчанию «👁 Режим просмотра»: всё видно, карточки открываются, копирование работает, а кнопок,
+// которые что-то проводят или правят (Закуплено, Продано / Доставлено, ↩ назад, ✎ изменить, отметка «взято»,
+// перетаскивание), нет. «🚚 Режим логиста» включает их — те же роуты, что у логиста. У самого логиста
+// (без adminOrgId) ничего не меняется.
+export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { user: Session; viewAs?: boolean; backHref: string; adminOrgId?: string }) {
+  const admin = !!adminOrgId
+  const [mode, setMode] = useState<'view' | 'logist'>('view')
+  const ro = admin && mode === 'view'
   const [cols, setCols] = useState<Col[]>([])
   const [cards, setCards] = useState<Card[]>([])
   const [prods, setProds] = useState<Array<{ name: string; unit: string }>>([])
@@ -76,7 +84,8 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   const [msg, setMsg] = useState('')
   const uid = viewAs ? user.id : undefined
   const say = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 4000) }
-  async function reload() { const b: any = await logistBoardData(uid); setCols(b.cols || []); setCards(b.cards || []) }
+  const boardData = () => (admin ? logistBoardAll(adminOrgId) : logistBoardData(uid))
+  async function reload() { const b: any = await boardData(); setCols(b.cols || []); setCards(b.cards || []) }
   // Все действия идут в ТЕ ЖЕ роуты, что у обычного кабинета логиста — своей логики тут нет.
   async function act(what: string, fn: () => Promise<any>) {
     if (busy) return
@@ -93,7 +102,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   useLiveData(() => {
     if (busyRef.current) return
     ;(async () => {
-      const [b, r]: any[] = await Promise.all([logistBoardData(uid), firstRef.current ? fetchRefs() : Promise.resolve(null)])
+      const [b, r]: any[] = await Promise.all([boardData(), firstRef.current ? fetchRefs() : Promise.resolve(null)])
       setCols(b.cols || []); setCards(b.cards || [])
       if (firstRef.current) {
         setFold(Object.fromEntries((b.cols || []).filter((c: Col) => c.fold).map((c: Col) => [c.id, true])))
@@ -102,7 +111,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
       }
       setLoading(false)
     })()
-  }, [user.id, viewAs])
+  }, [user.id, viewAs, adminOrgId])
 
   const shown = useMemo(() => cards.filter(c => !find.trim() ||
     matchWords(find, c.client, c.code, c.who, ...c.items.map(i => i.n))), [cards, find])
@@ -147,6 +156,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   // Проводка: сначала правим кол-во до фактического, потом помечаем позиции «Доставлено».
   // Дальше всё делает система: у закупа — приходная, у продажи — расходная (как в кабинете).
   function provesti(c: Card) {
+    if (ro) return
     const nx = nextStep(c); if (!nx) return
     const live = c.items.filter(i => i.p && !i.done)
     if (!live.length) { say('нечего проводить'); return }
@@ -169,7 +179,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   // возвращаем карточку на предыдущий этап. Что именно сторнируется, решает сервер (order.service.stepBack);
   // здесь только честно называем последствия до нажатия.
   const backStep = (c: Card): { label: string; ask: string } | null => {
-    if (c.info) return null
+    if (c.info || ro) return null
     if (c.col === 'deliv') return c.k === 'buy'
       ? { label: '↩ вернуть назад', ask: 'Вернуть закуп ' + c.code + ' назад к поставщику?\n\nПриходная будет сторнирована: товар уйдёт со склада, долг поставщику снимется. Карточка снова встанет в колонку поставщика.' }
       : { label: '↩ вернуть назад', ask: 'Вернуть ' + c.code + ' назад в «Готов к отправке»?\n\nРасходная будет сторнирована: товар вернётся на склад, долг заказчика «' + c.client + '» снимется (у филиала уйдёт и его приходная).' }
@@ -199,9 +209,16 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
   if (loading) return <div style={{ padding: 30, color: '#fff' }}>Загрузка доски…</div>
 
   return (
-    <div className="lb">
+    <div className={'lb' + (admin ? ' adm' : '')}>
       <style>{CSS}</style>
       <header className="top">
+        {admin ? (
+          <>
+            <div className="who">Доска логиста<small>{busy ? 'сохраняю…' : ro ? 'просмотр · все логисты, ничего не проводится' : 'режим логиста · действия идут в базу'}</small></div>
+            <button className={'tb mode' + (mode === 'view' ? ' on' : '')} data-mode="view" onClick={() => { setMode('view'); setEd(''); setAdding(false) }}>👁 Режим просмотра</button>
+            <button className={'tb mode' + (mode === 'logist' ? ' on' : '')} data-mode="logist" onClick={() => setMode('logist')}>🚚 Режим логиста</button>
+          </>
+        ) : <>
         <div className="who">Логист · {user.name}<small>{viewAs ? 'просмотр · ' : ''}{busy ? 'сохраняю…' : 'доска · действия идут в базу'}</small></div>
         <div className="menu">
           <button className="tb" onClick={() => setMenu(!menu)}>☰ {tab === 'stock' ? 'Остаток' : tab === 'shift' ? 'Смена' : 'Доска'}</button>
@@ -218,6 +235,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
             </div>
           )}
         </div>
+        </>}
         <span className="sp" />
         {tab === 'board' && <input className="find" value={find} onChange={e => setFind(e.target.value)} placeholder="поиск: заказчик, товар, №" />}
         {tab === 'board' && <button className="tb" onClick={() => {
@@ -226,7 +244,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
         }}>{cols.some(c => !fold[c.id]) ? 'свернуть все' : 'развернуть все'}</button>}
       </header>
 
-      <InstallApp />
+      {!admin && <InstallApp />}
       {tab === 'stock' && <LogistStock uid={uid} />}
       {tab === 'shift' && <LogistShift />}
       {tab === 'board' && <div className="kpis">
@@ -234,7 +252,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
         <span className="kpi">Позиций <b>{shown.filter(c => !c.info).reduce((s, c) => s + c.items.length, 0)}</b></span>
         <span className="kpi">Недовоз <b>{shown.reduce((s, c) => s + lackN(c), 0)} поз.</b></span>
         <span className="kpi">Готов к отправке <b>{shown.filter(c => c.col === 'ready').length}</b></span>
-        <span className="hint">{msg || 'кнопки работают: кол-во, позиции и проводка уходят в базу'}</span>
+        <span className="hint">{msg || (ro ? 'режим просмотра: карточки открываются, проводить — «🚚 Режим логиста»' : 'кнопки работают: кол-во, позиции и проводка уходят в базу')}</span>
       </div>}
 
       {tab === 'board' && <main className="board">
@@ -262,14 +280,14 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                   const nx = nextStep(c)
                   return (
                     <article key={c.id} className={'card' + (isEd ? ' edit' : '') + (c.info ? ' info' : '')}
-                      draggable onDragStart={() => setDrag(c.id)} onDragEnd={() => setDrag('')}>
+                      draggable={!ro} onDragStart={() => { if (!ro) setDrag(c.id) }} onDragEnd={() => setDrag('')}>
                       <div onClick={() => { setOpen(isOpen ? '' : c.id); setEd(''); setAdding(false) }}>
                         <div className="c1">
                           <span className="code">{c.code}</span><span>· {c.time}</span>
                           <button className="cp" title="Скопировать карточку с позициями"
                             onClick={e => { e.stopPropagation(); copy(cardText(c), c.code) }}>📋</button>
                           {c.who && <span style={{ marginLeft: 'auto' }}>{c.who}</span>}
-                          {isOpen && (
+                          {isOpen && !ro && (
                             <button className="pen" aria-pressed={isEd} title={isEd ? 'Закончить правку' : 'Изменить карточку'}
                               onClick={e => { e.stopPropagation(); setEd(isEd ? '' : c.id); setAdding(false); setQ('') }}>{isEd ? '✓ готово' : '✎ изменить'}</button>
                           )}
@@ -299,7 +317,7 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                                 onDoubleClick={e => { e.stopPropagation(); copy(posLine(it), 'позиция') }}
                                 onClick={() => {
                                   if (heldRef.current) { heldRef.current = false; return }   // это было долгое нажатие — копия, не отметка
-                                  if (!isEd && !c.info) upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.map((y, j) => j === idx ? { ...y, done: !y.done } : y) })) }}>
+                                  if (!isEd && !c.info && !ro) upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.map((y, j) => j === idx ? { ...y, done: !y.done } : y) })) }}>
                                 <span className="al" title={a.full}>{a.short}</span>
                                 {l > 0 && <span className="was">из {it.q}</span>}
                                 {it.u && <span className="un">{it.u}</span>}
@@ -346,10 +364,10 @@ export default function LogistBoard({ user, viewAs, backHref }: { user: Session;
                             <span className="t">Позиций <b>{c.items.length}</b> · взято {doneN(c)}
                               {miss.length > 0 && <> · <b style={{ color: 'var(--bad)' }}>недовоз {miss.length}</b></>}</span>
                             {isEd && !adding && <button className="act" onClick={() => setAdding(true)}>＋ позиция</button>}
-                            {!c.info && nx && <button className="act main" onClick={() => provesti(c)}>{nx.label}</button>}
+                            {!c.info && nx && !ro && <button className="act main" onClick={() => provesti(c)}>{nx.label}</button>}
                           </div>
 
-                          {miss.length > 0 && !c.info && nx && (
+                          {miss.length > 0 && !c.info && nx && !ro && (
                             <div className="dom">
                               🁢 <b>домино:</b> {nx.to === 'deliv'
                                 ? <>расходная заказчику «{c.client}» встанет по факту ({miss.map(i => alias(i.n).short + ' ' + fact(i) + ' из ' + i.q).join(', ')}), склад и долг заказчика — только за отвезённое.</>
@@ -394,6 +412,10 @@ const CSS = `
 .lb .sp{flex:1}
 .lb .tb{border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:6px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit}
 .lb .tb:hover{background:rgba(255,255,255,.32)}
+.lb .tb.mode{background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+.lb .tb.mode.on{background:#fff;color:var(--head);box-shadow:none}
+.lb.adm{min-height:100%}
+.lb.adm .top{padding-right:64px}
 .lb .find{border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:6px;padding:6px 10px;width:190px;font-size:12.5px;font-family:inherit}
 .lb .find::placeholder{color:rgba(255,255,255,.75)}
 .lb .menu{position:relative}

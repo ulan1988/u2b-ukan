@@ -4,6 +4,7 @@ import { useAdmin } from '@/components/admin/AdminChrome'
 import DashboardScreen from '@/components/admin/screens/DashboardScreen'
 import HistoryScreen from '@/components/admin/screens/HistoryScreen'
 import IncomingScreen from '@/components/admin/screens/IncomingScreen'
+import LogistDeskScreen from '@/components/admin/screens/LogistDeskScreen'
 import ReceptionScreen from '@/components/admin/screens/ReceptionScreen'
 import OutgoingScreen from '@/components/admin/screens/OutgoingScreen'
 import ProcurementScreen from '@/components/admin/screens/ProcurementScreen'
@@ -34,6 +35,7 @@ export default function AdminScreenPage() {
   switch (screen) {
     case 'dashboard': return <DashboardScreen orgId={a.orgId} />
     case 'history': return <HistoryScreen orgId={a.orgId} onOpen={a.openCard} />
+    case 'logistdesk': return <LogistDeskScreen />
     case 'incoming': return <IncomingScreen orders={a.visible} onAction={a.act} onOpen={a.openCard} />
     case 'reception': return <ReceptionScreen orders={a.visible} orgId={a.orgId} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />
     case 'outgoing': return <OutgoingScreen orders={a.visible} onAction={a.act} onReload={a.reload} onOpen={a.openCard} />

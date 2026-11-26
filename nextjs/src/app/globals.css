@@ -81,6 +81,7 @@ input, textarea, select { font-family: 'Golos Text', system-ui, sans-serif; }
 /* Рабочая область: высота под адресную строку телефона, поля и место под кнопку чата */
 .adm-shell { height: 100vh; height: 100dvh; }
 .adm-main { padding: 24px; }
+.adm-main.adm-flush { padding: 0 !important; }   /* «Доска логиста»: доска сама на всю рабочую область */
 @media (max-width: 1100px) { .adm-main { padding: 16px; } }
 @media (max-width: 768px) { .adm-main { padding: 12px 12px 88px; } }
 

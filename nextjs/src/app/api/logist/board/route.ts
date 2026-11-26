@@ -9,6 +9,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const s = await sessionFromRequest(req)
   if (!s) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
-  const t = await resolveTarget(s, new URL(req.url).searchParams.get('uid'))
+  const sp = new URL(req.url).searchParams
+  // all=1 — доска ВСЕХ логистов своей орг для админки («Доска логиста»), только админу.
+  if (sp.get('all') === '1') {
+    if (!['admin', 'super_admin'].includes(s.role)) return NextResponse.json({ error: 'Нет доступа' }, { status: 403 })
+    return NextResponse.json(await logistBoard(sp.get('orgId') || s.orgId, s.id, true))
+  }
+  const t = await resolveTarget(s, sp.get('uid'))
   return NextResponse.json(await logistBoard(t.orgId, t.id))
 }

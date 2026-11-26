@@ -1212,12 +1212,12 @@ export async function stepBack(cardId: string, actor?: Session | null): Promise<
 // Данные берём из того же listForLogist (роли/фильтры не меняем), НИЧЕГО не пишем: экран
 // read-only, правки живут только в браузере, пока смотрим прототип. Цен в ответе нет —
 // у логиста их не бывает (правило владельца 19.11.2026).
-export async function logistBoard(orgId: string, userId: string) {
+export async function logistBoard(orgId: string, userId: string, all = false) {
   // СКОРОСТЬ: Neon отвечает ~0,3 с на запрос, поэтому все обращения идут ПАРАЛЛЕЛЬНО и только
   // по своей орг. Раньше доска звала listForLogist (он тянет ВСЕ орг и делает ~7 запросов
   // подряд) — экран собирался 4–6 секунд и «тормозил» на живом обновлении.
   const [rows, bdRows] = await Promise.all([
-    repo.positionsForLogist([orgId], userId),
+    repo.positionsForLogist([orgId], userId, all),
     repo.branchDoneForBoard(orgId),
   ])
   const byCard = new Map<string, any>()

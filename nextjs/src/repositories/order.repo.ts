@@ -206,13 +206,18 @@ export const historyByOrg = (orgId: string, f: { user?: string; from?: string; t
 // разбор» — пересланные филиалом без логиста).
 // orgIds — какие книги видит логист: свою орг, а центральный (hq) логист — все орг
 // (одна логистика обслуживает головной + филиалы; иначе outgoing филиала не виден).
-export const positionsForLogist = (orgIds: string[], userId: string) =>
+// all — ДОСКА ЛОГИСТА В АДМИНКЕ (правило владельца 26.11.2026): позиции ВСЕХ логистов орг. Проведённые/архив
+// берём только свежие (3 дня) — доске из них нужна лишь колонка «Продано / Доставлено» за сегодня.
+export const positionsForLogist = (orgIds: string[], userId: string, all = false) =>
   db.select({ o: orders, p: orderPositions })
     .from(orderPositions).innerJoin(orders, eq(orderPositions.cardId, orders.id))
     .where(and(
       inArray(orders.orgId, orgIds), eq(orders.isCancelled, false),
       ne(orders.source, 'cashier'),   // прямые продажи кассы (магазин/мастер) логиста не касаются
-      or(
+      all ? or(
+        inArray(orders.screen, ['outgoing', 'reception', 'incoming']),
+        and(inArray(orders.screen, ['bookkeeping', 'archive']), sql`${orderPositions.updatedAt} > now() - interval '3 days'`),
+      ) : or(
         // Свои позиции: активные экраны + проведённые/архив — чтобы «Выполнено · доставлено мной»
         // показывало доставленное и после проводки накладной (иначе история пропадала).
         and(eq(orderPositions.respUserId, userId), inArray(orders.screen, ['outgoing', 'reception', 'incoming', 'bookkeeping', 'archive'])),

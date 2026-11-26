@@ -17,6 +17,8 @@ import { matchWords } from '@/lib/search'
 export const NAV: NavItem[] = [
   { key: 'dashboard', label: 'Дашборд', icon: '📊' },
   { key: 'history', label: 'История', icon: '🕓' },
+  // Доска логиста — копия кабинета логиста для админа (режим просмотра / режим логиста), правило 26.11.2026.
+  { key: 'logistdesk', label: 'Доска логиста', icon: '🚚' },
   { key: 'incoming', label: 'Входящие', icon: '📥' },
   { key: 'reception', label: 'Приёмка', icon: '🔄' },
   { key: 'outgoing', label: 'Исходящие', icon: '📤' },
@@ -49,7 +51,7 @@ interface Ctx {
   orgs: { id: string; name: string; kind?: string; color?: string }[]; switchOrg: (id: string) => void; canSwitchOrg: boolean; orgColor: string
 }
 // Экраны-«листы» без общей шапки: своя шапка/поиск, рабочая область на всю высоту.
-const BARE = ['money', 'accounting', 'calc', 'nomenclature']
+const BARE = ['money', 'accounting', 'calc', 'nomenclature', 'logistdesk']
 const AdminContext = createContext<Ctx | null>(null)
 export const useAdmin = () => useContext(AdminContext) as Ctx
 
@@ -139,7 +141,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
   const selKind = orgs.find(o => o.id === orgId)?.kind
   const isBranchOrg = !!selKind && selKind !== 'hq'
   const isSellerOrg = selKind === 'seller'
-  const BRANCH_HIDE = ['incoming', 'reception', 'outgoing', 'procurement', 'movements']
+  const BRANCH_HIDE = ['logistdesk', 'incoming', 'reception', 'outgoing', 'procurement', 'movements']
   // Магазин (как в 1С): документы (приход/расход), ДДС, склад, касса. Карточные экраны убраны, кроме У-Канбан («всевидящее око»).
   const SELLER_HIDE = ['production', 'material', 'projects', 'dashboard', 'history', 'filter', 'bookkeeping', 'archive']
   // Головной (Адал Строй 2) не производит: без кабинета мастера, Производства, Материала и Расчёта.
@@ -184,7 +186,7 @@ export default function AdminChrome({ user, children }: { user: { id: string; na
         )}
         {/* «Расчёт» — лист на весь экран: шапку прячем, чтобы помещалось 15–18 позиций. */}
         {!BARE.includes(screen) && <Topbar title={title} orders={orders} search={search} onSearch={setSearch} onBurger={() => setSideOpen(v => !v)} orgs={orgs} orgId={orgId} onOrg={switchOrg} orgColor={orgColor} onOrgColor={changeOrgColor} branchSlug={isHqOrg ? undefined : branchSlug} canSwitchOrg={canSwitchOrg} hideOrderInfo={isSellerOrg} quiet={screen === 'reception'} extra={<ChatWidget placement="inline" myId={user.id} orgId={orgId} />} />}
-        <div className="adm-main" style={{ flex: 1, overflowY: 'auto' }}>
+        <div className={'adm-main' + (screen === 'logistdesk' ? ' adm-flush' : '')} style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <div style={{ padding: 40, color: COLORS.textMuted }}>Загрузка…</div>
             : <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>}
         </div>
