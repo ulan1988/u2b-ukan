@@ -19,7 +19,7 @@ import type { Session } from '@/lib/auth'
 
 type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
 type Card = { id: string; col: string; code: string; client: string; who: string; time: string; pay?: string
-  k?: 'buy' | 'sell'; info?: boolean; badge?: string; wait?: boolean; items: Item[]; tail?: string }
+  k?: 'buy' | 'sell'; info?: boolean; badge?: string; wait?: boolean; items: Item[]; tail?: string; note?: string }
 type Col = { id: string; name: string; fold?: boolean; stage?: boolean }
 
 const fact = (i: Item) => (i.got == null ? i.q : i.got)
@@ -286,6 +286,7 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
                           <span className="code">{c.code}</span><span>· {c.time}</span>
                           <button className="cp" title="Скопировать карточку с позициями"
                             onClick={e => { e.stopPropagation(); copy(cardText(c), c.code) }}>📋</button>
+                          {c.note && !isOpen && <span className="hasnote" title={c.note}>💬</span>}
                           {c.who && <span style={{ marginLeft: 'auto' }}>{c.who}</span>}
                           {isOpen && !ro && (
                             <button className="pen" aria-pressed={isEd} title={isEd ? 'Закончить правку' : 'Изменить карточку'}
@@ -305,6 +306,7 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
 
                       {isOpen && (
                         <div onClick={e => e.stopPropagation()}>
+                          {c.note && <div className="note">💬 {c.note}</div>}
                           <div className="phead"><span>позиция</span><span className="r">кол-во{c.items.every(i => !i.u) ? ', шт' : ''}</span></div>
                           {c.items.map((it, idx) => {
                             const a = alias(it.n), l = lack(it)
@@ -468,6 +470,9 @@ const CSS = `
   cursor:pointer;line-height:1;font-family:inherit;box-shadow:0 1px 2px rgba(9,30,66,.3)}
 .lb .pen:hover{filter:brightness(1.08)}
 .lb .pen[aria-pressed="true"]{background:var(--ok);color:#fff}
+.lb .hasnote{font-size:10px;opacity:.75;cursor:default}
+/* Комментарий заявки — мелким шрифтом, виден при раскрытии карточки. */
+.lb .note{margin-top:7px;border-left:3px solid var(--line);background:var(--surface2);border-radius:6px;padding:5px 7px;font-size:10.5px;line-height:1.4;color:var(--faint);white-space:pre-wrap;word-break:break-word}
 .lb .phead{display:flex;gap:6px;margin-top:8px;padding:0 2px 3px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);font-weight:700}
 .lb .phead .r{margin-left:auto}
 .lb .prow{display:flex;align-items:center;gap:6px;padding:4px 3px;border-bottom:1px solid var(--line2);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}

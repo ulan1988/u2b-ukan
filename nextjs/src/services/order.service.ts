@@ -1250,6 +1250,11 @@ export async function logistBoard(orgId: string, userId: string, all = false) {
   const supName = (id: any) => (id ? names[id as string] || '' : '')
   const key = (cardId: string, p: any) => `${cardId}::${(p.name1c || p.oral || '').trim().toLowerCase()}`
 
+  // Подпись-заглушка мастера («Прямой заказ на производство») — это не комментарий:
+  // её ставит сама форма, когда мастер ничего не написал. Кабинет мастера её тоже прячет.
+  const AUTO_NOTE = 'Прямой заказ на производство'
+  const noteOf = (o: any) => { const c = String(o.comment || '').trim(); return c && c !== AUTO_NOTE ? c : undefined }
+
   const slug = (t: string) => { let h = 7; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'c' + Math.abs(h).toString(36) }
   const hhmm = (d: any) => { const x = new Date(d), p = (v: number) => String(v).padStart(2, '0')
     return p(x.getDate()) + '.' + p(x.getMonth() + 1) + ' ' + p(x.getHours()) + ':' + p(x.getMinutes()) }
@@ -1273,7 +1278,10 @@ export async function logistBoard(orgId: string, userId: string, all = false) {
   const put = (col: string, o: any, poss: any[], extra: any = {}) => out.push({
     id: slug(o.id + col), col, code: o.id, k: o.kind === 'purchase' ? 'buy' : 'sell',
     client: String(o.clientName || o.fromName || 'Центр-Склад').trim(), who: o.createdBy || '',
-    time: hhmm(o.createdAt), pay: o.payment || '', items: poss.map(item), ...extra })
+    // Комментарий заявки (его пишут в Приёмке) логист раньше не видел совсем —
+    // а там «позвонить перед выездом», «забрать у ворот» и прочее по делу.
+    time: hhmm(o.createdAt), pay: o.payment || '', note: noteOf(o),
+    items: poss.map(item), ...extra })
 
   for (const o of cards as any[]) {
     // Заказчик: контрагент карточки, у закупа — заказчики связанных заявок.
