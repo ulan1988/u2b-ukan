@@ -24,6 +24,11 @@ export async function splitCard(cardId: string, posIds: string[]) {
   const r = await post(`/api/orders/${cardId}/split`, { posIds })
   return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
 }
+// ⏸ Отложено (доска логиста): отмеченные позиции → карточка-продолжение, остаются в колонке.
+export async function deferPositions(cardId: string, posIds: string[]) {
+  const r = await post(`/api/orders/${encodeURIComponent(cardId)}/defer`, { posIds })
+  return { ok: r.ok, error: r.error as string | undefined, id: r.data?.id as string | undefined }
+}
 // Касса мастера: оплатить (продать) — нал/каспи/сдача, долг авто.
 export async function payCard(cardId: string, body: { cash?: number; kaspi?: number; qr?: number; change?: number; changeFrom?: string; localDebt?: boolean; markOnly?: boolean; date?: string }) {
   const r = await post(`/api/orders/${cardId}/pay`, body)

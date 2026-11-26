@@ -8,7 +8,7 @@
 // по своим колонкам («Закуплено» / «Продано · Доставлено»); колонка Нипы свёрнута.
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { logistBoardData, logistBoardAll, setPosStatus, updatePosition, deletePosition, addPosition, orderAction } from '@/lib/api/orders'
+import { logistBoardData, logistBoardAll, setPosStatus, updatePosition, deletePosition, addPosition, orderAction, deferPositions } from '@/lib/api/orders'
 import { fetchRefs } from '@/lib/api/refs'
 import { matchWords } from '@/lib/search'
 import { useLiveData } from '@/lib/live'
@@ -17,6 +17,8 @@ import LogistShift from './LogistShift'
 import InstallApp from './InstallApp'
 import type { Session } from '@/lib/auth'
 
+// done — позиция уже проведена (с сервера). Отметка «⏸ отложено» живёт отдельно (состояние hold по id позиции,
+// запоминается на устройстве): живое обновление доски перезаписывает карточки и стёрло бы её.
 type Item = { p?: string; n: string; q: number; u?: string; done?: boolean; got?: number | null; wait?: string }
 type Card = { id: string; col: string; code: string; client: string; who: string; time: string; pay?: string
   k?: 'buy' | 'sell'; info?: boolean; badge?: string; wait?: boolean; items: Item[]; tail?: string; note?: string }
@@ -81,6 +83,13 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
   const [tab, setTab] = useState<'board' | 'stock' | 'shift'>('board')
   const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
+  // ⏸ ОТЛОЖЕНО (правило владельца 26.11.2026): отмеченная позиция не проводится и остаётся в колонке.
+  const HOLD_KEY = 'u2b_lb_hold'
+  const [hold, setHold] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem(HOLD_KEY) || '{}') || {} } catch { return {} } })
+  const saveHold = (h: Record<string, boolean>) => { setHold(h); try { localStorage.setItem(HOLD_KEY, JSON.stringify(h)) } catch {} }
+  const isH = (i: Item) => !!(i.p && !i.done && hold[i.p])
+  const holdN = (c: Card) => c.items.filter(isH).length
+  const toggleHold = (i: Item) => { if (!i.p) return; const h = { ...hold }; if (h[i.p]) delete h[i.p]; else h[i.p] = true; saveHold(h) }
   const [msg, setMsg] = useState('')
   const uid = viewAs ? user.id : undefined
   const say = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 4000) }
@@ -91,7 +100,7 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
     if (busy) return
     setBusy(true); busyRef.current = true
     try { await fn(); await reload(); say('✓ ' + what) }
-    catch (e: any) { say('⚠ не удалось: ' + what); console.error(what, e) }
+    catch (e: any) { say('⚠ не удалось: ' + what + (e?.message ? ' — ' + e.message : '')); console.error(what, e) }
     finally { setBusy(false); busyRef.current = false }
   }
 
@@ -158,15 +167,23 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
   function provesti(c: Card) {
     if (ro) return
     const nx = nextStep(c); if (!nx) return
-    const live = c.items.filter(i => i.p && !i.done)
-    if (!live.length) { say('нечего проводить'); return }
+    // ОТЛОЖЕННОЕ ОСТАЁТСЯ (правило владельца 26.11.2026): отмеченные оранжевым «⏸ отложено» не проводим —
+    // они остаются в этой колонке, дальше идут только неотмеченные.
+    const live = c.items.filter(i => i.p && !i.done && !isH(i))
+    const held = c.items.filter(i => i.p && !i.done && isH(i))
+    if (!live.length) { say(held.length ? 'все позиции отложены — проводить нечего' : 'нечего проводить'); return }
     const miss = live.filter(i => lack(i) > 0)
     const what = nx.to === 'ready' ? 'Закуплено' : 'Продано / Доставлено'
     const q = miss.length
       ? 'По ' + miss.length + ' поз. факт меньше заказанного — кол-во в карточке станет фактическим, остаток просто уйдёт. Проводим «' + what + '»?'
       : 'Провести «' + what + '» по ' + live.length + ' поз.?'
-    if (!confirm(q)) return
+    const q2 = held.length ? q + '\n\n⏸ Отложено ' + held.length + ' поз. (' + held.map(i => alias(i.n).short).join(', ') + ') — уйдут в карточку-продолжение ' + c.code + '-2 и останутся в этой колонке, накладная на них — когда довезёте.' : q
+    if (!confirm(q2)) return
     act(what, async () => {
+      // Сначала отложенное — в карточку-продолжение, иначе накладная не выпишется (она ждёт всю карточку).
+      if (held.length) { const d = await deferPositions(c.code, held.map(i => i.p as string)); if (!d.ok) throw new Error(d.error || 'не удалось отложить')
+        // в карточке-продолжении эти позиции уже не отложены — их повезут следующим рейсом
+        const h = { ...hold }; for (const i of held) delete h[i.p as string]; saveHold(h) }
       for (const i of live) {
         if (fact(i) !== i.q) await updatePosition(c.code, i.p as string, { qty: fact(i) })
         await setPosStatus(c.code, 'Доставлено', i.p as string)
@@ -300,7 +317,7 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
                           {c.wait && <span className="tag wait">ждёт админа</span>}
                           {miss.length > 0 && <span className="tag bad">недовоз {miss.length}</span>}
                           {c.pay && <span className="tag pay">{c.pay}</span>}
-                          <span className="prog"><span className="pbar"><i style={{ width: Math.round(doneN(c) / Math.max(1, c.items.length) * 100) + '%' }} /></span>{doneN(c)}/{c.items.length}</span>
+                          <span className="prog"><span className="pbar"><i style={{ width: Math.round(doneN(c) / Math.max(1, c.items.length) * 100) + '%' }} /></span>{doneN(c)}/{c.items.length}{holdN(c) > 0 && <b style={{ color: 'var(--hold)' }}> · ⏸{holdN(c)}</b>}</span>
                         </div>
                       </div>
 
@@ -311,15 +328,15 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
                           {c.items.map((it, idx) => {
                             const a = alias(it.n), l = lack(it)
                             return (
-                              <div key={idx} className={'prow' + (it.done ? ' got' : '') + (l ? ' short' : '')}
-                                title="Двойной тап или долгое нажатие — скопировать позицию"
+                              <div key={idx} className={'prow' + (it.done ? ' got' : '') + (isH(it) ? ' hold' : '') + (l ? ' short' : '')}
+                                title="Нажать — отложить (останется в колонке) · двойной тап или долгое нажатие — скопировать"
                                 onPointerDown={() => holdStart(it)} onPointerUp={holdEnd}
                                 onPointerLeave={holdEnd} onPointerCancel={holdEnd}
                                 onContextMenu={e => { if (heldRef.current) e.preventDefault() }}
                                 onDoubleClick={e => { e.stopPropagation(); copy(posLine(it), 'позиция') }}
                                 onClick={() => {
                                   if (heldRef.current) { heldRef.current = false; return }   // это было долгое нажатие — копия, не отметка
-                                  if (!isEd && !c.info && !ro) upd(list => list.map(x => x.id !== c.id ? x : { ...x, items: x.items.map((y, j) => j === idx ? { ...y, done: !y.done } : y) })) }}>
+                                  if (!isEd && !c.info && !ro && !it.done) toggleHold(it) }}>
                                 <span className="al" title={a.full}>{a.short}</span>
                                 {l > 0 && <span className="was">из {it.q}</span>}
                                 {it.u && <span className="un">{it.u}</span>}
@@ -363,10 +380,10 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
 
                           <div className="foot">
                             {backStep(c) && <button className="act back" disabled={busy} title="Отыграть последний шаг — если кнопку нажали по ошибке" onClick={() => goBack(c)}>{backStep(c)!.label}</button>}
-                            <span className="t">Позиций <b>{c.items.length}</b> · взято {doneN(c)}
+                            <span className="t">Позиций <b>{c.items.length}</b>{holdN(c) > 0 && <> · <b style={{ color: 'var(--hold)' }}>отложено {holdN(c)}</b></>}{doneN(c) > 0 && <> · проведено {doneN(c)}</>}
                               {miss.length > 0 && <> · <b style={{ color: 'var(--bad)' }}>недовоз {miss.length}</b></>}</span>
                             {isEd && !adding && <button className="act" onClick={() => setAdding(true)}>＋ позиция</button>}
-                            {!c.info && nx && !ro && <button className="act main" onClick={() => provesti(c)}>{nx.label}</button>}
+                            {!c.info && nx && !ro && <button className="act main" onClick={() => provesti(c)}>{nx.label}{holdN(c) > 0 ? ' · ' + (c.items.filter(i => i.p && !i.done).length - holdN(c)) + ' поз.' : ''}</button>}
                           </div>
 
                           {miss.length > 0 && !c.info && nx && !ro && (
@@ -405,7 +422,7 @@ export default function LogistBoard({ user, viewAs, backHref, adminOrgId }: { us
 const CSS = `
 .lb{--bg:#0079bf;--onbg:#fff;--head:#026aa7;--surface:#fff;--surface2:#f1f2f4;--text:#172b4d;--muted:#5e6c84;--faint:#8993a4;
   --line:#dfe1e6;--line2:#ebecf0;--accent:#0c66e4;--accent-soft:#e9f2ff;--ok:#1f845a;--ok-soft:#dcfff1;
-  --warn:#946f00;--warn-soft:#fff7d6;--bad:#c9372c;--bad-soft:#ffeceb;
+  --warn:#946f00;--hold:#d9640b;--hold-soft:#fff0e2;--warn-soft:#fff7d6;--bad:#c9372c;--bad-soft:#ffeceb;
   min-height:100vh;background:var(--bg);color:var(--onbg);font-family:'Golos Text',system-ui,sans-serif;font-size:13.5px}
 .lb *{box-sizing:border-box}
 .lb .top{position:sticky;top:0;z-index:20;background:var(--head);color:#fff;padding:7px 12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
@@ -480,6 +497,10 @@ const CSS = `
 .lb .prow.got{background:var(--ok-soft)}
 .lb .prow.short{background:var(--bad-soft)}
 .lb .prow.got .al::before{content:"✓ ";color:var(--ok);font-weight:800}
+.lb .prow.hold{background:var(--hold-soft);box-shadow:inset 3px 0 0 var(--hold)}
+.lb .prow.hold .al{color:var(--hold)}
+.lb .prow.hold .al::before{content:"⏸ ";font-weight:800}
+.lb .prow.hold .qtxt{color:var(--hold)}
 .lb .al{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lb .was{font-size:11px;color:var(--bad);white-space:nowrap}
 .lb .un{font-size:10.5px;color:var(--faint)}

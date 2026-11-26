@@ -852,6 +852,40 @@ export async function splitCard(cardId: string, posIds: string[], actor?: Sessio
   return { ok: true as const, id: newId, moved: move.length }
 }
 
+// ⏸ ОТЛОЖЕНО (правило владельца 26.11.2026). На доске логиста позицию можно отметить «отложено»:
+// при «Закуплено» / «Продано / Доставлено» она не едет дальше, а остаётся в своей колонке. Накладная
+// выписывается только когда доставлена ВСЯ карточка, поэтому отложенное выносим в КАРТОЧКУ-ПРОДОЛЖЕНИЕ
+// («{номер}-2»): та же орг, вид, экран, заказчик, поставщики, корень цепочки, мать (ПРД → ЗКП), «долг к
+// головному» — всё как у исходной, только без накладной, оплат и скидки. Исходная карточка с доставленным
+// проводится сразу (своя накладная), продолжение — своей накладной, когда довезут. Уже проведённую
+// карточку не трогаем. Связи автозакупа (procurement_links) остаются у исходной.
+export async function deferPositions(cardId: string, posIds: string[], actor?: Session | null) {
+  const [order]: any[] = await repo.getOrder(cardId)
+  if (!order) return { ok: false as const, error: 'Карточка не найдена' }
+  if (order.isCancelled) return { ok: false as const, error: 'Карточка отменена' }
+  if (order.linkedDocId) return { ok: false as const, error: 'Карточка уже проведена — сначала верните её назад' }
+  const positions: any[] = await repo.positionsByCard(cardId)
+  const open = positions.filter(p => p.status !== 'Доставлено')
+  const move = open.filter(p => (posIds || []).includes(p.id))
+  if (!move.length) return { ok: false as const, error: 'Не отмечено, что отложить' }
+  if (move.length >= positions.length) return { ok: false as const, error: 'Отложены все позиции — проводить нечего' }
+  let newId = cardId + '-2'
+  for (let n = 3; n < 100; n++) { const [ex] = await repo.getOrder(newId); if (!ex) break; newId = cardId + '-' + n }
+  const { id: _i, createdAt: _c, updatedAt: _u, ...rest } = order
+  const newOrder: any = {
+    ...rest, id: newId, linkedDocId: null, delivered: null, posted1c: false, invoice: false, fact: false, toacc: false,
+    isChanged: false, changeText: '', changePhone: '', clientKey: '', trackingLink: encodeURIComponent(newId),
+    paidCash: '0', paidKaspi: '0', paidQr: '0', changeSum: '0', discountSum: '0', discountPct: '0',
+    rootCardId: order.rootCardId || order.id,
+  }
+  const names = move.map(p => p.name1c).join(', ')
+  const who = actor?.name || 'Система'
+  await repo.insertDeferCard(newOrder, cardId, move.map(p => p.id),
+    { cardId: newId, action: 'defer', detail: '⏸ Отложено из ' + cardId + ': ' + names, userName: who },
+    { cardId, action: 'defer', detail: '⏸ Отложено в ' + newId + ' (' + move.length + ' поз.): ' + names, userName: who })
+  return { ok: true as const, id: newId, moved: move.length }
+}
+
 // Удалить позицию карточки (стол приёмки).
 export async function deletePosition(cardId: string, posId: string, actor?: Session | null) {
   const blk = await editBlocked(cardId, actor); if (blk) return { ok: false as const, error: blk }

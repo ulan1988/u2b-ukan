@@ -119,6 +119,22 @@ export function insertOrderPosting(
   return db.batch(stmts as [any, ...any[]])
 }
 
+// ОТЛОЖЕНО У ЛОГИСТА: карточка-продолжение + перенос выбранных позиций в неё одним пакетом.
+// Позиции ПЕРЕЕЗЖАЮТ (меняется card_id), их id не меняются — связи по позиции (отчёт смены,
+// FIFO, спецификация) остаются целыми.
+export function insertDeferCard(
+  order: typeof orders.$inferInsert, fromCardId: string, posIds: string[],
+  histNew: typeof orderHistory.$inferInsert, histOld: typeof orderHistory.$inferInsert,
+) {
+  return db.batch([
+    db.insert(orders).values(order),
+    db.update(orderPositions).set({ cardId: order.id as string, updatedAt: new Date() })
+      .where(and(eq(orderPositions.cardId, fromCardId), inArray(orderPositions.id, posIds))),
+    db.insert(orderHistory).values(histNew),
+    db.insert(orderHistory).values(histOld),
+  ] as any)
+}
+
 export const listByScreen = (orgId: string, screen: string) =>
   db.select().from(orders).where(and(eq(orders.orgId, orgId), eq(orders.screen, screen)))
     .orderBy(desc(orders.createdAt))
