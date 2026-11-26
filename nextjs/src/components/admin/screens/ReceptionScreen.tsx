@@ -4,6 +4,7 @@
 // экран лишь фильтрует по screen/block/status и вызывает действия. Подкомпоненты и
 // общий UI вынесены в ./reception/*.
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import NomInline from '@/components/NomInline'
 import ContragentPicker from '@/components/ContragentPicker'
 import { type PickedPos } from '@/components/NomPicker'
@@ -37,6 +38,16 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
 
   // Форма
   const [open, setOpen] = useState(false)
+  // ВСЁ ОДНОЙ СТРОКОЙ (правило владельца 26.11.2026): «Создать заказ / закуп» и счётчики стоят в общей шапке,
+  // рядом с «Приёмка · дата». Раньше под шапкой шли ещё две полосы (счётчики и карточка с кнопками) — около
+  // 4 см экрана до первой строки списка. На узком экране (телефон, планшет) в шапку не влезет — там по-старому.
+  const [bar, setBar] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1250px)')
+    const upd = () => setBar(mq.matches ? document.getElementById('tb-slot') : null)
+    upd(); mq.addEventListener('change', upd)
+    return () => mq.removeEventListener('change', upd)
+  }, [])
   const [kind, setKind] = useState<'sale' | 'purchase'>('sale')
   const [contactId, setContactId] = useState('')
   const [specId, setSpecId] = useState('')
@@ -249,27 +260,33 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
     { label: 'Черновики', val: allDrafts.length, bg: '#efece8', color: '#6b655b' },
   ]
 
+  const createBtns = (['sale', 'purchase'] as const).map(k => {
+    const active = open && kind === k; const isP = k === 'purchase'
+    return (
+      <button key={k} data-create={k} onClick={() => (active ? setOpen(false) : openForm(k))}
+        style={{ padding: bar ? '7px 14px' : '9px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', background: active ? (isP ? purple : COLORS.primary) : '#f6f3f0', color: active ? '#fff' : (isP ? purple : COLORS.primary), boxShadow: active ? 'none' : `inset 0 0 0 1.5px ${isP ? '#e3d4f0' : '#f0d9cd'}` }}>
+        ＋ {isP ? 'Создать закуп' : 'Создать заказ'}
+      </button>
+    )
+  })
+  const chips = counters.map(c => <div key={c.label} style={{ background: c.bg, color: c.color, borderRadius: 7, padding: '4px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{c.label} {c.val}</div>)
+
   return (
     <div className="anim-fade">
       {flash && <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#211f1c', color: '#fff', padding: '10px 22px', borderRadius: 10, fontSize: 14, zIndex: 9999 }}>{flash}</div>}
 
-      {/* Счётчики — тихие, в одну строку: название экрана уже стоит в общей шапке. */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-        {counters.map(c => <div key={c.label} style={{ background: c.bg, color: c.color, borderRadius: 7, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>{c.label} {c.val}</div>)}
-      </div>
+      {/* За компьютером кнопки и счётчики уезжают в общую шапку — одна строка на всё. */}
+      {bar && createPortal(<>{createBtns}<div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>{chips}</div></>, bar)}
+      {/* Узкий экран: счётчики — тихие, в одну строку: название экрана уже стоит в общей шапке. */}
+      {!bar && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+        {chips}
+      </div>}
 
       {/* Форма создания */}
-      <div style={{ background: '#fff', borderRadius: 14, marginBottom: 20, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden' }}>
+      {/* Кнопки в шапке и форма закрыта — карточки нет совсем, список стоит сразу под шапкой. */}
+      <div style={{ background: '#fff', borderRadius: 14, marginBottom: 20, boxShadow: '0 0 0 1.5px #e6e2dc', overflow: 'hidden', display: bar && !open ? 'none' : 'block' }}>
         <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderBottom: open ? '1px solid #f1efec' : 'none' }}>
-          {(['sale', 'purchase'] as const).map(k => {
-            const active = open && kind === k; const isP = k === 'purchase'
-            return (
-              <button key={k} onClick={() => (active ? setOpen(false) : openForm(k))}
-                style={{ padding: '9px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, background: active ? (isP ? purple : COLORS.primary) : '#f6f3f0', color: active ? '#fff' : (isP ? purple : COLORS.primary), boxShadow: active ? 'none' : `inset 0 0 0 1.5px ${isP ? '#e3d4f0' : '#f0d9cd'}` }}>
-                ＋ {isP ? 'Создать закуп' : 'Создать заказ'}
-              </button>
-            )
-          })}
+          {!bar && createBtns}
           {open && kind === 'purchase' && !transit && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: purple }}>ЗАКУП · получатель Центр-Склад</span>}
           {open && (
             <label title="Товар идёт мимо склада (drop-ship) — только деньги/долги, приход/расход склада НЕ трогается" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: kind === 'purchase' && !transit ? 0 : 'auto', fontSize: 13, fontWeight: 700, color: transit ? '#7a3aaa' : COLORS.textMuted, cursor: 'pointer', background: transit ? '#f3eeff' : 'transparent', border: `1.5px solid ${transit ? '#d8c4ec' : '#e6e2dc'}`, borderRadius: 8, padding: '6px 12px' }}>

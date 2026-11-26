@@ -65,6 +65,9 @@ export default function Topbar({ title, orders, search, onSearch, onBurger, orgs
         <div style={{ fontWeight: 700, fontSize: 16, whiteSpace: 'nowrap' }}>{title}</div>
         <div className="tb-date" style={{ fontSize: 12, color: '#8a8377', whiteSpace: 'nowrap' }}>{new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
+      {/* Место в шапке под кнопки и счётчики самого экрана (Приёмка кладёт сюда «Создать заказ / закуп» и
+          свои счётчики — всё одной строкой, рабочая область начинается сразу под шапкой). */}
+      {quiet && <div id="tb-slot" className="tb-slot" />}
       {!hideOrderInfo && !quiet && <div className="tb-pills">
         {pills.map(({ label, bg, color }) => (
           <span key={label} className="tb-pill" style={{ background: bg, color }}>{label}</span>
