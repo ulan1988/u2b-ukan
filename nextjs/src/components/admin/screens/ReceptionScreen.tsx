@@ -436,7 +436,10 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             </div>
             <div style={{ display: 'flex', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid #f1efec', flexWrap: 'wrap' }}>
               <Btn onClick={() => submit(true)} disabled={busy}>Сохранить черновик</Btn>
-              <Btn variant={kind === 'purchase' || back ? 'primary' : undefined} onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{back ? '✅ ПРОВЕСТИ ЗАДНИМ ЧИСЛОМ (приход + расход)' : kind === 'purchase' ? 'ОТПРАВИТЬ ЗАКУП →' : 'ОТПРАВИТЬ ЗАКАЗ →'}</Btn>
+              {/* «ОТПРАВИТЬ ЗАКАЗ →» УБРАНА (правило владельца 27.11.2026): заказ админа она клала «В ожидании» в Приёмку,
+                  а в автозакуп заказы админки не идут — карточка нигде не двигалась. Заказ уходит логисту кнопкой
+                  «📦 Сделать закуп → логисту». Задним числом кнопка остаётся — там она проводит приход + расход. */}
+              {(kind === 'purchase' || back) && <Btn variant="primary" onClick={() => submit(false)} disabled={busy || (kind === 'sale' && !contactId)}>{back ? '✅ ПРОВЕСТИ ЗАДНИМ ЧИСЛОМ (приход + расход)' : 'ОТПРАВИТЬ ЗАКУП →'}</Btn>}
               {kind === 'sale' && (
                 <Btn variant="primary" onClick={() => submit(false, true)} disabled={busy || !contactId}>📦 Сделать закуп → логисту</Btn>
               )}
