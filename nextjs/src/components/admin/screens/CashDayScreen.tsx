@@ -525,10 +525,15 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px 10px' }}>
             <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🧾 ЧЕКИ ДНЯ</span>
             <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{(data.cards || []).length} шт</span>
-            {Number(data.otherIncome?.total) > 0 && <span style={{ fontSize: 12.5, fontWeight: 800, color: '#7a3aaa', marginLeft: 'auto' }}>+ прочий доход {m(data.otherIncome.total)} ₸</span>}
+            {Number(data.otherIncome?.total) > 0 && <span title="операции «Прочий доход», внесённые за день" style={{ fontSize: 12.5, fontWeight: 800, color: '#7a3aaa', marginLeft: 'auto' }}>+ внесено прочим доходом {m(data.otherIncome.total)} ₸</span>}
             <b style={{ marginLeft: Number(data.otherIncome?.total) > 0 ? 10 : 'auto', fontSize: 15 }}>{m(inc.total)} ₸</b>
             <span style={{ fontSize: 12.5, color: COLORS.textLight, width: 108, textAlign: 'right' }}>
               себест {m((data.cards || []).reduce((s: number, c: any) => s + Number(c.cost || 0), 0))}
+            </span>
+            {/* ПРОЧИЙ ДОХОД ПО ЧЕКАМ (просьба владельца 27.11.2026): сразу за себестоимостью — продажа − себестоимость,
+                общий за день, у каждого чека и у каждой строки. */}
+            <span title="прочий доход по чекам дня = продажа − себестоимость" style={{ fontSize: 12.5, fontWeight: 800, color: '#7a3aaa', minWidth: 118, whiteSpace: 'nowrap', textAlign: 'right' }}>
+              прочий доход {m((data.cards || []).reduce((s: number, c: any) => s + Number(c.total || 0) - Number(c.cost || 0), 0))}
             </span>
             <span style={{ width: 14 }} />
           </div>
@@ -582,6 +587,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                       style={{ fontSize: 13, width: 108, textAlign: 'right', color: c.nocost ? COLORS.primaryDark : COLORS.textLight }}>
                       {m(c.cost)}{c.nocost ? ' ⚠' : ''}
                     </span>
+                    <span title="прочий доход чека = сумма − себестоимость" style={{ fontSize: 13, fontWeight: 700, width: 118, textAlign: 'right', color: Number(c.total) - Number(c.cost) < 0 ? COLORS.primaryDark : '#7a3aaa' }}>
+                      {m(Number(c.total || 0) - Number(c.cost || 0))}
+                    </span>
                     <span style={{ color: COLORS.textLight, fontSize: 12, width: 14 }}>{open ? '▾' : '▸'}</span>
                   </div>
                   {open && (
@@ -596,6 +604,9 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
                             <span style={{ width: 110, textAlign: 'right', color: COLORS.textLight }}>{Number(l.qty)} {l.unit || 'шт'}{Number(l.widthCm) > 0 ? ` × ${Number(l.widthCm)} см` : ''}</span>
                             <span style={{ width: 90, textAlign: 'right', color: COLORS.textLight }}>{m(l.price)}</span>
                             <span style={{ width: 100, textAlign: 'right', fontWeight: 600 }}>{m(sum)}</span>
+                            <span title="себестоимость строки" style={{ width: 108, textAlign: 'right', color: COLORS.textLight }}>{m(Number(l.qty) * Number(l.unitCost || 0))}</span>
+                            <span title="прочий доход строки = сумма − себестоимость" style={{ width: 118, textAlign: 'right', fontWeight: 600, color: sum - Number(l.qty) * Number(l.unitCost || 0) < 0 ? COLORS.primaryDark : '#7a3aaa' }}>{m(sum - Number(l.qty) * Number(l.unitCost || 0))}</span>
+                            <span style={{ width: 14 }} />
                           </div>
                         )
                       })}

@@ -41,8 +41,15 @@ export async function masterShift(orgId: string, date: string) {
   // Состав чеков одним запросом — журнал раскрывается без похода за каждой карточкой.
   const ids = cards.map((c: any) => c.id)
   const lines = ids.length ? await sqlClient`
-    select card_id "cardId", coalesce(name1c, oral) name, qty::float qty, price::float price, width_cm::float "widthCm", unit
-    from order_positions where card_id = any(${ids}) order by id
+    select p.card_id "cardId", coalesce(p.name1c, p.oral) name, p.qty::float qty, p.price::float price, p.width_cm::float "widthCm", p.unit,
+      -- себестоимость ЕДИНИЦЫ строки — тот же порядок, что у себестоимости чека ниже (для колонки «прочий доход»)
+      coalesce(nullif(p.cost_price,0), oc.price, pr.price_in, 0)::float "unitCost"
+    from order_positions p left join products pr on pr.id = p.product_id
+    join orders o on o.id = p.card_id left join documents ld on ld.id = o.linked_doc_id
+    left join lateral (select dl2.price::float price from document_lines dl2 join documents d2 on d2.id = dl2.document_id
+      where d2.org_id = o.org_id and d2.type = 'purchase' and d2.status = 'posted' and dl2.product_id = p.product_id and dl2.price > 0 and dl2.width_cm is null
+      order by (d2.date <= coalesce(ld.date, current_date)) desc, d2.date desc, d2.created_at desc limit 1) oc on true
+    where p.card_id = any(${ids}) order by p.id
   ` as unknown as Array<any> : []
   for (const c of cards) (c as any).lines = lines.filter((l: any) => l.cardId === c.id)
   // ПОГАШЕННЫЙ ДОЛГ ЧЕКА (правило владельца 25.11.2026: «почему не был погашен долг — мы погасили через наличку»).
