@@ -9,6 +9,16 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [openBlk, setOpenBlk] = useState(true)
+  // ДВЕ ЦЕНЫ (правило владельца 27.11.2026): у товара — ЗАКУП (из карточки товара, уйдёт в приходную),
+  // у каждой заявки — ПРОДАЖА её заказчику (цена строки заявки, пусто → по типу цены заказчика: розн/опт/спец).
+  // Правки держим здесь до «В закуп»; ключ продажи — товар + заявка.
+  const [buy, setBuy] = useState<Record<string, string>>({})
+  const [sale, setSale] = useState<Record<string, string>>({})
+  const buyOf = (r: any) => (buy[r.name] ?? (r.priceIn > 0 ? String(r.priceIn) : ''))
+  const saleKey = (r: any, x: any) => r.name + '::' + x.cardId
+  const saleOf = (r: any, x: any) => (sale[saleKey(r, x)] ?? (x.price > 0 ? String(x.price) : x.auto > 0 ? String(x.auto) : ''))
+  const PT: Record<string, string> = { retail: 'розн.', opt: 'опт', spec: 'спец' }
+  const noPrice = rows.reduce((n, r: any) => n + (r.rows || []).filter((x: any) => !(Number(saleOf(r, x)) > 0)).length, 0)
 
   async function load() { if (orgId) setRows(await demandSummary(orgId) as any) }
   useEffect(() => { load() }, [orgId]) // eslint-disable-line
@@ -19,9 +29,12 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
     const src = chosen.length ? chosen : rows
     if (!src.length) { toast('Нет товаров для закупа'); return }
     setBusy(true)
-    const r: any = await stage(src)
+    const r: any = await stage(src.map((it: any) => ({
+      ...it, price: Number(buyOf(it)) || 0,
+      rows: (it.rows || []).map((x: any) => ({ ...x, salePrice: Number(saleOf(it, x)) || 0 })),
+    })))
     setBusy(false)
-    if (r.ok) { toast(`В закуп: ${r.data?.added ?? src.length}`); setChecked({}); load(); onReload() }
+    if (r.ok) { toast(`В закуп: ${r.data?.added ?? src.length}`); setChecked({}); setBuy({}); setSale({}); load(); onReload() }
     else toast('⚠ ' + (r.error || 'Ошибка'))
   }
 
@@ -72,10 +85,23 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
                     <RalDot code={extractRal(r.name)} size={13} />
                     <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{r.name}</span>
                     <span style={{ fontWeight: 800, fontSize: 15, color: '#7a3aaa', whiteSpace: 'nowrap' }}>{r.total} {r.unit}</span>
+                    <label title="цена ЗАКУПА — по ней пойдёт приходная (из карточки товара, можно поправить)" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#7a3aaa' }}>закуп
+                      <input type="number" value={buyOf(r)} onChange={e => setBuy(b => ({ ...b, [r.name]: e.target.value }))} onFocus={e => e.target.select()} placeholder="закуп"
+                        style={{ width: 92, padding: '5px 7px', border: '1.5px solid #e3d4f0', borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#7a3aaa', fontFamily: 'inherit' }} /></label>
                     <button onClick={() => drop(r)} disabled={busy} title="Убрать из автозакупа — позиция удалится и из заявки" style={{ border: '1.5px solid #f3d6d6', background: '#fff', color: '#c1121c', borderRadius: 8, width: 30, height: 30, fontSize: 14, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>🗑</button>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 44 }}>
-                    {(r.rows || []).map((x: any, ri: number) => <span key={ri} style={{ fontSize: 12, background: '#f6f3f0', color: '#5f5952', padding: '2px 9px', borderRadius: 20 }}>{x.from}: <b style={{ color: '#211f1c' }}>{x.qty} {r.unit}</b></span>)}
+                    {(r.rows || []).map((x: any, ri: number) => { const v = saleOf(r, x); const none = !(Number(v) > 0)
+                      const auto = sale[saleKey(r, x)] == null && !(x.price > 0) && x.auto > 0
+                      return (
+                        <span key={ri} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, background: none ? '#fdecec' : '#f6f3f0', color: '#5f5952', padding: '2px 4px 2px 9px', borderRadius: 20 }}>
+                          {x.from}: <b style={{ color: '#211f1c' }}>{x.qty} {r.unit}</b>
+                          <span title={'тип цены заказчика: ' + (PT[x.priceType] || x.priceType)} style={{ color: '#2e8a5e', fontWeight: 700 }}>· {PT[x.priceType] || 'розн.'}</span>
+                          <input type="number" value={v} onChange={e => setSale(m => ({ ...m, [saleKey(r, x)]: e.target.value }))} onFocus={e => e.target.select()} placeholder="продажа"
+                            title={none ? 'в прайсе нет цены этого типа — впишите, иначе расходная заказчику выйдет на 0' : auto ? 'подставлено из прайса по типу цены заказчика' : 'цена продажи заказчику — по ней пойдёт расходная'}
+                            style={{ width: 84, padding: '3px 6px', border: '1.5px solid ' + (none ? '#e8a3a3' : '#cfe8da'), borderRadius: 14, fontSize: 12, fontWeight: 700, textAlign: 'right', color: '#2e8a5e', background: '#fff', fontFamily: 'inherit' }} />
+                        </span>
+                      ) })}
                   </div>
                 </div>
                 </Fragment>
@@ -85,7 +111,8 @@ export default function AutoProcure({ orgId, onReload, toast }: { orgId: string;
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button onClick={toBuy} disabled={busy} style={{ padding: '10px 18px', borderRadius: 9, border: 'none', background: '#7a3aaa', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>🛒 В закуп {chosen.length ? `(${chosen.length})` : 'по всем'} →</button>
             {chosen.length > 0 && <button onClick={() => setChecked({})} style={{ padding: '10px 14px', borderRadius: 9, border: '1.5px solid #e6e2dc', background: '#fff', color: '#5f5952', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Сбросить</button>}
-            <span style={{ fontSize: 12, color: '#837c72' }}>Товары уйдут в черновик закупа ниже. Оформишь его одной кнопкой.</span>
+            <span style={{ fontSize: 12, color: '#837c72' }}>Товары уйдут в черновик закупа ниже по цене «закуп»; цена «продажа» ляжет в заявку заказчика — по ней пойдёт его расходная.</span>
+            {noPrice > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: '#c1121c' }}>⚠ без цены продажи: {noPrice} — расходная выйдет на 0</span>}
           </div>
         </div>
       )}

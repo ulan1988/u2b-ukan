@@ -3,7 +3,7 @@ import * as repo from '../repositories/procurement.repo'
 import * as orderRepo from '../repositories/order.repo'
 import { countPositions } from '../repositories/order.repo'
 import * as settingsRepo from '../repositories/settings.repo'
-import { isIzdelie as isIzd } from '../lib/lineAmount'
+import { isIzdelie as isIzd, priceForClient } from '../lib/lineAmount'
 import { matchCategoryKey } from '../lib/nomCatalog'
 import { listRules } from '../repositories/categoryRule.repo'
 import { listProducts } from '../repositories/refs.repo'
@@ -89,9 +89,19 @@ export async function demandSummary(orgId: string) {
   for (const c of cards) cardName[c.id] = c.fromName || c.id
   const procuredSet = new Set(procured.map(p => `${p.saleCardId}::${(p.product || '').trim().toLowerCase()}`))
 
-  const byProduct: Record<string, { name: string; unit: string; total: number; widthCm?: number | null; folder: string; folderOrder: number; rows: { cardId: string; from: string; qty: number }[] }> = {}
+  // ДВЕ ЦЕНЫ В АВТОЗАКУПЕ (правило владельца 27.11.2026): у товара — ЗАКУП (products.price_in, уйдёт в
+  // приходную закупа), у каждой заявки — ПРОДАЖА её заказчику (цена строки заявки; пусто → по типу цены
+  // заказчика из прайса этой орг, auto). Продажа дойдёт до расходной заказчику и до его приходной.
+  type DemRow = { cardId: string; from: string; qty: number; posIds: string[]; price: number; auto: number; priceType: string }
+  const byProduct: Record<string, { name: string; unit: string; total: number; widthCm?: number | null; folder: string; folderOrder: number; priceIn: number; rows: DemRow[] }> = {}
   // Папка номенклатуры каждого товара (группа > категория > подгруппа) — автозакуп собирается по папкам.
-  const prods = await listProducts()
+  const prods = await listProducts(orgId)
+  const prodByName = new Map<string, any>(); const prodById = new Map<string, any>()
+  for (const pr of prods as any[]) { prodById.set(pr.id, pr); for (const nm of [pr.name, pr.alias]) if (nm) prodByName.set(normNom(nm), pr) }
+  const { listContragents } = await import('../repositories/refs.repo')
+  const ptOf = new Map<string, string>(((await listContragents()) as any[]).map(c => [c.id, c.priceType || 'retail']))
+  const cardPT: Record<string, string> = {}
+  for (const c of cards as any[]) cardPT[c.id] = (c.contactId && ptOf.get(c.contactId)) || 'retail'
   const folderOf = new Map<string, { folder: string; order: number }>()
   const firstOrder: Record<string, number> = {}
   prods.forEach((pr: any, i: number) => {
@@ -107,9 +117,15 @@ export async function demandSummary(orgId: string) {
     if (procuredSet.has(`${p.cardId}::${name.toLowerCase()}`)) continue     // уже закуплено
     const key = name.toLowerCase()
     const fo = folderOf.get(normNom(name))
-    if (!byProduct[key]) byProduct[key] = { name, unit: p.unit || 'шт', total: 0, widthCm: p.widthCm != null ? Number(p.widthCm) : null, folder: fo?.folder || 'Без папки', folderOrder: fo ? fo.order : 1e9, rows: [] }
+    const prod = (p.productId && prodById.get(p.productId)) || prodByName.get(normNom(name))
+    const izd = isIzd(name)
+    if (!byProduct[key]) byProduct[key] = { name, unit: p.unit || 'шт', total: 0, widthCm: p.widthCm != null ? Number(p.widthCm) : null, folder: fo?.folder || 'Без папки', folderOrder: fo ? fo.order : 1e9, priceIn: izd ? 0 : (Number(prod?.priceIn) || 0), rows: [] }
     byProduct[key].total += Number(p.qty)
-    byProduct[key].rows.push({ cardId: p.cardId, from: cardName[p.cardId] || p.cardId, qty: Number(p.qty) })
+    const pt = cardPT[p.cardId] || 'retail'
+    // Одна заявка может держать товар двумя строками — собираем в одну плашку.
+    const ex = byProduct[key].rows.find(r => r.cardId === p.cardId)
+    if (ex) { ex.qty += Number(p.qty); ex.posIds.push(p.id); if (!ex.price) ex.price = Number(p.price) || 0 }
+    else byProduct[key].rows.push({ cardId: p.cardId, from: cardName[p.cardId] || p.cardId, qty: Number(p.qty), posIds: [p.id], price: Number(p.price) || 0, auto: prod ? priceForClient(prod, pt) : 0, priceType: pt })
   }
   // По папкам (в порядке номенклатуры), внутри папки — по названию.
   return Object.values(byProduct).sort((a, b) => a.folderOrder - b.folderOrder || a.folder.localeCompare(b.folder, 'ru') || a.name.localeCompare(b.name, 'ru', { numeric: true }))
@@ -152,8 +168,19 @@ export async function chainReport(orgId: string) {
 
 // «В закуп»: складываем товары в черновик-накопитель (find-or-create), пишем
 // связи, автоцену priceIn, автоподстановку поставщик/логист по группе.
-export async function stage(orgId: string, items: { name: string; unit: string; total: number; widthCm?: number | null; rows: { cardId: string; qty: number }[] }[], actor?: Session | null) {
+export async function stage(orgId: string, items: { name: string; unit: string; total: number; widthCm?: number | null; price?: number | null; rows: { cardId: string; qty: number; posIds?: string[]; salePrice?: number | null }[] }[], actor?: Session | null) {
   if (!items.length) return { ok: false as const, error: 'Нет товаров' }
+
+  // ЦЕНА ПРОДАЖИ ЗАЯВКИ из автозакупа (правило 27.11.2026): вписанная/подставленная цена ложится в строку
+  // заявки — по ней логист повезёт и выпишется расходная заказчику (и его приходная, если он филиал).
+  // Пусто/0 — строку не трогаем. Только строки этой заявки, не проведённые.
+  for (const it of items) for (const r of it.rows || []) {
+    const sp = Number(r.salePrice) || 0
+    if (sp <= 0 || !r.cardId || !Array.isArray(r.posIds) || !r.posIds.length) continue
+    const pos = await orderRepo.positionsByCard(r.cardId)
+    for (const p of pos as any[]) if (r.posIds.includes(p.id) && p.status !== 'Доставлено' && Number(p.price) !== sp)
+      await orderRepo.updatePosition(p.id, { price: String(sp) })
+  }
 
   // черновик-накопитель
   let [draft] = await repo.openDraft(orgId)
@@ -195,6 +222,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
   for (const it of items) {
     const ex = existingByName.get(it.name.trim().toLowerCase())
     if (ex && Number(ex.qty) !== Number(it.total)) await orderRepo.updatePosition(ex.id, { qty: String(it.total) })
+    if (ex && Number(it.price) > 0 && Number(ex.price) !== Number(it.price)) await orderRepo.updatePosition(ex.id, { price: String(it.price) })
   }
   const posValues = fresh.map((it, idx) => {
     const prod = byName.get(it.name.trim().toLowerCase())
@@ -213,7 +241,7 @@ export async function stage(orgId: string, items: { name: string; unit: string; 
     return {
       id: `${draft!.id}-P${base + idx + 1}`, cardId: draft!.id,
       productId: prod?.id ?? null, name1c: it.name, oral: it.name,
-      qty: String(it.total), unit: it.unit || 'шт', price: String(isIzdelie ? 0 : (prod?.priceIn ?? 0)),
+      qty: String(it.total), unit: it.unit || 'шт', price: String(Number(it.price) > 0 ? Number(it.price) : (isIzdelie ? 0 : (prod?.priceIn ?? 0))),   // закуп: вписанный в автозакупе, иначе из карточки товара
       widthCm: wcm != null ? String(wcm) : null,
       supplierId, respUserId: respUserId || defLogist || null, leg: supplierId ? (legMap[supplierId] ?? 2) : 2, status: 'В работе',
     }

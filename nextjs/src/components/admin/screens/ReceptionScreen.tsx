@@ -361,7 +361,7 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
                 {/* У закупа один поставщик, а получатели у строк разные — отдельная колонка. */}
-                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', ...(kind === 'purchase' ? ['ЗАКУП ₸', 'ПРОДАЖА ₸'] : ['ЦЕНА ПРОДАЖИ ₸']), 'ЛОГИСТ', 'ПОСТАВЩИК', ...(kind === 'purchase' ? ['ПОЛУЧАТЕЛЬ'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+                <thead><tr style={{ background: '#f1efec' }}>{['НАИМЕНОВАНИЕ', 'СМ', 'КОЛ-ВО', 'ЕД.', 'ЗАКУП ₸', 'ПРОДАЖА ₸', 'ЛОГИСТ', 'ПОСТАВЩИК', ...(kind === 'purchase' ? ['ПОЛУЧАТЕЛЬ'] : []), 'СРОК', 'ОПЛАТА', ''].map(h => <th key={h} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: '#5f5952', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {rows.map((r, i) => { const rt = !!(r.transit || transit); return (
                     <tr key={i} style={{ borderBottom: '1px solid #f1efec', background: rt ? '#faf7ff' : undefined }}>
@@ -376,12 +376,21 @@ export default function ReceptionScreen({ orders, orgId, onAction, onReload, onO
                       <td style={{ padding: '6px 4px', width: 56 }}><input style={inpSm} value={r.unit} onChange={e => setRow(i, { unit: e.target.value })} /></td>
                       {/* ЗАКУП: price — цена закупа (уйдёт в приходную). ПРОДАЖА: цена для получателя
                           строки (уйдёт в расходную), подставляется из прайса по его типу цены. */}
-                      <td style={{ padding: '6px 4px', width: (rt || kind === 'sale') ? 150 : 100 }}>
+                      {/* ЗАКАЗ — тоже две колонки (правило владельца 27.11.2026): ЗАКУП (costPrice, из карточки товара;
+                          в приходную поставщику идёт, когда в строке выбран поставщик или строка сквозная) и
+                          ПРОДАЖА (price, по типу цены заказчика — розн/опт/спец; уйдёт в расходную заказчику). */}
+                      {kind === 'sale' && (
+                        <td style={{ padding: '6px 4px', width: 100 }}>
+                          <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa', opacity: (rt || r.supplierId) ? 1 : 0.75 }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп"
+                            title={(rt || r.supplierId) ? 'цена ЗАКУПА поставщику — по ней пойдёт приходная (пусто → закуп из карточки товара)' : 'цена ЗАКУПА из карточки товара — уйдёт в приходную, когда в строке выберете поставщика'} />
+                        </td>
+                      )}
+                      <td style={{ padding: '6px 4px', width: 100 }}>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600 }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })}
+                          <input style={{ ...inpSm, textAlign: 'right', fontWeight: 600, ...(kind === 'sale' ? { color: '#2e8a5e' } : {}) }} type="number" value={r.price} onChange={e => setRow(i, { price: e.target.value })}
                             placeholder={kind === 'purchase' ? 'закуп' : (isIzdelie(r.name1c) ? 'за см' : 'прод.')}
                             title={kind === 'purchase' ? 'цена ЗАКУПА — по ней проводится приходная' : (isIzdelie(r.name1c) ? 'цена за 1 см (сумма = кол-во × см × цена)' : 'продажная цена (заказчику)')} />
-                          {(rt || (kind === 'sale' && !!r.supplierId)) && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику): по ней идёт приходная — у сквозной строки без склада, у обычной задним числом на склад. Пусто → закуп из карточки товара" />}
+                          {kind === 'purchase' && rt && <input style={{ ...inpSm, textAlign: 'right', color: '#7a3aaa' }} type="number" value={r.costPrice || ''} onChange={e => setRow(i, { costPrice: e.target.value })} placeholder="закуп" title="закупочная цена (поставщику) сквозной строки — без склада. Пусто → закуп из карточки товара" />}
                         </div>
                         {isIzdelie(r.name1c) && <div style={{ fontSize: 9.5, color: '#7a3aaa', textAlign: 'right', marginTop: 1 }}>за см</div>}
                       </td>
