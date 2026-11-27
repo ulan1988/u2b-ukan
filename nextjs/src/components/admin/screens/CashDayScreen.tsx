@@ -728,33 +728,48 @@ export default function CashDayScreen({ orgId }: { orgId: string }) {
 
         {openDocId && <InvoiceForm id={openDocId} drawer onClose={() => setOpenDocId(null)} onSaved={() => { setOpenDocId(null); calcProfit() }} />}
 
-      {/* 🎁 БОНУС ДНЯ — товар соседа («Сосед товар»): мимо склада, себестоимости нет,
-            бонус делится 50/50 с головным, деньги соседа возвращаются ему. */}
-        {bonus && bonus.rows?.length > 0 && (
-          <div style={{ ...card, marginBottom: 16 }}>
+      {/* 🎁 БОНУС ДНЯ и ➕ ПРОЧИЙ ДОХОД — строки bonus_rows. ДВА РАЗНЫХ БЛОКА (правило владельца 27.11.2026):
+            товар соседа (agent_id есть) делится 50/50, ПРОЧИЙ ДОХОД — 60/40 (50/50 только по галочке в кассе).
+            Раньше всё шло одним блоком «Бонус дня · 50/50» — прочий доход 60/40 выглядел как 50/50.
+            Проценты и подписи считаем ИЗ ДАННЫХ (hq_share каждой строки), а не пишем текстом. */}
+        {bonus && bonus.rows?.length > 0 && ([
+          { key: 'agent', rows: bonus.rows.filter((r: any) => r.agent), title: '🤝 БОНУС ДНЯ', sub: 'товар соседей (мимо склада)' },
+          { key: 'other', rows: bonus.rows.filter((r: any) => !r.agent), title: '➕ ПРОЧИЙ ДОХОД', sub: 'без товара · наценка дня' },
+        ].filter(g => g.rows.length > 0).map(g => {
+          const t = g.rows.reduce((a: any, r: any) => ({
+            sold: a.sold + Number(r.price) * Number(r.qty), toAgent: a.toAgent + Number(r.cost) * Number(r.qty),
+            bonus: a.bonus + Number(r.bonus), hq: a.hq + Number(r.hqShare),
+          }), { sold: 0, toAgent: 0, bonus: 0, hq: 0 })
+          const hqPct = t.bonus > 0 ? Math.round(t.hq / t.bonus * 100) : 0
+          const split = hqPct + '/' + (100 - hqPct)
+          return (
+          <div key={g.key} style={{ ...card, marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>🤝 БОНУС ДНЯ · 50/50</span>
-              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>товар соседей (мимо склада) · {bonus.rows.length} поз. · прибыль делим пополам с головным</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.textSubtle, letterSpacing: '.04em' }}>{g.title} · {split}</span>
+              <span style={{ fontSize: 12.5, color: COLORS.textLight }}>{g.sub} · {g.rows.length} поз. · {hqPct}% Адал Строй 2, {100 - hqPct}% магазину</span>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              {[['продано', bonus.totals.sold, COLORS.text], ['вернуть соседям', bonus.totals.toAgent, COLORS.primaryDark], ['бонус', bonus.totals.bonus, '#2e8a5e'], ['наша доля 50%', bonus.ourShare, '#2e8a5e'], ['Адал Строй 2 50%', bonus.totals.hqShare, '#7a3aaa']].map(([l, v, c]: any) => (
+              {([['продано', t.sold, COLORS.text], ...(g.key === 'agent' ? [['вернуть соседям', t.toAgent, COLORS.primaryDark]] : []), [g.key === 'agent' ? 'бонус' : 'доход', t.bonus, '#2e8a5e'], ['наша доля ' + (100 - hqPct) + '%', t.bonus - t.hq, '#2e8a5e'], ['Адал Строй 2 ' + hqPct + '%', t.hq, '#7a3aaa']] as any[]).map(([l, v, c]: any) => (
                 <div key={l} style={{ background: COLORS.bgCard, borderRadius: 10, padding: '9px 14px', minWidth: 130 }}>
                   <div style={{ fontSize: 12, color: COLORS.textLight }}>{l}</div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: c }}>{m(v)} ₸</div>
                 </div>
               ))}
             </div>
-            {bonus.rows.map((r: any) => (
+            {g.rows.map((r: any) => {
+              const pct = Number(r.bonus) > 0 ? Math.round(Number(r.hqShare) / Number(r.bonus) * 100) : 0
+              return (
               <div key={r.id} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: COLORS.textLight, padding: '3px 0', borderTop: `1px solid ${COLORS.borderLight}` }}>
                 <span style={{ fontFamily: 'monospace' }}>{r.docNumber || r.cardId}</span>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: COLORS.text }}>{r.productName} · {Number(r.qty)} × {m(r.price)}</span>
-                <span style={{ color: '#7a3aaa' }}>{r.agent || '—'}</span>
-                <span style={{ width: 92, textAlign: 'right' }}>соседу {m(Number(r.cost) * Number(r.qty))}</span>
-                <span style={{ width: 86, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>бонус {m(r.bonus)}</span>
+                {g.key === 'agent' && <span style={{ color: '#7a3aaa' }}>{r.agent}</span>}
+                {g.key === 'agent' && <span style={{ width: 92, textAlign: 'right' }}>соседу {m(Number(r.cost) * Number(r.qty))}</span>}
+                <span style={{ width: 60, textAlign: 'right', color: '#7a3aaa' }}>{pct}/{100 - pct}</span>
+                <span style={{ width: 96, textAlign: 'right', color: '#2e8a5e', fontWeight: 600 }}>{g.key === 'agent' ? 'бонус' : 'доход'} {m(r.bonus)}</span>
               </div>
-            ))}
+            ) })}
           </div>
-        )}
+        ) }))}
 
         <div className="cd-cols">
           {/* Левая: счета + GOLD */}
